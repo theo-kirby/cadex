@@ -28,6 +28,7 @@ import CadexDynamics as dyn
 from test_dynamics_goal_model import _stock
 from test_dynamics_policy_trainer import TRAINER, _trainer_module, _venv_python
 from test_dynamics_terrain import COURSE, _free_block, _ground_z_mm
+from test_dynamics_terrain_boxes import BOX_COURSE
 
 mujoco = pytest.importorskip("mujoco")
 
@@ -213,7 +214,50 @@ def test_a_stock_mujoco_reads_the_scan_the_engine_read(tmp_path: Path, seed) -> 
                 mine["observation"][name], abs=1e-9)
 
 
+def test_on_a_box_course_the_scan_reads_the_ray_and_the_runner_agrees(tmp_path: Path) -> None:
+    """ADR-716: on placed boxes the scan reads the highest box top, which is
+    where MuJoCo's own ray meets the boxes, and a stock MuJoCo reads it too."""
+
+    prepared = scanned(terrain=BOX_COURSE, root=tmp_path)
+    compiled, bundle = prepared["model"], prepared["bundle"]
+    data = _posed(compiled, 1050.0, -120.0, 400.0, 20.0, pitch_deg=8.0)
+    values = dyn.height_scan_values(bundle, data.xpos, data.xmat, None)
+    block = mujoco.mj_name2id(compiled, mujoco.mjtObj.mjOBJ_BODY, "block")
+    x, y, z = (float(v) * 1000.0 for v in data.xpos[block])
+    heading = math.radians(20.0)
+    for (ahead, left), name in zip(bundle["scans"][0]["offsets_mm"],
+                                   bundle["scans"][0]["channels"], strict=True):
+        px = x + math.cos(heading) * ahead - math.sin(heading) * left
+        py = y + math.sin(heading) * ahead + math.cos(heading) * left
+        assert values[name] == pytest.approx(z - _ground_z_mm(compiled, px, py), abs=1e-3), name
+    there = _stock(prepared["path"], 3)
+    here = dyn.evaluate_episode(compiled, bundle, seed=3)
+    for mine, yours in zip(here["steps"], there["steps"], strict=True):
+        for name in dyn.scan_channels(bundle):
+            assert float(yours["observation"][name]) == pytest.approx(
+                mine["observation"][name], abs=1e-9)
+
+
 # -- the trainer ------------------------------------------------------------
+
+def test_the_trainer_computes_the_engines_scan_on_a_box_course() -> None:
+    numpy = pytest.importorskip("numpy")
+    module = _trainer_module()
+    prepared = scanned(terrain=BOX_COURSE)
+    compiled, bundle = prepared["model"], prepared["bundle"]
+    poses = [_posed(compiled, 1050.0, -120.0, 400.0, 20.0, pitch_deg=8.0),
+             _posed(compiled, 1700.0, 380.0, 300.0, 170.0)]
+    for data in poses:
+        engine = dyn.height_scan_values(bundle, data.xpos, data.xmat, None)
+        trained = module.height_scan_vector(numpy, bundle, numpy.asarray(data.xpos),
+                                            numpy.asarray(data.xmat), None)
+        assert trained.tolist() == pytest.approx(
+            [engine[name] for name in dyn.scan_channels(bundle)], abs=1e-9)
+    batch = module.height_scan_vector(
+        numpy, bundle, numpy.stack([numpy.asarray(d.xpos) for d in poses]),
+        numpy.stack([numpy.asarray(d.xmat) for d in poses]), None)
+    assert batch.shape == (2, 15)
+
 
 def test_the_trainer_computes_the_engines_scan() -> None:
     numpy = pytest.importorskip("numpy")
@@ -269,14 +313,14 @@ def test_mjx_scans_the_course_the_engine_scans() -> None:
 
 def test_the_trainer_trains_with_the_critic_reading_the_scan(tmp_path) -> None:
     """End to end: the scan in the critic's inputs and not the actor's, and
-    the policy verified by the engine against the same bundle. On the plane:
-    MJX does not yet step this rig on the course stably (the record names
-    the defect), and the reading on the course is held above."""
+    the policy verified by the engine against the same bundle, on the box
+    course (ADR-716): MJX steps this rig on placed boxes, where on ADR-714's
+    heightfield it went non-finite."""
 
     python = _venv_python()
     if python is None:
         pytest.skip("the offboard trainer's dependencies are not installed here")
-    prepared = scanned(terrain=None, root=tmp_path, task={
+    prepared = scanned(terrain=BOX_COURSE, root=tmp_path, task={
         **TASK, "reward": [{"label": "clear", "expression": "scan_4 / 1000 - abs(q) / 1000",
                             "weight": 1.0}]})
     out = tmp_path / "scanned.cxpolicy"

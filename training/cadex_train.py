@@ -731,7 +731,7 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
     vertical). ``xpos`` is ``(..., nbody, 3)``, times the row's ``scale``, and ``xmat``
     ``(..., nbody, 9)`` or ``(..., nbody, 3, 3)``. ``elevation`` is the
     course's ``hfield_data``, read bilinearly and held at the edge, or
-    ``None`` for the plane at z = 0.
+    ``None`` for the plane at z = 0; a box course (ADR-716) reads its boxes.
     """
 
     terrain = task.get("terrain")
@@ -750,7 +750,19 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
         offsets = xp.asarray(record["offsets_mm"], dtype=where.dtype)
         px = where[..., 0:1] + cos * offsets[:, 0] - sin * offsets[:, 1]
         py = where[..., 1:2] + sin * offsets[:, 0] + cos * offsets[:, 1]
-        if terrain is None or elevation is None:
+        if terrain is not None and terrain.get("kind") == "boxes":
+            # ADR-716: the highest box top over the point, or the plane.
+            boxes = terrain["boxes"]
+            xa, xb, ya, yb, za, zb = (
+                xp.asarray([float(record[key][end]) for record in boxes], dtype=where.dtype)
+                for key, end in (("x_range_mm", 0), ("x_range_mm", 1), ("y_range_mm", 0),
+                                 ("y_range_mm", 1), ("top_mm", 0), ("top_mm", 1)))
+            bx, by = px[..., None], py[..., None]
+            inside = (bx >= xa) & (bx <= xb) & (by >= ya) & (by <= yb)
+            lowest = float(terrain["lowest_mm"])
+            top = za + (zb - za) * (bx - xa) / (xb - xa)
+            ground = xp.maximum(xp.max(xp.where(inside, top, lowest), axis=-1), lowest)
+        elif terrain is None or elevation is None:
             ground = xp.zeros_like(px)
         else:
             x0, x1 = (float(value) for value in terrain["x_range_mm"])
@@ -1732,7 +1744,8 @@ def build_environment(
 
     # ADR-715: the ground the scans read is the elevation the model collides with.
     scan_elevation = (jnp.asarray(host.hfield_data, dtype=jnp.float32)
-                      if scanning and task.get("terrain") else None)
+                      if scanning and (task.get("terrain") or {}).get("kind") == "heightfield"
+                      else None)
     single = mjx.put_model(host)
     model = single
     if drawn and envs > 1:

@@ -3565,6 +3565,20 @@ TERRAIN_START_TOLERANCE_MM = 1e-6
 TERRAIN_MAXIMUM_HEIGHT_MM = 5000.0
 TERRAIN_MAXIMUM_GRADE_DEG = 60.0
 
+#: The two ways a course reaches the simulator (ADR-714, ADR-716). A
+#: ``heightfield`` samples the features onto a grid, cosine bumps and all; a
+#: ``boxes`` course builds them from placed boxes on a plane at the course's
+#: lowest point, which is the form MJX trains on: on the heightfield its
+#: float32 convex collider throws a box rig to non-finite (ADR-716).
+TERRAIN_FORMS = ("heightfield", "boxes")
+
+#: Half the thickness of a ramp in a box course. A ramp is a box turned to
+#: its grade, so its end faces lean by the grade too; thin, the lean shows as
+#: at most ``2 * 10 * sin(grade)`` mm past its high end, under ground that
+#: is at least as high (``terrain_step_off_slope``), and a support block
+#: fills under it.
+TERRAIN_RAMP_HALF_THICKNESS_MM = 10.0
+
 
 def _terrain_number(
     entry: Mapping[str, Any], key: str, context: str, *, reason: str = "malformed_terrain"
@@ -3714,6 +3728,203 @@ def terrain_height_mm(features: Sequence[Mapping[str, Any]], x_mm: float, y_mm: 
     return height
 
 
+def _terrain_profile_mm(features: Sequence[Mapping[str, Any]], x_mm: float) -> float:
+    """The steps' and slopes' height at ``x_mm``: a course without its bumps."""
+
+    return terrain_height_mm(
+        [feature for feature in features if feature["kind"] != "bump"], x_mm, 0.0
+    )
+
+
+def terrain_boxes(
+    features: Sequence[Mapping[str, Any]],
+    x_range_mm: Sequence[float],
+    y_range_mm: Sequence[float],
+    *,
+    context: str = "the terrain",
+) -> dict[str, Any]:
+    """A course as placed boxes (ADR-716): one record per box, pure.
+
+    Steps and slopes split the extent along x into segments, each flat or at
+    one grade: a flat one is a ``block`` from below the plane up to its
+    height, a graded one a ``ramp`` (a thin box turned to its grade) on a
+    ``block`` that fills under it to its lower end. A bump is a square
+    ``block`` of half-width ``radius_mm / 2`` -- where its raised cosine is
+    at half its height -- whose flat top stands ``height_mm`` above the
+    steps and slopes at its centre. Every record reads ``x_range_mm``,
+    ``y_range_mm`` and ``top_mm`` (the top's height at the two x ends: equal
+    for a block). Segments at the lowest point need no box: the plane is
+    there. Returns ``boxes``, ``lowest_mm`` and ``highest_mm``.
+    """
+
+    x0, x1 = (float(value) for value in x_range_mm)
+    y0, y1 = (float(value) for value in y_range_mm)
+    cuts = {x0, x1}
+    for feature in features:
+        for key in ("x_mm",) if feature["kind"] == "step" else ("from_x_mm", "to_x_mm"):
+            if feature["kind"] != "bump" and x0 < feature[key] < x1:
+                cuts.add(float(feature[key]))
+    edges = sorted(cuts)
+    segments = []
+    for a, b in zip(edges, edges[1:]):
+        rise = sum(
+            math.tan(math.radians(feature["grade_deg"]))
+            for feature in features
+            if feature["kind"] == "slope"
+            and feature["from_x_mm"] <= a and feature["to_x_mm"] >= b
+        )
+        za = _terrain_profile_mm(features, a)
+        segments.append((a, b, za, za + rise * (b - a)))
+    for index, (a, b, za, zb) in enumerate(segments):
+        if abs(zb - za) <= TERRAIN_FLAT_MM:
+            continue
+        neighbour = index + 1 if zb > za else index - 1
+        if not 0 <= neighbour < len(segments):
+            continue
+        meets = segments[neighbour][2] if zb > za else segments[neighbour][3]
+        if meets < max(za, zb) - TERRAIN_FLAT_MM:
+            raise DynamicsError(
+                f"{context} drops {max(za, zb) - meets:g} mm off the high end of "
+                f"the slope at x {b if zb > za else a:g} mm.",
+                reason="terrain_step_off_slope",
+                correction=(
+                    "A box course builds a slope from a turned box, whose end "
+                    "would stand proud of lower ground. Move the step clear of "
+                    "the slope's end, or use form='heightfield'."
+                ),
+                observed={"x_mm": b if zb > za else a, "drop_mm": max(za, zb) - meets},
+            )
+    lowest = min(0.0, *(min(za, zb) for _, _, za, zb in segments))
+    boxes: list[dict[str, Any]] = []
+
+    def box(shape: str, xs: Sequence[float], ys: Sequence[float], tops: Sequence[float]) -> None:
+        boxes.append({"shape": shape, "x_range_mm": [float(v) for v in xs],
+                      "y_range_mm": [float(v) for v in ys],
+                      "top_mm": [float(v) for v in tops]})
+
+    for a, b, za, zb in segments:
+        low = min(za, zb)
+        if low > lowest + TERRAIN_FLAT_MM:
+            box("block", (a, b), (y0, y1), (low, low))
+        if abs(zb - za) > TERRAIN_FLAT_MM:
+            box("ramp", (a, b), (y0, y1), (za, zb))
+    for feature in features:
+        if feature["kind"] != "bump":
+            continue
+        if feature["height_mm"] <= 0.0:
+            raise DynamicsError(
+                f"{context} has a bump of {feature['height_mm']:g} mm, a dip.",
+                reason="terrain_dip_needs_heightfield",
+                correction=(
+                    "A box course is built up from a plane, so it has no dips. "
+                    "Give the bump a positive height, or use form='heightfield'."
+                ),
+                observed={"height_mm": feature["height_mm"]},
+            )
+        half = feature["radius_mm"] / 2.0
+        top = _terrain_profile_mm(features, feature["x_mm"]) + feature["height_mm"]
+        box("block", (feature["x_mm"] - half, feature["x_mm"] + half),
+            (feature["y_mm"] - half, feature["y_mm"] + half), (top, top))
+    highest = max([lowest, *(max(record["top_mm"]) for record in boxes)])
+    return {"boxes": boxes, "lowest_mm": lowest, "highest_mm": highest}
+
+
+def terrain_box_ground_mm(terrain: Mapping[str, Any], x_mm: float, y_mm: float) -> float:
+    """A box course's ground height at one point (ADR-716): the highest box
+    top over it, or the plane at ``lowest_mm``. ``training/cadex_train.py``
+    writes the same reading in ``jnp``, and a test holds them equal."""
+
+    ground = float(terrain["lowest_mm"])
+    for record in terrain["boxes"]:
+        (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
+        if xa <= x_mm <= xb and ya <= y_mm <= yb:
+            za, zb = record["top_mm"]
+            ground = max(ground, za + (zb - za) * (x_mm - xa) / (xb - xa))
+    return ground
+
+
+def _terrain_features(terrain: Mapping[str, Any], context: str) -> list[dict[str, Any]]:
+    """A course's feature list, validated: non-empty, bounded, each known."""
+
+    entries = terrain.get("features")
+    if not isinstance(entries, (list, tuple)) or not entries:
+        raise DynamicsError(
+            f"{context} lists no features.",
+            reason="malformed_terrain",
+            correction=(
+                "List at least one bump, step or slope. A flat world needs no "
+                "terrain: leave it out and a free base stands on the plane."
+            ),
+        )
+    if len(entries) > MAXIMUM_TERRAIN_FEATURES:
+        raise DynamicsError(
+            f"{context} lists {len(entries)} features; the accepted maximum is "
+            f"{MAXIMUM_TERRAIN_FEATURES}.",
+            reason="terrain_too_large",
+            correction="Merge features, or split the course.",
+            observed={"features": len(entries), "maximum": MAXIMUM_TERRAIN_FEATURES},
+        )
+    return [_terrain_feature(entry, index, context) for index, entry in enumerate(entries)]
+
+
+def _terrain_start_and_relief(
+    lowest: float, highest: float, start_height: float, context: str
+) -> None:
+    """The refusals every form shares: ground under the start off z = 0, and
+    a course with no relief over its extent."""
+
+    if abs(start_height) > TERRAIN_START_TOLERANCE_MM:
+        raise DynamicsError(
+            f"{context} puts the ground at the origin {start_height:g} mm from "
+            "z = 0, where the solved pose stands.",
+            reason="terrain_moves_start",
+            correction=(
+                "Keep the origin on z = 0: start steps and slopes at x > 0 (or "
+                "below and back to 0 before it), and keep bumps clear of it."
+            ),
+            observed={"start_height_mm": start_height},
+        )
+    if highest - lowest < TERRAIN_FLAT_MM:
+        raise DynamicsError(
+            f"{context} is flat over its extent: its features lie outside it "
+            "or cancel.",
+            reason="terrain_is_flat",
+            correction="Put the features inside x_range_mm and y_range_mm, or leave terrain out.",
+            observed={"lowest_mm": lowest, "highest_mm": highest},
+        )
+
+
+def _terrain_box_course(
+    terrain: Mapping[str, Any],
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    context: str,
+) -> dict[str, Any]:
+    """:func:`terrain_grid` for ``form="boxes"`` (ADR-716): the descriptor
+    carries the boxes, and there is no grid, so ``heights_mm`` is ``None``."""
+
+    features = _terrain_features(terrain, context)
+    built = terrain_boxes(features, x_range, y_range, context=context)
+    descriptor = {
+        "geom": ENVIRONMENT_TERRAIN_GEOM,
+        "body": "world",
+        "kind": "boxes",
+        "x_range_mm": list(x_range),
+        "y_range_mm": list(y_range),
+        "lowest_mm": built["lowest_mm"],
+        "highest_mm": built["highest_mm"],
+        "base_mm": TERRAIN_BASE_MM,
+        "friction": list(ENVIRONMENT_FLOOR_FRICTION),
+        "features": features,
+        "boxes": built["boxes"],
+    }
+    _terrain_start_and_relief(
+        built["lowest_mm"], built["highest_mm"],
+        terrain_box_ground_mm(descriptor, 0.0, 0.0), context,
+    )
+    return {"descriptor": descriptor, "heights_mm": None}
+
+
 def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") -> dict[str, Any]:
     """A script's terrain declaration, validated and sampled onto a grid.
 
@@ -3727,6 +3938,10 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
     Pure: no MuJoCo, so a refusal, the grid and the heights are all
     testable without one. Returns the record the manifest and the task
     bundle carry (``descriptor``) and the row-major heights, in millimetres.
+
+    ``"form": "boxes"`` (ADR-716) builds the same features from placed boxes
+    instead (:func:`terrain_boxes`): no grid, no ``cell_mm``, and
+    ``heights_mm`` is ``None``. Leaving ``form`` out is ``"heightfield"``.
     """
 
     if not isinstance(terrain, Mapping):
@@ -3735,7 +3950,7 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             reason="malformed_terrain",
             correction="Give terrain as a dict with x_range_mm, y_range_mm and features.",
         )
-    allowed = {"x_range_mm", "y_range_mm", "cell_mm", "features"}
+    allowed = {"x_range_mm", "y_range_mm", "cell_mm", "features", "form"}
     extra = sorted(str(key) for key in terrain if key not in allowed)
     if extra:
         raise DynamicsError(
@@ -3744,8 +3959,25 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             correction=f"Terrain takes {', '.join(sorted(allowed))}.",
             observed={"unknown": extra},
         )
+    form = terrain.get("form", "heightfield")
+    if form not in TERRAIN_FORMS:
+        raise DynamicsError(
+            f"{context} has form {form!r}.",
+            reason="malformed_terrain",
+            correction=f"A course's form is one of {', '.join(TERRAIN_FORMS)}.",
+            observed={"form": repr(form)},
+        )
+    if form == "boxes" and terrain.get("cell_mm") is not None:
+        raise DynamicsError(
+            f"{context} gives cell_mm for a box course.",
+            reason="malformed_terrain",
+            correction="cell_mm is a heightfield's grid; a box course has none. Leave it out.",
+            observed={"cell_mm": terrain.get("cell_mm")},
+        )
     x0, x1 = _terrain_range(terrain, "x_range_mm", context)
     y0, y1 = _terrain_range(terrain, "y_range_mm", context)
+    if form == "boxes":
+        return _terrain_box_course(terrain, (x0, x1), (y0, y1), context)
     cell = (
         DEFAULT_TERRAIN_CELL_MM
         if terrain.get("cell_mm") is None
@@ -3780,51 +4012,14 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             correction="Shrink the ranges or coarsen cell_mm.",
             observed={"cells": nrow * ncol, "maximum": MAXIMUM_TERRAIN_CELLS},
         )
-    entries = terrain.get("features")
-    if not isinstance(entries, (list, tuple)) or not entries:
-        raise DynamicsError(
-            f"{context} lists no features.",
-            reason="malformed_terrain",
-            correction=(
-                "List at least one bump, step or slope. A flat world needs no "
-                "terrain: leave it out and a free base stands on the plane."
-            ),
-        )
-    if len(entries) > MAXIMUM_TERRAIN_FEATURES:
-        raise DynamicsError(
-            f"{context} lists {len(entries)} features; the accepted maximum is "
-            f"{MAXIMUM_TERRAIN_FEATURES}.",
-            reason="terrain_too_large",
-            correction="Merge features, or split the course.",
-            observed={"features": len(entries), "maximum": MAXIMUM_TERRAIN_FEATURES},
-        )
-    features = [_terrain_feature(entry, index, context) for index, entry in enumerate(entries)]
-    start_height = terrain_height_mm(features, 0.0, 0.0)
-    if abs(start_height) > TERRAIN_START_TOLERANCE_MM:
-        raise DynamicsError(
-            f"{context} puts the ground at the origin {start_height:g} mm from "
-            "z = 0, where the solved pose stands.",
-            reason="terrain_moves_start",
-            correction=(
-                "Keep the origin on z = 0: start steps and slopes at x > 0 (or "
-                "below and back to 0 before it), and keep bumps clear of it."
-            ),
-            observed={"start_height_mm": start_height},
-        )
+    features = _terrain_features(terrain, context)
     heights = [
         terrain_height_mm(features, x0 + column * cell, y0 + row * cell)
         for row in range(nrow)
         for column in range(ncol)
     ]
     lowest, highest = min(heights), max(heights)
-    if highest - lowest < TERRAIN_FLAT_MM:
-        raise DynamicsError(
-            f"{context} is flat over its extent: its features lie outside it "
-            "or cancel.",
-            reason="terrain_is_flat",
-            correction="Put the features inside x_range_mm and y_range_mm, or leave terrain out.",
-            observed={"lowest_mm": lowest, "highest_mm": highest},
-        )
+    _terrain_start_and_relief(lowest, highest, terrain_height_mm(features, 0.0, 0.0), context)
     return {
         "descriptor": {
             "geom": ENVIRONMENT_TERRAIN_GEOM,
@@ -3843,6 +4038,57 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
         },
         "heights_mm": heights,
     }
+
+
+def _environment_box_course(mujoco: Any, spec: Any, descriptor: Mapping[str, Any]) -> None:
+    """A box course on the world body (ADR-716): the plane, lowered to the
+    course's lowest point and named ``environment/terrain``, and one box per
+    descriptor record, ``environment/terrain/<i>``, on the plane's contact
+    parameters. A ``block`` runs from :data:`TERRAIN_BASE_MM` below the plane
+    to its top; a ``ramp`` is a box :data:`TERRAIN_RAMP_HALF_THICKNESS_MM`
+    thick, turned about y to its grade, whose top face is the record's."""
+
+    contact = {
+        "friction": list(ENVIRONMENT_FLOOR_FRICTION),
+        "solref": [CONTACT_TIMECONST_S, 1.0],
+        "condim": 3,
+        "contype": 1,
+        "conaffinity": 1,
+    }
+    lowest = float(descriptor["lowest_mm"])
+    spec.worldbody.add_geom(
+        name=ENVIRONMENT_TERRAIN_GEOM,
+        type=mujoco.mjtGeom.mjGEOM_PLANE,
+        pos=vector_m([0.0, 0.0, lowest]),
+        quat=[1.0, 0.0, 0.0, 0.0],
+        size=[0.0, 0.0, length_m(ENVIRONMENT_FLOOR_GRID_MM)],
+        **contact,
+    )
+    for index, record in enumerate(descriptor["boxes"]):
+        (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
+        za, zb = record["top_mm"]
+        if record["shape"] == "block":
+            bottom = lowest - TERRAIN_BASE_MM
+            centre = [(xa + xb) / 2.0, (ya + yb) / 2.0, (za + bottom) / 2.0]
+            half = [(xb - xa) / 2.0, (yb - ya) / 2.0, (za - bottom) / 2.0]
+            quat = [1.0, 0.0, 0.0, 0.0]
+        else:
+            grade = math.atan2(zb - za, xb - xa)
+            thick = TERRAIN_RAMP_HALF_THICKNESS_MM
+            # The top face's centre, less the half-thickness along its normal
+            # (-sin, 0, cos); turning about y by -grade lifts +x by the grade.
+            centre = [(xa + xb) / 2.0 + thick * math.sin(grade), (ya + yb) / 2.0,
+                      (za + zb) / 2.0 - thick * math.cos(grade)]
+            half = [math.hypot(xb - xa, zb - za) / 2.0, (yb - ya) / 2.0, thick]
+            quat = [math.cos(grade / 2.0), 0.0, -math.sin(grade / 2.0), 0.0]
+        spec.worldbody.add_geom(
+            name=f"{ENVIRONMENT_TERRAIN_GEOM}/{index}",
+            type=mujoco.mjtGeom.mjGEOM_BOX,
+            pos=vector_m(centre),
+            quat=quat,
+            size=vector_m(half),
+            **contact,
+        )
 
 
 def _environment_terrain(
@@ -3872,6 +4118,9 @@ def _environment_terrain(
         )
     grid = terrain_grid(terrain)
     descriptor = grid["descriptor"]
+    if descriptor["kind"] == "boxes":
+        _environment_box_course(mujoco, spec, descriptor)
+        return {"terrain": descriptor}
     lowest, highest = descriptor["lowest_mm"], descriptor["highest_mm"]
     span = highest - lowest
     x0, x1 = descriptor["x_range_mm"]
@@ -11116,7 +11365,7 @@ def height_scan_values(
     projected on the ground -- and not with its pitch or roll; a body whose
     x axis is vertical has no heading and reads the grid in the world's.
     ``elevation`` is the course's ``hfield_data``, or ``None`` for the plane
-    at z = 0.
+    at z = 0; a box course (ADR-716) reads its own boxes and ignores it.
     """
 
     terrain = task.get("terrain")
@@ -11131,8 +11380,12 @@ def height_scan_values(
         for (ahead, left), channel in zip(record["offsets_mm"], record["channels"], strict=True):
             px = x + cos * float(ahead) - sin * float(left)
             py = y + sin * float(ahead) + cos * float(left)
-            ground = (0.0 if terrain is None or elevation is None
-                      else terrain_ground_mm(terrain, elevation, px, py))
+            if terrain is not None and terrain.get("kind") == "boxes":
+                ground = terrain_box_ground_mm(terrain, px, py)
+            elif terrain is None or elevation is None:
+                ground = 0.0
+            else:
+                ground = terrain_ground_mm(terrain, elevation, px, py)
             values[str(channel)] = z - ground
     return values
 

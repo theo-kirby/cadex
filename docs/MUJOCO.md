@@ -291,10 +291,37 @@ With the block's arm swung by random ±0.8 N·m torques, one of 8 MJX
 environments is thrown to 1.8 m and goes non-finite at control step 18,
 while stock MuJoCo holds all 8 at 10.0 mm and MJX on the plane holds all 8
 too. So the trainer diverges at iteration 1 on the course, and the
-heightfield's "trains reliably" is not yet shown. Still to come in W1: that
-defect, the seeded random course and its per-episode re-draw in the
-trainer, the terrain predicates, and the course in the rollout and the
-dashboard.
+heightfield's "trains reliably" is not yet shown; ADR-716's box course is
+the form that does.
+
+**Box course (ADR-716, 2026-10-16).** `terrain={"form": "boxes", ...}` builds
+the same features from placed boxes: the plane, lowered to the course's
+lowest point and named `environment/terrain`, and one box per record of the
+descriptor's `boxes` list, `environment/terrain/<i>`, all on the plane's
+contact parameters. Steps and slopes cut the extent along x into segments;
+a flat one is a block from below the plane up to its height, a graded one a
+20 mm ramp turned to its grade on a block that fills under it. A bump is a
+square block `radius_mm` across (where its cosine is at half height) with a
+flat top `height_mm` above the steps and slopes at its centre; a dip is
+refused (`terrain_dip_needs_heightfield`), as is a step down off a slope's
+high end, where the ramp's leaning end face would stand proud
+(`terrain_step_off_slope`). The ground is the highest box top over a point,
+or the plane (`terrain_box_ground_mm`), which is what MuJoCo's ray meets
+(tested to 0.001 mm on 165 points), and what the height scan reads in the
+engine, the trainer and the reference runner. Measured on the cat's own
+rig (the f1-g1 model, 27 actuators, random position targets across each
+action's range, 24 starts on bumps, step edges and ramps at up to 3 m/s,
+300 control steps, MJX 3.10.0 on CPU): the plane and the boxes both stay
+finite with peak joint speed 39 and 48 rad/s, the heightfield stays finite
+but peaks at 179 rad/s; stock MuJoCo peaks at 39–45 on all three. ADR-714's
+block and arm under random ±0.8 N·m: 3 of 32 MJX envs non-finite on the
+heightfield, 0 of 32 on the boxes, and the trainer trains on the box course
+(`test_the_trainer_trains_with_the_critic_reading_the_scan`). The box course
+is also cheaper in MJX than the heightfield (134 s against 338 s for that
+cat run; 82 s on the plane), so ADR-714's contact-cost argument did not
+hold. Still to come in W1: the seeded random course and its per-episode
+re-draw in the trainer, the terrain predicates, and the course in the
+rollout and the dashboard.
 
 **Height scan (ADR-715, 2026-10-16).** `assembly.observation(trunk,
 "height_scan", name="scan", role="privileged")` reads the ground round a
@@ -303,7 +330,8 @@ fixed grid: 5 points along its heading (100 mm behind to 300 mm ahead) by 3
 across it (±100 mm). `scan_4` is the point under the body. The grid turns
 with the body's heading, its x axis projected on the ground, and not with
 its pitch or roll. The ground is the course's heightfield elevation, read
-bilinearly and held at the edge, or the plane at z = 0. It is no sensor:
+bilinearly and held at the edge, a box course's highest box top (ADR-716),
+or the plane at z = 0. It is no sensor:
 the bundle's `scans` section names the body by its index and states the
 grid, and the channels come last in every vector, after a reference's
 tracking channels. The engine (`height_scan_values`), the trainer

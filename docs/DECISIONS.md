@@ -42489,3 +42489,83 @@ The overflow MJX warns of is inside its own heightfield-convex collider
 therefore runs the scan on the plane, and the course reading is held by the
 MJX parity test. ADR-714's claim that the heightfield "trains reliably" is
 open until that defect is fixed or a placed-box course replaces it.
+
+## ADR-716 — A course can be placed boxes, the form MJX trains on (2026-10-16, orun7)
+
+**Context.** ADR-714 wrote a declared course as one MuJoCo heightfield and
+expected MJX to train on it. ADR-715 found that it does not: under driven
+motion MJX's float32 heightfield-convex collider throws ADR-714's box rig to
+non-finite, and the trainer diverged at iteration 1 on any course task.
+ADR-714 named placed boxes as the alternative. orun7's W1 needs a course
+the trainer can train on, and W2 needs the cat to cross one.
+
+**Measurement first** (scratch, not committed; MJX 3.10.0 on CPU while the
+GPU trained). The cat's own exported model (f1-g1, 27 actuators, sphere
+paws, box chest and pelvis) on three grounds carrying the same course
+(two 40 mm bumps, an 80 mm platform, a 15° ramp up and down): 24 starts on
+the features at up to 3 m/s forward, position targets drawn across each
+action's range and held 0.1 s, 300 control steps.
+- Stock MuJoCo: finite on all three; peak joint speed 43, 39, 45 rad/s
+  (plane, boxes, heightfield).
+- MJX: finite on all three; peak 39 (plane), 48 (boxes), **179**
+  (heightfield). Wall time 82 s, 134 s, 338 s.
+- ADR-714's block and arm, 32 envs, random ±0.8 N·m for 100 control steps:
+  heightfield 3 of 32 non-finite from control step 10, one thrown 9.9 m;
+  boxes 0 of 32, the highest at 0.18 m.
+So the boxes behave like the plane under MJX, where the heightfield either
+diverges or pumps energy into the joints, and they cost less, not more,
+than the heightfield did.
+
+**Decision.** `terrain={"form": "boxes", ...}` builds the course from
+placed boxes; `"heightfield"` (ADR-714) stays the default, so every
+existing model, bundle and digest is unchanged.
+- **The same features.** Steps and slopes cut the extent along x into
+  segments. A flat segment above the lowest point is a `block` from 50 mm
+  below the plane up to its height. A graded one is a `ramp`, a 20 mm box
+  turned about y to its grade with its top face on the segment, on a
+  `block` that fills under it to its lower end. A bump is a square `block`
+  `radius_mm` across (where its raised cosine is at half height) whose
+  flat top stands `height_mm` above the steps and slopes at its centre.
+- **The plane**, lowered to the course's lowest point, is named
+  `environment/terrain`; the boxes are `environment/terrain/<i>`. All carry
+  the plane's contact parameters. Beyond the extent the plane goes on: a
+  step down off the course is a drop, not a fall into nothing.
+- **The descriptor** has `kind: "boxes"` and a `boxes` list, each record's
+  `shape`, `x_range_mm`, `y_range_mm` and `top_mm` (the top at the two x
+  ends). It has no grid: no `cell_mm`, `nrow` or `ncol`.
+- **The ground** is the highest box top over a point, or the plane
+  (`terrain_box_ground_mm`). The height scan (ADR-715) reads it in the
+  engine, the trainer (`height_scan_vector`, in `jnp` over the boxes) and
+  the stock reference runner; it ignores `hfield_data`.
+- **Refused, by reason:** a bump with a negative height
+  (`terrain_dip_needs_heightfield`: a course built up from a plane has no
+  dips); `cell_mm` on a box course (`malformed_terrain`); an unknown form
+  (`malformed_terrain`); and a step down off a slope's high end
+  (`terrain_step_off_slope`), where the turned ramp's end face would stand
+  proud of the lower ground. Higher or equal ground past a high end covers
+  that face.
+- **`cadex smoke`** counts contact with any `environment/terrain/<i>` box
+  as standing on the ground.
+- MJX's unsupported pairs are unchanged: a box course refuses a cylinder or
+  ellipsoid foot through the existing `("box", "cylinder")` and
+  `("box", "ellipsoid")` rows.
+
+**Why not fix the heightfield.** The overflow is inside MJX's collider, a
+pinned third-party package; Cadex cannot patch it without vendoring. A box
+course is exact on steps (the heightfield's step is a one-cell ramp) and
+needs no new dependency. What it cannot express, dips and smooth hills, is
+still the heightfield's.
+
+**Evidence.** `test_dynamics_terrain_boxes` (8 tests, 14 cases): the boxes
+and the reading at eleven named points, on and off the extent; seven
+refusals by reason; a step up past a ramp's high end accepted; MuJoCo's ray
+meets the reading within 0.001 mm on 165 points over steps, ramps and a
+block; a block at the origin rests at 10 mm; the exported file and the
+bundle carry the boxes; a cylinder foot refused; and, from the training
+venv, MJX keeps the driven rig finite on the box course (32 envs × 100
+control steps), the same test measuring 3 of 32 non-finite on the
+heightfield. `test_dynamics_height_scan` gains the scan on a box course
+against MuJoCo's ray and the stock runner, and the trainer's numpy copy.
+Its end-to-end test now trains on the box course with the critic reading
+the scan, where it ran on the plane before. `cli/tests/test_smoke.py`
+gains a block on a box course, supported; it fails without the smoke change.

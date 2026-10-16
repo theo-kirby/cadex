@@ -130,7 +130,8 @@ def scans_at(task: dict, model: Any, data: Any) -> dict[str, float]:
     """The height scans (ADR-715), from the bundle's words: each point is
     ``offsets_mm`` turned by the body's heading, and reads the body's height
     above the ground there, the heightfield read bilinearly between its
-    vertices (held at its edge) or the plane at z = 0."""
+    vertices (held at its edge), a box course's highest box top over the
+    point or its plane (ADR-716), or the plane at z = 0."""
 
     terrain = task.get("terrain")
     values: dict[str, float] = {}
@@ -143,7 +144,14 @@ def scans_at(task: dict, model: Any, data: Any) -> dict[str, float]:
             px = x + math.cos(heading) * ahead - math.sin(heading) * left
             py = y + math.sin(heading) * ahead + math.cos(heading) * left
             ground = 0.0
-            if terrain:
+            if terrain and terrain["kind"] == "boxes":
+                ground = float(terrain["lowest_mm"])
+                for box in terrain["boxes"]:
+                    (xa, xb), (ya, yb) = box["x_range_mm"], box["y_range_mm"]
+                    if xa <= px <= xb and ya <= py <= yb:
+                        za, zb = box["top_mm"]
+                        ground = max(ground, za + (zb - za) * (px - xa) / (xb - xa))
+            elif terrain:
                 nrow, ncol = int(terrain["nrow"]), int(terrain["ncol"])
                 (x0, x1), (y0, y1) = terrain["x_range_mm"], terrain["y_range_mm"]
                 gx = (min(max(px, x0), x1) - x0) / (x1 - x0) * (ncol - 1)

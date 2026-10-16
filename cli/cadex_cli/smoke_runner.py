@@ -21,7 +21,8 @@ Five checks, each a fixture's known answer (``cli/tests/test_smoke.py``):
   default ``solref``, which is why the default tolerance is above that;
 * **support** -- something of a free base's design (ADR-335) is touching the
   environment's ground at the end -- its floor, or the terrain heightfield
-  that replaces the floor when the script declares a course (ADR-714) --
+  or box course that replaces the floor when the script declares a course
+  (ADR-714, ADR-716) --
   the base's linear speed is under the rest threshold, and the base still holds the attitude its accepted keyframe gave
   it, within ``--max-tilt-degrees`` (ADR-377: a design that toppled and
   settled satisfies the first two and is not standing); a grounded design
@@ -220,11 +221,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if index >= 0:
             floor, ground_name = index, name
             break
+    # A box course (ADR-716) is that plane and its boxes,
+    # ``environment/terrain/<i>``: standing on any of them is standing on it.
+    ground = {floor} if floor >= 0 else set()
+    if ground_name == ENVIRONMENT_TERRAIN_GEOM:
+        ground |= {
+            index for index in range(int(model.ngeom))
+            if geom_name(index).startswith(ENVIRONMENT_TERRAIN_GEOM + "/")
+        }
 
     def geom_label(index: int) -> str:
         # The ground belongs to the world body; name it as the ground rather
         # than as "world" so a receipt reads the way the manifest does.
-        return ground_name if index == floor else body_name(model.geom_bodyid[index])
+        return ground_name if index in ground else body_name(model.geom_bodyid[index])
 
     # -- the loops -------------------------------------------------------
     # What the export writes for a loop closure: a connect or a weld between
@@ -311,9 +320,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for index in range(int(data.ncon)):
             contact = data.contact[index]
             g1, g2 = int(contact.geom1), int(contact.geom2)
-            if floor in (g1, g2) and float(contact.dist) <= 0.0:
+            on_ground = g1 in ground or g2 in ground
+            if on_ground and float(contact.dist) <= 0.0:
                 touching_floor = True
-            if floor not in (g1, g2):
+            if not on_ground:
                 # Component fit comes from exact BREP, not collision proxies;
                 # the contact's depth only bounds what the exact check allows
                 # a pair the simulator holds in contact (ADR-599).

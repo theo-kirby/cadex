@@ -74,6 +74,16 @@ ON_TERRAIN = """<mujoco><option timestep="0.002"/>
 <geom name="comp_block/collision0" type="box" size="0.02 0.02 0.01" mass="0.05"/></body>
 </worldbody><keyframe><key name="solved" qpos="0 0 0.0500 1 0 0 0"/></keyframe></mujoco>"""
 
+#: The block on a box course instead (ADR-716): the plane named
+#: ``environment/terrain`` 40 mm down, and the block keyframed on the box
+#: ``environment/terrain/0`` standing 40 mm up from it.
+ON_BOXES = """<mujoco><option timestep="0.002"/><worldbody>
+<geom name="environment/terrain" type="plane" size="0 0 0.1" pos="0 0 -0.04"/>
+<geom name="environment/terrain/0" type="box" size="0.2 0.2 0.045" pos="0 0 -0.045"/>
+<body name="comp_block" pos="0 0 0.01"><freejoint name="base"/>
+<geom name="comp_block/collision0" type="box" size="0.02 0.02 0.01" mass="0.05"/></body>
+</worldbody><keyframe><key name="solved" qpos="0 0 0.0100 1 0 0 0"/></keyframe></mujoco>"""
+
 #: A 100 mm tower, 20 mm square, standing 15° over -- past the 11.3° its
 #: own footprint can hold -- so it topples and lands on its side. Gravity is
 #: a tenth of Earth's and the contact is stiff so the landing sinks 0.2 mm,
@@ -209,6 +219,15 @@ def test_a_free_base_on_a_terrain_heightfield_is_supported_by_it(tmp_path) -> No
     assert support["touching_floor_at_end"] is True and abs(support["drop_mm"]) < 0.5
     (worst,) = receipt["checks"]["penetration"]["worst"]
     assert {worst["first"], worst["second"]} == {"comp_block", "environment/terrain"}
+
+
+@needs_mujoco
+def test_a_free_base_on_a_box_course_is_supported_by_its_boxes(tmp_path) -> None:
+    receipt = _runner(tmp_path, ON_BOXES)
+    assert receipt["verdict"] == "pass" and receipt["failing"] == [], receipt
+    support = receipt["checks"]["support"]
+    assert support["floor"] == "environment/terrain"
+    assert support["touching_floor_at_end"] is True and abs(support["drop_mm"]) < 0.5
 
 
 @needs_mujoco

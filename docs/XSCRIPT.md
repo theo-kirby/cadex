@@ -91,7 +91,14 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   is refused. The course is in the file and in every task bundle built on it
   as `terrain`. A step is a one-cell ramp, so `cell_mm` is also how sharp an
   edge is; MJX has no heightfield contact for a cylinder or an ellipsoid, so a
-  task refuses one that can touch the course.
+  task refuses one that can touch the course. `"form": "boxes"` (ADR-716)
+  builds the same features from placed boxes on a plane at the course's
+  lowest point instead, and is **the form to train on**: MJX steps it as
+  stably as the plane, where the heightfield throws a driven rig to
+  non-finite. Steps and slopes become flat blocks and turned ramps, a bump a
+  square block `radius_mm` across with a flat top (no dips), there is no
+  `cell_mm`, beyond the extent the plane goes on, and a step down off a
+  slope's high end is refused (`terrain_step_off_slope`).
 - **`part.box`'s `origin` is a corner, not a centre.** `part.box(40, 40, 200)`
   occupies x ∈ [0, 40], y ∈ [0, 40], z ∈ [0, 200] — the origin is the
   minimum corner, and the solid is entirely on the positive side of the

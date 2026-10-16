@@ -4887,7 +4887,9 @@ class AssemblyDomainAPI:
         ``terrain`` puts a course under a free base instead of the plane
         (ADR-714): ``{"x_range_mm", "y_range_mm", "cell_mm", "features"}``,
         features being ``bump``, ``step`` and ``slope`` dicts that add. See
-        docs/XSCRIPT.md for their keys.
+        docs/XSCRIPT.md for their keys. ``"form": "boxes"`` builds them from
+        placed boxes instead of a heightfield (ADR-716): the form to train
+        on, because MJX steps it stably; no ``cell_mm`` and no dips.
         """
 
         operation = "mjcf"
