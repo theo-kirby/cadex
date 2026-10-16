@@ -30,14 +30,25 @@ world. The owner's five asks, in their order:
 5. walking on uneven ground: bumps, step-ups, step-downs and small hills.
    Cadex cannot express that yet.
 
-If the run achieves only one thing, it is this: **the cat, with ears and a
-tail, gallops faster than 4.04 m/s on all 10 frozen seeds.**
+**Owner revision, 2026-10-16 (mid-run).** The owner reviewed the run at
+iteration 22:
+- **The face (A1) is good.**
+- **The gallop (F1) is fine for now.** It is accepted as it stands
+  (f1-g2: 4.15–4.17 m/s on all 10 seeds); no more F1 work this run.
+- **The tail (A2) is not.** The owner: it is "too rigid and not tail
+  like". It moves "up and down with the hips and slap[s] into the ground".
+  A2 is rewritten below.
+- **Then go straight to turning (R1) and terrain (W1, W2).**
 
-Priority, in order: H1 (always on), A1, A2, F1, W1, R1, W2, C1.
-- Build the model first (A1, A2). Any change to geometry or mass makes
-  every policy retrain cold, so the look and the tail land before the
-  skills are trained.
-- W1 is CPU work. It proceeds while the GPU trains F1 and R1.
+If the run achieves only one thing from here, it is this: **the cat, with a
+supple, actively used tail, turns and changes direction on command, and its
+tail never strikes the ground.**
+
+Priority, in order: H1 (always on), A2 (the rework), R1, W1, W2, C1.
+- The tail rework lands first, and fast. It changes the model, so R1 and W2
+  must train on the reworked tail, never on the current one. Keep the CAD
+  rework small: the tail only, the rest of the cat untouched.
+- W1 is CPU work. It proceeds while the GPU trains R1.
 
 ## Reference project
 
@@ -111,7 +122,7 @@ tick them.
   - The page uses the dashboard's dark palette, carries a 60 s `refresh`
     meta, and shows the time it was written.
   - Failures and dead ends go on the page as plainly as successes.
-- [ ] **A1. Ears and a jaguar face.**
+- [x] **A1. Ears and a jaguar face.** *Accepted by the owner, 2026-10-16.*
   - Small, round ears on the skull. A jaguar's are short, rounded and set
     wide and low, not a house cat's pointed ones. Each is a white panel (or
     panels) mounted on the skull's structure, with its seam lines.
@@ -126,24 +137,45 @@ tick them.
     side views on the dark floor. The record names the jaguar references
     used (photos or anatomy, described, never committed), and the owner
     judges the look.
-- [ ] **A2. A thin, actuated tail.**
-  - The tail has 4 or 5 actuated joints, on real drives (O1). Small drives
-    join the library if the catalog's smallest (the AK45-10, about 53 mm
-    across) is too thick. Candidates include small QDDs and smart servos;
-    the record compares them on torque, mass and diameter.
-  - A jaguar's tail is long and fairly thick for a cat, tapering to the tip.
-    Targets:
-    - length about 0.6–0.7× the head-and-body length;
-    - about 60 mm across at the root, tapering to about 30 mm;
-    - mass as small as the drives allow, stated in the record.
-    A deviation from a target is recorded with its reason.
-  - The joint layout (pitch, yaw, or alternating) is chosen and recorded
-    with its reason. Every joint is in the task's action set, so F1, R1 and
-    W2 can use the tail.
-  - It is panelled to match. It rebuilds, and clearance and the joint sweep
+- [ ] **A2. A supple tail that moves like a big cat's (reworked 2026-10-16).**
+  - **The first tail failed the owner's review:** 622 mm, 4 actuated joints.
+    It is too rigid, it pitches with the hips, and it slaps the ground.
+  - **More actuation, and a tail that can curve.**
+    - At least 6 actuated joints, short segments (about 100 mm or less), so
+      the tail bends along its length as a big cat's does, instead of
+      swinging as a stick.
+    - Both pitch and yaw near the root (lift and side sweep), and yaw along
+      the length, so it can curl sideways.
+    - Real drives (O1). Add thinner ones to the library if needed. A
+      tendon-driven section, with its drives at the root and cables through
+      the segments, is allowed if it is built from real parts and its
+      simulated limits are honest.
+    - The record compares the options on torque, mass and diameter.
+    - Thickness and length targets as before: about 60 mm at the root
+      tapering to about 30 mm, and 0.6–0.7× head-and-body length.
+  - **It behaves like a big cat's tail.**
+    - It is carried clear of the ground. No tail segment touches the
+      ground in any rollout of R1's or W2's policy. Measure it as a
+      predicate (tail–ground contact share = 0), not by eye.
+    - It is not slaved to the hips. Its root pitch is decoupled from the
+      pelvis pitch. Measure the correlation; the record shows it falls from
+      the first tail's.
+    - It is used for agility. In turns and reversals (R1) it sweeps to
+      balance the body, as a cheetah's or a jaguar's does: measure the tail
+      yaw against the commanded yaw rate and report it.
+    - It moves smoothly, not as flailing: its own command high-frequency
+      share is reported.
+    - How it is taught is the actor's choice: tail clearance and contact
+      terms, a reference tail motion, its mass and inertia, or joint
+      stiffness and damping. The record says what worked, and what was
+      tried and failed.
+  - It is panelled to match, and it rebuilds; clearance and the joint sweep
     pass over the full tail travel.
-  - Renders go on the page.
-- [ ] **F1. The fastest gallop yet.**
+  - Renders and a short rollout clip of the tail in a turn go on the page.
+- [x] **F1. The fastest gallop yet.** *Accepted by the owner as it stands,
+  2026-10-16: f1-g2, 4.15–4.17 m/s on all 10 seeds. Its footfall error of
+  0.100 sits on the limit, on the 50 Hz frame grid; the defect is filed. No
+  further F1 work this run. The criterion text is kept for the record.*
   - On the final model (A1 and A2 in it), a gallop policy passes on the 10
     frozen seeds:
     - completes, tilt ≤ 30°, heading ≤ 25°;
@@ -192,7 +224,8 @@ tick them.
     - forward-speed tracking RMS error ≤ 0.3 m/s;
     - the reversal completed (heading within 20° of the new command)
       within 3 s;
-    - drives within rated RMS torque (O4).
+    - drives within rated RMS torque (O4);
+    - the reworked tail (A2): no ground contact, and it is used in the turns.
   - New command kinds or tracking predicates the task language lacks are
     Cadex features, with tests and an ADR.
 - [ ] **W2. The cat crosses rough ground.**
@@ -201,7 +234,7 @@ tick them.
     - bumps up to 40 mm;
     - step-ups and step-downs up to 80 mm;
     - slopes up to 15°, up and down.
-  - Pass: completes with no fall, distance made good ≥ 80% of commanded,
+  - Pass: no tail–ground contact; completes with no fall, distance made good ≥ 80% of commanded,
     mean forward speed ≥ 1.0 m/s, tilt ≤ 30°, drives within rated RMS
     torque.
   - A curriculum (terrain difficulty rising with success) is allowed and
@@ -230,23 +263,23 @@ Not seeded. Work them only once every criterion above has evidence.
 ## Horizon ladder
 
 - **short-term:**
-  1. H1's first page, then keep it current every iteration.
-  2. Render the current head beside jaguar references, then name what makes
-     the eye sockets read wonky and what the ears need.
-  3. A1: the eye sockets, ears and face planes, rebuilt and clearance-checked.
-  4. A2: the tail drive survey, any library additions, then the tail itself.
+  1. Keep H1 current every iteration. Show the owner's revision and the tail
+     rework on the page.
+  2. A2 rework:
+     - measure the current tail (hip correlation, ground contact);
+     - pick the joint layout and drives;
+     - rebuild the tail, clearance-check and sweep it.
+  3. R1's command kinds and tracking predicates, and the tail predicates
+     (ground contact, hip correlation, yaw against yaw rate). This is CPU
+     work while nothing trains.
 - **medium-term:**
-  1. F1: retrain the bound on the final model cold to get a speed baseline,
-     then push speed. Options:
-     - a speed curriculum by warm start (reward-only changes are allowed);
-     - a gallop reference;
-     - hock drive and distal mass changes.
-  2. W1: terrain in the script, the bundle, the trainer, the rollout and the
-     dashboard, proved on a small robot.
-  3. R1: speed and yaw-rate commands and the tracking predicates, then the
-     turning policy.
+  1. R1: the turning policy on the reworked model, with the tail used in the
+     turns.
+  2. W1: draw the course in the rollout and the dashboard, and prove it on a
+     small robot.
+  3. W2: the terrain curriculum on the reworked cat.
 - **long-term:**
-  1. W2: the terrain curriculum and the rough-ground policy.
+  1. W2's largest step and slope, and a policy that turns on terrain.
   2. Creature and base guidance:
      - how to state a terrain task;
      - when to give the critic a height scan;
@@ -362,7 +395,8 @@ Not seeded. Work them only once every criterion above has evidence.
 ## Exhaustion policy
 
 `report_done`.
-- Once H1, A1, A2, F1, W1, R1, W2 and C1 have evidence, write the closing
+- Once H1, A2, R1, W1, W2 and C1 have evidence (A1 and F1 are
+  owner-accepted), write the closing
   report, reconcile and claim done. Two consecutive critic acceptances stop
   the run.
 - Do not claim done while any criterion is unmet unless the run's wall-clock
