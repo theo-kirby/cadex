@@ -43160,3 +43160,24 @@ trainer only through `remote_train.sh … --`.
 skipped; `pixi run python -m pytest cli/tests` 50 passed; the packaged
 gate (`CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.2.0-linux-x64`) 24
 passed; `pixi run test-release` 1,524 of 1,524.
+
+## ADR-731 — An area's header collapses to a caret (2026-10-16)
+
+**Context.** The owner asked for every editor's top bar to be collapsible,
+leaving only a small caret in the corner to show it again, so an editor can
+use the whole of its area.
+
+**Decision.** Each area's header gains a collapse button (^) before split,
+maximize and close. A collapsed area hides its header and shows a 22 x 14 px
+caret tab in its top right corner (clear of the 3D viewport's gizmo), which
+restores it. The flag is the area's own: `collapsed: true` on the area node
+in `cadex.layout.v5`, carried when the area is docked elsewhere, so the key
+does not change and older layouts load unchanged. The phone layout's single
+tabbed editor has no collapse. No contract changes; no test is added
+(ADR-725).
+
+**Evidence.** `pixi run python -m pytest cli/tests` 49 passed, 1 skipped (no
+engine in the worktree). Driven in headless Chromium over `ball-plate`:
+collapsing the 3D viewport's and the Outliner's headers hid both and wrote
+`collapsed: true` to both areas; both stayed collapsed across a reload; the
+caret restored one; no page errors.

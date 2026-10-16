@@ -653,7 +653,13 @@ ADR-539); split an area to bring in the 2D viewport. The viewport's look and the
   editor picker and a line saying so, and picking an editor there moves that
   editor in. Showing an editor (a link to a film, say) fills an empty area
   before it splits one.
-- **Split, maximize, close**: the four buttons at the right of the header.
+- **Collapse** (ADR-731): the caret (^) first among the buttons at the right
+  of the header hides the header, so the editor fills the whole area; a small
+  caret tab in the area's top right corner, on `--surface-2`, brings it
+  back. Each area keeps its own; the header goes with the area when it moves
+  and stays collapsed when the area is maximized. A phone's single editor has
+  no collapse.
+- **Split, maximize, close**: the next four buttons at the right of the header.
   A split of a 3D viewport, Activations or Network opens a copy of it beside
   the area; any other split opens an editor not shown yet, and with every
   one shown there is nothing to split. Maximize (or Ctrl+Space over the area)
@@ -661,7 +667,7 @@ ADR-539); split an area to bring in the 2D viewport. The viewport's look and the
   cannot close.
 - **Kept**: the layout is this browser's (`localStorage`
   `cadex.layout.v5`, empty areas and copies included (an area's `copy`, 0
-  being the editor's own); `v4` had no Outliner, so a layout kept before ADR-676 opens as the new default, `v3` had no Status editor, and earlier keys held the Chat and an older Settings editor); View → Layout → **Reset** in the menu bar returns the
+  being the editor's own, and `collapsed` when its header is collapsed); `v4` had no Outliner, so a layout kept before ADR-676 opens as the new default, `v3` had no Status editor, and earlier keys held the Chat and an older Settings editor); View → Layout → **Reset** in the menu bar returns the
   default. A browser that refuses storage gets the default every visit.
 
 An editor's markup is never rebuilt by a layout change: the area moves the

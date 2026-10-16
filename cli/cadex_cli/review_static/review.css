@@ -121,6 +121,14 @@ body.app .menu-panel { top: auto; bottom: calc(100% + 4px); }
 .area-header .segmented button:first-child { border-radius: 6px 0 0 6px; }
 .area-header .segmented button:last-child { border-radius: 0 6px 6px 0; }
 .area-header .icon-button { padding: 0; }
+/* A collapsed header leaves a caret in the area's top right corner that brings it back. */
+.area { position: relative; }
+.area[data-collapsed="true"] > .area-header { display: none; }
+.area > .area-unhide { display: none; position: absolute; z-index: 3; top: 0; right: 0; width: 22px; height: 14px; min-height: 0;
+                       padding: 0; border: 0; border-radius: 0 0 0 6px; background: var(--surface-2); color: var(--ink-2); opacity: .85; }
+.area > .area-unhide:hover { opacity: 1; color: var(--ink); background: var(--surface-3); }
+.area > .area-unhide svg { width: 12px; height: 12px; }
+.area[data-collapsed="true"] > .area-unhide { display: flex; align-items: center; justify-content: center; }
 select.area-type { font-weight: 600; background: var(--surface-3); border-color: transparent; max-width: 9.5em; }
 .editor-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); flex: 1; min-width: 0; overflow: hidden; padding: var(--s1) 0; }
 .editor-tools > select { max-width: 14em; }
