@@ -498,12 +498,16 @@ def test_the_vocabulary_is_exactly_what_the_families_measure() -> None:
              "joints": ["hip_joint"], "joint_angles_rad": [[0.0], [0.1]]},
             drives=evaluation.drive_series(drive_frames(lambda t: ([1.0], [0.0], [0.0], [0.0])),
                                            [drive_channel("hip")])),
+        # A base that stood still on a course with a step ahead (ADR-718).
+        "terrain": evaluation.terrain_metrics(
+            standing(), balance_rig(),
+            terrain={"features": [{"kind": "step", "x_mm": 900.0, "height_mm": 40.0}]}),
     }
     for name, (family, needs) in evaluation.METRICS.items():
         value = measured[family][name]
         assert isinstance(value, (int, float)) and not isinstance(value, bool), name
         assert set(needs) <= {"base", "floor", "feet", "tip", "shove", "command", "target",
-                              "body", "reference"}, name
+                              "body", "reference", "terrain"}, name
     for spec in (WALK_SPEC, REACH_SPEC, BALANCE_SPEC):
         assert {row["metric"] for row in spec} <= set(evaluation.METRICS)
     # What needs a goal is what is a ratio of, or a distance from, one: a
@@ -524,17 +528,23 @@ def test_measure_reads_the_families_the_rig_has_and_no_others() -> None:
     posture = {name for name, (family, _) in evaluation.METRICS.items() if family == "posture"}
     gait = {name for name, (family, _) in evaluation.METRICS.items() if family == "gait"}
     reach = {name for name, (family, _) in evaluation.METRICS.items() if family == "reach"}
+    # ADR-718: a floating base is read for falls on any ground; the steps
+    # and slopes crossed need a course, which none of these stands on.
+    base = posture | {"falls"}
 
     standing_still = evaluation.measure(standing(), DONE, balance_rig(), shoves=SHOVES)
-    assert set(standing_still["metrics"]) == {"completed", "duration_s"} | posture
+    assert set(standing_still["metrics"]) == {"completed", "duration_s"} | base
     assert standing_still["metrics"] == {
         name: value for name, value in {**evaluation.episode_metrics(DONE),
-                                        **balanced(standing())}.items()
+                                        **balanced(standing()),
+                                        **evaluation.terrain_metrics(standing(), balance_rig())}.items()
         if name in evaluation.METRICS}
-    assert standing_still["detail"] == {"recovery_s": balanced(standing())["recovery_s"]}
+    assert standing_still["detail"] == {
+        "recovery_s": balanced(standing())["recovery_s"],
+        "terrain": evaluation.terrain_metrics(standing(), balance_rig())["terrain"]}
 
     walking = evaluation.measure(trot(), DONE, walk_rig(), command_mm_s=80.0)
-    assert set(walking["metrics"]) == {"completed", "duration_s"} | posture | gait
+    assert set(walking["metrics"]) == {"completed", "duration_s"} | base | gait
     assert walking["metrics"]["speed_ratio"] == walked(trot())["speed_ratio"]
     assert sorted(walking["detail"]["feet"]) == sorted(walk_rig()["feet"])
     # No shove was applied, so there is no recovery: measured as nothing.

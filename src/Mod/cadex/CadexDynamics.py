@@ -3998,7 +3998,7 @@ def terrain_random_features(
     spec: Mapping[str, Any],
     x_range_mm: Sequence[float],
     y_range_mm: Sequence[float],
-    course: int,
+    course: int | str,
 ) -> list[dict[str, Any]]:
     """Course ``course`` of a validated random spec, as features (ADR-717).
 
@@ -4010,7 +4010,9 @@ def terrain_random_features(
 
     import random
 
-    rng = random.Random(f"cadex-terrain:{int(spec['seed'])}:{int(course)}")
+    # An int is a pooled course; a string is a held-out stream (ADR-718).
+    key = str(int(course)) if isinstance(course, int) else str(course)
+    rng = random.Random(f"cadex-terrain:{int(spec['seed'])}:{key}")
     (x0, x1), (y0, y1) = ([float(v) for v in x_range_mm], [float(v) for v in y_range_mm])
     kinds = [kind for kind, key in (("step", "step_mm"), ("slope", "grade_deg"))
              if spec[key] is not None]
@@ -4105,6 +4107,152 @@ def terrain_box_geoms(
             quat.append([1.0, 0.0, 0.0, 0.0])
             size.append(vector_m([TERRAIN_PARKED_HALF_MM] * 3))
     return {"plane_z_m": length_m(lowest), "pos_m": pos, "quat": quat, "size_m": size}
+
+
+#: The most draws :func:`terrain_evaluation_course` makes for one seed before
+#: it refuses: a held-out draw is kept only if its boxes fit the model's
+#: slots, which the pool's fullest course set, so most first draws fit.
+MAXIMUM_TERRAIN_EVALUATION_DRAWS = 16
+
+#: How an evaluation seed's course is drawn (ADR-718), written into the
+#: course it returns so a report can say where the course came from.
+TERRAIN_EVALUATION_ALGORITHM = (
+    "evaluation seed s of a drawn box course: draw n = 0, 1, ... of the "
+    "pool's own algorithm with course key 'eval:<s>:<n>' in place of k, "
+    "i.e. random.Random('cadex-terrain:<seed>:eval:<s>:<n>'); the first whose "
+    "boxes fit the model's slots. Never a pooled course, so no evaluation "
+    "seed plays a course the trainer drew"
+)
+
+
+def terrain_evaluation_course(terrain: Mapping[str, Any], seed: int, *,
+                              context: str = "the terrain") -> dict[str, Any]:
+    """The course evaluation seed ``seed`` is played on (ADR-718), pure.
+
+    A listed course, or a heightfield, is the same on every seed: it is
+    returned as it is. A drawn box course (ADR-717) is re-drawn per seed
+    from a **held-out stream** -- the pool's algorithm with the key
+    ``eval:<seed>:<n>`` in place of a course number -- so a policy is never
+    judged on a course it trained on, the rule evaluation seeds already keep
+    against the training seed. The first draw whose boxes fit the model's
+    ``slots`` is kept. The result is a descriptor like the model's (features,
+    boxes, lowest and highest point, slots and scale) without the pool, with
+    ``course`` saying which draw it is; :func:`place_terrain_course` stands
+    it in a compiled model."""
+
+    if terrain.get("kind") != "boxes" or terrain.get("random") is None:
+        return dict(terrain)
+    spec = terrain["random"]
+    x_range = [float(v) for v in terrain["x_range_mm"]]
+    y_range = [float(v) for v in terrain["y_range_mm"]]
+    slots = int(terrain["slots"])
+    for draw in range(MAXIMUM_TERRAIN_EVALUATION_DRAWS):
+        key = f"eval:{int(seed)}:{draw}"
+        where = f"{context}'s evaluation course for seed {int(seed)}"
+        features = [_terrain_feature(entry, number, where) for number, entry in
+                    enumerate(terrain_random_features(spec, x_range, y_range, key))]
+        if not features:
+            continue
+        built = terrain_boxes(features, x_range, y_range, context=where)
+        if len(built["boxes"]) > slots:
+            continue
+        _terrain_start_and_relief(built["lowest_mm"], built["highest_mm"],
+                                  terrain_box_ground_mm(built, 0.0, 0.0), where)
+        course = {key: value for key, value in terrain.items() if key != "pool"}
+        course.update(features=features, boxes=built["boxes"],
+                      lowest_mm=built["lowest_mm"], highest_mm=built["highest_mm"],
+                      course={"seed": int(seed), "draw": draw, "key": key,
+                              "algorithm": TERRAIN_EVALUATION_ALGORITHM})
+        return course
+    raise DynamicsError(
+        f"{context} drew no course for evaluation seed {int(seed)} that fits the "
+        f"model's {slots} terrain slots in {MAXIMUM_TERRAIN_EVALUATION_DRAWS} draws.",
+        reason="terrain_evaluation_course_unfit",
+        correction=(
+            "Draw a larger pool (random.courses), so its fullest course sets "
+            "more slots, or narrow the ranges so courses vary less in size."
+        ),
+        observed={"seed": int(seed), "slots": slots,
+                  "draws": MAXIMUM_TERRAIN_EVALUATION_DRAWS},
+    )
+
+
+def course_ground(course: Mapping[str, Any]) -> Any:
+    """``ground(x_mm, y_mm)``, the height of a course's ground (ADR-718): a
+    box course's highest box top or its plane, a heightfield's declared
+    features (which its vertices sample)."""
+
+    if course.get("kind") == "boxes":
+        return lambda x_mm, y_mm: terrain_box_ground_mm(course, x_mm, y_mm)
+    features = list(course.get("features") or ())
+    return lambda x_mm, y_mm: terrain_height_mm(features, x_mm, y_mm)
+
+
+def place_terrain_course(model: Any, course: Mapping[str, Any]) -> None:
+    """Stand a box course in a compiled MuJoCo model's terrain geoms, in place
+    (ADR-718): the plane at the course's lowest point and each
+    ``environment/terrain/<i>`` slot's box, or a parked cube, where
+    :func:`terrain_box_geoms` puts it, with each box's bounding radius and
+    box -- what the trainer's ``place_course`` writes into an MJX model.
+
+    Stock MuJoCo also culls a static geom by the world body's bounding-volume
+    tree, built at compile time round course 0's boxes, so a re-placed box
+    outside its old node is never collided with (a block falls through it
+    to the plane). The tree's leaves are re-boxed round the placed geoms and
+    each node round its children; MJX has no such tree."""
+
+    placed = terrain_box_geoms(course["boxes"], float(course["lowest_mm"]), int(course["slots"]))
+    plane = model.geom(ENVIRONMENT_TERRAIN_GEOM).id
+    model.geom_pos[plane][2] = placed["plane_z_m"]
+    for index, (pos, quat, size) in enumerate(
+            zip(placed["pos_m"], placed["quat"], placed["size_m"])):
+        geom = model.geom(f"{ENVIRONMENT_TERRAIN_GEOM}/{index}").id
+        model.geom_pos[geom] = pos
+        model.geom_quat[geom] = quat
+        model.geom_size[geom] = size
+        model.geom_rbound[geom] = math.sqrt(sum(value * value for value in size))
+        model.geom_aabb[geom] = [0.0, 0.0, 0.0, *size]
+    _rebox_world_tree(model)
+
+
+def _rebox_world_tree(model: Any) -> None:
+    """The world body's bounding-volume tree, re-boxed round where its geoms
+    stand now (:func:`place_terrain_course`): a leaf round its geom (its own
+    box turned by its orientation), a node round its two children."""
+
+    start, count = int(model.body_bvhadr[0]), int(model.body_bvhnum[0])
+    if start < 0 or count <= 0:
+        return
+
+    def rebox(node: int) -> tuple[list[float], list[float]]:
+        index = start + node
+        geom = int(model.bvh_nodeid[index])
+        box = [float(value) for value in model.bvh_aabb[index]]
+        if geom >= 0 and int(model.geom_type[geom]) == 0:
+            # A plane is unbounded; its leaf stays as compiled.
+            return ([box[k] - box[3 + k] for k in range(3)],
+                    [box[k] + box[3 + k] for k in range(3)])
+        if geom >= 0:
+            w, x, y, z = (float(value) for value in model.geom_quat[geom])
+            turn = [[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                    [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                    [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]]
+            own = [float(value) for value in model.geom_aabb[geom]]
+            pos = [float(value) for value in model.geom_pos[geom]]
+            centre = [pos[r] + sum(turn[r][c] * own[c] for c in range(3)) for r in range(3)]
+            half = [sum(abs(turn[r][c]) * own[3 + c] for c in range(3)) for r in range(3)]
+            low = [centre[k] - half[k] for k in range(3)]
+            high = [centre[k] + half[k] for k in range(3)]
+        else:
+            left, right = (int(child) for child in model.bvh_child[index])
+            (la, lb), (ra, rb) = rebox(left), rebox(right)
+            low = [min(a, b) for a, b in zip(la, ra)]
+            high = [max(a, b) for a, b in zip(lb, rb)]
+        model.bvh_aabb[index] = [*((a + b) / 2.0 for a, b in zip(low, high)),
+                                 *((b - a) / 2.0 for a, b in zip(low, high))]
+        return low, high
+
+    rebox(0)
 
 
 def _terrain_features(terrain: Mapping[str, Any], context: str) -> list[dict[str, Any]]:
@@ -7856,6 +8004,12 @@ _SUCCESS_NEED_CORRECTIONS = {
         "assembly.gait(feet, gait='trot', speed_mm_s=...)) -- or bound the "
         "gait family, which needs none."
     ),
+    "terrain": (
+        "Steps and slopes crossed are counted on the task's course, and this "
+        "task stands on flat ground. Declare one -- assembly.mjcf(..., "
+        "terrain={...}) -- or bound distance_made_good_mm or falls, which "
+        "need none."
+    ),
 }
 
 
@@ -10889,6 +11043,8 @@ def _success_records(
         "target": "point" in goal_kinds,
         # ADR-705: the reference family reads the task's gait reference.
         "reference": bool(task.get("reference")),
+        # ADR-718: the terrain family reads the course the task stands on.
+        "terrain": bool(task.get("terrain")),
     }
     rows: list[dict[str, Any]] = []
     needed: dict[str, str] = {}
@@ -12064,7 +12220,9 @@ def task_records(
             mujoco,
             reloaded,
             task["success"],
-            {**task, "episode": schedule},
+            # ADR-718: the course the model stands on, for the terrain family.
+            {**task, "episode": schedule,
+             "terrain": (built.get("environment") or {}).get("terrain")},
             tree,
             joint_records,
             reward_labels=[str(row["label"]) for row in reward_rows],
@@ -14853,8 +15011,16 @@ def evaluate_success(
 
     rows: list[dict[str, Any]] = []
     for seed in spec["seeds"]:
+        seeded, course = load_model(xml), None
+        if played.get("terrain"):
+            # ADR-718: a drawn course is re-drawn per seed, held out from the
+            # pool the trainer drew from; a listed one is every seed's.
+            course = terrain_evaluation_course(played["terrain"], int(seed), context=context)
+            if course.get("course") is not None:
+                place_terrain_course(seeded, course)
         run = rollout_policy(
-            load_model(xml), played, container, components=names,
+            seeded, played if course is None else {**played, "terrain": course},
+            container, components=names,
             frames_per_second=control_hz, seed=int(seed),
             context=f"{context}, seed {int(seed)}",
         )
@@ -14911,6 +15077,8 @@ def evaluate_success(
             drives=CadexEvaluation.drive_series(run["frames"], run["actuator_channels"]),
             # ADR-705: the gait against the task's own reference, if it has one.
             reference=task.get("reference"),
+            # ADR-718: the course this seed stood on, for the terrain family.
+            terrain=course, ground=None if course is None else course_ground(course),
         )
         held = CadexEvaluation.check(spec["predicates"], measured["metrics"])
         steps = max(1, ended["steps"])

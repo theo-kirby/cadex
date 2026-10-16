@@ -100,6 +100,13 @@ HIGH_FREQUENCY_STRIDE_MULTIPLE = 3.0
 #: The foot whose touch-downs are a reference's clock: the left hind, the
 #: foot every phase offset is stated after (Hildebrand's convention).
 REFERENCE_ANCHOR = "LH"
+
+#: A fall (ADR-718): the base tilted this far from its reference pose, or its
+#: centre of mass came down to this share of its starting height above the
+#: ground under it. Either is a robot on the ground, whatever its task's own
+#: terminations say.
+FALL_TILT_DEG = 60.0
+FALL_HEIGHT_SHARE = 0.5
 #: A foot that does not touch down exactly once within half a stride of
 #: where the reference puts it has missed that stride by this much: as far
 #: out of phase as a periodic event can be.
@@ -125,6 +132,7 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "max_drift_mm": ("posture", ("base",)),
     "final_drift_mm": ("posture", ("base",)),
     "mean_speed_mm_s": ("posture", ("base",)),
+    "distance_made_good_mm": ("posture", ("base",)),
     "max_drift_com_heights": ("posture", ("base", "floor")),
     "recovery_s_max": ("posture", ("base", "floor", "shove")),
     "mean_forward_speed_mm_s": ("gait", ("feet",)),
@@ -161,6 +169,11 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "reference_joint_rms_deg": ("reference", ("feet", "reference")),
     "command_rate_reference_ratio": ("reference", ("feet", "reference")),
     "joint_acceleration_reference_ratio": ("reference", ("feet", "reference")),
+    "falls": ("terrain", ("base",)),
+    "steps_crossed": ("terrain", ("base", "terrain")),
+    "slopes_crossed": ("terrain", ("base", "terrain")),
+    "largest_step_crossed_mm": ("terrain", ("base", "terrain")),
+    "steepest_slope_crossed_deg": ("terrain", ("base", "terrain")),
 }
 
 _EPS = 1.0e-9
@@ -315,7 +328,11 @@ def posture(base: Mapping[str, Any], com_height_mm: float | None) -> dict[str, A
     start = base["point"][0]
     drift = [math.hypot(p[0] - start[0], p[1] - start[1]) for p in base["point"]]
     speeds = [math.hypot(*v) for v in base["velocity"] if v is not None]
+    ahead, end = base["forward"][0], base["point"][-1]
     return {
+        # ADR-718: net plan travel along the heading the episode started on.
+        "distance_made_good_mm": ((end[0] - start[0]) * ahead[0]
+                                  + (end[1] - start[1]) * ahead[1]),
         "max_tilt_deg": max(base["tilt"]),
         "max_heading_deg": max(abs(h) for h in base["heading"]),
         "final_heading_deg": base["heading"][-1],
@@ -1331,6 +1348,75 @@ def _reference_smoothness_ratios(rows: Sequence[Mapping[str, Any]],
     }
 
 
+def terrain_metrics(samples, rig: Mapping[str, Any], *,
+                    terrain: Mapping[str, Any] | None = None,
+                    ground: Any = None) -> dict[str, Any]:
+    """Falls, and the steps and slopes a base crossed (ADR-718).
+
+    ``ground(x_mm, y_mm)`` is the height of the ground the episode stood on
+    (the engine's reading of the course; ``None`` is the plane at z = 0) and
+    ``terrain`` that course's descriptor, whose ``features`` are counted.
+
+    * ``falls``: 1.0 when, at any frame, the base tilted
+      :data:`FALL_TILT_DEG` or more or its centre of mass came down to
+      :data:`FALL_HEIGHT_SHARE` of its first frame's height above the ground
+      under it; else 0.0. Measured from poses, so it holds whatever the
+      task terminates on.
+    * ``steps_crossed`` and ``slopes_crossed``: the course's steps (at
+      ``x_mm``) and slopes (by ``to_x_mm``, their far end) that lie ahead of
+      the centre of mass's first plan x and at or behind its last: crossed,
+      and stayed across. Courses run along +x (ADR-714).
+    * ``largest_step_crossed_mm`` and ``steepest_slope_crossed_deg``: the
+      largest magnitude among them, up or down; 0.0 when none was crossed.
+
+    Without ``terrain`` only ``falls`` is read.
+    """
+
+    reference = matrix(rig["reference_xyzw"])
+    local = rig["base_com_local_mm"]
+    level = (lambda x, y: 0.0) if ground is None else ground
+    points, lowest_share, steepest_tilt = [], None, 0.0
+    first = None
+    for _, placements in samples:
+        rotation, origin = _pose(placements, rig["base"])
+        point = _add(_apply(rotation, local), origin)
+        points.append(point)
+        height = point[2] - float(level(point[0], point[1]))
+        if first is None:
+            first = height
+        if first > _EPS:
+            share = height / first
+            lowest_share = share if lowest_share is None else min(lowest_share, share)
+        steepest_tilt = max(steepest_tilt, tilt_degrees(rotation, reference))
+    fell = steepest_tilt >= FALL_TILT_DEG or (
+        lowest_share is not None and lowest_share <= FALL_HEIGHT_SHARE)
+    read: dict[str, Any] = {"falls": 1.0 if fell else 0.0}
+    detail: dict[str, Any] = {"max_tilt_deg": steepest_tilt,
+                              "lowest_height_share": lowest_share}
+    if terrain is not None and points:
+        x_start, x_end = points[0][0], points[-1][0]
+        crossed = []
+        for feature in terrain.get("features") or ():
+            if feature["kind"] == "bump":
+                continue
+            edge = float(feature["x_mm"] if feature["kind"] == "step" else feature["to_x_mm"])
+            if x_start < edge <= x_end:
+                crossed.append(dict(feature))
+        steps = [abs(float(f["height_mm"])) for f in crossed if f["kind"] == "step"]
+        slopes = [abs(float(f["grade_deg"])) for f in crossed if f["kind"] == "slope"]
+        read.update({
+            "steps_crossed": float(len(steps)),
+            "slopes_crossed": float(len(slopes)),
+            "largest_step_crossed_mm": max(steps, default=0.0),
+            "steepest_slope_crossed_deg": max(slopes, default=0.0),
+        })
+        detail.update(crossed=crossed, course=terrain.get("course"),
+                      features=sum(1 for f in terrain.get("features") or ()
+                                   if f["kind"] != "bump"))
+    read["terrain"] = detail
+    return read
+
+
 def episode_metrics(episode: Mapping[str, Any]) -> dict[str, Any]:
     """How the episode ended. ``completed`` is 1.0 only for a run to the horizon."""
 
@@ -1343,7 +1429,9 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
             shoves=(), command_mm_s: float | None = None,
             segments: Sequence[Mapping[str, Any]] = (),
             drives: Mapping[str, Any] | None = None,
-            reference: Mapping[str, Any] | None = None) -> dict[str, Any]:
+            reference: Mapping[str, Any] | None = None,
+            terrain: Mapping[str, Any] | None = None,
+            ground: Any = None) -> dict[str, Any]:
     """Every behaviour metric one rollout can be read for, as one flat table.
 
     Which families are read is decided by what the rig and the episode
@@ -1364,7 +1452,9 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     the drive family. Its stride frequency is the median foot's settled step
     rate, and its travel the base's net plan distance after the settle.
     ``reference`` is the task's gait reference clip; with feet it is read
-    for the reference family (ADR-705).
+    for the reference family (ADR-705). A floating base is read for the
+    terrain family (ADR-718): ``ground`` is the height of the ground it
+    stood on and ``terrain`` the course, as :func:`terrain_metrics` takes.
     """
 
     read: dict[str, Any] = dict(episode_metrics(episode))
@@ -1376,6 +1466,7 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
             read.update(posture(base_series(samples, rig), None))
         if rig.get("feet"):
             read.update(gait_metrics(samples, rig, command_mm_s))
+        read.update(terrain_metrics(samples, rig, terrain=terrain, ground=ground))
     if rig.get("tip") is not None and segments:
         read.update(reach_metrics(samples, rig, segments))
     if rig.get("body") is not None:
@@ -1396,7 +1487,8 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
                                   stride_hz=stride))
     if reference is not None and read.get("feet"):
         read.update(reference_metrics(read["feet"], reference, drives=drives))
-    for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives", "reference"):
+    for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives", "reference",
+                "terrain"):
         if key in read:
             detail[key] = read[key]
     return {"metrics": {name: read[name] for name in METRICS if name in read},

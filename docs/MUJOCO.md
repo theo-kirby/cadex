@@ -354,8 +354,25 @@ records `training.terrain` (mode, the pool algorithm, the bundle's, the
 course count). Stock MuJoCo's `mj_ray` cannot check a re-placed course:
 it culls static geoms with the bounding-volume tree built at compile, so
 the test compiles course *k* as a listed course and compares geoms instead.
-Still to come in W1: the terrain predicates, a course per evaluation seed,
-and the course in the rollout and the dashboard.
+Still to come in W1: the course in the rollout and the dashboard, and the
+proof on a second robot.
+
+**Terrain predicates, a held-out course per seed (ADR-718, 2026-10-16).**
+A success spec may bound `distance_made_good_mm` (net plan travel along the
+starting heading) and `falls` (the base tilted 60°, or its centre of mass
+fell to half its starting height above the ground under it) on any floating
+base, and, on a declared course, `steps_crossed`, `slopes_crossed`,
+`largest_step_crossed_mm` and `steepest_slope_crossed_deg`. On a drawn box
+course `evaluate_success` plays each seed on its own course,
+`terrain_evaluation_course`: the pool's algorithm under the key
+`eval:<seed>:<n>`, the first draw whose boxes fit the model's slots, so no
+seed is judged on a course the trainer drew. `place_terrain_course` stands
+it in the compiled model (positions, turns, sizes, bounds) and re-boxes the
+world body's bounding-volume tree: stock MuJoCo culls a static geom by that
+tree, built round course 0 at compile, and a block dropped on a re-placed
+box fell through it to the plane until the tree was re-boxed. The seed's
+scan and predicates read the same course, and its row's
+`detail.terrain.course` names it.
 
 **Height scan (ADR-715, 2026-10-16).** `assembly.observation(trunk,
 "height_scan", name="scan", role="privileged")` reads the ground round a

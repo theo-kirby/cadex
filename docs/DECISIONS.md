@@ -42645,3 +42645,64 @@ MuJoCo's `mj_ray` cannot check a re-placed course, because it culls static
 geoms with the compile-time bounding-volume tree; hence the compiled-geom
 comparison. `test_dynamics_height_scan`'s end-to-end trainer test now trains
 on the random course and checks the header's `training.terrain`.
+
+## ADR-718 — Terrain predicates, and a held-out course per evaluation seed (2026-10-16, orun7)
+
+**Context.** orun7's W1 asks for predicates for terrain tasks (distance made
+good over the course, falls, the steps and slopes crossed), and W2 judges
+the cat on a randomised course on the 10 frozen seeds. ADR-717 left every
+seed on course 0, the one the model carries, which is also a course the
+trainer's pool draws from.
+
+**Decision.**
+- **Six metrics** join `CadexEvaluation.METRICS`. On any floating base:
+  `distance_made_good_mm`, the base centre of mass's net plan travel along
+  the heading the episode started on (posture family), and `falls`, 1.0
+  when at any frame the base tilted `FALL_TILT_DEG` (60°) or its centre of
+  mass came down to `FALL_HEIGHT_SHARE` (half) of its first frame's height
+  above the ground under it. It is read from poses, so it holds whatever
+  the task terminates on, and the ground is the course's, so a robot that
+  stepped down 80 mm at standing height has not fallen. On a declared
+  course (need `terrain`): `steps_crossed`, `slopes_crossed`,
+  `largest_step_crossed_mm` and `steepest_slope_crossed_deg`, the steps
+  (at `x_mm`) and slopes (by `to_x_mm`) that lie ahead of the centre of
+  mass's first plan x and at or behind its last, so crossed and come back
+  is not crossed; the largest magnitude, up or down, and 0 when none.
+  Courses run along +x (ADR-714). A spec bounding a step count on flat
+  ground is refused where it is declared (`success_metric_needs_terrain`).
+- **A held-out course per seed.** `terrain_evaluation_course` re-draws a
+  drawn box course for each evaluation seed with the pool's own algorithm
+  under the key `eval:<seed>:<n>` in place of a course number, keeping the
+  first draw whose boxes fit the model's slots (at most 16 draws, else
+  `terrain_evaluation_course_unfit`). No seed is judged on a pooled course,
+  the rule evaluation seeds already keep against the training seed. A
+  listed course or a heightfield is every seed's.
+- **The seed stands on it.** `evaluate_success` compiles each seed's model
+  and `place_terrain_course` writes the course into its terrain geoms, as
+  the trainer's `place_course` does in MJX, and the played task's
+  `terrain` is the course, so the height scan and the predicates read it.
+  The row's `detail.terrain` names the course and lists what was crossed.
+
+**Found while proving it.** Writing the geoms is not enough in stock
+MuJoCo: its midphase culls a static geom by the world body's
+bounding-volume tree, built at compile round course 0's boxes, and a block
+dropped on a re-placed raised box fell straight through it to the plane
+(−44 mm against 67 mm). Disabling the midphase put it on the box, which
+named the cause; `place_terrain_course` instead re-boxes the tree's leaves
+round the placed geoms and each node round its children, so culling stays
+on. MJX has no such tree, which is why ADR-717's trainer was unaffected.
+
+**Not in this decision**, and still W1's: the course in `rollout_policy`
+and the dashboard, and the proof on a second robot.
+
+**Evidence.** `test_dynamics_terrain_predicates` (10 tests): ten seeds draw
+ten distinct held-out courses, none pooled, each fitting the slots and
+valid; a listed course is unchanged; the unfit refusal; steps and slopes
+crossed counted with their largest, a short run crossing none, crossed and
+come back not counted; a fall by tilt and by height over the course's
+ground, not by an 80 mm step-down; distance made good along a 30° start
+heading and zero sideways; the vocabulary's needs; a block on each of
+several seeds' placed courses rests 10 mm above that course's ground (fails
+without the re-boxing); `evaluate_success` end to end on three seeds, each
+row naming its own course and passing `falls`, `steps_crossed` and
+`distance_made_good_mm`; and the flat-ground refusal.
