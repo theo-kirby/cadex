@@ -90,7 +90,7 @@ DASHBOARD = {"size": (1920, 1080), "scale": 2, "settle_s": 25.0}
 #: headless Chromium on most runs, which drew the mat's grid texture as a black floor.
 GPU_FLAGS = ("--use-angle=vulkan", "--enable-features=Vulkan", "--ignore-gpu-blocklist",
              "--disable-accelerated-2d-canvas")
-LAYOUT_KEY = "cadex.layout.v5"
+LAYOUT_KEY = "cadex.layout.v6"
 #: Generous: a 775k-triangle model takes ~40 s to load into the page.
 LOAD_TIMEOUT_S = 900.0
 
@@ -396,7 +396,7 @@ def make_dashboard(stage: Stage, out: Path) -> dict[str, Any]:
     page = stage.browser.page("about:blank")
     page.send("Emulation.setDeviceMetricsOverride", {"width": width, "height": height,
                                                      "deviceScaleFactor": DASHBOARD["scale"], "mobile": False})
-    layout = {"dir": "row", "sizes": [0.5, 0.5], "children": [{"editor": "view3d"}, {"editor": "status"}]}
+    layout = {"dir": "row", "sizes": [0.5, 0.5], "children": [{"editor": "view3d"}, {"editor": "training"}]}
     # The layout is this browser's own (the layout key, §12), set before the page's scripts read it.
     page.send("Page.enable")
     page.send("Page.addScriptToEvaluateOnNewDocument", {"source": "try { localStorage.setItem(%s, %s); } catch (e) {}" % (
@@ -408,17 +408,16 @@ def make_dashboard(stage: Stage, out: Path) -> dict[str, Any]:
     page.evaluate("window.cadexReview.setSource('accepted')")
     page.wait_for("['loaded','missing','error'].includes(document.getElementById('model-status').dataset.state)",
                   timeout=LOAD_TIMEOUT_S)
-    page.evaluate("(function(){var b=document.querySelector('#status-tabs button[data-tab=training]'); if(b) b.click();})()")
     deadline = time.monotonic() + DASHBOARD["settle_s"]
     while time.monotonic() < deadline and not page.evaluate(
-            "document.querySelectorAll('#status-charts .chart-line').length > 0"):
+            "document.querySelectorAll('#training-charts .chart-line').length > 0"):
         time.sleep(0.5)
     page.evaluate("window.cadexReview.viewer().fit()")
     time.sleep(1.0)
     path = out / "dashboard.png"
     shot = page.send("Page.captureScreenshot", {"format": "png", "captureBeyondViewport": False}, timeout=120)
     path.write_bytes(base64.b64decode(shot["data"]))
-    charts = page.evaluate("document.querySelectorAll('#status-charts .chart-line').length")
+    charts = page.evaluate("document.querySelectorAll('#training-charts .chart-line').length")
     stage_state = page.evaluate("(document.getElementById('status-stage')||{}).textContent || ''")
     return {"file": path.name, "size": [width * DASHBOARD["scale"], height * DASHBOARD["scale"]],
             "layout": layout, "charts": charts, "stage": stage_state.strip(),

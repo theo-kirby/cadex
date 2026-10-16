@@ -33,11 +33,11 @@
   // (`cadex app`) it is `p/<name>/` under the index, and NAME is that project.
   var NAME = (location.pathname.match(/\/p\/([^/]+)\/(?:index\.html)?$/) || [null, null])[1];
   var POLL_MS = 2000;
-  var ORDER = ['view3d', 'status', 'view2d', 'outliner', 'activations', 'network', 'settings'];
-  // The 3D viewport with the Outliner over Status beside it, as Blender has its Outliner over its
-  // Properties; split an area for the 2D one.
-  var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.75, 0.25], children: [{ editor: 'view3d' },
-    { dir: 'col', sizes: [0.4, 0.6], children: [{ editor: 'outliner' }, { editor: 'status' }] }] };
+  var ORDER = ['view3d', 'status', 'training', 'view2d', 'outliner', 'activations', 'network', 'settings'];
+  // The 3D viewport with the Outliner over Status over Training beside it, as Blender has its
+  // Outliner over its Properties; split an area for the 2D one.
+  var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.72, 0.28], children: [{ editor: 'view3d' },
+    { dir: 'col', sizes: [0.3, 0.2, 0.5], children: [{ editor: 'outliner' }, { editor: 'status' }, { editor: 'training' }] }] };
   var STYLES = ['shaded', 'wireframe'];
   // The shaded look (ADR-676): four lighting setups and two matcaps (shading.js LOOKS).
   var LOOKS = ['studio', 'softbox', 'dramatic', 'daylight', 'aluminium', 'clay'];
@@ -560,14 +560,25 @@
     var stems = items.map(function (item) { return item.stem; });
     if (ckpt.pinned && stems.indexOf(ckpt.pinned) < 0) ckpt.pinned = null;
     var index = ckpt.pinned ? stems.indexOf(ckpt.pinned) : items.length - 1, item = items[index];
-    var pick = $('checkpoint-pick');
-    if (pick.max !== String(items.length - 1)) pick.max = String(items.length - 1);
+    // One option per checkpoint, newest first; the newest follows new ones as they land.
+    var pick = $('checkpoint-pick'), names = items.map(function (it, i) {
+      return checkpointName(it) + (it.state === 'failed' ? ' · failed' : it.state !== 'ready' ? ' · ' + it.state : '') + (i === items.length - 1 ? ' · newest' : '');
+    });
+    var optionsKey = JSON.stringify(names);
+    if (pick.dataset.options !== optionsKey) {
+      pick.dataset.options = optionsKey;
+      pick.textContent = '';
+      for (var i = items.length - 1; i >= 0; i--) {
+        var option = document.createElement('option');
+        option.value = String(i); option.textContent = names[i];
+        pick.appendChild(option);
+      }
+    }
     if (pick.value !== String(index)) pick.value = String(index);
     if (box.dataset.follow !== String(!ckpt.pinned)) box.dataset.follow = String(!ckpt.pinned);
     if (box.dataset.state !== item.state) box.dataset.state = item.state;
     $('checkpoint-status').dataset.state = item.state;
-    var named = checkpointName(item) + ' · ' + (index + 1) + '/' + items.length + (ckpt.pinned ? '' : ' · newest');
-    setText('checkpoint-label', named).title = named;
+    pick.title = 'Checkpoint ' + (index + 1) + ' of ' + items.length + (ckpt.pinned ? '' : ', following the newest');
     var note = item.state === 'failed' ? 'rollout failed: ' + item.reason + (item.error ? ' — ' + item.error : '')
              : got.pending ? got.pending + ' newer checkpoint' + (got.pending > 1 ? 's' : '') + ' rolling out' : '';
     setText('checkpoint-status', note).title = note;
@@ -1043,8 +1054,8 @@
       // The first's elements as kept at the start: a copy is made while the layout builds its
       // areas, when the first's header may not be in the page to be found by id.
       mirror(shared.source, ref('view3d-source'));
-      mirror(shared.play, copy.tools.querySelector('.view3d-play'), '[data-ref="play-follow"]');
-      mirror(shared.timelines, copy.body.querySelector('.timelines'));
+      mirror(shared.play, copy.tools.querySelector('.view3d-play'));
+      mirror(shared.timelines, copy.body.querySelector('.timelines'), '[data-ref="play-follow"]');
     } else if (type === 'activations') {
       state.activations.addMotors({ body: ref('activations'), motors: ref('activations-motors'), bars: ref('activations-bars'),
                                     detail: ref('activations-detail'), status: ref('activations-status'), toggle: ref('activations-viewport'),
@@ -1088,7 +1099,7 @@
                                                    low: $('settings-heat-low'), mid: $('settings-heat-mid'), high: $('settings-heat-high'),
                                                    preview: $('settings-heat-preview'), reset: $('settings-heat-reset') });
     state.layout = window.CadexLayout.create({ root: $('screen'), shelf: $('editor-shelf'), editors: editors, order: ORDER,
-                                               storageKey: 'cadex.layout.v5', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
+                                               storageKey: 'cadex.layout.v6', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
     state.outliner = window.CadexOutliner.create({ tree: $('outliner-tree'), filter: $('outliner-filter'), group: $('outliner-group'),
                                                    showAll: $('outliner-show-all'), summary: $('outliner-summary'), scope: $('model'),
                                                    viewer: function () { return state.viewer; } });
@@ -1111,7 +1122,7 @@
     $('occlusion').addEventListener('change', function () { applyLook({ occlusion: $('occlusion').checked }); });
     $('detail').addEventListener('change', function () { applyLook({ detail: $('detail').checked }); });
     $('play-toggle').addEventListener('click', function () { ckpt.paused = !!playing; togglePlayback(); });
-    $('checkpoint-pick').addEventListener('input', function () { pickCheckpoint(Number($('checkpoint-pick').value)); });
+    $('checkpoint-pick').addEventListener('change', function () { pickCheckpoint(Number($('checkpoint-pick').value)); });
     $('revision-pick').addEventListener('input', function () { pickRevision(Number($('revision-pick').value)); });
     $('revision-list').addEventListener('click', function (event) {
       var row = event.target.closest('li[data-ordinal]');
