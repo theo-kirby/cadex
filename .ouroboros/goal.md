@@ -40,11 +40,24 @@ iteration 22:
   A2 is rewritten below.
 - **Then go straight to turning (R1) and terrain (W1, W2).**
 
+**Owner revision 2, 2026-10-16 (iteration 26).** The owner reviewed the
+reworked tail and the hind feet:
+- **The tail may be one width along its length;** no taper is needed.
+- **It ends in a round white cap.**
+- **The hind paws are wrongly oriented for how the feet are used.** In
+  every rollout the hind foot goes down flat through stance, as a real
+  cat's does, and that motion is right; keep it. But the paw part was
+  designed before the gait existed, so in that pose it sits wrong on the
+  ground. A3 below rebuilds it.
+- Both changes alter the model, so they land **before R1's first training
+  run**, together, in one rebuild if possible.
+
 If the run achieves only one thing from here, it is this: **the cat, with a
 supple, actively used tail, turns and changes direction on command, and its
 tail never strikes the ground.**
 
-Priority, in order: H1 (always on), A2 (the rework), R1, W1, W2, C1.
+Priority, in order: H1 (always on), A2 (the rework) and A3 (hind paws)
+together, then R1, W1, W2, C1.
 - The tail rework lands first, and fast. It changes the model, so R1 and W2
   must train on the reworked tail, never on the current one. Keep the CAD
   rework small: the tail only, the rest of the cat untouched.
@@ -151,8 +164,11 @@ tick them.
       the segments, is allowed if it is built from real parts and its
       simulated limits are honest.
     - The record compares the options on torque, mass and diameter.
-    - Thickness and length targets as before: about 60 mm at the root
-      tapering to about 30 mm, and 0.6–0.7× head-and-body length.
+    - Length 0.6–0.7× head-and-body. **Width (owner revision 2):** one
+      width along the whole tail is fine, about the root's; no taper is
+      needed.
+    - **A round white cap on the tip (owner revision 2):** a domed white
+      panel closing the last segment, matching the panel language.
   - **It behaves like a big cat's tail.**
     - It is carried clear of the ground. No tail segment touches the
       ground in any rollout of R1's or W2's policy. Measure it as a
@@ -172,6 +188,28 @@ tick them.
   - It is panelled to match, and it rebuilds; clearance and the joint sweep
     pass over the full tail travel.
   - Renders and a short rollout clip of the tail in a turn go on the page.
+- [ ] **A3. Hind paws shaped for how the hind feet are used (owner revision 2).**
+  - **Look before changing anything.** Take stance frames from a
+    galloping or bounding rollout on the current model. Measure where the
+    paw meets the ground (which geometry carries the contact), the angle of
+    the paw's sole to the ground, and where the hock (ankle) sits relative
+    to the paw. Render the before pose, side and three-quarter, on the dark
+    floor.
+  - Then reshape and reorient the hind paw, and the parts around it as
+    needed, so that in that measured stance pose:
+    - the sole and pads lie flat on the ground;
+    - the toes point forward;
+    - the ankle sits where a cat's hock would over a flat-down foot.
+    The paw must read as a cat's paw, not a part bolted on at an angle.
+  - Do not change the gait to suit the old part: the motion is right. Keep
+    the joint chain and drives unless the measurement shows a change is
+    needed, and record why if one is made.
+  - Measured after: in stance frames of a rollout on the rebuilt model, the
+    sole's angle to the ground stays within about 15°, and the contact is
+    carried by the pads, not by a panel edge or the paw's side. A
+    before-and-after table and renders of the stance pose go on the page.
+  - It rebuilds; clearance, the joint sweep and the mounts pass. The front
+    paws are not part of this change.
 - [x] **F1. The fastest gallop yet.** *Accepted by the owner as it stands,
   2026-10-16: f1-g2, 4.15–4.17 m/s on all 10 seeds. Its footfall error of
   0.100 sits on the limit, on the 50 Hz frame grid; the defect is filed. No
@@ -265,11 +303,14 @@ Not seeded. Work them only once every criterion above has evidence.
 - **short-term:**
   1. Keep H1 current every iteration. Show the owner's revision and the tail
      rework on the page.
-  2. A2 rework:
+  2. A3: measure the hind paw in stance, then reshape it (owner revision 2).
+     Land it in the same rebuild as the A2 cap and width change, before
+     R1 trains.
+  3. A2 rework:
      - measure the current tail (hip correlation, ground contact);
      - pick the joint layout and drives;
      - rebuild the tail, clearance-check and sweep it.
-  3. R1's command kinds and tracking predicates, and the tail predicates
+  4. R1's command kinds and tracking predicates, and the tail predicates
      (ground contact, hip correlation, yaw against yaw rate). This is CPU
      work while nothing trains.
 - **medium-term:**
@@ -395,7 +436,7 @@ Not seeded. Work them only once every criterion above has evidence.
 ## Exhaustion policy
 
 `report_done`.
-- Once H1, A2, R1, W1, W2 and C1 have evidence (A1 and F1 are
+- Once H1, A2, A3, R1, W1, W2 and C1 have evidence (A1 and F1 are
   owner-accepted), write the closing
   report, reconcile and claim done. Two consecutive critic acceptances stop
   the run.
