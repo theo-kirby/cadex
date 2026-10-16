@@ -12,6 +12,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cadex</title>
+<!-- Opened at a mount without its trailing slash (`tailscale serve` hands `/prefix` and `/prefix/`
+     to the server alike), every relative URL would resolve outside the prefix: add the slash first. -->
+<script>if (/^[^.]+$/.test(location.pathname.split('/').pop())) location.replace(location.pathname + '/' + location.search + location.hash);</script>
 <script src="theme.js"></script>
 <link rel="stylesheet" href="review.css">
 <link rel="icon" href="data:,">

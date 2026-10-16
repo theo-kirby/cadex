@@ -804,7 +804,12 @@ link, every URL the server builds into a response (`mesh`, `url`, a project's
 `p/<name>/`) and the redirect from `p/<name>` to `p/<name>/` is relative to
 the page, so a proxy that forwards `/some/prefix/<rest>` to `/<rest>` and
 rewrites nothing serves the whole dashboard; `test_dashboard_prefix.py` loads
-a project through one and fails on any request that leaves the prefix. Both
+a project through one and fails on any request that leaves the prefix.
+`tailscale serve --set-path /name` hands `/name` and `/name/` to the server
+alike, and at `/name` every relative URL would resolve outside the mount, so
+both pages first add a missing trailing slash to a path whose last segment
+is not a file (an inline script ahead of `theme.js`). Only the abandoned
+first load's preload fetches stray; the test pins that too. Both
 pages declare an empty icon, so not even the browser's own `/favicon.ico`
 probe escapes it. There is nothing to write behind the proxy
 (§18), but the page still shows the whole project to whoever opens it. Do not use `tailscale funnel`, which publishes to the internet, and do not

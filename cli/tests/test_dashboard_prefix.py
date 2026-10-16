@@ -19,7 +19,7 @@ import urllib.parse
 
 import pytest
 
-from cadex_cli.review_server import serve, serve_projects
+from cadex_cli.review_server import PROJECTS_STATIC_FILES, serve, serve_projects
 from test_app import _projects
 from test_review_record import REVISION_B
 from test_review_server import (
@@ -49,6 +49,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         pass
 
     def _forward(self, method: str) -> None:
+        # As `tailscale serve` does, the bare mount reaches the upstream root too.
+        if self.path == PREFIX.rstrip("/"):
+            self.path = PREFIX
         if not self.path.startswith(PREFIX):
             self.server.strays.append(self.path)
             self.send_response(404)
@@ -125,6 +128,36 @@ def _get_no_redirect(url: str) -> tuple[int, dict[str, str], bytes]:
         return response.status, {k.lower(): v for k, v in response.getheaders()}, response.read()
     finally:
         connection.close()
+
+
+@needs_browser
+def test_browser_adds_the_trailing_slash_to_a_bare_mount(tmp_path, browser) -> None:
+    """Opened at ``/some/prefix`` (no slash), which the proxy serves as the root,
+    the index first moves itself to ``/some/prefix/``, so its relative links and
+    scripts stay under the prefix."""
+
+    projects = _projects(tmp_path)
+    _stage_accepted(projects / "biped", REVISION_B)
+    server, _thread = serve_projects(projects, "127.0.0.1", 0)
+    proxy = _proxied(server)
+    try:
+        index = browser.page(proxy.url.rstrip("/"))
+        index.wait_for("document.querySelectorAll('#projects li').length === 2")
+        assert index.evaluate("location.href") == proxy.url
+        link = index.evaluate("document.querySelector(\"#projects li[data-project='biped'] a\").href")
+        assert link == proxy.url + "p/biped/"
+        # Only the abandoned first load strays: the preload scanner fetches the head's static
+        # files before the slash is added. Nothing the page itself asks for leaves the prefix.
+        assert proxy.strays and all(path.rsplit("/", 1)[-1] in PROJECTS_STATIC_FILES for path in proxy.strays), proxy.strays
+        settled = len(proxy.strays)
+        index.evaluate("window.location.reload()")
+        index.wait_for("document.querySelectorAll('#projects li').length === 2")
+        assert len(proxy.strays) == settled, proxy.strays[settled:]
+    finally:
+        proxy.shutdown()
+        proxy.server_close()
+        server.shutdown()
+        server.server_close()
 
 
 @needs_browser
