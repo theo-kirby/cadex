@@ -52,12 +52,24 @@ reworked tail and the hind feet:
 - Both changes alter the model, so they land **before R1's first training
   run**, together, in one rebuild if possible.
 
+**Owner revision 3, 2026-10-16 (iteration 27).** The owner watched r1-t1
+train and **stopped it at iteration 98**. It is recorded as an
+interruption, not an attempt. The cat has no lateral spine joint: it cannot
+bend its spine sideways to turn. The owner: the spine pitch drive "is one
+of the most important" joints, and for agile movement the cat must also
+bend laterally at or near it. A4 below adds the joint.
+- **Finish the design first:** A2's width and cap, A3's hind paws and A4's
+  lateral spine, in one rebuild if possible.
+- **Then continue R1's turning training** on the rebuilt model, cold.
+  r1-t1's task, reward and logs remain usable as the first look at the R1
+  task; its policy is stale.
+
 If the run achieves only one thing from here, it is this: **the cat, with a
 supple, actively used tail, turns and changes direction on command, and its
 tail never strikes the ground.**
 
-Priority, in order: H1 (always on), A2 (the rework) and A3 (hind paws)
-together, then R1, W1, W2, C1.
+Priority, in order: H1 (always on); then A2 (the rework), A3 (hind paws)
+and A4 (lateral spine) together, as one design pass; then R1, W1, W2, C1.
 - The tail rework lands first, and fast. It changes the model, so R1 and W2
   must train on the reworked tail, never on the current one. Keep the CAD
   rework small: the tail only, the rest of the cat untouched.
@@ -210,6 +222,25 @@ tick them.
     before-and-after table and renders of the stance pose go on the page.
   - It rebuilds; clearance, the joint sweep and the mounts pass. The front
     paws are not part of this change.
+- [ ] **A4. The spine bends sideways (owner revision 3).**
+  - Add an actuated lateral (yaw) spine joint at or near the existing spine
+    pitch joint, so the body can curve left and right in turns, as a cat's
+    does. The pitch joint stays, and it keeps a strong drive.
+  - A real drive (O1), sized from a measurement: the lateral torque a turn
+    at R1's yaw rates and speeds asks of the spine. Use r1-t1's rollouts, or
+    a quick estimate from mass and inertia. The record states the estimate
+    and the drive's margin over it.
+  - The layout is the actor's to choose and record: a yaw drive stacked on
+    the pitch drive, a 2-DOF joint, or a yaw joint just ahead of or behind
+    it. Structure, bearings and the chest and pelvis frames change as they
+    need to. Panels follow the mechanism and cover the new travel; the
+    belly and back seams open as the body bends.
+  - Travel is chosen and recorded, with a source on cat spine lateral
+    flexion, or a measured need.
+  - The new joint is in the task's action set. R1's record reports its use
+    in turns: lateral spine angle against the commanded yaw rate.
+  - It rebuilds; clearance, the joint sweep over the full pitch × yaw travel
+    and the mounts pass. Mass change stated.
 - [x] **F1. The fastest gallop yet.** *Accepted by the owner as it stands,
   2026-10-16: f1-g2, 4.15–4.17 m/s on all 10 seeds. Its footfall error of
   0.100 sits on the limit, on the 50 Hz frame grid; the defect is filed. No
@@ -303,9 +334,11 @@ Not seeded. Work them only once every criterion above has evidence.
 - **short-term:**
   1. Keep H1 current every iteration. Show the owner's revision and the tail
      rework on the page.
-  2. A3: measure the hind paw in stance, then reshape it (owner revision 2).
-     Land it in the same rebuild as the A2 cap and width change, before
-     R1 trains.
+  2. One design pass, before R1 trains:
+     - A3: measure the hind paw in stance, then reshape it (owner revision 2);
+     - A4: size and add the lateral spine joint (owner revision 3);
+     - A2's single width and round white cap.
+     Rebuild once, then fit, sweep and mounts.
   3. A2 rework:
      - measure the current tail (hip correlation, ground contact);
      - pick the joint layout and drives;
@@ -436,7 +469,7 @@ Not seeded. Work them only once every criterion above has evidence.
 ## Exhaustion policy
 
 `report_done`.
-- Once H1, A2, A3, R1, W1, W2 and C1 have evidence (A1 and F1 are
+- Once H1, A2, A3, A4, R1, W1, W2 and C1 have evidence (A1 and F1 are
   owner-accepted), write the closing
   report, reconcile and claim done. Two consecutive critic acceptances stop
   the run.
