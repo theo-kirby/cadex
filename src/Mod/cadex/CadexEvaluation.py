@@ -26,6 +26,11 @@ kind:
   commands and the joints were, how hard each drive was pushed against its
   clamp and its continuous rating (ADR-707), and what the motion cost per
   unit of weight and distance (ADR-704);
+* **tracking**, for a floating base and the commands an episode issued
+  (ADR-721): how closely the base's forward speed and yaw rate followed a
+  commanded speed and yaw rate that change during the episode, outside a
+  settling window after each change, and how far a commanded 180-degree
+  turn was from done when the command said it should be;
 * **reference**, for feet and a task's gait reference (ADR-703): the
   footfall against the reference's phase offsets and duty factor, the stride
   frequency against its, and the joints' RMS error from it, phase-aligned
@@ -97,9 +102,27 @@ CLAMP_TOLERANCE = 1.0e-3
 #: above them is jitter (ADR-704).
 HIGH_FREQUENCY_STRIDE_MULTIPLE = 3.0
 
+#: Command tracking (ADR-721) reads the base's speed and yaw rate over a
+#: centred window this long -- about a stride at the gaits it is read on, so
+#: the surge and sway inside one stride are not charged as tracking error --
+#: and skips this long after every change of any command, which is the time
+#: a policy is given to respond to it.
+TRACKING_WINDOW_S = 0.5
+TRACKING_SETTLE_S = 0.5
+#: A reversal is a held yaw-rate command that turns the commanded heading
+#: through this much; it is judged at the moment the command has done so.
+REVERSAL_DEG = 180.0
+
 #: The foot whose touch-downs are a reference's clock: the left hind, the
 #: foot every phase offset is stated after (Hildebrand's convention).
 REFERENCE_ANCHOR = "LH"
+
+#: A fall (ADR-718): the base tilted this far from its reference pose, or its
+#: centre of mass came down to this share of its starting height above the
+#: ground under it. Either is a robot on the ground, whatever its task's own
+#: terminations say.
+FALL_TILT_DEG = 60.0
+FALL_HEIGHT_SHARE = 0.5
 #: A foot that does not touch down exactly once within half a stride of
 #: where the reference puts it has missed that stride by this much: as far
 #: out of phase as a periodic event can be.
@@ -114,8 +137,11 @@ FOOTFALL_MISSED = 0.5
 #: behaviour: ``base`` is a floating base, ``floor`` the one plane it stands
 #: on, ``feet`` and ``tip`` what the spec names, ``shove`` a timed
 #: disturbance in the spec's conditions, ``command`` a speed goal the task
-#: states and ``target`` a point goal it states (ADR-462). ``body`` is a body
-#: the spec names to be judged about a centre (ADR-587).
+#: states, ``turn`` a yaw-rate goal it states (ADR-721) and ``target`` a
+#: point goal it states (ADR-462). ``body`` is a body the spec names to be
+#: judged about a centre (ADR-587). ``appendage`` is a chain of bodies the
+#: spec names that hangs from the base and is not a leg -- a tail, a trunk,
+#: a mast (ADR-722).
 METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "completed": ("episode", ()),
     "duration_s": ("episode", ()),
@@ -125,6 +151,7 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "max_drift_mm": ("posture", ("base",)),
     "final_drift_mm": ("posture", ("base",)),
     "mean_speed_mm_s": ("posture", ("base",)),
+    "distance_made_good_mm": ("posture", ("base",)),
     "max_drift_com_heights": ("posture", ("base", "floor")),
     "recovery_s_max": ("posture", ("base", "floor", "shove")),
     "mean_forward_speed_mm_s": ("gait", ("feet",)),
@@ -137,6 +164,9 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "duty_factor_min": ("gait", ("feet",)),
     "duty_factor_max": ("gait", ("feet",)),
     "foot_lowest_hip_heights_min": ("gait", ("feet",)),
+    "speed_error_rms_mm_s": ("tracking", ("base", "command")),
+    "yaw_rate_error_rms_deg_s": ("tracking", ("base", "turn")),
+    "reversal_heading_error_deg_max": ("tracking", ("base", "turn")),
     "speed_ratio": ("gait", ("feet", "command")),
     "lateral_ratio": ("gait", ("feet", "command")),
     "final_error_mm_max": ("reach", ("tip", "target")),
@@ -161,6 +191,14 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "reference_joint_rms_deg": ("reference", ("feet", "reference")),
     "command_rate_reference_ratio": ("reference", ("feet", "reference")),
     "joint_acceleration_reference_ratio": ("reference", ("feet", "reference")),
+    "appendage_ground_contact_share": ("appendage", ("base", "appendage")),
+    "appendage_pitch_parent_correlation": ("appendage", ("base", "appendage")),
+    "appendage_yaw_turn_correlation": ("appendage", ("base", "appendage", "turn")),
+    "falls": ("terrain", ("base",)),
+    "steps_crossed": ("terrain", ("base", "terrain")),
+    "slopes_crossed": ("terrain", ("base", "terrain")),
+    "largest_step_crossed_mm": ("terrain", ("base", "terrain")),
+    "steepest_slope_crossed_deg": ("terrain", ("base", "terrain")),
 }
 
 _EPS = 1.0e-9
@@ -315,7 +353,11 @@ def posture(base: Mapping[str, Any], com_height_mm: float | None) -> dict[str, A
     start = base["point"][0]
     drift = [math.hypot(p[0] - start[0], p[1] - start[1]) for p in base["point"]]
     speeds = [math.hypot(*v) for v in base["velocity"] if v is not None]
+    ahead, end = base["forward"][0], base["point"][-1]
     return {
+        # ADR-718: net plan travel along the heading the episode started on.
+        "distance_made_good_mm": ((end[0] - start[0]) * ahead[0]
+                                  + (end[1] - start[1]) * ahead[1]),
         "max_tilt_deg": max(base["tilt"]),
         "max_heading_deg": max(abs(h) for h in base["heading"]),
         "final_heading_deg": base["heading"][-1],
@@ -493,6 +535,9 @@ def gait(time, foot: Mapping[str, Any], hip_height_mm: float, *,
         "duty_factor": (sum(settled) / len(settled)) if settled else None,
         # Each step's landing: the first stance frame after it (ADR-705).
         "touchdowns_s": [s["land_s"] for s in steps],
+        # The frame interval the landings lie on, so a timing read in
+        # frames is whole frames (ADR-719).
+        "frame_s": dt,
         # Steps begun after the settle, per settled second: one step per
         # stride, so this is the foot's stride frequency (ADR-704).
         "step_rate_hz": (
@@ -584,6 +629,233 @@ def settled_command(commands, *, settle_s: float = SETTLE_S) -> float | None:
     if not held:
         return None
     return held[0] if min(held) == max(held) else sum(held) / len(held)
+
+
+def tracking_metrics(samples, rig: Mapping[str, Any],
+                     commands: Mapping[str, Sequence[float]], *,
+                     settle_s: float = SETTLE_S, window_s: float = TRACKING_WINDOW_S,
+                     change_settle_s: float = TRACKING_SETTLE_S,
+                     reversal_deg: float = REVERSAL_DEG) -> dict[str, Any]:
+    """How closely a floating base followed commands that change (ADR-721).
+
+    ``commands`` maps ``"speed"`` (mm/s, forward along the base's heading)
+    and ``"yaw_rate"`` (deg/s about world +Z, anticlockwise positive) to the
+    value in force at each sample, one per sample; either may be absent.
+
+    The base's speed and yaw rate at a frame are read over a centred window
+    of ``window_s``: the speed as each frame's step along that frame's
+    heading, summed, so a base on a curve is not read as slow. A frame is counted when the window fits inside the
+    episode, the frame is past ``settle_s``, and no command of either kind
+    changed from ``change_settle_s`` before it to the end of its window --
+    so a policy is not charged for the moment it is told something new, and
+    a frame is not read against a command its window has already left.
+
+    * ``speed_error_rms_mm_s`` and ``yaw_rate_error_rms_deg_s``: the RMS of
+      measured minus commanded over the counted frames.
+    * ``reversal_heading_error_deg_max``: for every held yaw-rate command
+      that turns the commanded heading through ``reversal_deg`` before it
+      changes, the base's heading error at the moment the command has done
+      so (``reversal_deg / |rate|`` after it was issued) -- a 180-degree
+      turn at 60 deg/s is judged 3 s after it is commanded. The worst one;
+      ``None`` when the episode commanded none, or ended first.
+
+    Each is ``None`` when nothing could be counted, which a predicate reads
+    as a failure.
+    """
+
+    base = base_series(samples, rig)
+    times, n = base["time"], len(base["time"])
+    series = {kind: [float(value) for value in values]
+              for kind, values in commands.items() if values is not None}
+    for kind, values in series.items():
+        if len(values) != n:
+            raise ValueError(f"{kind} commands hold {len(values)} values for {n} samples")
+    half = max(1, int(round(0.5 * window_s / base["dt"]))) if n > 1 else 1
+    changes = sorted({times[i] for values in series.values()
+                      for i in range(1, n) if values[i] != values[i - 1]})
+
+    def counted(i: int) -> bool:
+        if i - half < 0 or i + half >= n or times[i] < settle_s - _EPS:
+            return False
+        return not any(times[i] - change_settle_s < moment <= times[i + half] + _EPS
+                       for moment in changes)
+
+    frames = [i for i in range(n) if counted(i)]
+    speed_errors, yaw_errors = [], []
+    for i in frames:
+        a, b = i - half, i + half
+        span = times[b] - times[a]
+        if "speed" in series:
+            # Each frame's step along that frame's own heading: a chord
+            # across the window would read a turning base as slow.
+            along = sum(
+                (base["point"][k + 1][0] - base["point"][k][0]) * base["forward"][k][0]
+                + (base["point"][k + 1][1] - base["point"][k][1]) * base["forward"][k][1]
+                for k in range(a, b)
+            ) / span
+            speed_errors.append(along - series["speed"][i])
+        if "yaw_rate" in series:
+            yaw_errors.append((base["heading"][b] - base["heading"][a]) / span
+                              - series["yaw_rate"][i])
+
+    reversals: list[dict[str, Any]] = []
+    rates = series.get("yaw_rate")
+    if rates:
+        starts = [0] + [i for i in range(1, n) if rates[i] != rates[i - 1]]
+        for k, start in enumerate(starts):
+            rate = rates[start]
+            if abs(rate) < _EPS:
+                continue
+            due = times[start] + reversal_deg / abs(rate)
+            # The command holds until the next one is issued; the last one
+            # holds to the episode's end.
+            until = times[starts[k + 1]] if k + 1 < len(starts) else times[-1]
+            if due > until + _EPS:
+                continue
+            at = min(range(start, n), key=lambda i: abs(times[i] - due))
+            turned = base["heading"][at] - base["heading"][start]
+            reversals.append({
+                "start_s": times[start], "due_s": times[at], "yaw_rate_deg_s": rate,
+                "turned_deg": turned,
+                "heading_error_deg": abs(turned - math.copysign(reversal_deg, rate)),
+            })
+    return {
+        "speed_error_rms_mm_s": _rms(speed_errors) if "speed" in series else None,
+        "yaw_rate_error_rms_deg_s": _rms(yaw_errors) if "yaw_rate" in series else None,
+        "reversal_heading_error_deg_max": (
+            max(row["heading_error_deg"] for row in reversals) if reversals else None
+        ),
+        "tracking": {"frames_counted": len(frames), "frames": n,
+                     "command_changes_s": changes, "reversals": reversals},
+    }
+
+
+# -- an appendage -----------------------------------------------------------
+
+def _pearson(a: Sequence[float], b: Sequence[float]) -> float | None:
+    """Pearson's r, or ``None`` when either series does not vary."""
+
+    if len(a) < 2:
+        return None
+    mean_a, mean_b = sum(a) / len(a), sum(b) / len(b)
+    da = [x - mean_a for x in a]
+    db = [y - mean_b for y in b]
+    spread = math.sqrt(sum(x * x for x in da) * sum(y * y for y in db))
+    if spread <= _EPS:
+        return None
+    return sum(x * y for x, y in zip(da, db)) / spread
+
+
+def appendage_metrics(samples, rig: Mapping[str, Any], *,
+                      yaw_rates: Sequence[float] | None = None,
+                      ground: Any = None, settle_s: float = SETTLE_S,
+                      contact_mm: float = STANCE_MM) -> dict[str, Any]:
+    """What a chain hanging from the base did that is not a leg's (ADR-722).
+
+    ``rig["appendage"]`` is ``{"bodies": [root, ..., last], "geoms": {body:
+    [geom, ...]}, "parent": body}``: the chain from the body nearest the base
+    outward, each body's collision primitives (as a foot's), and the body the
+    root hangs from. ``ground(x_mm, y_mm)`` is the ground's height, as
+    :func:`terrain_metrics` takes; ``None`` is the rig's floor.
+
+    * ``appendage_ground_contact_share``: the share of frames in which any
+      collision primitive of the chain is within ``contact_mm`` of the
+      ground under its lowest point -- a tail that strikes the floor once a
+      stride reads its stance share, and one carried clear reads 0.
+    * ``appendage_pitch_parent_correlation``: Pearson's r, over the frames
+      past ``settle_s``, between the root's pitch and its parent's. A body's
+      pitch is the elevation of the base's starting forward direction as
+      that body carries it, so the two are compared on one axis whatever
+      each body's own frame is. Near 1 is a chain carried rigidly by the
+      body it hangs from (it rises and falls with the hips); near 0, its
+      root joint works against that body's pitch.
+    * ``appendage_yaw_turn_correlation``: with ``yaw_rates`` (the commanded
+      yaw rate at each sample, deg/s), the magnitude of Pearson's r between
+      that command and the chain's yaw relative to the base -- the plan
+      bearing from the root's origin to the centre of the last body's last
+      primitive, against the base's heading -- over the frames past
+      ``settle_s``. Its magnitude, because whether a tail swings into a turn
+      or out of it is the mechanism's choice; the sign and the slope are in
+      the detail. ``None`` when the command never changed.
+
+    Each is ``None`` when it cannot be read, which a predicate reads as a
+    failure.
+    """
+
+    chain = rig["appendage"]
+    bodies = [str(name) for name in chain["bodies"]]
+    floor = float(rig.get("floor_mm") or 0.0)
+    level = (lambda x, y: floor) if ground is None else ground
+    reference = matrix(rig["reference_xyzw"])
+    times, clearance, root_pitch, parent_pitch, yaw = [], [], [], [], []
+    carried: dict[str, Vector] = {}
+    last = bodies[-1]
+    tail_geom = (chain["geoms"].get(last) or [None])[-1]
+    for time_s, placements in samples:
+        times.append(float(time_s))
+        low = math.inf
+        for name in bodies:
+            rotation, origin = _pose(placements, name)
+            for geom in chain["geoms"].get(name) or ():
+                point = _lowest(geom, rotation, origin)[1]
+                low = min(low, point[2] - float(level(point[0], point[1])))
+        clearance.append(low)
+        base_rotation, _ = _pose(placements, rig["base"])
+        if not carried:
+            ahead = forward(base_rotation, reference)
+            start = (ahead[0], ahead[1], 0.0)
+            for name in (bodies[0], str(chain["parent"])):
+                carried[name] = _apply_inverse(_pose(placements, name)[0], start)
+        pitches = []
+        for name in (bodies[0], str(chain["parent"])):
+            rotation, _ = _pose(placements, name)
+            axis = _apply(rotation, carried[name])
+            pitches.append(math.degrees(math.atan2(axis[2], math.hypot(axis[0], axis[1]))))
+        root_pitch.append(pitches[0])
+        parent_pitch.append(pitches[1])
+        root_rotation, root_origin = _pose(placements, bodies[0])
+        last_rotation, last_origin = _pose(placements, last)
+        end = (last_origin if tail_geom is None
+               else _add(_apply(last_rotation, tail_geom["pos_mm"]), last_origin))
+        ahead = forward(base_rotation, reference)
+        bearing = math.degrees(math.atan2(end[1] - root_origin[1], end[0] - root_origin[0])
+                               - math.atan2(ahead[1], ahead[0]))
+        if yaw:
+            bearing += 360.0 * round((yaw[-1] - bearing) / 360.0)
+        yaw.append(bearing)
+    late = [i for i, moment in enumerate(times) if moment >= settle_s - _EPS]
+    measured = [value for value in clearance if math.isfinite(value)]
+    read: dict[str, Any] = {
+        "appendage_ground_contact_share": (
+            sum(1 for value in measured if value <= contact_mm) / len(measured)
+            if measured else None
+        ),
+        "appendage_pitch_parent_correlation": _pearson(
+            [root_pitch[i] for i in late], [parent_pitch[i] for i in late]),
+    }
+    detail: dict[str, Any] = {
+        "bodies": bodies, "parent": str(chain["parent"]),
+        "min_clearance_mm": min(measured) if measured else None,
+        "root_pitch_sd_deg": statistics.pstdev([root_pitch[i] for i in late]) if late else None,
+        "parent_pitch_sd_deg": statistics.pstdev([parent_pitch[i] for i in late]) if late else None,
+        "yaw_sd_deg": statistics.pstdev([yaw[i] for i in late]) if late else None,
+    }
+    if yaw_rates is not None:
+        if len(yaw_rates) != len(times):
+            raise ValueError(f"yaw rates hold {len(yaw_rates)} values for {len(times)} samples")
+        command = [float(yaw_rates[i]) for i in late]
+        swing = [yaw[i] for i in late]
+        r = _pearson(command, swing)
+        read["appendage_yaw_turn_correlation"] = None if r is None else abs(r)
+        detail["yaw_turn_r"] = r
+        if r is not None:
+            mean_c = sum(command) / len(command)
+            mean_s = sum(swing) / len(swing)
+            detail["yaw_deg_per_deg_s"] = (
+                sum((c - mean_c) * (y - mean_s) for c, y in zip(command, swing))
+                / sum((c - mean_c) ** 2 for c in command))
+    read["appendage"] = detail
+    return read
 
 
 # -- a tip and its targets --------------------------------------------------
@@ -1138,7 +1410,8 @@ def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[
       the reference's;
     * ``footfall_phase_error_max``: per foot, the median over strides of how
       far, in cycles, its landing fell from where the reference's phase
-      offsets put it. A foot that did not land exactly once within half a
+      offsets put it, counted in whole frames of the landings' grid
+      (ADR-719). A foot that did not land exactly once within half a
       stride of that moment missed the stride, and the miss is
       :data:`FOOTFALL_MISSED`. The worst foot is the metric;
     * ``duty_factor_error_max``: the worst foot's settled duty factor less
@@ -1187,14 +1460,23 @@ def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[
     period = float(statistics.median(length for _, length in strides))
     detail["stride_hz"] = 1.0 / period
 
+    # ADR-719: landings lie on the frame grid, so timing is counted in whole
+    # frames and only the division by the stride's frames is inexact; a
+    # 2-frame offset in a 20-frame stride reads 0.1, not 0.1 + 3e-17.
+    frame_s = float(feet[names[REFERENCE_ANCHOR]]["frame_s"])
+
+    def on_grid(moment: float) -> int:
+        return round(moment / frame_s)
+
+    grid = [(on_grid(start), on_grid(start + length) - on_grid(start)) for start, length in strides]
     phase_errors, duty_errors = [], []
     for label, name in names.items():
         expected = (offsets[label] - offsets[REFERENCE_ANCHOR]) % 1.0
-        landings = feet[name]["touchdowns_s"]
+        landings = [on_grid(t) for t in feet[name]["touchdowns_s"]]
         errors = []
-        for start, length in strides:
-            due = start + expected * length
-            near = [t for t in landings if abs(t - due) < 0.5 * length]
+        for start, length in grid:
+            due = expected * length  # frames after the anchor's landing
+            near = [t - start for t in landings if abs(t - start - due) < 0.5 * length]
             errors.append(abs(near[0] - due) / length if len(near) == 1 else FOOTFALL_MISSED)
         error = float(statistics.median(errors))
         measured_duty = feet[name].get("duty_factor")
@@ -1331,6 +1613,75 @@ def _reference_smoothness_ratios(rows: Sequence[Mapping[str, Any]],
     }
 
 
+def terrain_metrics(samples, rig: Mapping[str, Any], *,
+                    terrain: Mapping[str, Any] | None = None,
+                    ground: Any = None) -> dict[str, Any]:
+    """Falls, and the steps and slopes a base crossed (ADR-718).
+
+    ``ground(x_mm, y_mm)`` is the height of the ground the episode stood on
+    (the engine's reading of the course; ``None`` is the plane at z = 0) and
+    ``terrain`` that course's descriptor, whose ``features`` are counted.
+
+    * ``falls``: 1.0 when, at any frame, the base tilted
+      :data:`FALL_TILT_DEG` or more or its centre of mass came down to
+      :data:`FALL_HEIGHT_SHARE` of its first frame's height above the ground
+      under it; else 0.0. Measured from poses, so it holds whatever the
+      task terminates on.
+    * ``steps_crossed`` and ``slopes_crossed``: the course's steps (at
+      ``x_mm``) and slopes (by ``to_x_mm``, their far end) that lie ahead of
+      the centre of mass's first plan x and at or behind its last: crossed,
+      and stayed across. Courses run along +x (ADR-714).
+    * ``largest_step_crossed_mm`` and ``steepest_slope_crossed_deg``: the
+      largest magnitude among them, up or down; 0.0 when none was crossed.
+
+    Without ``terrain`` only ``falls`` is read.
+    """
+
+    reference = matrix(rig["reference_xyzw"])
+    local = rig["base_com_local_mm"]
+    level = (lambda x, y: 0.0) if ground is None else ground
+    points, lowest_share, steepest_tilt = [], None, 0.0
+    first = None
+    for _, placements in samples:
+        rotation, origin = _pose(placements, rig["base"])
+        point = _add(_apply(rotation, local), origin)
+        points.append(point)
+        height = point[2] - float(level(point[0], point[1]))
+        if first is None:
+            first = height
+        if first > _EPS:
+            share = height / first
+            lowest_share = share if lowest_share is None else min(lowest_share, share)
+        steepest_tilt = max(steepest_tilt, tilt_degrees(rotation, reference))
+    fell = steepest_tilt >= FALL_TILT_DEG or (
+        lowest_share is not None and lowest_share <= FALL_HEIGHT_SHARE)
+    read: dict[str, Any] = {"falls": 1.0 if fell else 0.0}
+    detail: dict[str, Any] = {"max_tilt_deg": steepest_tilt,
+                              "lowest_height_share": lowest_share}
+    if terrain is not None and points:
+        x_start, x_end = points[0][0], points[-1][0]
+        crossed = []
+        for feature in terrain.get("features") or ():
+            if feature["kind"] == "bump":
+                continue
+            edge = float(feature["x_mm"] if feature["kind"] == "step" else feature["to_x_mm"])
+            if x_start < edge <= x_end:
+                crossed.append(dict(feature))
+        steps = [abs(float(f["height_mm"])) for f in crossed if f["kind"] == "step"]
+        slopes = [abs(float(f["grade_deg"])) for f in crossed if f["kind"] == "slope"]
+        read.update({
+            "steps_crossed": float(len(steps)),
+            "slopes_crossed": float(len(slopes)),
+            "largest_step_crossed_mm": max(steps, default=0.0),
+            "steepest_slope_crossed_deg": max(slopes, default=0.0),
+        })
+        detail.update(crossed=crossed, course=terrain.get("course"),
+                      features=sum(1 for f in terrain.get("features") or ()
+                                   if f["kind"] != "bump"))
+    read["terrain"] = detail
+    return read
+
+
 def episode_metrics(episode: Mapping[str, Any]) -> dict[str, Any]:
     """How the episode ended. ``completed`` is 1.0 only for a run to the horizon."""
 
@@ -1343,7 +1694,10 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
             shoves=(), command_mm_s: float | None = None,
             segments: Sequence[Mapping[str, Any]] = (),
             drives: Mapping[str, Any] | None = None,
-            reference: Mapping[str, Any] | None = None) -> dict[str, Any]:
+            reference: Mapping[str, Any] | None = None,
+            terrain: Mapping[str, Any] | None = None,
+            ground: Any = None,
+            commands: Mapping[str, Sequence[float]] | None = None) -> dict[str, Any]:
     """Every behaviour metric one rollout can be read for, as one flat table.
 
     Which families are read is decided by what the rig and the episode
@@ -1364,7 +1718,14 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     the drive family. Its stride frequency is the median foot's settled step
     rate, and its travel the base's net plan distance after the settle.
     ``reference`` is the task's gait reference clip; with feet it is read
-    for the reference family (ADR-705).
+    for the reference family (ADR-705). A floating base is read for the
+    terrain family (ADR-718): ``ground`` is the height of the ground it
+    stood on and ``terrain`` the course, as :func:`terrain_metrics` takes.
+    ``commands`` is the speed and yaw rate in force at each sample, as
+    :func:`tracking_metrics` takes; with a floating base it is read for the
+    tracking family (ADR-721). A rig with an ``appendage`` on a floating
+    base is read for the appendage family (ADR-722), against the yaw-rate
+    command when ``commands`` carries one.
     """
 
     read: dict[str, Any] = dict(episode_metrics(episode))
@@ -1376,6 +1737,13 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
             read.update(posture(base_series(samples, rig), None))
         if rig.get("feet"):
             read.update(gait_metrics(samples, rig, command_mm_s))
+        read.update(terrain_metrics(samples, rig, terrain=terrain, ground=ground))
+        if commands:
+            read.update(tracking_metrics(samples, rig, commands))
+        if rig.get("appendage"):
+            read.update(appendage_metrics(
+                samples, rig, ground=ground,
+                yaw_rates=(commands or {}).get("yaw_rate")))
     if rig.get("tip") is not None and segments:
         read.update(reach_metrics(samples, rig, segments))
     if rig.get("body") is not None:
@@ -1396,7 +1764,8 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
                                   stride_hz=stride))
     if reference is not None and read.get("feet"):
         read.update(reference_metrics(read["feet"], reference, drives=drives))
-    for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives", "reference"):
+    for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives", "reference",
+                "terrain", "tracking", "appendage"):
         if key in read:
             detail[key] = read[key]
     return {"metrics": {name: read[name] for name in METRICS if name in read},

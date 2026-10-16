@@ -4034,6 +4034,8 @@ def _execute_mjcf_export(
             joint_dynamics=model_inputs["joint_dynamics"],
             actuators=model_inputs["actuators"],
             couplings=model_inputs["couplings"],
+            # ADR-714: a declared course replaces the free base's plane.
+            terrain=properties.get("terrain"),
         )
         # Resolved against the tree that was just built, not against the
         # graph: a channel on a joint the spanning forest turned into a loop
@@ -4306,10 +4308,20 @@ def _execute_task_bundle(
                 if "accelerations" in bundle
                 else {}
             ),
-            # ADR-706: and a gait reference's tracking channels, last.
+            # ADR-706: and a gait reference's tracking channels.
             **(
                 {"tracking_channels": [str(channel) for channel in bundle["tracking"]["channels"]]}
                 if "tracking" in bundle
+                else {}
+            ),
+            # ADR-715: and the height-scan channels, last.
+            **(
+                {"scan_channels": [
+                    str(channel)
+                    for record in bundle["scans"]
+                    for channel in record["channels"]
+                ]}
+                if "scans" in bundle
                 else {}
             ),
             # What the task is judged by, when it declares it (ADR-456): the
@@ -5150,6 +5162,12 @@ def _success_input(
             "body": component_outputs[id(properties["tip"])],
             "local_mm": [float(v) for v in properties.get("tip_offset_mm") or ()],
         }
+    # Absent unless the script named one, so a spec without one is the spec
+    # it always was (ADR-722).
+    if properties.get("appendage"):
+        resolved["appendage"] = [
+            component_outputs[id(link)] for link in properties["appendage"]
+        ]
     # Absent unless the script named a body, so a spec without one is the
     # spec it always was (ADR-587).
     if properties.get("body") is not None:

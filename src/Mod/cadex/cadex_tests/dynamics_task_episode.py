@@ -119,7 +119,54 @@ def channels(task: dict) -> list[str]:
         str(channel)
         for record in task.get("accelerations") or []
         for channel in record["channels"]
-    ] + [str(channel) for channel in (task.get("tracking") or {}).get("channels") or []]
+    ] + [str(channel) for channel in (task.get("tracking") or {}).get("channels") or []] + [
+        str(channel)
+        for record in task.get("scans") or []
+        for channel in record["channels"]
+    ]
+
+
+def scans_at(task: dict, model: Any, data: Any) -> dict[str, float]:
+    """The height scans (ADR-715), from the bundle's words: each point is
+    ``offsets_mm`` turned by the body's heading, and reads the body's height
+    above the ground there, the heightfield read bilinearly between its
+    vertices (held at its edge), a box course's highest box top over the
+    point or its plane (ADR-716), or the plane at z = 0."""
+
+    terrain = task.get("terrain")
+    values: dict[str, float] = {}
+    for record in task.get("scans") or []:
+        body = int(record["body_id"])
+        x, y, z = (float(v) * float(record["scale"]) for v in data.xpos[body])
+        frame = [float(v) for v in data.xmat[body]]
+        heading = math.atan2(frame[3], frame[0])
+        for (ahead, left), name in zip(record["offsets_mm"], record["channels"]):
+            px = x + math.cos(heading) * ahead - math.sin(heading) * left
+            py = y + math.sin(heading) * ahead + math.cos(heading) * left
+            ground = 0.0
+            if terrain and terrain["kind"] == "boxes":
+                ground = float(terrain["lowest_mm"])
+                for box in terrain["boxes"]:
+                    (xa, xb), (ya, yb) = box["x_range_mm"], box["y_range_mm"]
+                    if xa <= px <= xb and ya <= py <= yb:
+                        za, zb = box["top_mm"]
+                        ground = max(ground, za + (zb - za) * (px - xa) / (xb - xa))
+            elif terrain:
+                nrow, ncol = int(terrain["nrow"]), int(terrain["ncol"])
+                (x0, x1), (y0, y1) = terrain["x_range_mm"], terrain["y_range_mm"]
+                gx = (min(max(px, x0), x1) - x0) / (x1 - x0) * (ncol - 1)
+                gy = (min(max(py, y0), y1) - y0) / (y1 - y0) * (nrow - 1)
+                c, r = min(int(gx), ncol - 2), min(int(gy), nrow - 2)
+                fx, fy = gx - c, gy - r
+                e = [float(v) for v in model.hfield_data]
+                level = (e[r * ncol + c] * (1 - fx) * (1 - fy)
+                         + e[r * ncol + c + 1] * fx * (1 - fy)
+                         + e[(r + 1) * ncol + c] * (1 - fx) * fy
+                         + e[(r + 1) * ncol + c + 1] * fx * fy)
+                ground = float(terrain["lowest_mm"]) + level * (
+                    float(terrain["highest_mm"]) - float(terrain["lowest_mm"]))
+            values[str(name)] = z - ground
+    return values
 
 
 def tracking_at(task: dict, step: int, origin: int = 0) -> dict[str, float]:
@@ -308,8 +355,11 @@ def draw_goals(mujoco: Any, model: Any, task: dict, rng: Any) -> list[dict]:
     for entry in task.get("goal") or []:
         segments = []
         if str(entry["kind"]) != "point":
-            for _ in range(int(entry["segments"])):
-                segments.append([rng.uniform(float(entry["low"]), float(entry["high"]))])
+            # A scripted segment (ADR-721) takes its draw and holds its script.
+            scripted = list(entry.get("sequence") or ())
+            for index in range(int(entry["segments"])):
+                value = rng.uniform(float(entry["low"]), float(entry["high"]))
+                segments.append([float(scripted[index]) if index < len(scripted) else value])
             drawn.append({"label": str(entry["label"]), "segments": segments})
             continue
         if data is None:
@@ -591,6 +641,8 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
                 float(data.qacc[int(record["dof"])]) * float(record["scale"]))
         # ADR-706: the reference one step on the clock, where the step landed.
         landed.update(tracking_at(task, step + 1, origin))
+        # ADR-715: the ground round where the step landed.
+        landed.update(scans_at(task, model, data))
         reward = 0.0
         contributions = []
         for label, weight, code in reward_terms:

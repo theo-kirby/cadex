@@ -166,11 +166,13 @@ def test_mjcf_takes_no_trace_parameters() -> None:
         "observations",
         "gravity_m_s2",
         "solver_step_s",
+        # ADR-714: the course a free base stands on, written into the file.
+        "terrain",
         "label",
     }
     # And everything else it takes, api.dynamics shares.
     shared = set(inspect.signature(AssemblyDomainAPI.dynamics).parameters)
-    assert parameters - {"observations"} <= shared
+    assert parameters - {"observations", "terrain"} <= shared
 
 
 def test_the_shared_parameters_have_the_same_defaults_on_both() -> None:
@@ -179,7 +181,7 @@ def test_the_shared_parameters_have_the_same_defaults_on_both() -> None:
     dynamics = inspect.signature(AssemblyDomainAPI.dynamics).parameters
     mjcf = inspect.signature(AssemblyDomainAPI.mjcf).parameters
     for name, parameter in mjcf.items():
-        if name in {"self", "assembly", "bodies", "observations"}:
+        if name in {"self", "assembly", "bodies", "observations", "terrain"}:
             continue
         assert parameter.default == dynamics[name].default, name
         assert parameter.kind == dynamics[name].kind, name
@@ -188,6 +190,8 @@ def test_the_shared_parameters_have_the_same_defaults_on_both() -> None:
     observations = mjcf["observations"]
     assert observations.default == ()
     assert observations.kind is inspect.Parameter.KEYWORD_ONLY
+    assert mjcf["terrain"].default is None
+    assert mjcf["terrain"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 # ---------------------------------------------------------------------------

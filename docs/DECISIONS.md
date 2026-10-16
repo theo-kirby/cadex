@@ -38650,7 +38650,7 @@ ADR-260 by its title.
 `src/Mod/cadex/cadex_tests/test_licensing_compliance.py`, both suites in
 full (`docs/DOCS-AUDIT.md` §Tests).
 
-Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-16. Provenance: [Cadex-new] (ADR-061).
 
 ## ADR-629 — Owner answers to the docs audit: no knee-in-thigh rule, the wolf benchmark is gone, the unused protocol ops stay (2026-10-10)
 
@@ -42319,3 +42319,562 @@ check (the built solid's bounding box is Ø98 × 61.7 mm and its mass is
 940 g at the effective density); the mounting test, parametrised over every
 catalogued SKU, puts a screw in each hole. `pixi run test-engine`: 2986
 passed, 72 skipped.
+
+## ADR-714 — A free base can stand on a declared course: a heightfield (2026-10-16, orun7)
+
+**Context.** orun7's W1 asks for ground that is not flat — bumps, step-ups
+and step-downs, slopes — in the exported model and the task bundle, so a
+legged or wheeled robot can be trained across it. Until now a free base
+(ADR-335) stood on one infinite plane at z = 0 and the script could say
+nothing about the world.
+
+**Decision.** `assembly.mjcf(..., terrain={...})` declares a course, and
+`build_model` writes it as **one MuJoCo heightfield on the world body in
+place of the plane**.
+
+- **The declaration** is data: `x_range_mm`, `y_range_mm`, `cell_mm`
+  (default 20, 5–200) and `features`, each a `bump` (raised cosine, `x_mm`,
+  `y_mm`, `radius_mm`, `height_mm`), a `step` (`x_mm`, `height_mm`, across
+  the width) or a `slope` (`from_x_mm`, `to_x_mm`, `grade_deg`, holding its
+  height after). They add. Negative heights and grades go down.
+  `CadexDynamics.terrain_grid` validates it and samples heights at the grid
+  vertices, row 0 at −Y as MuJoCo reads them; it is pure, so every refusal
+  is tested without MuJoCo.
+- **Refused, by reason:** ground at the origin away from z = 0, where the
+  solved pose stands (`terrain_moves_start`); an extent that excludes the
+  origin (`terrain_excludes_start`); a course flat over its extent
+  (`terrain_is_flat`); more than 262,144 cells or 64 features
+  (`terrain_too_large`); an unknown feature kind or key, or a unit-mistake
+  number (`unknown_terrain_feature`, `malformed_terrain`); terrain on a
+  grounded model (`terrain_needs_free_base`).
+- **It replaces the plane** rather than lying on it: a plane at z = 0 would
+  cover every step down, and one at the lowest point would double every
+  contact on the flat. Beyond the extent there is no ground, so the extent
+  is the course and leaving it is a fall. The heightfield's contact
+  parameters are the plane's (friction 1.0, Cadex's contact spring), and a
+  50 mm base sits under its lowest point.
+- **It travels.** The manifest's `environment` carries `terrain` (extent,
+  grid, lowest and highest point, the validated features) in place of
+  `floor`; the MJCF carries the `<hfield>` inline; `task_records` copies the
+  descriptor into the bundle as `terrain`, and `terrain` joins
+  `TASK_SEMANTIC_FIELDS`: another course is another task. Absent on flat
+  ground, so every earlier model, bundle and digest is unchanged.
+- `("cylinder", "hfield")` and `("ellipsoid", "hfield")` join
+  `_MJX_UNSUPPORTED_PAIRS`, so a task whose cylinder foot can touch the
+  course is refused where it is written (ADR-281), and the MJX-gated test
+  that checks the table against `mjx.has_collision_fn` now covers `hfield`.
+
+**Why a heightfield and not placed boxes.** The charter leaves the form to
+whichever MJX trains reliably. Both have MJX contact functions with box,
+sphere and capsule feet. The heightfield wins on three counts. **One geom,
+whatever the course:** MJX evaluates every candidate pair it is handed, so
+a box per feature multiplies the contact work by the course's length.
+**Shape:** bumps and hills are smooth in a heightfield, and boxes can only
+stair-step them. **Re-draw:** the course is one elevation array, so a
+per-episode or per-environment re-draw is a model field. The costs are
+stated rather than hidden. A step is a one-cell ramp: 20 mm by default,
+against a 40–60 mm paw. A cylinder or ellipsoid foot is refused on a
+course.
+
+**Not in this decision**, and still W1's: the seeded random course and its
+re-draw in the trainer; the height-scan observation (privileged by default,
+O5); the terrain predicates (distance made good, falls, steps and slopes
+crossed); the course in `rollout_policy` and the dashboard; the proof on a
+second robot.
+
+**Evidence.** `test_dynamics_terrain.py` (15 tests). The grid's heights,
+its row order and the descriptor. Each refusal, by reason. In the compiled
+model, the heightfield in place of the plane, with ray-cast ground heights
+matching `terrain_height_mm` within 0.5 mm at seven points on and between
+the vertices. A block at the origin holds at 10 mm for 1 s. The exported
+file carries the course, and the bundle carries `terrain` in its semantic
+view. A cylinder foot is named as the `cylinder`/`hfield` pair. Measured
+in MJX (training venv, CPU): the exported file steps, and the block holds
+at 9.98 mm after 1,000 steps on a course with an 80 mm step, a −10° slope
+and a 40 mm bump.
+
+**Amendment (2026-10-16): `cadex smoke` stands a base on the course.** The
+support check looked only for `environment/floor`, so a free base on a
+declared course failed it ("no environment floor to rest on") although it
+stood. `smoke_runner.py` now takes the ground as `environment/floor` or, in
+its place, `environment/terrain`; the receipt's `checks.support.floor` and
+the penetration pairs name whichever it was. Evidence:
+`test_a_free_base_on_a_terrain_heightfield_is_supported_by_it`, a block on a
+heightfield plateau 40 mm up with no plane, fails before the change and
+passes after.
+
+## ADR-715 — A task can read the ground round a body: a privileged height scan (2026-10-16, orun7)
+
+**Context.** orun7's W1 asks for a height-scan observation, privileged by
+default (O5): a critic that knows the step ahead can value a stride that
+clears it, which a critic reading only proprioception cannot. ADR-714 put a
+course in the world. Nothing in a task could read it.
+
+**Decision.** A new observation kind, `height_scan`, targets a component:
+`assembly.observation(trunk, "height_scan", name="scan", role="privileged")`.
+- **Its channels** are `scan_0` .. `scan_14`, one per point of
+  `CadexDynamics.HEIGHT_SCAN_OFFSETS_MM`. That is 5 points along the body's
+  heading (−100, 0, 100, 200 and 300 mm) by 3 across (−100, 0, 100 mm), with
+  the heading outer and `scan_4` under the body. Each reads the body's
+  height in mm above the ground there. The grid is fixed, so the channels are an
+  enumerable set like every other kind's. It is weighted forward because
+  the ground a gait has to plan for is the ground it is about to reach. It
+  turns with the body's heading (its x axis on the ground) and not with its
+  pitch or roll. A body whose x axis is vertical reads it in the world's
+  frame.
+- **The ground** is the course's own heightfield elevation (`hfield_data`,
+  scaled by the descriptor's lowest and highest points). It is read
+  bilinearly between the four vertices round the point, so it is exact at
+  every vertex, and held at the edge beyond the extent. With no course it is
+  the plane at z = 0. It reads the array the simulator collides with, not
+  the declared features, so a re-drawn course (next in W1) is read as
+  drawn.
+- **It is no sensor.** Its rows travel in the bundle's own `scans` section:
+  name, body, `body_id` in the loaded file, the grid, the channels, the
+  unit and the `scale` from metres to mm, so the trainer multiplies rather
+  than converts (`test_no_conversion_arithmetic_outside_the_pure_module`). The channels come last in every vector, after a reference's tracking
+  channels. They are absent when the task scans nothing, so every existing
+  bundle keeps its bytes and digest. They do not count against the
+  128-channel cap. `scans` joins `TASK_SEMANTIC_FIELDS`, because the critic
+  reads it.
+- **Every evaluator computes it from the state:**
+  `CadexDynamics.height_scan_values` from `MjData.xpos` and `xmat`, the
+  trainer's `height_scan_vector` from MJX's (a `jnp` copy, since the
+  trainer imports nothing from the engine), and the stock-MuJoCo reference
+  runner in its own words. Nothing is carried, so the trainer's scan state
+  is unchanged.
+- **It must be `role="privileged"`** (`height_scan_not_privileged`). No
+  sensor this API declares maps terrain. A scan from the cat's real cameras
+  is a later criterion, and it would ground this channel through a sensor
+  rather than relax the rule.
+
+**Why a fixed grid.** Every observation kind expands to a fixed set of
+suffixes, and the surface's and the engine's tables are tested equal. A
+grid argument would make the channel names depend on a number, for a choice
+no task has yet needed to vary. 100 mm spans a Go1's body and half the
+cat's, and a later ADR can add a spacing.
+
+**Evidence.** `test_dynamics_height_scan` (14 tests, 15 cases):
+- the bundle: the row, its `body_id` against the compiled model, no sensor
+  added, the channels last and none in the policy's inputs, and `scans` in
+  the semantic view;
+- refusals by reason: a policy-role scan, a channel clash, and a component
+  not in the model;
+- the reading on vertices, posed at four headings, equals the declared
+  features' height (step, slope and bump each under some point);
+- off the vertices, yawed 30° and pitched 12°, it agrees with a ray cast
+  onto the heightfield within 1 mm (MuJoCo splits a cell into two
+  triangles; the scan reads it bilinearly);
+- the edge holds beyond the extent, and on the plane the scan reads the
+  body's height;
+- an episode scores its reward on the scan;
+- the stock runner reproduces it on two seeds;
+- the trainer's `numpy` and `jnp` copies equal the engine's, with flat and
+  3×3 `xmat`, batched;
+- from the training venv, MJX's `xpos`/`xmat` give the engine's reading on
+  the course, and a 3-iteration CPU run trains with the scan in the
+  critic's inputs, keeps it out of the actor's, and the engine verifies the
+  policy.
+
+**Not in this decision, and found while proving it.** The end-to-end run
+was meant to train on the course, and the trainer cannot yet do that. On
+ADR-714's test rig (a box block with a box arm, hinged), MJX steps under
+random ±0.8 N·m torque until one of 8 environments is thrown to 1.8 m and
+goes non-finite at control step 18. Stock MuJoCo holds all 8 at 10.0 mm on
+the same draws, and MJX on the plane holds all 8. A capsule block goes
+non-finite at step 96. So the trainer diverges at iteration 1 on the
+course, with or without a scan, while the same task on the plane trains.
+The overflow MJX warns of is inside its own heightfield-convex collider
+(`jp.finfo(float).max` cast to float32). The trainer's end-to-end test
+therefore runs the scan on the plane, and the course reading is held by the
+MJX parity test. ADR-714's claim that the heightfield "trains reliably" is
+open until that defect is fixed or a placed-box course replaces it.
+
+## ADR-716 — A course can be placed boxes, the form MJX trains on (2026-10-16, orun7)
+
+**Context.** ADR-714 wrote a declared course as one MuJoCo heightfield and
+expected MJX to train on it. ADR-715 found that it does not: under driven
+motion MJX's float32 heightfield-convex collider throws ADR-714's box rig to
+non-finite, and the trainer diverged at iteration 1 on any course task.
+ADR-714 named placed boxes as the alternative. orun7's W1 needs a course
+the trainer can train on, and W2 needs the cat to cross one.
+
+**Measurement first** (scratch, not committed; MJX 3.10.0 on CPU while the
+GPU trained). The cat's own exported model (f1-g1, 27 actuators, sphere
+paws, box chest and pelvis) on three grounds carrying the same course
+(two 40 mm bumps, an 80 mm platform, a 15° ramp up and down): 24 starts on
+the features at up to 3 m/s forward, position targets drawn across each
+action's range and held 0.1 s, 300 control steps.
+- Stock MuJoCo: finite on all three; peak joint speed 43, 39, 45 rad/s
+  (plane, boxes, heightfield).
+- MJX: finite on all three; peak 39 (plane), 48 (boxes), **179**
+  (heightfield). Wall time 82 s, 134 s, 338 s.
+- ADR-714's block and arm, 32 envs, random ±0.8 N·m for 100 control steps:
+  heightfield 3 of 32 non-finite from control step 10, one thrown 9.9 m;
+  boxes 0 of 32, the highest at 0.18 m.
+So the boxes behave like the plane under MJX, where the heightfield either
+diverges or pumps energy into the joints, and they cost less, not more,
+than the heightfield did.
+
+**Decision.** `terrain={"form": "boxes", ...}` builds the course from
+placed boxes; `"heightfield"` (ADR-714) stays the default, so every
+existing model, bundle and digest is unchanged.
+- **The same features.** Steps and slopes cut the extent along x into
+  segments. A flat segment above the lowest point is a `block` from 50 mm
+  below the plane up to its height. A graded one is a `ramp`, a 20 mm box
+  turned about y to its grade with its top face on the segment, on a
+  `block` that fills under it to its lower end. A bump is a square `block`
+  `radius_mm` across (where its raised cosine is at half height) whose
+  flat top stands `height_mm` above the steps and slopes at its centre.
+- **The plane**, lowered to the course's lowest point, is named
+  `environment/terrain`; the boxes are `environment/terrain/<i>`. All carry
+  the plane's contact parameters. Beyond the extent the plane goes on: a
+  step down off the course is a drop, not a fall into nothing.
+- **The descriptor** has `kind: "boxes"` and a `boxes` list, each record's
+  `shape`, `x_range_mm`, `y_range_mm` and `top_mm` (the top at the two x
+  ends). It has no grid: no `cell_mm`, `nrow` or `ncol`.
+- **The ground** is the highest box top over a point, or the plane
+  (`terrain_box_ground_mm`). The height scan (ADR-715) reads it in the
+  engine, the trainer (`height_scan_vector`, in `jnp` over the boxes) and
+  the stock reference runner; it ignores `hfield_data`.
+- **Refused, by reason:** a bump with a negative height
+  (`terrain_dip_needs_heightfield`: a course built up from a plane has no
+  dips); `cell_mm` on a box course (`malformed_terrain`); an unknown form
+  (`malformed_terrain`); and a step down off a slope's high end
+  (`terrain_step_off_slope`), where the turned ramp's end face would stand
+  proud of the lower ground. Higher or equal ground past a high end covers
+  that face.
+- **`cadex smoke`** counts contact with any `environment/terrain/<i>` box
+  as standing on the ground.
+- MJX's unsupported pairs are unchanged: a box course refuses a cylinder or
+  ellipsoid foot through the existing `("box", "cylinder")` and
+  `("box", "ellipsoid")` rows.
+
+**Why not fix the heightfield.** The overflow is inside MJX's collider, a
+pinned third-party package; Cadex cannot patch it without vendoring. A box
+course is exact on steps (the heightfield's step is a one-cell ramp) and
+needs no new dependency. What it cannot express, dips and smooth hills, is
+still the heightfield's.
+
+**Evidence.** `test_dynamics_terrain_boxes` (8 tests, 14 cases): the boxes
+and the reading at eleven named points, on and off the extent; seven
+refusals by reason; a step up past a ramp's high end accepted; MuJoCo's ray
+meets the reading within 0.001 mm on 165 points over steps, ramps and a
+block; a block at the origin rests at 10 mm; the exported file and the
+bundle carry the boxes; a cylinder foot refused; and, from the training
+venv, MJX keeps the driven rig finite on the box course (32 envs × 100
+control steps), the same test measuring 3 of 32 non-finite on the
+heightfield. `test_dynamics_height_scan` gains the scan on a box course
+against MuJoCo's ray and the stock runner, and the trainer's numpy copy.
+Its end-to-end test now trains on the box course with the critic reading
+the scan, where it ran on the plane before. `cli/tests/test_smoke.py`
+gains a block on a box course, supported; it fails without the smoke change.
+
+## ADR-717 — A box course can be drawn from a seed, and the trainer re-draws it per episode (2026-10-16, orun7)
+
+**Context.** orun7's W1 asks for "a seeded random course of [bumps, steps
+and slopes], re-drawn per episode for training", and W2 needs the cat to
+cross courses it was not trained on. ADR-716 made placed boxes the form MJX
+trains on, but a course was one fixed list of features.
+
+**Decision.** A box course may declare `random` in place of `features`.
+- **The draw** (`terrain_random_spec`, `terrain_random_features`, pure):
+  `seed`, `courses` (default 32, 1–64), `clear_mm` (flat start, ≥ 50,
+  default 500), `run_mm` (flat before each step or slope, low ≥ 50, default
+  300–800), and magnitude ranges `step_mm`, `grade_deg` (with `slope_mm`,
+  default 400–1000) and `bump_mm` (with `bump_radius_mm`, default 100–200,
+  and `bumps`, default 6); at least one of the three. Course *k* is
+  `random.Random('cadex-terrain:<seed>:<k>')`: from `clear_mm`, a run, then a
+  step or a slope by `choice`, until one leaves the extent, each signed down
+  while the course is above z = 0 and up while below (by `choice` at it);
+  then one to `bumps` bumps clear of the start. The flat run keeps a step off
+  a ramp's end, and the signing keeps a long course near its start height.
+  Each course is validated as a listed one would be.
+- **Course 0 is the model's.** The descriptor's `features` and `boxes` are
+  course 0's, so the MJCF, `cadex smoke`, the stock runner, evaluation and
+  `rollout_policy` stand on it unchanged.
+- **The pool travels as features.** `terrain.pool` lists every course's
+  features, lowest and highest point and box count; `terrain.slots` is the
+  fullest course's box count, and the model has that many
+  `environment/terrain/<i>` geoms, those course 0 leaves empty parked as
+  1 mm cubes a metre under the plane. Features rather than boxes because the
+  bundle is written indented under `MAXIMUM_TASK_BYTES` (1 MB), the heavy
+  cat's bundle is already 700 KB, and a box costs about 3.5 times a
+  feature's bytes; a 32-course pool on a 13 m course is about 80 KB. That
+  is also why `courses` stops at 64.
+- **The trainer re-draws per episode.** `training/cadex_train.py` rebuilds
+  each pooled course's boxes and geom placements (`course_boxes`,
+  `course_geoms`: the engine's `terrain_boxes` and `terrain_box_geoms`
+  written out again, since it cannot import the engine, and held equal on
+  every pooled course by a test). At every reset each environment gets a
+  course by `jax.random.randint` folded from the reset key with 717 — on
+  device, like the goal pool's pick, and a task without a pool draws the
+  stream it always did. `place_course` writes the course's `geom_pos`,
+  `geom_quat`, `geom_size`, `geom_rbound` and `geom_aabb` (and the plane's
+  height) into the MJX model inside the vmapped step and forward, and the
+  height scan reads the same course's boxes. The descriptor states
+  `scale`, the model's metres per millimetre, so the trainer's placements
+  multiply by it and convert nothing itself (`test_dynamics_units`). The
+  policy header records
+  `training.terrain`: mode `per_episode`, the pool algorithm, the bundle's
+  draw algorithm and the course count; absent without a pool.
+- `terrain` stays in `TASK_SEMANTIC_FIELDS`: another pool is another task,
+  so the warm-start rules are unchanged.
+- **Refused, by reason:** `random` on a heightfield, or with `features`, an
+  unknown key, an empty or inverted range, a grade at 60° or more, a short
+  `run_mm` or `clear_mm`, or a draw of nothing (`malformed_terrain`); more
+  than 64 courses (`terrain_too_large`); an extent that ends inside the
+  first run (`terrain_is_flat`).
+
+**Not in this decision.** Evaluation still judges every seed on course 0; a
+course per evaluation seed is W1's next piece, with the terrain predicates.
+The heightfield is not re-drawn (ADR-716: MJX does not train on it).
+
+**Evidence.** `test_dynamics_terrain_random` (8 tests, 18 cases): one seed
+draws one pool, course 0 is the model's, six distinct courses; every
+pooled course valid, in its ranges, signed back towards z = 0, with a flat
+run before each feature; eleven refusals by reason; the trainer's builder
+equal to the engine's on every course; the model's slots, its parked geoms,
+and MuJoCo's ray meeting course 0's reading; the trainer's placement of each
+course equal to the geoms the engine compiles for that course listed; the
+bundle carries the pool; under MJX (training venv, CPU) 16 environments start
+on several courses, each one's privileged scan reads its own course, resets
+re-draw all six, and everything stays finite; and a block dropped on each
+course under `place_course` rests 10 mm above that course's ground. Stock
+MuJoCo's `mj_ray` cannot check a re-placed course, because it culls static
+geoms with the compile-time bounding-volume tree; hence the compiled-geom
+comparison. `test_dynamics_height_scan`'s end-to-end trainer test now trains
+on the random course and checks the header's `training.terrain`.
+
+## ADR-718 — Terrain predicates, and a held-out course per evaluation seed (2026-10-16, orun7)
+
+**Context.** orun7's W1 asks for predicates for terrain tasks (distance made
+good over the course, falls, the steps and slopes crossed), and W2 judges
+the cat on a randomised course on the 10 frozen seeds. ADR-717 left every
+seed on course 0, the one the model carries, which is also a course the
+trainer's pool draws from.
+
+**Decision.**
+- **Six metrics** join `CadexEvaluation.METRICS`. On any floating base:
+  `distance_made_good_mm`, the base centre of mass's net plan travel along
+  the heading the episode started on (posture family), and `falls`, 1.0
+  when at any frame the base tilted `FALL_TILT_DEG` (60°) or its centre of
+  mass came down to `FALL_HEIGHT_SHARE` (half) of its first frame's height
+  above the ground under it. It is read from poses, so it holds whatever
+  the task terminates on, and the ground is the course's, so a robot that
+  stepped down 80 mm at standing height has not fallen. On a declared
+  course (need `terrain`): `steps_crossed`, `slopes_crossed`,
+  `largest_step_crossed_mm` and `steepest_slope_crossed_deg`, the steps
+  (at `x_mm`) and slopes (by `to_x_mm`) that lie ahead of the centre of
+  mass's first plan x and at or behind its last, so crossed and come back
+  is not crossed; the largest magnitude, up or down, and 0 when none.
+  Courses run along +x (ADR-714). A spec bounding a step count on flat
+  ground is refused where it is declared (`success_metric_needs_terrain`).
+- **A held-out course per seed.** `terrain_evaluation_course` re-draws a
+  drawn box course for each evaluation seed with the pool's own algorithm
+  under the key `eval:<seed>:<n>` in place of a course number, keeping the
+  first draw whose boxes fit the model's slots (at most 16 draws, else
+  `terrain_evaluation_course_unfit`). No seed is judged on a pooled course,
+  the rule evaluation seeds already keep against the training seed. A
+  listed course or a heightfield is every seed's.
+- **The seed stands on it.** `evaluate_success` compiles each seed's model
+  and `place_terrain_course` writes the course into its terrain geoms, as
+  the trainer's `place_course` does in MJX, and the played task's
+  `terrain` is the course, so the height scan and the predicates read it.
+  The row's `detail.terrain` names the course and lists what was crossed.
+
+**Found while proving it.** Writing the geoms is not enough in stock
+MuJoCo: its midphase culls a static geom by the world body's
+bounding-volume tree, built at compile round course 0's boxes, and a block
+dropped on a re-placed raised box fell straight through it to the plane
+(−44 mm against 67 mm). Disabling the midphase put it on the box, which
+named the cause; `place_terrain_course` instead re-boxes the tree's leaves
+round the placed geoms and each node round its children, so culling stays
+on. MJX has no such tree, which is why ADR-717's trainer was unaffected.
+
+**Not in this decision**, and still W1's: the course in `rollout_policy`
+and the dashboard, and the proof on a second robot.
+
+**Evidence.** `test_dynamics_terrain_predicates` (10 tests): ten seeds draw
+ten distinct held-out courses, none pooled, each fitting the slots and
+valid; a listed course is unchanged; the unfit refusal; steps and slopes
+crossed counted with their largest, a short run crossing none, crossed and
+come back not counted; a fall by tilt and by height over the course's
+ground, not by an 80 mm step-down; distance made good along a 30° start
+heading and zero sideways; the vocabulary's needs; a block on each of
+several seeds' placed courses rests 10 mm above that course's ground (fails
+without the re-boxing); `evaluate_success` end to end on three seeds, each
+row naming its own course and passing `falls`, `steps_crossed` and
+`distance_made_good_mm`; and the flat-ground refusal.
+
+## ADR-719 — Footfall phase error is counted on the frame grid (2026-10-16, orun7)
+
+**Context.** `CadexEvaluation.reference_metrics` read each landing's offset
+as `(t - due) / length` from float frame times. A rollout's times are
+`step * control_interval`, so a landing exactly 2 frames off in a 20-frame
+stride read `0.10000000000000003`–`0.10000000000000006`, and a spec bound of
+`footfall_phase_error_max <= 0.1` failed on every seed of orun7's f1-g2
+(`swift-crane-9674`): a gate decided by float noise, not by the gait.
+
+**Decision.** `gait()`'s per-foot record carries `frame_s`, the frame
+interval its landings lie on. `reference_metrics` snaps the anchor's
+landings and each foot's to whole frames (`round(t / frame_s)`), measures a
+foot's offset from its stride's anchor landing in frames, and divides by the
+stride's frame count once. The due moment, `expected * stride_frames`, stays
+a real number, so a reference offset that falls between frames is still
+measured to its fraction. No epsilon is added to any bound; the metric is
+what it always meant, now computed exactly where the answer is exact.
+
+**Evidence.** `test_reference_metrics::test_a_two_frame_offset_in_a_twenty_frame_stride_reads_exactly_a_tenth`
+builds landings on a `step * 0.02` clock: the old code reads
+`0.10000000000000006` and fails; the fix reads `0.1` and the bound holds.
+The other eleven reference-metric tests are unchanged and pass.
+
+## ADR-721 — A commanded yaw rate, scripted goal openings, and command-tracking predicates (2026-10-16, orun7)
+
+**Context.** orun7's R1 asks a policy to follow a commanded forward speed
+and yaw rate, both re-sampled in the episode, including a 180° reversal,
+and to be judged on yaw-rate RMS error (≤ 20°/s outside a 0.5 s settling
+window after each change), speed RMS error (≤ 0.3 m/s) and the reversal
+done (heading within 20° of the new command) within 3 s. The task language
+had a forward `speed` goal and nothing for turning; `speed_ratio` compares
+a mean with a mean and cannot say how quickly a change was followed; and a
+goal's segments were always drawn, so no spec could put the same reversal
+on every evaluation seed.
+
+**Decision.** Three general locomotion features, for any floating base,
+legged or wheeled (charter O3):
+- `GOAL_KINDS` gains `yaw_rate`: one channel, deg/s about world +Z,
+  anticlockwise positive, drawn `uniform(low, high)` per segment like a
+  speed. At most one per task, read by kind. A success predicate on it
+  needs `turn`, with its own correction.
+- `assembly.goal(..., sequence=[...])` on a value, speed or yaw-rate goal:
+  segment *k* holds `sequence[k]` (each in `between`), later segments are
+  drawn. The draw is **still taken** for a scripted segment, so the stream
+  after it is the unscripted one. `GOAL_SEQUENCE_ALGORITHM` is appended to
+  the bundle's `goal_algorithm` only when a goal carries a sequence, so
+  every earlier bundle keeps its digest. The engine draw, the reference
+  runner and the trainer's host draw all apply it.
+- A **tracking** family in `CadexEvaluation`: `speed_error_rms_mm_s`
+  (needs `base`, `command`), `yaw_rate_error_rms_deg_s` and
+  `reversal_heading_error_deg_max` (need `base`, `turn`). Rates are read
+  over a centred 0.5 s window (about a stride, so in-stride surge is not
+  charged); a frame counts past 1 s and when no command changed from 0.5 s
+  before it to the end of its window. A reversal is a held yaw-rate command
+  that turns the commanded heading through 180° before it changes, judged
+  at `180/|rate|` after it was issued; none commanded reads unmeasured, so
+  a spec that bounds it fails rather than passes vacuously.
+  `evaluate_success` hands the per-frame speed and yaw-rate goals in.
+
+**Not in this decision.** The tail predicates (ground contact share, root
+pitch against the pelvis, tail yaw against the commanded yaw rate) and the
+R1 task and training on orun7-cat.
+
+**Evidence.** `test_command_tracking` (engine suite): the kind and the
+sequence round-trip the API and the bundle, with the appended algorithm;
+the engine draw, reference runner and trainer agree on a scripted stream
+and the stream after a scripted segment is the unscripted one; out-of-range
+or non-numeric sequences are refused; a synthetic base that tracks exactly
+reads zero error, a constant lag reads its size, the settling window drops
+the frames after a change; a turn at 60°/s for 3 s reads a reversal error
+equal to its heading shortfall, and one cut short or never commanded reads
+`None`; the `turn` need refuses a spec on a task with no yaw-rate goal.
+
+## ADR-722 — Appendage predicates: ground contact, pitch against the parent, yaw against the turn command (2026-10-16, orun7)
+
+**Context.** orun7's reworked A2 asks that the cat's tail be carried clear
+of the ground in every R1 and W2 rollout ("tail–ground contact share = 0",
+as a predicate, not by eye), that its root pitch be decoupled from the
+pelvis's (the correlation shown to fall from the first tail's 0.93), and
+that it be used in turns (its yaw measured against the commanded yaw rate).
+The first tail's figures came from a scratch scorer; a success spec could
+name feet, a tip and a judged body, but nothing that is a chain off the
+base.
+
+**Decision.** A general **appendage** (charter O3: a tail, a trunk, a
+mast -- any chain hanging from a floating base that is not a leg):
+- `assembly.success(..., appendage=[root, ..., last])`, components root
+  first. Absent from the spec value, the resolved spec and the bundle when
+  none is named, so every earlier bundle keeps its digest. At most 32.
+- `evaluation_rig(model, appendage=...)` refuses a link the model lacks, a
+  list that is not a chain (each link must hang from the one before; the
+  root from the base), a non-primitive collision shape, and a chain with no
+  collision shape at all; it records each link's primitives and the root's
+  parent body. Needs a floating base over one floor plane.
+- A new need, `appendage`, and three metrics in `CadexEvaluation`:
+  - `appendage_ground_contact_share` (needs `base`, `appendage`): the share
+    of frames any primitive's lowest point is within `STANCE_MM` (1 mm) of
+    the ground under it -- the terrain course's ground when there is one.
+  - `appendage_pitch_parent_correlation` (`base`, `appendage`): Pearson r
+    after the 1 s settle between the root's pitch and its parent's, each
+    the elevation of the base's starting forward direction as that body
+    carries it, so the two are read on one axis whatever each body's frame.
+  - `appendage_yaw_turn_correlation` (`base`, `appendage`, `turn`): |r|
+    after 1 s between the `yaw_rate` goal and the chain's yaw relative to
+    the base (the plan bearing from the root's origin to the centre of the
+    last link's last primitive, less the base's heading). Its magnitude,
+    because whether a tail swings into a turn or out of it is the
+    mechanism's to choose; the signed r and the slope (deg per deg/s) are
+    in the detail. Unmeasured (failed if bounded) when the command never
+    changed.
+- `evaluate_success` puts the links and the parent into the trace and
+  hands the yaw-rate goal in; the report's spec echoes the appendage.
+
+**Not in this decision.** The appendage's own command high-frequency
+share (A2 asks it reported; it is a per-channel reading of the drive
+family, not a pose reading) and any reward term: the R1 task's tail
+clearance term is the project's, written in the reward language.
+
+**Evidence.** `test_appendage_metrics` (engine suite, 9 tests): a tail
+carried rigidly by a pitching base reads r = 1 and one whose root joint
+cancels the base's pitch reads |r| < 0.1; the contact share equals the
+share of frames a synthetic tail is drooped onto the floor, and is read
+against a raised ground under it; a tail swept at −0.4° per deg/s reads
+|r| = 1, signed r = −1 and slope −0.4, and one that ignores the command
+reads < 0.15; a constant command is unmeasured; `measure` reads the family
+only for a rig with an appendage; the API carries the list and omits it
+when empty; a task refuses a stranger; on a MuJoCo model the bundle carries
+it, the rig names the parent, and a missing link, a non-chain and a metric
+without an appendage are refused by reason.
+
+## ADR-724 — A joint's stop is as stiff as its joint_dynamics says (2026-10-16, orun7)
+
+**Context.** MuJoCo's joint limit is a soft constraint; its default
+`solreflimit` (time constant 0.02 s, damping ratio 1) scales with the
+joint's own effective inertia, and Cadex exposed no way to change it. On
+orun7-cat's passive hind-paw pin (144 g, 1.7e-4 kg·m²) the default stop
+yielded 6.3/25.2/50.4° past the stop at 0.5/2/4 N·m, and in r1-t3's rollouts
+the paw folded up to 72° past its 45° stop, so A3's paw stood on its toe
+sphere. A real shoulder-bolt stop does not yield 50°.
+
+**Decision.** `assembly.joint_dynamics` takes `limit_time_constant_s` (0 <
+t ≤ 1) and `limit_damping_ratio` (0 < r ≤ 10), MuJoCo's standard
+(time-constant) form, written to the joint's `solref_limit`. Either alone
+is a declaration; the other keeps MuJoCo's default. Both are dimensionless
+in the joint's units, so they need no suffixed pair. The pure module
+refuses:
+- a limit stiffness on a joint with no limits
+  (`limit_stiffness_without_limits`): it would set nothing;
+- a time constant below two solver steps
+  (`limit_time_constant_below_solver_floor`): MuJoCo's `refsafe` silently
+  raises it to that floor, so the stop would be softer than declared.
+The model evidence carries `limit_solref` per entry and the declared pair;
+the export round trip now compares `jnt_solref` and `jnt_solimp`, so a file
+that lost a stop's stiffness is caught.
+
+**Not in this decision.** `solimplimit` (impedance and its width): its width
+is in the joint's own units (rad or m) and the measured defect is answered
+by the time constant alone. MuJoCo's direct (negative stiffness/damping)
+form, which bypasses `refsafe`: it is still inertia-scaled, not a physical
+N·m/rad, and the floor refusal says how to get a stiffer stop (a finer
+solver step).
+
+**Evidence.** `test_dynamics_limit_stiffness` (engine suite, 10 tests): the
+API carries the pair and refuses out-of-range values; the compiled model
+carries `[0.004, 1.5]` on the elbow while the shoulder keeps `[0.02, 1]`;
+a ratio alone keeps the default time constant; 0.002 s at a 0.002 s step is
+refused naming the 0.004 s floor and admitted at a 0.001 s step; a hinge
+with no limits is refused; with gravity off and 20 N·m held on the elbow
+against its stop, the default stop yields 7.6° and 0.004 s yields 0.3°; the
+exported file keeps the time constant. Six of the ten fail without the
+change.

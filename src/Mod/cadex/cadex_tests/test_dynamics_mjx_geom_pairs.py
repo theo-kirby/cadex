@@ -23,7 +23,7 @@ Two halves, and only the first runs under ``pixi run test-engine``:
 * the filter and the refusal, on stock MuJoCo, which the engine has;
 * the table itself against ``mjx.has_collision_fn``, which needs the
   offboard trainer's venv and skips here (ADR-084). A future MJX that
-  implements one of these four fails that test, and that failure is good
+  implements one of these fails that test, and that failure is good
   news -- its message says so.
 """
 
@@ -257,7 +257,8 @@ def test_the_unsupported_table_is_what_mjx_actually_refuses() -> None:
         )
 
     kinds = sorted(
-        {str(name) for name in dyn._COLLISION_GEOM_TYPES.values()} | {"ellipsoid"}
+        {str(name) for name in dyn._COLLISION_GEOM_TYPES.values()}
+        | {"ellipsoid", "hfield"}  # hfield: a declared course (ADR-714)
     )
     measured = set()
     for first in kinds:
@@ -271,9 +272,10 @@ def test_the_unsupported_table_is_what_mjx_actually_refuses() -> None:
             ) or collision_driver.has_collision_fn(*reversed(enums)):
                 continue
             measured.add(tuple(sorted((first, second))))
-    # plane/plane and plane/hfield have no contact function and never
-    # become candidate pairs, so they are not the engine's business.
-    measured.discard(("plane", "plane"))
+    # plane/plane, plane/hfield and hfield/hfield have no contact function
+    # and never become candidate pairs (the ground is the world's, one weld),
+    # so they are not the engine's business.
+    measured -= {("plane", "plane"), ("hfield", "plane"), ("hfield", "hfield")}
     assert measured == set(dyn._MJX_UNSUPPORTED_PAIRS), (
         "MJX's set of unimplemented collision pairs has changed. If it "
         "shrank, that is good news: drop the row from "

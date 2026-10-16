@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-14. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-16. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -2949,7 +2949,9 @@ The command checks:
   `in_contact` counts those within it, and the dynamics run writes the
   contacts it saw to `smoke-contacts.json`.
 - Floor-proxy penetration no deeper than `--penetration-mm 0.5`, and a free
-  base whose design is touching the environment floor at the end, whose linear
+  base whose design is touching the environment's ground at the end (its
+  floor, or the terrain heightfield a declared course puts in the floor's
+  place, ADR-714), whose linear
   speed is at most `--rest-speed-mm-s 10`, and which has turned no further
   than `--max-tilt-degrees 30` from the attitude its accepted keyframe gave it
   (ADR-377: a design that toppled and settled meets the first two and is not
