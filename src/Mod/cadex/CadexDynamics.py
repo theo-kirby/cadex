@@ -4252,6 +4252,62 @@ def place_terrain_course(model: Any, course: Mapping[str, Any]) -> None:
     _rebox_world_tree(model)
 
 
+#: The most vertices a drawn heightfield carries along one axis
+#: (:func:`terrain_drawing`): a viewer's picture of the ground, not the
+#: collider, so a fine grid is sampled down rather than shipped whole.
+TERRAIN_DRAWING_MAXIMUM_VERTICES = 129
+
+
+def terrain_drawing(course: Mapping[str, Any]) -> dict[str, Any]:
+    """What a viewer draws of the course an episode stood on, pure (ADR-734).
+
+    A box course is its boxes as they stand, each a centre, an ``xyzw``
+    rotation and half-extents in mm (:func:`terrain_box_geoms`, without the
+    parked slots), and the plane at its lowest point, which goes on beyond
+    the extent. A heightfield is a grid of heights over its extent, sampled
+    to at most :data:`TERRAIN_DRAWING_MAXIMUM_VERTICES` a side from its
+    declared features, with no plane: beyond it there is no ground. A trace
+    carries this, so a film or a dashboard shows the seed's own course
+    rather than the model's course 0."""
+
+    drawing: dict[str, Any] = {
+        "kind": str(course["kind"]),
+        "x_range_mm": [float(v) for v in course["x_range_mm"]],
+        "y_range_mm": [float(v) for v in course["y_range_mm"]],
+        "lowest_mm": float(course["lowest_mm"]),
+        "highest_mm": float(course["highest_mm"]),
+    }
+    if course.get("course") is not None:
+        drawing["course"] = dict(course["course"])
+    if course["kind"] == "boxes":
+        placed = terrain_box_geoms(course["boxes"], float(course["lowest_mm"]))
+        drawing["plane_z_mm"] = length_mm(placed["plane_z_m"])
+        drawing["boxes"] = [
+            {"shape": str(record["shape"]), "centre_mm": vector_mm(pos),
+             "rotation_xyzw": quaternion_xyzw_from_wxyz(quat), "half_mm": vector_mm(size)}
+            for record, pos, quat, size in zip(
+                course["boxes"], placed["pos_m"], placed["quat"], placed["size_m"])
+        ]
+        return drawing
+    (x0, x1), (y0, y1) = drawing["x_range_mm"], drawing["y_range_mm"]
+    cell = float(course.get("cell_mm") or TERRAIN_CELL_RANGE_MM[1])
+    columns = min(int(round((x1 - x0) / cell)) + 1, TERRAIN_DRAWING_MAXIMUM_VERTICES)
+    rows = min(int(round((y1 - y0) / cell)) + 1, TERRAIN_DRAWING_MAXIMUM_VERTICES)
+    columns, rows = max(columns, 2), max(rows, 2)
+    features = list(course.get("features") or ())
+    drawing["plane_z_mm"] = None
+    drawing["grid"] = {
+        "rows": rows, "columns": columns,
+        # Row 0 at -Y, column 0 at -X, as MuJoCo reads a heightfield.
+        "heights_mm": [
+            round(terrain_height_mm(features, x0 + (x1 - x0) * c / (columns - 1),
+                                    y0 + (y1 - y0) * r / (rows - 1)), 3)
+            for r in range(rows) for c in range(columns)
+        ],
+    }
+    return drawing
+
+
 def _rebox_world_tree(model: Any) -> None:
     """The world body's bounding-volume tree, re-boxed round where its geoms
     stand now (:func:`place_terrain_course`): a leaf round its geom (its own
@@ -4424,6 +4480,8 @@ def _terrain_box_course(
              "highest_mm": entry["highest_mm"], "boxes": len(entry["boxes"])}
             for drawn, entry in courses
         ]
+    if terrain.get("collides_with") is not None:
+        descriptor["collides_with"] = sorted({int(group) for group in terrain["collides_with"]})
     return {"descriptor": descriptor, "heights_mm": None}
 
 
@@ -4452,7 +4510,7 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             reason="malformed_terrain",
             correction="Give terrain as a dict with x_range_mm, y_range_mm and features.",
         )
-    allowed = {"x_range_mm", "y_range_mm", "cell_mm", "features", "form", "random"}
+    allowed = {"x_range_mm", "y_range_mm", "cell_mm", "features", "form", "random", "collides_with"}
     extra = sorted(str(key) for key in terrain if key not in allowed)
     if extra:
         raise DynamicsError(
@@ -4485,6 +4543,22 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             correction="cell_mm is a heightfield's grid; a box course has none. Leave it out.",
             observed={"cell_mm": terrain.get("cell_mm")},
         )
+    collides_with = terrain.get("collides_with")
+    if collides_with is not None:
+        if form != "boxes":
+            raise DynamicsError(
+                f"{context} gives collides_with for a heightfield.",
+                reason="malformed_terrain",
+                correction="collides_with limits a box course's boxes (ADR-739); a heightfield has none.",
+            )
+        if (isinstance(collides_with, (str, bytes)) or not isinstance(collides_with, Sequence)
+                or not collides_with):
+            raise DynamicsError(
+                f"{context} gives collides_with {collides_with!r}.",
+                reason="malformed_terrain",
+                correction="collides_with is a non-empty list of collision groups, the robot's feet's.",
+            )
+        contact_masks(0, [int(group) for group in collides_with], context=context)
     x0, x1 = _terrain_range(terrain, "x_range_mm", context)
     y0, y1 = _terrain_range(terrain, "y_range_mm", context)
     if form == "boxes":
@@ -4578,6 +4652,11 @@ def _environment_box_course(mujoco: Any, spec: Any, descriptor: Mapping[str, Any
         size=[0.0, 0.0, length_m(ENVIRONMENT_FLOOR_GRID_MM)],
         **contact,
     )
+    if descriptor.get("collides_with") is not None:
+        # ADR-739: the boxes touch only the named groups (the feet); the plane
+        # under them still takes every geom, so a fall still lands.
+        _, affinity = contact_masks(0, descriptor["collides_with"], context="the course")
+        contact = {**contact, "contype": 0, "conaffinity": affinity}
     placed = terrain_box_geoms(descriptor["boxes"], lowest, descriptor.get("slots"))
     for index, (pos, quat, size) in enumerate(
             zip(placed["pos_m"], placed["quat"], placed["size_m"])):
@@ -8001,8 +8080,10 @@ MAXIMUM_EPISODE_STEPS = 200_000
 #: The bundle's own byte cap. A task is names, numbers and short
 #: expressions -- no geometry -- so this is three orders of magnitude below
 #: ``MAXIMUM_MJCF_BYTES`` on purpose: a task file approaching a megabyte is
-#: not a task, it is a mistake with a loop in it.
-MAXIMUM_TASK_BYTES = 1024 * 1024
+#: not a task, it is a mistake with a loop in it. ADR-738 raised it from 1 MB
+#: to 4 MB: a gait reference on a 30-actuator cat is a real 1 MB, and a course
+#: pool rides on top of it; a loop still overruns 4 MB.
+MAXIMUM_TASK_BYTES = 4 * 1024 * 1024
 
 #: The schema the bundle declares, and the version a reader checks first.
 TASK_SCHEMA = "cadex-training-task-v1"
@@ -15023,6 +15104,10 @@ def rollout_policy(
             }
             if goals else {}
         ),
+        # ADR-734: the course the episode stood on, as a viewer draws it --
+        # the task's own, which an evaluation seed has re-drawn. Absent on
+        # flat ground, so that trace is the document it always was.
+        **({"terrain": terrain_drawing(task["terrain"])} if task.get("terrain") else {}),
         # Read off the reloaded model rather than off the bundle: these are
         # facts about the file that ran, and the file is the claim.
         "solver_step_s": float(model.opt.timestep),
@@ -15349,6 +15434,7 @@ def evaluate_success(
                     {"goal_channels": list(run["goal_channels"])}
                     if "goal_channels" in run else {}
                 ),
+                **({"terrain": run["terrain"]} if "terrain" in run else {}),
                 "dynamics": {
                     "solver": "mujoco",
                     "solver_step_s": float(run["solver_step_s"]),

@@ -278,7 +278,7 @@ def test_the_trainer_requirements_are_exactly_pinned_and_stay_out_of_pixi() -> N
 
 _ALLOWED_TOP_LEVEL = {
     "__future__", "argparse", "ast", "copy", "hashlib", "json", "math", "pathlib",
-    "platform", "random", "sys", "time", "typing",
+    "platform", "random", "sys", "time", "typing", "xml.etree",
 }
 _ALLOWED_DEFERRED = _ALLOWED_TOP_LEVEL | {
     "jax", "jax.numpy", "numpy", "mujoco", "mujoco.mjx", "struct",

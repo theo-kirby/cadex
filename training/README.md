@@ -226,9 +226,14 @@ The keys that may differ are `CURRICULUM_TASK_KEYS`: `disturbance`,
 `episode` (`episode_seconds` and `max_steps` only, never the control rate),
 `label`, `randomisation`, `reset_variation`, `reward`, `success` (ADR-597)
 and `termination`. None changes what the network reads or emits. Every
-other key is refused: `observations`, `actions`, `goal`, `reference`,
-`terrain` and the rest. A new course changes the model too, so a warm start
-from flat ground onto a course is refused on the model digest.
+other key is refused: `observations`, `actions`, `goal`, `reference` and
+the rest. One exception is a step onto a course, or between courses
+(ADR-736). There, `model`, `terrain`, `scans` and `observations` may move
+together, provided the robot is the same less everything named
+`environment/` (`robot_xml`), and only privileged rows (a height scan) come
+or go. Because the critic starts fresh, `--critic-warmup N` trains only the
+critic for the first N iterations (ADR-740). Without it, PPO followed the
+fresh critic's noise and knocked the carried actor over.
 
 Every policy before ADR-712 is `tanh`; continue one with `--activation tanh`.
 `training/test_curriculum_warm_start.py` (training venv) holds these rules.

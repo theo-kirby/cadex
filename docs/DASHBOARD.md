@@ -587,6 +587,27 @@ world geometry is drawn as it is. `stats().floor` reports `z_mm`, `source`
 (`world` or `design`) and `pitch_mm`; `stats().hidden_world` names the parts
 not drawn.
 
+**The course is drawn (ADR-734).** A model that stands on a declared course
+(ADR-714, ADR-716) is drawn on it. A box course is its boxes, over a slab
+whose top is its plane across the extent (the course's lowest stretches are
+the plane and have no box of their own), and a heightfield is its surface.
+Both are drawn in the mat's own prototype material (`floor.js`,
+`prototypeMaterial`), one texture for the whole course, its grid anchored to
+the world's whole metres on every face. Their edges are drawn a step lighter
+(`TERRAIN`), so a step or a ramp's lip reads at any distance. The
+course is the stage, not the design: it sizes, picks and outlines nothing,
+but Fit takes in 300 mm of it behind the design and 1.5 m ahead along +x,
+where courses run, and a course appearing where there was none is fitted. `setTerrain(block)` draws it. The block is a model's
+`collision.terrain`, which the server reads from the export's world body (course 0
+of a pool), until a playback carries a `terrain` of its own. A rollout,
+checkpoint or evaluation trace names the course its episode stood on, so an
+evaluation seed is shown on its held-out course. With a course the mat lies
+at a box course's plane, the ground beyond its extent, or 50 mm under a
+heightfield's lowest point (`stats().floor.source` is `terrain`), and
+`stats().terrain` names the kind, the box count and the course. An
+evaluation's film draws the same course under the solids (`film.py`,
+`terrain_triangles`), and its seed row's `terrain` names it.
+
 **The clip planes follow the shot (ADR-600).** The camera's near plane is
 0.002 of its distance to the target and its far plane is 1.5× the floor's
 size (`STAGE_LOOK.farFloorMul`), so the depth buffer's precision scales with

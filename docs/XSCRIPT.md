@@ -106,7 +106,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   z = 0. Course 0 is the one the model carries; the bundle's `terrain.pool`
   holds all `courses` (default 32, at most 64) as features, the model has a
   box geom per box of the fullest, and the trainer gives each episode a
-  pooled course of its own.
+  pooled course of its own. `"collides_with": [group, ...]` (ADR-739) makes
+  the boxes touch only those collision groups, normally the feet's. The
+  plane still takes every geom, and MJX is spared the costly box–box and
+  capsule–box pairs (the cat ran 78 s an iteration without it).
 - **`part.box`'s `origin` is a corner, not a centre.** `part.box(40, 40, 200)`
   occupies x ∈ [0, 40], y ∈ [0, 40], z ∈ [0, 200] — the origin is the
   minimum corner, and the solid is entirely on the positive side of the

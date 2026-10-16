@@ -298,6 +298,7 @@
       if (manifest.view === 'revision') manifest = tintRevision(manifest);
       return state.viewer.load(manifest, fetchMesh).then(function () {
         if (ticket !== modelLoad) return;
+        state.viewer.setTerrain(modelTerrain());
         state.outliner.setModel(manifest);
         if (manifest.view === 'revision') return state.viewer.loadGhost(ghostOf(manifest), fetchMesh, parseInt(token('--ink-2').slice(1), 16), 0.22);
       }).then(function () {
@@ -460,8 +461,12 @@
       if (loop) { looping = true; togglePlayback(); }
     }).catch(function () { /* the model stands without its rollout */ });
   }
+  // The course the model stands on (ADR-734): its export's course 0, until a playback says which
+  // course its episode stood on.
+  function modelTerrain() { return (state.model && state.model.collision && state.model.collision.terrain) || null; }
   function showPlayback(served) {
     playback = served;
+    state.viewer.setTerrain(served.terrain || modelTerrain());
     var slider = $('play-time'), times = served.times_s;
     slider.min = String(times[0]); slider.max = String(times[times.length - 1]);
     $('playback').hidden = false;
@@ -584,7 +589,7 @@
     stopPlayback(); playback = null; ckpt.playing = null; state.activations.setPlayback(null);
     if (item.state !== 'ready') {
       $('playback').hidden = true;
-      state.viewer.setPoses(restPoses());
+      state.viewer.setPoses(restPoses()); state.viewer.setTerrain(modelTerrain());
       return null;
     }
     return json(item.url).then(function (served) {

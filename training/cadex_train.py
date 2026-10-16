@@ -60,6 +60,7 @@ import random
 import sys
 import time
 from typing import Any, Sequence
+from xml.etree import ElementTree
 
 TASK_SCHEMA = "cadex-training-task-v1"
 POLICY_SCHEMA = "cadex-policy-v1"
@@ -365,6 +366,46 @@ CURRICULUM_TASK_KEYS = frozenset({
 #: it does not get to ride along inside somebody's band change.
 CURRICULUM_EPISODE_KEYS = frozenset({"episode_seconds", "max_steps"})
 
+#: ADR-736: the keys a step onto (or between) courses moves. They may move
+#: only together with the conditions :func:`check_curriculum_change` holds:
+#: the robot is the same (:func:`robot_xml`), and what the actor reads is
+#: unchanged (checked in :func:`check_policy_fits`). ``observations`` may
+#: gain or lose only privileged rows -- a height scan -- which the critic
+#: reads and the actor never does; the critic is not carried by a warm
+#: start, so a wider critic input costs nothing.
+CURRICULUM_COURSE_KEYS = frozenset({"model", "terrain", "scans", "observations"})
+
+#: The world-body geoms and assets an environment adds (ADR-714, ADR-716):
+#: everything named under ``environment/``.
+ENVIRONMENT_PREFIX = "environment/"
+
+
+def robot_xml(xml: bytes) -> bytes:
+    """An exported model less its environment, canonically serialised.
+
+    Two exports whose robots are the same body for body, joint for joint and
+    actuator for actuator, and differ only in the ground the world body
+    carries (a plane, a heightfield, a box course), give equal bytes here.
+    A policy trained on one is the same controller on the other."""
+
+    root = ElementTree.fromstring(xml)
+    for parent in root.iter():
+        for child in list(parent):
+            if (child.tag in ("geom", "hfield")
+                    and str(child.get("name") or "").startswith(ENVIRONMENT_PREFIX)):
+                parent.remove(child)
+    return ElementTree.tostring(root, encoding="utf-8")
+
+
+def _bundle_model_bytes(bundle_path: Path, task: dict[str, Any]) -> bytes | None:
+    """The model a bundle references, found as :func:`load_bundle` finds it."""
+
+    relative = Path(str((task.get("model") or {}).get("path") or ""))
+    for candidate in (bundle_path.parent.parent / relative, bundle_path.parent / relative.name):
+        if candidate.is_file():
+            return candidate.read_bytes()
+    return None
+
 
 def check_curriculum_change(
     header_task: dict[str, Any],
@@ -430,12 +471,40 @@ def check_curriculum_change(
             "key, so the difference is formatting. Re-emit the child through "
             "the same serialiser rather than warm-starting across it."
         )
-    disallowed = sorted(set(changed) - CURRICULUM_TASK_KEYS)
+    disallowed = sorted(set(changed) - CURRICULUM_TASK_KEYS - CURRICULUM_COURSE_KEYS)
     if disallowed:
         refuse(
             f"these keys moved and may not: {disallowed}. A curriculum may "
             f"move {sorted(CURRICULUM_TASK_KEYS)}."
         )
+    if "model" in changed:
+        # ADR-736: a step onto another course. The robot must be the same.
+        parent_xml = _bundle_model_bytes(parent_path.resolve(), parent)
+        if parent_xml is None:
+            refuse(
+                f"the model {(parent.get('model') or {}).get('path')!r} the parent bundle "
+                f"references is not beside {parent_path}, so there is no way to show the "
+                "robot is the same one. Keep the parent's model beside its bundle."
+            )
+        if hashlib.sha256(parent_xml).hexdigest() != str((parent.get("model") or {}).get("sha256")):
+            refuse(f"the model beside {parent_path} is not the one its bundle recorded.")
+        if robot_xml(parent_xml) != robot_xml(bundle["model_xml"]):
+            refuse(
+                "the model moved, and not only its ground: less everything named "
+                f"{ENVIRONMENT_PREFIX!r}, the two exports still differ. A warm start may "
+                "move the robot onto another course, never change the robot."
+            )
+    if "observations" in changed:
+        def rows(task: dict[str, Any], privileged: bool) -> list[Any]:
+            return [row for row in task.get("observations") or ()
+                    if (str(row.get("role") or "policy") == "privileged") == privileged]
+
+        if rows(parent, False) != rows(child, False):
+            refuse(
+                "the observations the policy reads moved. Only privileged rows (a "
+                "height scan, ADR-715) may come or go across a curriculum step: the "
+                "critic reads them and the actor never does."
+            )
     if "episode" in changed:
         parent_episode = dict(parent.get("episode") or {})
         child_episode = dict(child.get("episode") or {})
@@ -554,7 +623,9 @@ def check_policy_fits(
             "curriculum step; there is no step here."
         )
     model = header.get("model") or {}
-    if model.get("sha256") != bundle["model_sha256"]:
+    # ADR-736: a curriculum step that moved the model has shown, above, that
+    # only its ground moved.
+    if model.get("sha256") != bundle["model_sha256"] and "model" not in (curriculum or ()):
         refuse("the model digest", bundle["model_sha256"], model.get("sha256"))
     wanted_channels = actor_channels(bundle["task"])
     if list(header.get("observations") or []) != wanted_channels:
@@ -2468,7 +2539,8 @@ def build_environment(
                 "elapsed": jnp.zeros((envs,), dtype=jnp.float32),
                 "steps": steps,
                 "truncation": jnp.zeros((envs,), dtype=jnp.float32),
-                "terminated": jnp.zeros((envs,), dtype=jnp.float32)}
+                "terminated": jnp.zeros((envs,), dtype=jnp.float32),
+                "nonfinite": jnp.zeros((envs,), dtype=jnp.float32)}
         picks = None
         if goaled:
             picks = jax.random.randint(pick_key, (envs,), 0, goal_pool_size)
@@ -2535,6 +2607,16 @@ def build_environment(
         else:
             data, landed, reward, terminated = batched_step(
                 model, data, surface, *goal_args)
+        # ADR-735: an environment whose physics, readings or reward went
+        # non-finite ends here as a fall, scores nothing, and is reset with a
+        # clean solver warm start. Without this one environment's NaN reaches
+        # the batch's advantages and the whole run diverges (orun7 r1-t5, at
+        # iteration 2). The count travels in `info` for the log.
+        blown = jnp.logical_not(
+            jnp.isfinite(data.qpos).all(axis=-1) & jnp.isfinite(data.qvel).all(axis=-1)
+            & jnp.isfinite(landed).all(axis=-1) & jnp.isfinite(reward))
+        terminated = jnp.logical_or(terminated, blown)
+        reward = jnp.where(blown, 0.0, reward)
         elapsed = elapsed + control_interval
         steps = steps + 1
         # An integer compare, not a float one on `elapsed`: 600 additions of
@@ -2561,7 +2643,12 @@ def build_environment(
             return jnp.where(done.reshape((-1,) + (1,) * (new.ndim - 1)), new, old)
 
         reset_data = data.replace(qpos=where_done(fresh_qpos, data.qpos),
-                                  qvel=where_done(fresh_qvel, data.qvel))
+                                  qvel=where_done(fresh_qvel, data.qvel),
+                                  # A blown environment's warm start is NaN
+                                  # too, and the solver would start from it.
+                                  qacc_warmstart=where_done(
+                                      jnp.zeros_like(data.qacc_warmstart),
+                                      data.qacc_warmstart))
         # A reset environment's readings must be of its NEW pose (ADR-712):
         # forward runs only when something ended, and its result is taken
         # only where it did, so an environment that carries on keeps exactly
@@ -2598,7 +2685,8 @@ def build_environment(
         info.update(key=key, forces=forces, starts=starts, elapsed=elapsed,
                     steps=steps, carry=carry,
                     truncation=truncation.astype(jnp.float32),
-                    terminated=terminated.astype(jnp.float32))
+                    terminated=terminated.astype(jnp.float32),
+                    nonfinite=blown.astype(jnp.float32))
         return State(pipeline_state=data, obs=observation(vector),
                      reward=reward, done=done.astype(jnp.float32),
                      metrics={}, info=info)
@@ -2910,15 +2998,18 @@ def train(
                   f"(from {std_source})", flush=True)
     optimizer_state = optimizer.init(params)
 
-    def minibatch_step(carry, data, normaliser):
+    def minibatch_step(carry, data, normaliser, train_actor):
         optimizer_state, params, key = carry
         key, loss_key = jax.random.split(key)
         (_, metrics), grads = loss_and_grad(params, normaliser, data, loss_key)
+        # ADR-740: while the critic warms up, the actor's gradient is zero, so
+        # Adam leaves it where the warm start put it.
+        grads = grads.replace(policy=jax.tree.map(lambda g: g * train_actor, grads.policy))
         updates, optimizer_state = optimizer.update(grads, optimizer_state)
         params = optax.apply_updates(params, updates)
         return (optimizer_state, params, key), metrics
 
-    def sgd_step(carry, _unused, data, normaliser):
+    def sgd_step(carry, _unused, data, normaliser, train_actor):
         optimizer_state, params, key = carry
         key, permute_key, grad_key = jax.random.split(key, 3)
 
@@ -2927,7 +3018,7 @@ def train(
             return jnp.reshape(x, (minibatches, -1) + x.shape[1:])
 
         (optimizer_state, params, _), metrics = jax.lax.scan(
-            functools.partial(minibatch_step, normaliser=normaliser),
+            functools.partial(minibatch_step, normaliser=normaliser, train_actor=train_actor),
             (optimizer_state, params, grad_key),
             jax.tree.map(split, data),
             length=minibatches,
@@ -2951,7 +3042,7 @@ def train(
             for name, value in normaliser.std.items()})
 
     @jax.jit
-    def iterate(optimizer_state, params, normaliser, env_state, key):
+    def iterate(optimizer_state, params, normaliser, env_state, key, train_actor):
         sgd_key, unroll_key, key = jax.random.split(key, 3)
         policy = make_policy((normaliser, params.policy, params.value))
         env_state, data = acting.generate_unroll(
@@ -2961,7 +3052,7 @@ def train(
         data = jax.tree.map(lambda x: jnp.swapaxes(x, 0, 1), data)
         normaliser = floored(running_statistics.update(normaliser, data.observation))
         (optimizer_state, params, _), metrics = jax.lax.scan(
-            functools.partial(sgd_step, data=data, normaliser=normaliser),
+            functools.partial(sgd_step, data=data, normaliser=normaliser, train_actor=train_actor),
             (optimizer_state, params, sgd_key), (), length=epochs)
         endings = jnp.sum(1.0 - data.discount)
         # Steps taken in this batch over episodes that ended in it; with
@@ -3078,9 +3169,11 @@ def train(
     best = {"reward_per_step": -math.inf, "iteration": -1,
             "params": None, "normaliser": None, "written": -1}
     collapsed = ""
+    critic_warmup = int(getattr(options, "critic_warmup", 0) or 0) if source_header is not None else 0
     for iteration in range(total_iterations):
+        train_actor = jnp.float32(0.0 if iteration < critic_warmup else 1.0)
         (optimizer_state, params, normaliser, env_state, key,
-         report) = iterate(optimizer_state, params, normaliser, env_state, key)
+         report) = iterate(optimizer_state, params, normaliser, env_state, key, train_actor)
         entry = {"iteration": iteration,
                  **{name: float(value) for name, value in report.items()}}
         curve.append(entry)
@@ -3582,6 +3675,18 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
             "its exploration width (unless --initial-std is given) and the "
             "observation normaliser are carried: the critic and the "
             "optimiser start fresh, because the container holds neither."
+        ),
+    )
+    parser.add_argument(
+        "--critic-warmup",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "ADR-740: with --init-from, train only the critic for the first N "
+            "iterations. The critic starts fresh, and until it values the "
+            "carried actor its advantages are noise that PPO follows: "
+            "rough-c2's episodes fell from 504 to 62 steps in two iterations."
         ),
     )
     parser.add_argument(

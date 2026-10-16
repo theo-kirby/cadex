@@ -3,7 +3,8 @@
 // Common inspection/capture scene. Public poses, bounds and cameras are mm,
 // Z-up, xyzw. One uniform conversion to metres; no component enlargement.
 import * as THREE from './three.module.js';
-import {createEnvironment} from './environment.js';
+import {createEnvironment, PALETTE as STAGE} from './environment.js';
+import {prototypeMaterial, GRID_PITCH} from './floor.js';
 import {parseStl} from './stl.js';
 import {LOOKS, MATCAPS, LIGHTING, OCCLUSION, createLooks, createOcclusion, createOutline, addDetail, detailSwitch} from './shading.js';
 export const STYLE = 'cadex-prototype-dark-v1';
@@ -29,6 +30,10 @@ const PROXY = {color:0xffe08a, opacity:.9};
 // engine's exploded-view segments, in the page's `--muted`.
 const SECTION_NORMALS = {XY:[0,0,1], XZ:[0,1,0], YZ:[1,0,0]};
 const LEADER = {color:0x9aa3ad, opacity:.85};
+// Terrain (ADR-734): the course a free base stands on, in the mat's own prototype material with its
+// grid anchored to the world, its edges drawn light, near the leaders, so a 20 mm step or a ramp's lip reads at any
+// distance; the frame's reach along it.
+const TERRAIN = {edge:0xb4bac2, behind_mm:300, ahead_mm:1500};
 // Render styles (ADR-534, ADR-602). 'shaded' is the lit stage every capture uses and the
 // viewport's default; 'wireframe' (called 'hairline' until ADR-602) is a diagram: silhouettes and
 // creases in ink on flat paper, and no floor, shadow or fog, with an optional soft layer of the
@@ -252,6 +257,63 @@ export function create(canvas, {labels=true}={}) {
     draw(); return flat.length/6;
   }
   function showLines(flag) {if (leaders) leaders.visible=!!flag; draw(); return !!(leaders&&leaders.visible);}
+  // The course the design stands on (ADR-734): a box course's boxes or a heightfield's surface,
+  // in sim coordinates, a step lighter than the mat with its edges drawn so a step reads. It is
+  // the stage, not the design: it sizes, picks and outlines nothing. A box course's plane is where
+  // the mat lies; a heightfield, which has no ground beyond it, puts the mat under its base.
+  // setTerrain(null) removes it.
+  const ground=new THREE.Group(); world.add(ground);
+  let terrain=null, terrainMaterial=null;
+  function setTerrain(block) {
+    const had=!!terrain;
+    ground.children.slice().forEach(o=>{ground.remove(o); o.geometry.dispose(); if (o.material!==terrainMaterial) o.material.dispose();});
+    terrain=block&&(block.kind==='boxes'||block.kind==='heightfield')?block:null;
+    // One material, and one 2048-texel canvas, for the whole course.
+    if (!terrainMaterial) terrainMaterial=prototypeMaterial({palette:STAGE.tile, labels});
+    const solid=()=>terrainMaterial;
+    // World-anchored uvs in blocks (2·pitch, the texture's repeat): each face takes the two world
+    // axes it is most nearly flat along, so every face's grid lines sit on the mat's whole metres.
+    const tile=2*GRID_PITCH, n=new THREE.Vector3(), p=new THREE.Vector3();
+    const anchor=(geo,matrix)=> {
+      const pos=geo.attributes.position, nor=geo.attributes.normal, uv=new Float32Array(pos.count*2), turn=new THREE.Matrix3().getNormalMatrix(matrix);
+      for (let i=0;i<pos.count;i++) {
+        p.fromBufferAttribute(pos,i).applyMatrix4(matrix); n.fromBufferAttribute(nor,i).applyMatrix3(turn);
+        const a=[Math.abs(n.x),Math.abs(n.y),Math.abs(n.z)];
+        const [u,v]=a[2]>=a[0]&&a[2]>=a[1]?[p.x,p.y]:a[0]>=a[1]?[p.y,p.z]:[p.x,p.z];
+        uv[2*i]=u/tile; uv[2*i+1]=v/tile;
+      }
+      geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+    };
+    const edges=g=>new THREE.LineSegments(new THREE.EdgesGeometry(g,20),new THREE.LineBasicMaterial({color:TERRAIN.edge,toneMapped:false}));
+    // A box course's lowest stretches are its plane, which has no box: drawn over the extent as a
+    // slab whose top is the plane, so the course reads as one ground and not as holes to the mat.
+    const slabs=terrain&&terrain.kind==='boxes'&&terrain.plane_z_mm!=null?[{centre_mm:[(terrain.x_range_mm[0]+terrain.x_range_mm[1])/2,
+      (terrain.y_range_mm[0]+terrain.y_range_mm[1])/2,terrain.plane_z_mm-5], rotation_xyzw:[0,0,0,1],
+      half_mm:[(terrain.x_range_mm[1]-terrain.x_range_mm[0])/2,(terrain.y_range_mm[1]-terrain.y_range_mm[0])/2,5]}]:[];
+    if (terrain&&terrain.kind==='boxes') slabs.concat(terrain.boxes||[]).forEach(b=> {
+      const geo=new THREE.BoxGeometry(...b.half_mm.map(v=>2*v*.001));
+      const placed=new THREE.Matrix4().compose(new THREE.Vector3().fromArray(b.centre_mm).multiplyScalar(.001),
+        new THREE.Quaternion().fromArray(b.rotation_xyzw), new THREE.Vector3(1,1,1));
+      anchor(geo,placed);
+      [new THREE.Mesh(geo,solid()), edges(geo)].forEach(o=>{
+        o.position.fromArray(b.centre_mm).multiplyScalar(.001); o.quaternion.fromArray(b.rotation_xyzw);
+        if (o.isMesh) {o.castShadow=true; o.receiveShadow=true;}
+        ground.add(o);
+      });
+    });
+    if (terrain&&terrain.kind==='heightfield'&&terrain.grid) {
+      const {rows, columns, heights_mm:h}=terrain.grid, [x0,x1]=terrain.x_range_mm, [y0,y1]=terrain.y_range_mm, at=[], index=[];
+      for (let r=0;r<rows;r++) for (let k=0;k<columns;k++) at.push((x0+(x1-x0)*k/(columns-1))*.001,(y0+(y1-y0)*r/(rows-1))*.001,h[r*columns+k]*.001);
+      for (let r=0;r+1<rows;r++) for (let k=0;k+1<columns;k++) {const a=r*columns+k; index.push(a,a+1,a+columns+1,a,a+columns+1,a+columns);}
+      const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(at,3)); geo.setIndex(index); geo.computeVertexNormals();
+      anchor(geo,new THREE.Matrix4());
+      const m=new THREE.Mesh(geo,solid()); m.receiveShadow=true; m.castShadow=true; ground.add(m);
+    }
+    // A course arriving where there was none is framed; a course swapped for another (a playback's
+    // own) keeps the person's camera.
+    if (bounds) {frameBounds(bounds); if (terrain&&!had) fit();}
+    draw(); return terrain?(terrain.boxes||[]).length||1:0;
+  }
   // The timer: one textured quad in an orthographic overlay scene, painted after the stage.
   const hud=new THREE.Scene(), hudCamera=new THREE.OrthographicCamera(0,1,1,0,-1,1);
   const clockCanvas=document.createElement('canvas'), clockTexture=new THREE.CanvasTexture(clockCanvas);
@@ -480,6 +542,7 @@ export function create(canvas, {labels=true}={}) {
   // lowered (floor.js), so a part resting exactly on it never z-fights.
   let floorSource='design';
   function matZ(b) {
+    if (terrain) {floorSource='terrain'; return (terrain.plane_z_mm??terrain.lowest_mm-50)/1000;}
     const top=worldTop(), low=b.min[2], slack=Math.max(2,.02*(b.max[2]-b.min[2]));
     floorSource=top===null?'design':top<=low+slack?'world':'design';
     return (floorSource==='world'?top:low)/1000;
@@ -530,7 +593,14 @@ export function create(canvas, {labels=true}={}) {
     // the vertical one (as it always has), a portrait one — a stage between two wide sidebars — by the horizontal.
     const w=canvas.clientWidth||canvas.width,h=canvas.clientHeight||canvas.height,tanV=Math.tan(camera.fov*Math.PI/360);
     const half=Math.min(Math.atan(tanV),Math.atan(tanV*Math.min(1,w/h)));
-    c={yaw:.8,pitch:.5,distance:bounds.radius/Math.sin(half)*1.15,target:bounds.center.slice()};
+    // On a course (ADR-734) the frame takes in the ground just behind the design and TERRAIN.ahead_mm
+    // of it ahead along +x, where courses run, so the first step or ramp is in the shot.
+    let b=bounds;
+    if (terrain) {
+      const min=[b.min[0]-TERRAIN.behind_mm,b.min[1],Math.min(b.min[2],terrain.lowest_mm)], max=[b.max[0]+TERRAIN.ahead_mm,b.max[1],b.max[2]];
+      b={min,max,center:min.map((v,i)=>(v+max[i])/2),radius:Math.hypot(...min.map((v,i)=>max[i]-v))/2};
+    }
+    c={yaw:.8,pitch:.5,distance:b.radius/Math.sin(half)*1.15,target:b.center.slice()};
     draw();
   }
   function clear() {
@@ -912,7 +982,7 @@ export function create(canvas, {labels=true}={}) {
     meshes.forEach(m=>{m.userData.materials.parts.envMapIntensity=m.userData.env*reflections*lighting.env;}); draw(); return reflections;
   }
   applyLook();
-  return {available:true,load,install,clear,fit,draw,setPoses,centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
+  return {available:true,load,install,clear,fit,draw,setPoses,centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,setTerrain,
     setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
     setLook,look:()=>look,setFov,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
     setHidden,hidden:()=>[...hiddenNames],select,setHeat,heat:()=>heat&&{...heat},selected:()=>selectedNames.slice(),parts,fitTo,
@@ -923,6 +993,7 @@ export function create(canvas, {labels=true}={}) {
       colours:Object.fromEntries([...meshes].map(([n,m])=>[n,'#'+m.userData.colour.getHexString()])),
       hidden_world:[...meshes].filter(([,m])=>m.userData.world&&!m.visible).map(([n])=>n),
       floor:{z_mm:floorZ*1000, source:floorSource, pitch_mm:(stage?.pitch??1)*1000},
+      terrain:terrain&&{kind:terrain.kind, boxes:(terrain.boxes||[]).length, course:terrain.course||null},
       clip:{near:camera.near, far:camera.far},
       finishes:Object.fromEntries([...meshes].map(([n,m])=>[n,m.userData.finish])),
       boards:Object.fromEntries([...meshes].filter(([,m])=>m.userData.board).map(([n,m])=>[n,{...m.userData.board}])),

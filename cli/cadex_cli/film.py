@@ -318,11 +318,79 @@ def _carried(pose: Mapping[str, Any], local: Sequence[float]) -> tuple[float, fl
     return tuple(origin[i] + sum(rows[i][j] * float(local[j]) for j in range(3)) for i in range(3))
 
 
+#: The course a seed stood on (ADR-734), drawn a step lighter than the mat
+#: as the dashboard draws it (``review_scene.js``'s ``TERRAIN``).
+TERRAIN_LOOK = ("mechanism", (58, 60, 64))
+
+
+def read_terrain(path: Path) -> dict[str, Any] | None:
+    """The course a trace says its episode stood on, checked as the dashboard
+    checks it, or ``None`` on flat ground. The trace was already held to its
+    digest by :func:`read_trace`."""
+
+    from .review_server import terrain_block
+
+    return terrain_block(json.loads(path.read_bytes()).get("terrain"))
+
+
+def terrain_triangles(block: Mapping[str, Any]) -> list[tuple]:
+    """A drawn course (``CadexDynamics.terrain_drawing``) as triangles, mm."""
+
+    triangles: list[tuple] = []
+    for box in block.get("boxes") or ():
+        x, y, z, w = box["rotation_xyzw"]
+        turn = ((1 - 2*(y*y + z*z), 2*(x*y - w*z), 2*(x*z + w*y)),
+                (2*(x*y + w*z), 1 - 2*(x*x + z*z), 2*(y*z - w*x)),
+                (2*(x*z - w*y), 2*(y*z + w*x), 1 - 2*(x*x + y*y)))
+        centre, half = box["centre_mm"], box["half_mm"]
+
+        def corner(sx: int, sy: int, sz: int) -> tuple[float, float, float]:
+            local = (sx * half[0], sy * half[1], sz * half[2])
+            return tuple(centre[r] + sum(turn[r][c] * local[c] for c in range(3)) for r in range(3))
+
+        # Each face as two triangles wound outward.
+        for a, b, c, d in (((-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1)),
+                           ((-1, -1, -1), (-1, 1, -1), (1, 1, -1), (1, -1, -1)),
+                           ((1, -1, -1), (1, 1, -1), (1, 1, 1), (1, -1, 1)),
+                           ((-1, -1, -1), (-1, -1, 1), (-1, 1, 1), (-1, 1, -1)),
+                           ((-1, 1, -1), (-1, 1, 1), (1, 1, 1), (1, 1, -1)),
+                           ((-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1))):
+            p = [corner(*v) for v in (a, b, c, d)]
+            triangles += [(p[0], p[1], p[2]), (p[0], p[2], p[3])]
+    grid = block.get("grid")
+    if grid:
+        rows, columns, heights = grid["rows"], grid["columns"], grid["heights_mm"]
+        (x0, x1), (y0, y1) = block["x_range_mm"], block["y_range_mm"]
+
+        def vertex(r: int, c: int) -> tuple[float, float, float]:
+            return (x0 + (x1 - x0) * c / (columns - 1), y0 + (y1 - y0) * r / (rows - 1),
+                    heights[r * columns + c])
+
+        for r in range(rows - 1):
+            for c in range(columns - 1):
+                a, b, d, e = vertex(r, c), vertex(r, c + 1), vertex(r + 1, c), vertex(r + 1, c + 1)
+                triangles += [(a, b, e), (a, e, d)]
+    return triangles
+
+
+def terrain_floor(block: Mapping[str, Any] | None) -> float | None:
+    """Where the mat lies under a course: a box course's plane, or under a
+    heightfield's base, which has no ground beyond it."""
+
+    if block is None:
+        return None
+    plane = block.get("plane_z_mm")
+    return float(plane) if plane is not None else float(block["lowest_mm"]) - 50.0
+
+
 class _Stage:
     """The drawn solids, prepared once, and the measures every shot needs."""
 
     def __init__(self, meshes: Mapping[str, list], looks: Mapping[str, tuple],
                  world_flats: Mapping[str, array]) -> None:
+        #: The course under the solids (ADR-734), drawn in every shot and
+        #: framing none: set per seed, from its trace.
+        self.ground: list = []
         self.names = [name for name in meshes if name in looks]
         _require(self.names, "nothing to draw once world geometry is left out")
         self.local = {name: studio_render._prepare(
@@ -381,7 +449,8 @@ class _Stage:
         posed = [tri for name in self.names
                  for tri in studio_video._posed(self.local[name], poses[name])]
         shadow = studio_render._contact_shadow(posed, floor=floor)
-        pixels, _ = studio_render.studio(posed, basis, bounds=bounds, size=FRAME, shadow=shadow)
+        pixels, _ = studio_render.studio(posed + self.ground, basis, bounds=bounds, size=FRAME,
+                                         shadow=shadow)
         canvas = studio_render.Canvas(FRAME, FRAME, (0, 0, 0))
         canvas.pixels = bytearray(pixels)
         if target is not None:
@@ -593,7 +662,7 @@ def detail_start(row: Mapping[str, Any], times: Sequence[float], given: float | 
 
 def _video(stage_names, looks, source, meshes, frames, times, out: Path, seed: int,
            floor: float, points: Sequence[Sequence[float]] | None = None, *,
-           name: str | None = None, draw=None) -> dict[str, Any]:
+           name: str | None = None, draw=None, ground: Sequence = ()) -> dict[str, Any]:
     """The seed's rollout as a studio video, encoded and decoded back before it is kept.
 
     With ``points``, each frame's target is kept inside the window and
@@ -619,7 +688,7 @@ def _video(stage_names, looks, source, meshes, frames, times, out: Path, seed: i
         try:
             drawn = studio_video._studio_frames(looks, source, list(stage_names), meshes, frames,
                                                 times, count, sample, work, started, floor=floor,
-                                                held=points,
+                                                held=points, ground=ground,
                                                 overlay=overlay if points or draw else None)
             studio_video.encode(work, count)
         except ValueError as exc:
@@ -716,7 +785,13 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
             for item in (row.get("drawn") or {}).get("goal") or []),
             f"seed {seed} drew a point goal and its trace carries none to mark")
         points = target["points"] if target else None
-        floor, floor_source = stage.floor(frames, (report.get("rig") or {}).get("floor_mm"))
+        course = read_terrain(out / str(row["trace"]["file"]))
+        stage.ground = (studio_render._prepare([(studio_render.material(TERRAIN_LOOK),
+                                                 terrain_triangles(course))]) if course else [])
+        if course is not None:
+            floor, floor_source = terrain_floor(course), "the course's plane (ADR-734)"
+        else:
+            floor, floor_source = stage.floor(frames, (report.get("rig") or {}).get("floor_mm"))
         deadline = time.monotonic() + STRIP_SECONDS
         entry: dict[str, Any] = {"seed": int(seed), "trace_sha256": str(row["trace"]["sha256"]),
                                  "floor_z_mm": floor, "floor_source": floor_source}
@@ -728,15 +803,18 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
         entry["detail"] = _keep(out / DETAIL_NAME.format(seed=seed), image, {**facts, "start_source": why})
         entry["video"] = None
         entry["target"] = target and {key: target[key] for key in ("goal", "channels", "unit", "positions")}
+        if course is not None:
+            entry["terrain"] = {"kind": course["kind"], "course": course.get("course"),
+                                "boxes": len(course.get("boxes") or ())}
         filmed.append(entry)
         if position == 0:
-            first = (frames, times, floor, points)
+            first = (frames, times, floor, points, stage.ground)
         if progress is not None:
             progress(" · film  seed {:d}  sheets  {:.1f} s".format(int(seed), time.monotonic() - started))
     # The video last: it is the long half, and the sheets stand without it.
     error = None
     if video and filmed:
-        frames, times, floor, points = first
+        frames, times, floor, points, ground = first
         try:
             try:
                 studio_video.ffmpeg()
@@ -744,7 +822,7 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
                 raise FilmError(f"video: {exc}; the sheets were drawn") from exc
             filmed[0]["video"] = _video(stage.names + sorted(world), looks, source,
                                         {**meshes, **world_meshes}, frames, times, out,
-                                        filmed[0]["seed"], floor, points)
+                                        filmed[0]["seed"], floor, points, ground=ground)
         except FilmError as exc:
             error = str(exc)
         if progress is not None:
@@ -761,7 +839,8 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
                            "the solids, in a seed whose trace carries a point goal",
                    "color": "#%02X%02X%02X" % MARKER_COLOUR,
                    "radius_px": MARKER_RADIUS * FRAME, "radius_of_frame": MARKER_RADIUS},
-        "showing": "tessellated solids of the accepted revision at each recorded pose; "
+        "showing": "tessellated solids of the accepted revision at each recorded pose, on the "
+                   "course each seed's trace stood on when it names one (ADR-734); "
                    "collision proxies and world geometry not drawn",
         "materials": source,
         "appearance": {name: {"role": looks[name][0], "color": "#%02X%02X%02X" % tuple(looks[name][1]),

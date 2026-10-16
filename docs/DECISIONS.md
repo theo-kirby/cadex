@@ -43160,3 +43160,212 @@ trainer only through `remote_train.sh … --`.
 skipped; `pixi run python -m pytest cli/tests` 50 passed; the packaged
 gate (`CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.2.0-linux-x64`) 24
 passed; `pixi run test-release` 1,524 of 1,524.
+
+## ADR-734 — The course travels with the trace, and the dashboard and the film draw it (2026-10-16)
+
+**Context.** orun7's W1 asked that `rollout_policy` and the dashboard show
+the terrain "as geometry in the viewport and the rollout". ADR-718 left
+every rollout and the dashboard on course 0, the model's own, while each
+evaluation seed is played on a held-out course of its own. A film or a
+playback of that seed therefore showed the robot walking on air or into
+ground that was not there.
+
+**Decision.**
+- `CadexDynamics.terrain_drawing(course)`, pure, is what a viewer draws of
+  a course. A box course gives its boxes, each a centre, an `xyzw` turn and
+  half-extents in mm, from `terrain_box_geoms` without the parked slots,
+  plus the plane at its lowest point. A heightfield gives its extent and a
+  grid of heights sampled from its features to at most 129 vertices a side
+  (`TERRAIN_DRAWING_MAXIMUM_VERTICES`), with no plane.
+- `rollout_policy` returns it as `terrain` whenever its task stands on a
+  course. That course is the task's own: course 0 for a rollout or a
+  checkpoint, and the seed's held-out course for an evaluation. The
+  worker's rollout trace, each checkpoint's trace and each evaluation
+  seed's trace carry it. On flat ground it is absent, so every earlier
+  trace keeps its bytes.
+- **The server** checks a drawing (`review_server.terrain_block`) and passes
+  it through `trace_playback` as `terrain`. It also reads the model's own
+  course from the export's world body (`mjcf_terrain`) into
+  `collision.terrain` on every model view. `terrain` joins the playback
+  routes' documented keys (`docs/CLI.md`, `API_RESPONSE_KEYS`; the gait
+  reference's route has none).
+- **The viewport** (`review_scene.js`, `setTerrain`) draws the course in a
+  group of its own, a step lighter than the mat with its edges drawn. It
+  sizes, picks and outlines nothing. The page sets the model's course on
+  load and the playback's when one plays. The mat lies at the course's
+  plane, or under a heightfield's base.
+- **The film** (`film.py`) draws each filmed seed's course under the solids
+  in its sheets and video, puts the floor at its plane, and names it in the
+  seed's film row.
+
+**Evidence.** On terrain-quad (quad-qdd on a 32-course random box pool):
+the drawing, the server's MJCF reading and the compiled MuJoCo geoms agree
+to within 0.005 mm on all 13 boxes. Seed 9201's held-out course draws 11
+boxes. The dashboard draws the course under the robot (headless Chromium).
+`cli/tests/test_http_api.py`'s fixture traces carry a course, so the route
+table's new key is reached; CLI suite 50 passed.
+
+## ADR-735 — A non-finite environment ends as a fall and does not poison the batch (2026-10-16)
+
+**Context.** orun7's r1-t5 (R1 turning on the final cat model, cold)
+diverged to NaN at iteration 2. r1-t3, on the previous paw, ran the same
+recipe to 600 iterations. The trainer had no per-environment guard: one
+environment whose MJX state went non-finite put NaN into the batch's
+rewards and advantages, so the whole run was lost.
+
+**Decision.** In the trainer's step, an environment whose `qpos`, `qvel`,
+landed readings or reward is non-finite is `terminated`, scores 0 for the
+step, and is reset with its solver warm start (`qacc_warmstart`) zeroed,
+because that buffer carries the NaN forward otherwise. `info["nonfinite"]`
+marks it. A finite environment is untouched, so a run that never blows up
+trains exactly as before. This mirrors what MuJoCo Playground's locomotion
+environments do (`done |= isnan(qpos) | isnan(qvel)`).
+
+## ADR-736 — A warm start may move the robot onto another course (2026-10-16)
+
+**Context.** `--init-from` refused any change of model digest, and
+`--init-from-task-change` refused `model`, `terrain`, `scans` and
+`observations` (`docs/MUJOCO.md`: a warm start "cannot cross onto a
+course"). A course is part of the exported model, so a policy that walks,
+gallops or turns on flat ground could never be carried onto rough ground.
+Each terrain run had to start cold, and a policy with several skills could
+not be built a curriculum step at a time.
+
+**Decision.** With `--init-from-task-change` and `--init-from-parent-task`,
+`model`, `terrain`, `scans` and `observations` may move together
+(`CURRICULUM_COURSE_KEYS`), under three conditions:
+- **The robot is the same.** The parent bundle's model, found beside it as
+  `load_bundle` finds a model and held to its recorded digest, and the
+  child's model must be byte-equal after `robot_xml` drops every world
+  geom and heightfield named under `environment/` and re-serialises the
+  file. Any other difference is refused: a body, a joint, an actuator, an
+  option.
+- **The actor reads the same channels.** Only privileged observation rows,
+  such as a height scan, may come or go. `check_policy_fits` still holds
+  the actor's channels, actions and network shape equal.
+- The critic is not carried by a warm start, so a wider critic input costs
+  nothing.
+
+The policy header records the new model's digest, as with any run.
+
+## ADR-737 — A box course caps MJX's collision pairs (2026-10-16)
+
+*Superseded by ADR-741:* the ranking culls a bump under a paw on a wide course, and the cap is removed.
+
+**Context.** MJX evaluates, and solves for, every candidate geom pair it is
+handed. A box course pairs every robot geom that can touch the ground with
+every course box. terrain-quad's 9 ground pairs on a plane became 126 on a
+13-box course (104 sphere–box, 13 box–box), and an iteration at 8192
+environments took about 26 s.
+
+**Decision.** On a box course, `build_model` writes MJX's own broad-phase
+cap, the custom numeric `max_geom_pairs`
+(`TERRAIN_PAIR_CAP_NUMERIC`). Within each pair of geom types, MJX then
+keeps only the pairs whose bounding spheres are nearest. Stock MuJoCo
+ignores the numeric, so the engine's evaluation, rollouts and smoke still
+collide every pair. `terrain_pair_cap` sets the cap to 3 pairs
+(`TERRAIN_BOXES_PER_GEOM`) for each ground-touching robot geom of the most
+numerous type, and never below the largest group of robot-on-robot pairs,
+so no self-contact is culled. Plane pairs are never culled by MJX. The
+trainer already re-writes each placed course's `geom_rbound`
+(ADR-717), and that is what the ranking reads.
+
+**Evidence.** terrain-quad's cap is 24. Stock MuJoCo, driving the quad
+randomly over 8 held-out courses for 1,500 steps each, found 1,576
+robot–course contacts, and MJX's ranking kept every one of them.
+With the cap, the same cold run (`rough-r1`, 8192 environments) steps an
+iteration in about 10 s where it took about 26 s without it.
+
+## ADR-738 — The task bundle cap is 4 MB, and the pair cap is ground (2026-10-16)
+
+**Context.** The orun7 cat's turning task is 1,019,855 bytes with no course,
+because its trot reference covers 30 actuators. Adding a 32-course pool
+(ADR-717) took it to 1,101,141 bytes, past `MAXIMUM_TASK_BYTES` (1 MB), so
+the script was refused. Separately, a warm start from the cat's flat policy
+onto the course was refused under ADR-736, because `robot_xml` kept
+ADR-737's `max_geom_pairs` numeric, and a course export carries that
+numeric while a flat export does not.
+
+**Decision.** `MAXIMUM_TASK_BYTES` is raised to 4 MB, the same as the policy
+cap. A runaway loop still overruns it. `robot_xml` drops the
+`max_geom_pairs` numeric, and any `<custom>` left empty, along with the
+`environment/` geoms. The cap is sized from the course's pairs, so it
+belongs to the ground and not to the robot.
+
+**Evidence.** Less its environment, the cat's course export at revision
+18d5657e equals r1-t3's flat export byte for byte.
+
+*Amended by ADR-741:* the cap is gone, and so is `robot_xml`'s skip for it.
+
+## ADR-739 — A box course may touch only the feet (2026-10-16)
+
+**Context.** The cat's first course run, `rough-c1`, stepped an iteration in
+about 78 s, where r1-t3 took about 14 s on flat ground. The 22 course boxes
+collided with all 18 of the cat's robot geoms: 198 sphere–box, 154
+capsule–box (the seven tail links) and 44 box–box (chest and pelvis)
+candidate pairs. The pair cap (ADR-737) kept 27 of each type, and box–box is
+the costliest pair MJX has. None of those bodies touch the ground while
+the cat is walking.
+
+**Decision.** A box course takes `collides_with`: the collision groups its
+boxes touch, normally the feet's. The boxes get `contype` 0 and that
+`conaffinity`. The plane under the course keeps colliding with every geom,
+so a fall still lands, and the tipped and collapsed terminations end it.
+`terrain_pair_cap` now counts only robot geoms that can touch a course box,
+since MJX never culls plane pairs. Leaving `collides_with` out keeps the
+ADR-716 behaviour, where every geom touches the boxes.
+
+**Trade-off.** A body that touches the ground off a box, such as a chest
+over a step or a tail dragging across a bump, meets the plane rather than
+the box. A course is training ground, and a policy that leans on that
+loses the reward the fall costs anyway.
+
+## ADR-740 — A warm start may warm its critic up first (2026-10-16)
+
+**Context.** A warm start carries the actor and the normaliser but not the
+critic (`--init-from`), because the policy container holds no critic. On
+terrain-cat `rough-c1` and `rough-c2`, warm-started from r1-t3's turning
+policy, episodes fell from 504 to 62 steps within two iterations. The fresh
+critic's advantages are noise, and PPO follows them.
+
+**Decision.** `--critic-warmup N` (loop setting `critic_warmup`) zeroes the
+actor's gradients for the first N iterations of a warm start. Only the
+critic learns, valuing the actor it was given. Adam then leaves the actor
+where the warm start put it. Its first and second moments stay zero, so the
+actor's first real step is unbiased. The default is 0, which keeps the old
+behaviour.
+
+**Evidence.** It was also the diagnostic. With the actor frozen,
+`rough-c3`'s episodes were still short (73, then 45 steps). So the critic
+was not the cause there: ADR-741 was.
+
+## ADR-741 — ADR-737's pair cap is removed: the ranking misses bumps (2026-10-16)
+
+**Context.** ADR-737 capped MJX's candidate pairs on a box course with
+`max_geom_pairs`. MJX ranks the pairs within each type group by
+bounding-sphere gap: centre distance less both bounding radii. The cat's
+course strips run the full 8 m width of the course, so their bounding radius
+is about 4 m, and every strip within about 3.6 m of a paw outranks a 25 mm
+bump directly under it. The bump's pair is culled, the paw sinks into it,
+and the contact comes back deep in penetration.
+
+**Evidence.** r1-t3's actor, frozen, in the trainer's own MJX environment
+(256 environments, 200 steps):
+
+| setting | episodes tipped |
+| --- | --- |
+| flat | 0 |
+| course with the cap | 152 (47% on the compiled course alone) |
+| course without the cap | 70 (27%) |
+
+Stock MuJoCo on the course tipped 1 of 4, which is about the uncapped rate.
+`capcheck.py`, ADR-737's evidence, drove a robot at random near the start of
+the course and never reached a bump.
+
+**Decision.** `terrain_pair_cap`, `TERRAIN_PAIR_CAP_NUMERIC` and
+`TERRAIN_BOXES_PER_GEOM` are deleted, along with the numeric in
+`build_model` and ADR-738's `robot_xml` skip for it. The cost ADR-737 was
+after is kept down by ADR-739 instead: a course that touches only the feet
+has only sphere–box pairs, the cheap ones. Box–box and capsule–box were the
+costly pairs. A robot whose feet are not spheres may still be slow on a
+course. That is a trade made in the open, not a cull that is silently wrong.

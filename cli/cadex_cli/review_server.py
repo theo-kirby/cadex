@@ -143,7 +143,7 @@ _MODEL_KEYS = frozenset({
     "placement_source", "components", "collision", "contacts", "exploded", "appearance",
     "measurements"})
 _PLAYBACK_KEYS = frozenset({"reason", "times_s", "frames", "commands", "channels", "duration_s",
-                            "frames_per_second", "joints", "velocities", "efforts", "policy"})
+                            "frames_per_second", "joints", "velocities", "efforts", "policy", "terrain"})
 _POLICY_KEYS = frozenset({"reason", "label", "network", "normaliser", "observations", "actions",
                           "weights", "inputs", "clock", "parts"})
 #: Each route's top-level reply keys: those every 200 reply carries, and
@@ -178,7 +178,8 @@ API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "playback/checkpoint/<run>/<stem>": (frozenset({"available", "run", "stem", "checkpoint", "source"}),
                                          _PLAYBACK_KEYS),
     "playback/reference/<task>": (frozenset({"available", "task", "source"}),
-                                  (_PLAYBACK_KEYS - {"policy", "joints", "velocities", "efforts"}) | {"reference", "strides"}),
+                                  (_PLAYBACK_KEYS - {"policy", "joints", "velocities", "efforts", "terrain"})
+                                  | {"reference", "strides"}),
     "policy/run/<run>": (frozenset({"available", "run", "source"}), _POLICY_KEYS),
     "policy/checkpoint/<run>/<stem>": (frozenset({"available", "run", "stem", "source"}), _POLICY_KEYS),
 }
@@ -479,6 +480,11 @@ def trace_playback(trace: Mapping[str, Any] | None) -> dict[str, Any]:
                 "channels": channels, "duration_s": times[-1] - times[0],
                 "frames_per_second": (trace.get("parameters") or {}).get("frames_per_second")}
     playback.update({key: rows for key, rows in measured.items() if any(row is not None for row in rows)})
+    # The course this episode stood on (ADR-734): an evaluation seed's own,
+    # not the model's course 0.
+    terrain = terrain_block(trace.get("terrain"))
+    if terrain is not None:
+        playback["terrain"] = terrain
     return playback
 
 
@@ -983,7 +989,7 @@ PROXY_TYPES = ("box", "sphere", "capsule", "cylinder", "mesh", "plane")
 
 def _no_collision(reason: str, source: str | None = None) -> dict[str, Any]:
     return {"available": False, "source": source, "sha256": None, "reason": reason,
-            "geoms": [], "components": [], "skipped": 0}
+            "geoms": [], "components": [], "skipped": 0, "terrain": None}
 
 
 def _floats(value: str | None, count: int, default: list[float]) -> list[float] | None:
@@ -1010,6 +1016,136 @@ def _quat_from_z(direction: list[float]) -> list[float]:
     norm = math.hypot(axis[0], axis[1])
     half = math.acos(dz) / 2
     return [axis[0] / norm * math.sin(half), axis[1] / norm * math.sin(half), 0.0, math.cos(half)]
+
+
+#: The terrain geoms an export names (ADR-714, ADR-716): the plane or
+#: heightfield is ``environment/terrain``, a box course's boxes
+#: ``environment/terrain/<i>``.
+TERRAIN_GEOM = "environment/terrain"
+#: Bounds on a drawn course, whether a trace carried it or an MJCF did: the
+#: engine draws at most 64 features' boxes and a 129-vertex-a-side grid.
+TERRAIN_MAXIMUM_BOXES = 4096
+TERRAIN_MAXIMUM_VERTICES = 129
+
+
+def terrain_block(raw: Any) -> dict[str, Any] | None:
+    """A course as the viewer draws it (ADR-734), checked, or ``None``.
+
+    The engine writes the drawing (``CadexDynamics.terrain_drawing``) into a
+    rollout or evaluation trace; :func:`mjcf_terrain` reads the same shape
+    from an export. Boxes are a centre, an ``xyzw`` rotation and half-extents
+    in mm; a heightfield is a row-major grid of heights over its extent, row
+    0 at -Y. ``plane_z_mm`` is the plane a box course stands on, which goes
+    on beyond the extent, and is ``None`` for a heightfield."""
+
+    if not isinstance(raw, Mapping) or raw.get("kind") not in ("boxes", "heightfield"):
+        return None
+
+    def numbers(value: Any, count: int) -> list[float] | None:
+        if not isinstance(value, (list, tuple)) or len(value) != count:
+            return None
+        try:
+            out = [float(v) for v in value]
+        except (TypeError, ValueError):
+            return None
+        return out if all(math.isfinite(v) for v in out) else None
+
+    x_range, y_range = numbers(raw.get("x_range_mm"), 2), numbers(raw.get("y_range_mm"), 2)
+    if x_range is None or y_range is None:
+        return None
+    block: dict[str, Any] = {"kind": raw["kind"], "x_range_mm": x_range, "y_range_mm": y_range}
+    for key in ("lowest_mm", "highest_mm", "plane_z_mm"):
+        value = numbers([raw.get(key)], 1)
+        block[key] = value[0] if value else None
+    if isinstance(raw.get("course"), Mapping):
+        block["course"] = {key: raw["course"][key] for key in ("seed", "draw", "key")
+                           if isinstance(raw["course"].get(key), (int, str))}
+    if raw["kind"] == "boxes":
+        boxes = raw.get("boxes")
+        if not isinstance(boxes, list) or len(boxes) > TERRAIN_MAXIMUM_BOXES:
+            return None
+        block["boxes"] = []
+        for box in boxes:
+            if not isinstance(box, Mapping):
+                return None
+            centre, turn, half = (numbers(box.get("centre_mm"), 3), numbers(box.get("rotation_xyzw"), 4),
+                                  numbers(box.get("half_mm"), 3))
+            if centre is None or turn is None or half is None or min(half) <= 0:
+                return None
+            block["boxes"].append({"shape": str(box.get("shape") or "block"), "centre_mm": centre,
+                                   "rotation_xyzw": turn, "half_mm": half})
+        return block
+    grid = raw.get("grid") if isinstance(raw.get("grid"), Mapping) else {}
+    rows, columns = grid.get("rows"), grid.get("columns")
+    if not (isinstance(rows, int) and isinstance(columns, int)
+            and 2 <= rows <= TERRAIN_MAXIMUM_VERTICES and 2 <= columns <= TERRAIN_MAXIMUM_VERTICES):
+        return None
+    heights = numbers(grid.get("heights_mm"), rows * columns)
+    if heights is None:
+        return None
+    block["grid"] = {"rows": rows, "columns": columns, "heights_mm": heights}
+    return block
+
+
+def mjcf_terrain(root: ElementTree.Element) -> dict[str, Any] | None:
+    """The course an export stands on, from its world body (ADR-734), or ``None`` on flat ground.
+
+    A box course's plane and boxes are read as they stand, less the slots a
+    pooled course parks under the plane; a heightfield's elevation is read
+    from its inline asset and sampled to :data:`TERRAIN_MAXIMUM_VERTICES` a
+    side. This is the model's own course, course 0 of a pool: a trace says
+    which course an episode stood on."""
+
+    world = root.find("worldbody")
+    if world is None:
+        return None
+    geoms = [g for g in world if g.tag == "geom" and (g.get("name") or "").startswith(TERRAIN_GEOM)]
+    ground = next((g for g in geoms if g.get("name") == TERRAIN_GEOM), None)
+    if ground is None:
+        return None
+    pos = _floats(ground.get("pos"), 3, [0.0, 0.0, 0.0]) or [0.0, 0.0, 0.0]
+    if (ground.get("type") or "sphere") == "plane":
+        plane = pos[2] * 1000.0
+        boxes = []
+        for geom in geoms:
+            if geom is ground or geom.get("type") != "box":
+                continue
+            centre = [v * 1000.0 for v in (_floats(geom.get("pos"), 3, [0.0, 0.0, 0.0]) or [])]
+            half = [v * 1000.0 for v in (_floats(geom.get("size"), 3, []) or [])]
+            w, x, y, z = _floats(geom.get("quat"), 4, [1.0, 0.0, 0.0, 0.0]) or [1.0, 0.0, 0.0, 0.0]
+            if len(centre) != 3 or len(half) != 3 or centre[2] + max(half) < plane:
+                continue  # a parked slot, a metre under the plane
+            boxes.append({"shape": "block" if (x, y, z) == (0.0, 0.0, 0.0) else "ramp",
+                          "centre_mm": centre, "rotation_xyzw": [x, y, z, w], "half_mm": half})
+        if not boxes:
+            return None
+        lo = [min(b["centre_mm"][k] - b["half_mm"][k] for b in boxes) for k in range(2)]
+        hi = [max(b["centre_mm"][k] + b["half_mm"][k] for b in boxes) for k in range(2)]
+        return terrain_block({
+            "kind": "boxes", "x_range_mm": [lo[0], hi[0]], "y_range_mm": [lo[1], hi[1]],
+            "lowest_mm": plane, "highest_mm": max(b["centre_mm"][2] + b["half_mm"][2] for b in boxes),
+            "plane_z_mm": plane, "boxes": boxes})
+    if ground.get("type") != "hfield":
+        return None
+    asset = next((h for h in root.iter("hfield") if h.get("name") == ground.get("hfield")), None)
+    size = _floats(asset.get("size"), 4, []) if asset is not None else None
+    try:
+        nrow, ncol = int(asset.get("nrow")), int(asset.get("ncol"))
+        elevation = [float(v) for v in (asset.get("elevation") or "").split()]
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if not size or len(size) != 4 or nrow < 2 or ncol < 2 or len(elevation) != nrow * ncol:
+        return None
+    rows, columns = min(nrow, TERRAIN_MAXIMUM_VERTICES), min(ncol, TERRAIN_MAXIMUM_VERTICES)
+    heights = [(pos[2] + size[2] * elevation[round(r * (nrow - 1) / (rows - 1)) * ncol
+                                             + round(c * (ncol - 1) / (columns - 1))]) * 1000.0
+               for r in range(rows) for c in range(columns)]
+    return terrain_block({
+        "kind": "heightfield",
+        "x_range_mm": [(pos[0] - size[0]) * 1000.0, (pos[0] + size[0]) * 1000.0],
+        "y_range_mm": [(pos[1] - size[1]) * 1000.0, (pos[1] + size[1]) * 1000.0],
+        "lowest_mm": pos[2] * 1000.0, "highest_mm": max(heights), "plane_z_mm": None,
+        "grid": {"rows": rows, "columns": columns, "heights_mm": heights}})
 
 
 def collision_proxies(path: Path, *, source: str, expected_sha256: str | None = None) -> dict[str, Any]:
@@ -1121,7 +1257,10 @@ def collision_proxies(path: Path, *, source: str, expected_sha256: str | None = 
                 entry.update(drawn=False, note="invalid size")
             geoms.append(entry)
     block.update(available=True, geoms=geoms, skipped=skipped,
-                 components=sorted({g["component"] for g in geoms}))
+                 components=sorted({g["component"] for g in geoms}),
+                 # The course the model stands on, drawn whether or not the
+                 # proxies are shown (ADR-734).
+                 terrain=mjcf_terrain(root))
     return block
 
 
