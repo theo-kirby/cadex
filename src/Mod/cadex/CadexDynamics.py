@@ -7333,6 +7333,9 @@ TASK_SEMANTIC_FIELDS = (
     "reference",
     # ADR-714: absent on flat ground. Another course is another task.
     "terrain",
+    # ADR-715: absent unless the task scans the ground. The critic reads it,
+    # so a task that gains a scan trains another value function.
+    "scans",
 )
 
 #: The bundle-level fields deliberately left out, and why each one is out.
@@ -7933,15 +7936,47 @@ STATE_OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
 }
 
 
+#: The height scan's grid (ADR-715): 5 points along the body's heading, from
+#: one spacing behind it to three ahead, by 3 across it, 100 mm apart. Fixed,
+#: so its channels are an enumerable set like every other kind's: channel
+#: ``_i`` is ``HEIGHT_SCAN_OFFSETS_MM[i]``, (ahead, left) in mm, and ``_4``
+#: is the point under the body. Weighted forward because the ground a gait
+#: has to plan for is the ground it is about to reach.
+HEIGHT_SCAN_SPACING_MM = 100.0
+HEIGHT_SCAN_OFFSETS_MM: tuple[tuple[float, float], ...] = tuple(
+    (ahead * HEIGHT_SCAN_SPACING_MM, left * HEIGHT_SCAN_SPACING_MM)
+    for ahead in (-1, 0, 1, 2, 3)
+    for left in (-1, 0, 1)
+)
+
+#: Observation kinds that read the ground around a body (ADR-715). A
+#: ``height_scan`` is the body's height, in mm, above the ground at each
+#: point of :data:`HEIGHT_SCAN_OFFSETS_MM`, laid out in the body's heading
+#: frame (its x axis projected on the ground). The ground is the declared
+#: course's heightfield (ADR-714) -- the elevation the simulator collides
+#: with -- or the plane at z = 0. It is no sensor: its rows travel in the
+#: bundle's ``scans`` section, after every other channel, and do not count
+#: against ``MAXIMUM_OBSERVATION_CHANNELS``. It is ``role: privileged``
+#: (orun7 O5): no sensor this API declares maps the terrain, so the critic
+#: reads it and the policy does not.
+SCAN_OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
+    "height_scan": {
+        "target": "component",
+        "suffixes": tuple(f"_{index}" for index in range(len(HEIGHT_SCAN_OFFSETS_MM))),
+    },
+}
+
+
 def sensor_observations(
     records: Sequence[Mapping[str, Any]],
 ) -> list[Mapping[str, Any]]:
-    """The observation records an MJCF sensor carries: all but commands and
-    state readings (ADR-696, ADR-699)."""
+    """The observation records an MJCF sensor carries: all but commands,
+    state readings and scans (ADR-696, ADR-699, ADR-715)."""
 
     return [record for record in records
             if str(record["kind"]) not in COMMAND_OBSERVATION_KINDS
-            and str(record["kind"]) not in STATE_OBSERVATION_KINDS]
+            and str(record["kind"]) not in STATE_OBSERVATION_KINDS
+            and str(record["kind"]) not in SCAN_OBSERVATION_KINDS]
 
 #: What a randomisation entry may vary, and every compiled-model field one
 #: draw has to move.
@@ -8278,6 +8313,11 @@ def observation_records(
             records.append(_state_observation(entry, table, refusals, taken))
             stated += 1
             continue
+        if kind in SCAN_OBSERVATION_KINDS:
+            scanned = _scan_observation(entry, bodies, taken)
+            records.append(scanned)
+            stated += len(scanned["channels"])
+            continue
         row = OBSERVATION_KINDS.get(kind)
         if row is None:
             deferred = DEFERRED_OBSERVATION_KINDS.get(kind)
@@ -8569,6 +8609,74 @@ def _state_observation(
         "motion_type": motion_type,
         "unit": str(unit),
         "scale": float(convert(1.0)),
+        "role": "privileged",
+    }
+
+
+def _scan_observation(
+    entry: Mapping[str, Any],
+    bodies: Sequence[str],
+    taken: dict[str, str],
+) -> dict[str, Any]:
+    """One ``height_scan`` observation, resolved to its body (ADR-715).
+
+    Its channels are claimed in ``taken`` so nothing can clash with them,
+    and the caller's cap subtracts them again, as it does an acceleration's.
+    """
+
+    name = str(entry.get("name") or "")
+    what = f"observation {name!r}"
+    kind = str(entry["kind"])
+    role = str(entry.get("role") or "policy")
+    if role != "privileged":
+        raise DynamicsError(
+            f"{what} gives the policy a height scan of the ground, and no "
+            "sensor on the robot maps the terrain.",
+            reason="height_scan_not_privileged",
+            correction=(
+                "Declare it role=\"privileged\": the critic, the reward and the "
+                "terminations read it, the policy does not. A policy that has "
+                "to see the ground needs a real sensor that measures it."
+            ),
+            observed={"observation": name, "role": role},
+        )
+    target = str(entry.get("component") or "")
+    if target not in bodies:
+        raise DynamicsError(
+            f"{what} scans the ground around component {target!r}, which is "
+            "not a body in this assembly's dynamics model.",
+            reason="observation_component_missing",
+            correction=(
+                "Pass the same assembly.component value the assembly was "
+                "built from. A component with no api.body has no mass and is "
+                "not part of the model."
+            ),
+            observed={"observation": name, "component": target,
+                      "available": list(bodies)},
+        )
+    channels = [f"{name}{suffix}" for suffix in SCAN_OBSERVATION_KINDS[kind]["suffixes"]]
+    for channel in channels:
+        if channel in taken:
+            raise DynamicsError(
+                f"Two observation channels are both called {channel!r}.",
+                reason="duplicate_observation_channel",
+                correction=(
+                    "A reward formula names channels, so two with one name "
+                    "means whichever was declared second. Rename one. A height "
+                    f"scan named 'scan' occupies scan_0 to scan_{len(channels) - 1}."
+                ),
+                observed={"channel": channel, "observation": name,
+                          "conflicts_with": taken[channel]},
+            )
+        taken[channel] = name
+    return {
+        "name": name,
+        "kind": kind,
+        "target": target,
+        "object_name": target,
+        "channels": channels,
+        "unit": "mm",
+        "scale": 1.0,
         "role": "privileged",
     }
 
@@ -10917,6 +11025,130 @@ def _reference_records(
     return clip
 
 
+def _scan_records(
+    observations: Sequence[Mapping[str, Any]],
+    reloaded: Any,
+) -> list[dict[str, Any]]:
+    """The bundle's ``scans`` rows (ADR-715), one per height scan.
+
+    Each names its body by its index in the loaded file, because that is
+    the row of ``xpos`` and ``xmat`` every evaluator holds, and states its
+    grid, so a reader needs nothing but the bundle to know where it looked.
+    """
+
+    mujoco = _mujoco_module()
+    rows: list[dict[str, Any]] = []
+    for record in observations:
+        if str(record["kind"]) not in SCAN_OBSERVATION_KINDS:
+            continue
+        rows.append({
+            "name": str(record["name"]),
+            "kind": str(record["kind"]),
+            "target": str(record["target"]),
+            "body": str(record["object_name"]),
+            "body_id": int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY,
+                                             str(record["object_name"]))),
+            "offsets_mm": [[float(ahead), float(left)]
+                           for ahead, left in HEIGHT_SCAN_OFFSETS_MM],
+            "channels": [str(channel) for channel in record["channels"]],
+            "unit": "mm",
+            # The world position's metres to the channel's mm, so the trainer
+            # multiplies rather than converts.
+            "scale": float(length_mm(1.0)),
+            "role": "privileged",
+        })
+    return rows
+
+
+def scan_channels(task: Mapping[str, Any]) -> list[str]:
+    """Every height-scan channel a task declares, in bundle order (ADR-715).
+
+    Last in every vector, after a reference's tracking channels. None is a
+    policy channel.
+    """
+
+    return [str(channel) for record in task.get("scans") or ()
+            for channel in record["channels"]]
+
+
+def terrain_ground_mm(
+    terrain: Mapping[str, Any], elevation: Sequence[float], x_mm: float, y_mm: float,
+) -> float:
+    """The course's ground height at one point, from the simulator's elevation.
+
+    ``elevation`` is the heightfield's ``hfield_data``: ``nrow * ncol``
+    values in [0, 1], row 0 at -Y, which ``lowest_mm`` and ``highest_mm``
+    scale. Read bilinearly between the four vertices round the point, so it
+    is exact at every vertex; a point beyond the extent reads the edge's
+    height. ``training/cadex_train.py`` writes the same reading in ``jnp``,
+    and a test holds them equal.
+    """
+
+    x0, x1 = (float(value) for value in terrain["x_range_mm"])
+    y0, y1 = (float(value) for value in terrain["y_range_mm"])
+    nrow, ncol = int(terrain["nrow"]), int(terrain["ncol"])
+    across = (min(max(float(x_mm), x0), x1) - x0) / (x1 - x0) * (ncol - 1)
+    along = (min(max(float(y_mm), y0), y1) - y0) / (y1 - y0) * (nrow - 1)
+    column = min(int(math.floor(across)), ncol - 2)
+    row = min(int(math.floor(along)), nrow - 2)
+    u, v = across - column, along - row
+
+    def at(r: int, c: int) -> float:
+        return float(elevation[r * ncol + c])
+
+    level = ((1.0 - v) * ((1.0 - u) * at(row, column) + u * at(row, column + 1))
+             + v * ((1.0 - u) * at(row + 1, column) + u * at(row + 1, column + 1)))
+    lowest = float(terrain["lowest_mm"])
+    return lowest + (float(terrain["highest_mm"]) - lowest) * level
+
+
+def height_scan_values(
+    task: Mapping[str, Any],
+    xpos: Any,
+    xmat: Any,
+    elevation: Sequence[float] | None,
+) -> dict[str, float]:
+    """The height-scan channels (ADR-715): each body's height above the
+    ground at each point of its grid, in mm.
+
+    ``xpos`` and ``xmat`` are ``MjData``'s (metres, times the row's
+    ``scale``; a row-major 3x3 per body, flat or not). The grid turns with the body's heading -- its x axis
+    projected on the ground -- and not with its pitch or roll; a body whose
+    x axis is vertical has no heading and reads the grid in the world's.
+    ``elevation`` is the course's ``hfield_data``, or ``None`` for the plane
+    at z = 0.
+    """
+
+    terrain = task.get("terrain")
+    values: dict[str, float] = {}
+    for record in task.get("scans") or ():
+        body = int(record["body_id"])
+        x, y, z = (float(value) * float(record["scale"]) for value in xpos[body][:3])
+        axes = [float(value) for value in _flat(xmat[body])]
+        ahead_x, ahead_y = axes[0], axes[3]
+        norm = math.hypot(ahead_x, ahead_y)
+        cos, sin = (ahead_x / norm, ahead_y / norm) if norm > 1e-9 else (1.0, 0.0)
+        for (ahead, left), channel in zip(record["offsets_mm"], record["channels"], strict=True):
+            px = x + cos * float(ahead) - sin * float(left)
+            py = y + sin * float(ahead) + cos * float(left)
+            ground = (0.0 if terrain is None or elevation is None
+                      else terrain_ground_mm(terrain, elevation, px, py))
+            values[str(channel)] = z - ground
+    return values
+
+
+def _flat(values: Any) -> list[Any]:
+    """A nested sequence's leaves in order: a 3x3 or a flat 9 alike."""
+
+    out: list[Any] = []
+    for value in values:
+        if hasattr(value, "__len__"):
+            out.extend(_flat(value))
+        else:
+            out.append(value)
+    return out
+
+
 def task_records(
     built: Mapping[str, Any],
     reloaded: Any,
@@ -11132,6 +11364,11 @@ def task_records(
     accelerations = _state_records(observations, reloaded)
     command_names = command_names + [str(channel) for record in accelerations
                                      for channel in record["channels"]]
+    # ADR-715: the scans are last in every vector; here they are only names
+    # an expression may use, and order does not matter to a name.
+    scans = _scan_records(observations, reloaded)
+    command_names = command_names + [str(channel) for record in scans
+                                     for channel in record["channels"]]
     goal = _goal_records(
         mujoco,
         reloaded,
@@ -11314,6 +11551,8 @@ def task_records(
         **({"commands": commands} if commands else {}),
         # ADR-699: absent when the task reads no acceleration, on the same terms.
         **({"accelerations": accelerations} if accelerations else {}),
+        # ADR-715: absent when the task scans no ground, on the same terms.
+        **({"scans": scans} if scans else {}),
         # ADR-703: absent when the task declares no gait reference, and with
         # it ADR-706's tracking channels.
         **({"reference": reference, "tracking": tracking}
@@ -12383,6 +12622,10 @@ def evaluate_episode(
     accelerating = bool(task.get("accelerations"))
     # ADR-706: the reference on the gait clock, a function of the step alone.
     tracking = bool(task.get("tracking"))
+    # ADR-715: the ground the scans read is the elevation the model collides with.
+    scanning = bool(task.get("scans"))
+    elevation = (list(model.hfield_data)
+                 if scanning and task.get("terrain") else None)
     # Before the reset-pose sample below, because the first frame a rollout
     # draws and the first observation a policy acts on both have to be of
     # where the mechanism actually starts.
@@ -12425,6 +12668,8 @@ def evaluate_episode(
             observation.update(acceleration_values(task, data.qacc))
         if tracking:
             observation.update(tracking_values(task, step, origin or 0))
+        if scanning:
+            observation.update(height_scan_values(task, data.xpos, data.xmat, elevation))
         if actions is None:
             commanded = [
                 evaluate_control(code, time_s, context=f"action {index}")
@@ -12464,6 +12709,9 @@ def evaluate_episode(
             # ADR-706: where the step landed is judged against where the
             # reference is when it lands, one step on the clock.
             landed.update(tracking_values(task, step + 1, origin or 0))
+        if scanning:
+            # ADR-715: the ground under where the step landed.
+            landed.update(height_scan_values(task, data.xpos, data.xmat, elevation))
         contributions = []
         reward = 0.0
         for label, weight, code in reward_terms:
@@ -12540,14 +12788,15 @@ def _task_channels(task: Mapping[str, Any]) -> list[str]:
     """Every scalar name an expression may use: the sensor channels in
     slice order, then the goal channels in bundle order (ADR-462), then the
     command channels (ADR-696), then the acceleration channels (ADR-699),
-    then a reference's tracking channels (ADR-706)."""
+    then a reference's tracking channels (ADR-706), then the height scans
+    (ADR-715)."""
 
     return [
         str(channel)
         for record in task["observations"]
         for channel in record["channels"]
     ] + (goal_channels(task) + command_channels(task) + acceleration_channels(task)
-         + tracking_channels(task))
+         + tracking_channels(task) + scan_channels(task))
 
 
 # ---------------------------------------------------------------------------

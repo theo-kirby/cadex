@@ -434,6 +434,13 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `-(knee_tau/peak)^2` on an `actuator_force`, mechanical power
   `abs(knee_tau*knee_vel)` beside a `velocity`, and foot slip
   `sqrt(paw_vx^2+paw_vy^2)*paw_down`.
+  `assembly.observation(trunk, "height_scan", name="scan",
+  role="privileged")` reads the ground round a component (ADR-715):
+  `scan_0` .. `scan_14` are its height in mm above the course (or the plane)
+  at 5 points along its heading, from 100 mm behind to 300 mm ahead, by 3
+  across, 100 mm apart. `scan_4` is under the body. It travels in the
+  bundle's `scans` section, last in every vector, and it must be
+  `privileged`: the critic reads it, the policy does not.
   `assembly.reward(expression, weight=...)` terms are summed and a policy
   maximises the total, reported term by term so "which part of the reward is
   doing the work" is answerable; a cost is a positive quantity with a

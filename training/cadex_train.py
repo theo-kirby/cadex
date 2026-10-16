@@ -710,6 +710,71 @@ def acceleration_vector(xp: Any, task: dict[str, Any], qacc: Any) -> Any:
     return qacc[..., dofs] * scale
 
 
+def scan_channels(task: dict[str, Any]) -> list[str]:
+    """Every height-scan channel the task declares (ADR-715).
+
+    ``CadexDynamics.scan_channels``: last in every vector. Every one is
+    privileged, so none reaches the actor.
+    """
+
+    return [str(channel) for record in task.get("scans") or ()
+            for channel in record["channels"]]
+
+
+def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
+                       elevation: Any = None) -> Any:
+    """The height-scan channels (ADR-715), along a new last axis.
+
+    ``CadexDynamics.height_scan_values`` in ``xp``: each scanning body's
+    height in mm above the ground at each of its ``offsets_mm``, turned by
+    its heading (its x axis on the ground; the world's when that is
+    vertical). ``xpos`` is ``(..., nbody, 3)``, times the row's ``scale``, and ``xmat``
+    ``(..., nbody, 9)`` or ``(..., nbody, 3, 3)``. ``elevation`` is the
+    course's ``hfield_data``, read bilinearly and held at the edge, or
+    ``None`` for the plane at z = 0.
+    """
+
+    terrain = task.get("terrain")
+    parts = []
+    for record in task.get("scans") or ():
+        body = int(record["body_id"])
+        where = xpos[..., body, :] * float(record["scale"])
+        flat = xp.reshape(xmat, xmat.shape[:-2] + (9,)) if xmat.shape[-1] == 3 else xmat
+        frame = flat[..., body, :]
+        ahead_x, ahead_y = frame[..., 0], frame[..., 3]
+        norm = xp.sqrt(ahead_x * ahead_x + ahead_y * ahead_y)
+        turned = norm > 1e-9
+        safe = xp.where(turned, norm, 1.0)
+        cos = xp.where(turned, ahead_x / safe, 1.0)[..., None]
+        sin = xp.where(turned, ahead_y / safe, 0.0)[..., None]
+        offsets = xp.asarray(record["offsets_mm"], dtype=where.dtype)
+        px = where[..., 0:1] + cos * offsets[:, 0] - sin * offsets[:, 1]
+        py = where[..., 1:2] + sin * offsets[:, 0] + cos * offsets[:, 1]
+        if terrain is None or elevation is None:
+            ground = xp.zeros_like(px)
+        else:
+            x0, x1 = (float(value) for value in terrain["x_range_mm"])
+            y0, y1 = (float(value) for value in terrain["y_range_mm"])
+            nrow, ncol = int(terrain["nrow"]), int(terrain["ncol"])
+            across = (xp.clip(px, x0, x1) - x0) / (x1 - x0) * (ncol - 1)
+            along = (xp.clip(py, y0, y1) - y0) / (y1 - y0) * (nrow - 1)
+            column = xp.minimum(xp.floor(across), ncol - 2)
+            row = xp.minimum(xp.floor(along), nrow - 2)
+            u, v = across - column, along - row
+            column, row = column.astype(xp.int32), row.astype(xp.int32)
+            grid = xp.asarray(elevation, dtype=where.dtype)
+
+            def at(r, c):
+                return grid[r * ncol + c]
+
+            level = ((1.0 - v) * ((1.0 - u) * at(row, column) + u * at(row, column + 1))
+                     + v * ((1.0 - u) * at(row + 1, column) + u * at(row + 1, column + 1)))
+            lowest = float(terrain["lowest_mm"])
+            ground = lowest + (float(terrain["highest_mm"]) - lowest) * level
+        parts.append(where[..., 2:3] - ground)
+    return xp.concatenate(parts, axis=-1)
+
+
 def tracking_channels(task: dict[str, Any], *, policy_only: bool = False) -> list[str]:
     """Every channel a gait reference adds (ADR-706); with ``policy_only``
     its clock alone. ``CadexDynamics.tracking_channels``."""
@@ -753,7 +818,7 @@ def tracking_vector(xp: Any, task: dict[str, Any], steps: Any, origin: Any = Non
 
 def channels(task: dict[str, Any]) -> list[str]:
     """Every name an expression may use: sensor, goal, command, acceleration,
-    then tracking channels (ADR-699, ADR-706).
+    tracking, then height-scan channels (ADR-699, ADR-706, ADR-715).
 
     The engine's ``CadexDynamics._task_channels`` is the same rule. The
     sensor channels come out of ``sensordata``; the goal channels are what
@@ -767,7 +832,7 @@ def channels(task: dict[str, Any]) -> list[str]:
         for record in task["observations"]
         for channel in record["channels"]
     ] + (goal_channels(task) + command_channels(task) + acceleration_channels(task)
-         + tracking_channels(task))
+         + tracking_channels(task) + scan_channels(task))
 
 
 def actor_channels(task: dict[str, Any]) -> list[str]:
@@ -907,7 +972,8 @@ def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
             else:
                 floor.append(0.25)
     return floor + [0.0] * (len(goal_channels(task)) + len(command_channels(task))
-                            + len(acceleration_channels(task)) + len(tracking_channels(task)))
+                            + len(acceleration_channels(task)) + len(tracking_channels(task))
+                            + len(scan_channels(task)))
 
 
 def sensor_noise_std(task: dict[str, Any]) -> list[float]:
@@ -1609,6 +1675,9 @@ def build_environment(
     # ADR-709: a PYTHON bool on the same terms; each episode starts at its
     # own clip sample, carried beside the step counter it offsets.
     starting = tracking and task["tracking"].get("start") == "random"
+    # ADR-715: a PYTHON bool on the same terms; a scan is read from the
+    # state's xpos and xmat, never carried.
+    scanning = bool(task.get("scans"))
 
     # ADR-700: a PYTHON value branched on at trace time, so no floor is the
     # graph this trainer always emitted.
@@ -1661,6 +1730,9 @@ def build_environment(
         start_samples = int(task["tracking"]["samples"])
     nbody = int(host.nbody)
 
+    # ADR-715: the ground the scans read is the elevation the model collides with.
+    scan_elevation = (jnp.asarray(host.hfield_data, dtype=jnp.float32)
+                      if scanning and task.get("terrain") else None)
     single = mjx.put_model(host)
     model = single
     if drawn and envs > 1:
@@ -2046,6 +2118,10 @@ def build_environment(
                 [vector, acceleration_vector(jnp, task, data.qacc)])
         if tracking:
             vector = jnp.concatenate([vector, tracked])
+        if scanning:
+            # ADR-715: the ground round where the step landed.
+            vector = jnp.concatenate([vector, height_scan_vector(
+                jnp, task, data.xpos, data.xmat, scan_elevation)])
         if commanding:
             return (data, vector, reward_of(vector), done_of(vector), clamped,
                     replaced)
@@ -2117,6 +2193,10 @@ def build_environment(
             # ADR-706: the clock the policy acts on.
             vector = jnp.concatenate(
                 [vector, tracking_vector(jnp, task, steps, origin)], axis=-1)
+        if scanning:
+            # ADR-715: the critic's; the actor never reads it.
+            vector = jnp.concatenate([vector, height_scan_vector(
+                jnp, task, data.xpos, data.xmat, scan_elevation)], axis=-1)
         return key, vector
 
     def observation(vector):

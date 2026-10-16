@@ -1127,6 +1127,9 @@ _OBSERVATION_KINDS: dict[str, str] = {
     # Not a sensor (ADR-699): a joint's acceleration, read from the
     # simulator's qacc. ``CadexDynamics.STATE_OBSERVATION_KINDS``.
     "acceleration": "joint",
+    # Not a sensor (ADR-715): the body's height above the ground at a fixed
+    # grid round it. ``CadexDynamics.SCAN_OBSERVATION_KINDS``.
+    "height_scan": "component_link",
 }
 
 #: What each observation kind's declared name expands to. A vector channel
@@ -1157,6 +1160,8 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     "contact": ("", "_down"),
     # One joint coordinate's acceleration (ADR-699).
     "acceleration": ("",),
+    # One per point of ``CadexDynamics.HEIGHT_SCAN_OFFSETS_MM`` (ADR-715).
+    "height_scan": tuple(f"_{index}" for index in range(15)),
 }
 
 
@@ -3501,6 +3506,15 @@ class AssemblyDomainAPI:
           joint-acceleration regulariser. A drive's torque is already an
           ``actuator_force`` channel, so ``-(knee_tau / peak)^2`` is the
           torque term, and ``abs(knee_tau * knee_vel)`` its mechanical power.
+        * ``height_scan`` -- the ground round a component (ADR-715): its
+          height in mm above the ground at 15 points, 5 along its heading
+          (from 100 mm behind to 300 mm ahead) by 3 across (100 mm apart),
+          read from the declared course (``terrain=`` on ``api.mjcf``) or
+          the plane. ``name="scan"`` gives ``scan_0`` .. ``scan_14``;
+          ``scan_4`` is the point under the body. ``target`` is an
+          ``api.component``. It must be ``role="privileged"``: nothing on
+          the robot maps the terrain, so the critic reads it and the policy
+          does not.
 
         **A vector channel expands to suffixed names.** ``name="hand"`` on a
         ``component_position`` gives ``hand_x``, ``hand_y`` and ``hand_z``;

@@ -285,10 +285,32 @@ environment. The cost is that a step is a one-cell ramp (20 mm by default)
 and that MJX has no hfield contact for a cylinder or an ellipsoid, which the
 ADR-281 refusal now names. Measured: MJX steps the exported file, and a block
 resting at the origin of a course with an 80 mm step, a 10° slope and a bump
-holds at 9.98 mm (of 10) after 1,000 steps. Still to come in W1: the seeded
-random course and its per-episode re-draw in the trainer, the height-scan
-channel, the terrain predicates, and the course in the rollout and the
+holds at 9.98 mm (of 10) after 1,000 steps. **Known defect (2026-10-16):**
+under driven motion MJX does not yet step that rig on the course stably.
+With the block's arm swung by random ±0.8 N·m torques, one of 8 MJX
+environments is thrown to 1.8 m and goes non-finite at control step 18,
+while stock MuJoCo holds all 8 at 10.0 mm and MJX on the plane holds all 8
+too. So the trainer diverges at iteration 1 on the course, and the
+heightfield's "trains reliably" is not yet shown. Still to come in W1: that
+defect, the seeded random course and its per-episode re-draw in the
+trainer, the terrain predicates, and the course in the rollout and the
 dashboard.
+
+**Height scan (ADR-715, 2026-10-16).** `assembly.observation(trunk,
+"height_scan", name="scan", role="privileged")` reads the ground round a
+component. `scan_0` .. `scan_14` are its height in mm above the ground at a
+fixed grid: 5 points along its heading (100 mm behind to 300 mm ahead) by 3
+across it (±100 mm). `scan_4` is the point under the body. The grid turns
+with the body's heading, its x axis projected on the ground, and not with
+its pitch or roll. The ground is the course's heightfield elevation, read
+bilinearly and held at the edge, or the plane at z = 0. It is no sensor:
+the bundle's `scans` section names the body by its index and states the
+grid, and the channels come last in every vector, after a reference's
+tracking channels. The engine (`height_scan_values`), the trainer
+(`height_scan_vector`, on MJX's `xpos`/`xmat` and the model's
+`hfield_data`) and the stock-MuJoCo reference runner each compute it. It
+must be privileged (orun7 O5): nothing on the robot maps terrain, so the
+critic reads it and the actor never does.
 
 ---
 

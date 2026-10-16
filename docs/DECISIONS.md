@@ -42402,3 +42402,90 @@ the penetration pairs name whichever it was. Evidence:
 `test_a_free_base_on_a_terrain_heightfield_is_supported_by_it`, a block on a
 heightfield plateau 40 mm up with no plane, fails before the change and
 passes after.
+
+## ADR-715 — A task can read the ground round a body: a privileged height scan (2026-10-16, orun7)
+
+**Context.** orun7's W1 asks for a height-scan observation, privileged by
+default (O5): a critic that knows the step ahead can value a stride that
+clears it, which a critic reading only proprioception cannot. ADR-714 put a
+course in the world. Nothing in a task could read it.
+
+**Decision.** A new observation kind, `height_scan`, targets a component:
+`assembly.observation(trunk, "height_scan", name="scan", role="privileged")`.
+- **Its channels** are `scan_0` .. `scan_14`, one per point of
+  `CadexDynamics.HEIGHT_SCAN_OFFSETS_MM`. That is 5 points along the body's
+  heading (−100, 0, 100, 200 and 300 mm) by 3 across (−100, 0, 100 mm), with
+  the heading outer and `scan_4` under the body. Each reads the body's
+  height in mm above the ground there. The grid is fixed, so the channels are an
+  enumerable set like every other kind's. It is weighted forward because
+  the ground a gait has to plan for is the ground it is about to reach. It
+  turns with the body's heading (its x axis on the ground) and not with its
+  pitch or roll. A body whose x axis is vertical reads it in the world's
+  frame.
+- **The ground** is the course's own heightfield elevation (`hfield_data`,
+  scaled by the descriptor's lowest and highest points). It is read
+  bilinearly between the four vertices round the point, so it is exact at
+  every vertex, and held at the edge beyond the extent. With no course it is
+  the plane at z = 0. It reads the array the simulator collides with, not
+  the declared features, so a re-drawn course (next in W1) is read as
+  drawn.
+- **It is no sensor.** Its rows travel in the bundle's own `scans` section:
+  name, body, `body_id` in the loaded file, the grid, the channels, the
+  unit and the `scale` from metres to mm, so the trainer multiplies rather
+  than converts (`test_no_conversion_arithmetic_outside_the_pure_module`). The channels come last in every vector, after a reference's tracking
+  channels. They are absent when the task scans nothing, so every existing
+  bundle keeps its bytes and digest. They do not count against the
+  128-channel cap. `scans` joins `TASK_SEMANTIC_FIELDS`, because the critic
+  reads it.
+- **Every evaluator computes it from the state:**
+  `CadexDynamics.height_scan_values` from `MjData.xpos` and `xmat`, the
+  trainer's `height_scan_vector` from MJX's (a `jnp` copy, since the
+  trainer imports nothing from the engine), and the stock-MuJoCo reference
+  runner in its own words. Nothing is carried, so the trainer's scan state
+  is unchanged.
+- **It must be `role="privileged"`** (`height_scan_not_privileged`). No
+  sensor this API declares maps terrain. A scan from the cat's real cameras
+  is a later criterion, and it would ground this channel through a sensor
+  rather than relax the rule.
+
+**Why a fixed grid.** Every observation kind expands to a fixed set of
+suffixes, and the surface's and the engine's tables are tested equal. A
+grid argument would make the channel names depend on a number, for a choice
+no task has yet needed to vary. 100 mm spans a Go1's body and half the
+cat's, and a later ADR can add a spacing.
+
+**Evidence.** `test_dynamics_height_scan` (14 tests, 15 cases):
+- the bundle: the row, its `body_id` against the compiled model, no sensor
+  added, the channels last and none in the policy's inputs, and `scans` in
+  the semantic view;
+- refusals by reason: a policy-role scan, a channel clash, and a component
+  not in the model;
+- the reading on vertices, posed at four headings, equals the declared
+  features' height (step, slope and bump each under some point);
+- off the vertices, yawed 30° and pitched 12°, it agrees with a ray cast
+  onto the heightfield within 1 mm (MuJoCo splits a cell into two
+  triangles; the scan reads it bilinearly);
+- the edge holds beyond the extent, and on the plane the scan reads the
+  body's height;
+- an episode scores its reward on the scan;
+- the stock runner reproduces it on two seeds;
+- the trainer's `numpy` and `jnp` copies equal the engine's, with flat and
+  3×3 `xmat`, batched;
+- from the training venv, MJX's `xpos`/`xmat` give the engine's reading on
+  the course, and a 3-iteration CPU run trains with the scan in the
+  critic's inputs, keeps it out of the actor's, and the engine verifies the
+  policy.
+
+**Not in this decision, and found while proving it.** The end-to-end run
+was meant to train on the course, and the trainer cannot yet do that. On
+ADR-714's test rig (a box block with a box arm, hinged), MJX steps under
+random ±0.8 N·m torque until one of 8 environments is thrown to 1.8 m and
+goes non-finite at control step 18. Stock MuJoCo holds all 8 at 10.0 mm on
+the same draws, and MJX on the plane holds all 8. A capsule block goes
+non-finite at step 96. So the trainer diverges at iteration 1 on the
+course, with or without a scan, while the same task on the plane trains.
+The overflow MJX warns of is inside its own heightfield-convex collider
+(`jp.finfo(float).max` cast to float32). The trainer's end-to-end test
+therefore runs the scan on the plane, and the course reading is held by the
+MJX parity test. ADR-714's claim that the heightfield "trains reliably" is
+open until that defect is fixed or a placed-box course replaces it.
