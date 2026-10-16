@@ -1032,7 +1032,7 @@ _COLLISION_FROM_SHAPE = ("mesh", "hull")
 #: names a script writes rather than by MuJoCo's enum. Every one of them is
 #: a perfectly ordinary MuJoCo model that the C engine simulates and this
 #: engine rolls out: the limit belongs to MJX's JAX backend, which builds a
-#: contact function per type pair and has none for these four.
+#: contact function per type pair and has none for these six.
 #:
 #: It is a *static* table on purpose. The engine may not import ``mjx`` or
 #: ``jax`` (ADR-084, ``test_engine_purity_guardrails``), so the one honest
@@ -1048,6 +1048,10 @@ _MJX_UNSUPPORTED_PAIRS: frozenset[tuple[str, str]] = frozenset(
         ("cylinder", "mesh"),
         ("box", "ellipsoid"),
         ("ellipsoid", "mesh"),
+        # A declared course is a heightfield (ADR-714), and MJX has no
+        # heightfield contact for these two either.
+        ("cylinder", "hfield"),
+        ("ellipsoid", "hfield"),
     }
 )
 
@@ -3509,6 +3513,399 @@ def _environment_floor(mujoco: Any, spec: Any, tree: Mapping[str, Any]) -> dict[
     }
 
 
+# ---------------------------------------------------------------------------
+# Terrain: ground that is not flat (ADR-714).
+# ---------------------------------------------------------------------------
+
+#: The heightfield asset and the geom that carries it share one name, beside
+#: :data:`ENVIRONMENT_FLOOR_GEOM` and namespaced the same way: a contact report
+#: that says ``environment/terrain`` is the ground the environment supplied.
+ENVIRONMENT_TERRAIN_GEOM = "environment/terrain"
+
+#: The three things a course is made of. Each is a function of position that
+#: adds to the ground height, so a course is their sum and the order a script
+#: lists them in changes nothing.
+TERRAIN_FEATURE_KINDS = ("bump", "step", "slope")
+
+#: The grid spacing when a script does not choose one. A step is a one-cell
+#: ramp in a heightfield, so this is also how sharp a step is: 20 mm against a
+#: foot that is 40-60 mm across reads as an edge, and an 8 m x 4 m course is
+#: 80,000 cells.
+DEFAULT_TERRAIN_CELL_MM = 20.0
+
+#: Bounds on the spacing. Below 5 mm the cell count for a useful course runs
+#: into the ceiling below; above 200 mm a bump of a paw's size is one cell.
+TERRAIN_CELL_RANGE_MM = (5.0, 200.0)
+
+#: The most cells one course may hold. It bounds the MJCF (about ten bytes a
+#: cell) and the model a trainer copies onto the GPU, not the collision cost,
+#: which MuJoCo spends only on the cells under a geom.
+MAXIMUM_TERRAIN_CELLS = 262_144
+
+#: The most features one course may list. A course is a description, and a
+#: list longer than this is a generator that belongs in a loop in the script.
+MAXIMUM_TERRAIN_FEATURES = 64
+
+#: The solid MuJoCo puts under the lowest point of a heightfield. It is what
+#: a foot meets if it gets below the surface between two contact checks, so
+#: it is thick against a step's worth of penetration, not a visual choice.
+TERRAIN_BASE_MM = 50.0
+
+#: A course whose highest and lowest points are closer than this is flat, and
+#: a flat course is the environment's plane, not a heightfield.
+TERRAIN_FLAT_MM = 0.1
+
+#: How far the ground under the start may sit from z = 0. The solved pose
+#: stands on z = 0, so ground anywhere else there starts the episode
+#: buried or falling.
+TERRAIN_START_TOLERANCE_MM = 1e-6
+
+#: Bounds that catch a unit mistake, not a design: a 5 m step, or a grade
+#: written in percent where degrees were meant.
+TERRAIN_MAXIMUM_HEIGHT_MM = 5000.0
+TERRAIN_MAXIMUM_GRADE_DEG = 60.0
+
+
+def _terrain_number(
+    entry: Mapping[str, Any], key: str, context: str, *, reason: str = "malformed_terrain"
+) -> float:
+    if key not in entry:
+        raise DynamicsError(
+            f"{context} has no {key!r}.",
+            reason=reason,
+            correction=f"Give {key!r} as a number.",
+            observed={"keys": sorted(str(item) for item in entry)},
+        )
+    value = entry[key]
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+        raise DynamicsError(
+            f"{context} gives {key!r} as {value!r}, which is not a finite number.",
+            reason=reason,
+            correction=f"Give {key!r} as a finite number.",
+            observed={key: repr(value)},
+        )
+    return float(value)
+
+
+def _terrain_range(terrain: Mapping[str, Any], key: str, context: str) -> tuple[float, float]:
+    value = terrain.get(key)
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise DynamicsError(
+            f"{context} gives {key!r} as {value!r}; it is [start, end] in millimetres.",
+            reason="malformed_terrain",
+            correction=f"Give {key!r} as two numbers, start before end, with 0 between them.",
+            observed={key: repr(value)},
+        )
+    start, end = (
+        _terrain_number({key: item}, key, context) for item in value
+    )
+    if not start < 0.0 < end:
+        raise DynamicsError(
+            f"{context} spans {key} {start:g}..{end:g} mm, which does not "
+            "contain the origin the design starts on.",
+            reason="terrain_excludes_start",
+            correction=(
+                f"Make {key!r} start below 0 and end above it: the solved "
+                "pose stands at the origin, on the course."
+            ),
+            observed={key: [start, end]},
+        )
+    return start, end
+
+
+def _terrain_feature(entry: Any, index: int, context: str) -> dict[str, Any]:
+    where = f"{context} feature {index}"
+    if not isinstance(entry, Mapping):
+        raise DynamicsError(
+            f"{where} is {type(entry).__name__}, not a mapping.",
+            reason="malformed_terrain",
+            correction="Give each feature as a dict with a 'kind'.",
+        )
+    kind = entry.get("kind")
+    if kind not in TERRAIN_FEATURE_KINDS:
+        raise DynamicsError(
+            f"{where} has kind {kind!r}.",
+            reason="unknown_terrain_feature",
+            correction=f"A feature's kind is one of {', '.join(TERRAIN_FEATURE_KINDS)}.",
+            observed={"kind": repr(kind)},
+        )
+    expected = {
+        "bump": {"kind", "x_mm", "y_mm", "radius_mm", "height_mm"},
+        "step": {"kind", "x_mm", "height_mm"},
+        "slope": {"kind", "from_x_mm", "to_x_mm", "grade_deg"},
+    }[str(kind)]
+    extra = sorted(str(key) for key in entry if key not in expected)
+    if extra:
+        raise DynamicsError(
+            f"{where} ({kind}) has unknown keys {extra}.",
+            reason="malformed_terrain",
+            correction=f"A {kind} takes {', '.join(sorted(expected - {'kind'}))}.",
+            observed={"unknown": extra},
+        )
+    record: dict[str, Any] = {"kind": str(kind)}
+    for key in sorted(expected - {"kind"}):
+        record[key] = _terrain_number(entry, key, where)
+    if "height_mm" in record and not (
+        0.0 < abs(record["height_mm"]) <= TERRAIN_MAXIMUM_HEIGHT_MM
+    ):
+        raise DynamicsError(
+            f"{where} ({kind}) has height {record['height_mm']:g} mm.",
+            reason="malformed_terrain",
+            correction=(
+                "A height is non-zero (negative is a dip or a step down) and at "
+                f"most {TERRAIN_MAXIMUM_HEIGHT_MM:g} mm."
+            ),
+            observed={"height_mm": record["height_mm"]},
+        )
+    if kind == "bump" and record["radius_mm"] <= 0.0:
+        raise DynamicsError(
+            f"{where} (bump) has radius {record['radius_mm']:g} mm.",
+            reason="malformed_terrain",
+            correction="A bump's radius is positive.",
+            observed={"radius_mm": record["radius_mm"]},
+        )
+    if kind == "slope":
+        if not record["from_x_mm"] < record["to_x_mm"]:
+            raise DynamicsError(
+                f"{where} (slope) runs from x {record['from_x_mm']:g} to "
+                f"{record['to_x_mm']:g} mm.",
+                reason="malformed_terrain",
+                correction="A slope's from_x_mm is before its to_x_mm.",
+                observed={"from_x_mm": record["from_x_mm"], "to_x_mm": record["to_x_mm"]},
+            )
+        if not 0.0 < abs(record["grade_deg"]) < TERRAIN_MAXIMUM_GRADE_DEG:
+            raise DynamicsError(
+                f"{where} (slope) has grade {record['grade_deg']:g} degrees.",
+                reason="malformed_terrain",
+                correction=(
+                    "A grade is in degrees, non-zero (negative runs downhill) "
+                    f"and steeper than nothing but less than {TERRAIN_MAXIMUM_GRADE_DEG:g}."
+                ),
+                observed={"grade_deg": record["grade_deg"]},
+            )
+    return record
+
+
+def terrain_height_mm(features: Sequence[Mapping[str, Any]], x_mm: float, y_mm: float) -> float:
+    """The ground's height at one point, from validated features.
+
+    A step raises (or lowers) everything at and beyond its ``x_mm``, across
+    the whole width; a slope climbs at its grade from ``from_x_mm`` and holds
+    the height it reached after ``to_x_mm``; a bump is a raised cosine of its
+    radius about its centre. They add, so a course of steps is a staircase
+    and a bump on a slope sits on the slope.
+    """
+
+    height = 0.0
+    for feature in features:
+        kind = feature["kind"]
+        if kind == "step":
+            if x_mm >= feature["x_mm"]:
+                height += feature["height_mm"]
+        elif kind == "slope":
+            run = min(max(x_mm, feature["from_x_mm"]), feature["to_x_mm"]) - feature["from_x_mm"]
+            height += run * math.tan(math.radians(feature["grade_deg"]))
+        else:
+            distance = math.hypot(x_mm - feature["x_mm"], y_mm - feature["y_mm"])
+            if distance < feature["radius_mm"]:
+                height += feature["height_mm"] * 0.5 * (
+                    1.0 + math.cos(math.pi * distance / feature["radius_mm"])
+                )
+    return height
+
+
+def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") -> dict[str, Any]:
+    """A script's terrain declaration, validated and sampled onto a grid.
+
+    ``terrain`` is ``{"x_range_mm": [x0, x1], "y_range_mm": [y0, y1],
+    "cell_mm": 20, "features": [...]}``. The ranges must contain the origin,
+    because the solved pose stands there, and must each be a whole number of
+    cells. Heights are sampled at the grid's vertices: row ``i`` is
+    ``y0 + i * cell``, column ``j`` is ``x0 + j * cell``, which is the order
+    MuJoCo reads a heightfield's data in (row 0 at -Y).
+
+    Pure: no MuJoCo, so a refusal, the grid and the heights are all
+    testable without one. Returns the record the manifest and the task
+    bundle carry (``descriptor``) and the row-major heights, in millimetres.
+    """
+
+    if not isinstance(terrain, Mapping):
+        raise DynamicsError(
+            f"{context} is {type(terrain).__name__}, not a mapping.",
+            reason="malformed_terrain",
+            correction="Give terrain as a dict with x_range_mm, y_range_mm and features.",
+        )
+    allowed = {"x_range_mm", "y_range_mm", "cell_mm", "features"}
+    extra = sorted(str(key) for key in terrain if key not in allowed)
+    if extra:
+        raise DynamicsError(
+            f"{context} has unknown keys {extra}.",
+            reason="malformed_terrain",
+            correction=f"Terrain takes {', '.join(sorted(allowed))}.",
+            observed={"unknown": extra},
+        )
+    x0, x1 = _terrain_range(terrain, "x_range_mm", context)
+    y0, y1 = _terrain_range(terrain, "y_range_mm", context)
+    cell = (
+        DEFAULT_TERRAIN_CELL_MM
+        if terrain.get("cell_mm") is None
+        else _terrain_number(terrain, "cell_mm", context)
+    )
+    low, high = TERRAIN_CELL_RANGE_MM
+    if not low <= cell <= high:
+        raise DynamicsError(
+            f"{context} has cell_mm {cell:g}.",
+            reason="malformed_terrain",
+            correction=f"cell_mm is between {low:g} and {high:g} mm.",
+            observed={"cell_mm": cell},
+        )
+    counts = []
+    for start, end, key in ((x0, x1, "x_range_mm"), (y0, y1, "y_range_mm")):
+        cells = (end - start) / cell
+        if abs(cells - round(cells)) > 1e-6:
+            raise DynamicsError(
+                f"{context}'s {key} is {end - start:g} mm, which is not a whole "
+                f"number of {cell:g} mm cells.",
+                reason="malformed_terrain",
+                correction=f"Make {key}'s length a multiple of cell_mm.",
+                observed={key: [start, end], "cell_mm": cell},
+            )
+        counts.append(int(round(cells)) + 1)
+    ncol, nrow = counts
+    if nrow * ncol > MAXIMUM_TERRAIN_CELLS:
+        raise DynamicsError(
+            f"{context} is {ncol} x {nrow} = {nrow * ncol} cells; the accepted "
+            f"maximum is {MAXIMUM_TERRAIN_CELLS}.",
+            reason="terrain_too_large",
+            correction="Shrink the ranges or coarsen cell_mm.",
+            observed={"cells": nrow * ncol, "maximum": MAXIMUM_TERRAIN_CELLS},
+        )
+    entries = terrain.get("features")
+    if not isinstance(entries, (list, tuple)) or not entries:
+        raise DynamicsError(
+            f"{context} lists no features.",
+            reason="malformed_terrain",
+            correction=(
+                "List at least one bump, step or slope. A flat world needs no "
+                "terrain: leave it out and a free base stands on the plane."
+            ),
+        )
+    if len(entries) > MAXIMUM_TERRAIN_FEATURES:
+        raise DynamicsError(
+            f"{context} lists {len(entries)} features; the accepted maximum is "
+            f"{MAXIMUM_TERRAIN_FEATURES}.",
+            reason="terrain_too_large",
+            correction="Merge features, or split the course.",
+            observed={"features": len(entries), "maximum": MAXIMUM_TERRAIN_FEATURES},
+        )
+    features = [_terrain_feature(entry, index, context) for index, entry in enumerate(entries)]
+    start_height = terrain_height_mm(features, 0.0, 0.0)
+    if abs(start_height) > TERRAIN_START_TOLERANCE_MM:
+        raise DynamicsError(
+            f"{context} puts the ground at the origin {start_height:g} mm from "
+            "z = 0, where the solved pose stands.",
+            reason="terrain_moves_start",
+            correction=(
+                "Keep the origin on z = 0: start steps and slopes at x > 0 (or "
+                "below and back to 0 before it), and keep bumps clear of it."
+            ),
+            observed={"start_height_mm": start_height},
+        )
+    heights = [
+        terrain_height_mm(features, x0 + column * cell, y0 + row * cell)
+        for row in range(nrow)
+        for column in range(ncol)
+    ]
+    lowest, highest = min(heights), max(heights)
+    if highest - lowest < TERRAIN_FLAT_MM:
+        raise DynamicsError(
+            f"{context} is flat over its extent: its features lie outside it "
+            "or cancel.",
+            reason="terrain_is_flat",
+            correction="Put the features inside x_range_mm and y_range_mm, or leave terrain out.",
+            observed={"lowest_mm": lowest, "highest_mm": highest},
+        )
+    return {
+        "descriptor": {
+            "geom": ENVIRONMENT_TERRAIN_GEOM,
+            "body": "world",
+            "kind": "heightfield",
+            "x_range_mm": [x0, x1],
+            "y_range_mm": [y0, y1],
+            "cell_mm": cell,
+            "nrow": nrow,
+            "ncol": ncol,
+            "lowest_mm": lowest,
+            "highest_mm": highest,
+            "base_mm": TERRAIN_BASE_MM,
+            "friction": list(ENVIRONMENT_FLOOR_FRICTION),
+            "features": features,
+        },
+        "heights_mm": heights,
+    }
+
+
+def _environment_terrain(
+    mujoco: Any, spec: Any, tree: Mapping[str, Any], terrain: Mapping[str, Any]
+) -> dict[str, Any]:
+    """A free base on a declared course, instead of the plane.
+
+    One heightfield on the world body, centred on the declared extent with
+    its lowest vertex at its geom's z. It **replaces** the plane rather than
+    lying on it: a plane at z = 0 would cover every step down, and a plane
+    at the lowest point would double every contact on the flat. Beyond the
+    extent there is no ground, so the extent is the course and a run that
+    leaves it falls. The contact parameters are the plane's, for the reason
+    :func:`_environment_floor` gives.
+    """
+
+    if tree["grounded"]:
+        raise DynamicsError(
+            "Terrain was declared for a model that grounds a component.",
+            reason="terrain_needs_free_base",
+            correction=(
+                "Terrain is the ground a free base stands on (ADR-335). Ground "
+                "nothing, or leave terrain out: a grounded model's ground is "
+                "whatever it grounded."
+            ),
+            observed={"grounded": list(tree["grounded"])},
+        )
+    grid = terrain_grid(terrain)
+    descriptor = grid["descriptor"]
+    lowest, highest = descriptor["lowest_mm"], descriptor["highest_mm"]
+    span = highest - lowest
+    x0, x1 = descriptor["x_range_mm"]
+    y0, y1 = descriptor["y_range_mm"]
+    spec.add_hfield(
+        name=ENVIRONMENT_TERRAIN_GEOM,
+        size=[
+            length_m((x1 - x0) / 2.0),
+            length_m((y1 - y0) / 2.0),
+            length_m(span),
+            length_m(TERRAIN_BASE_MM),
+        ],
+        nrow=int(descriptor["nrow"]),
+        ncol=int(descriptor["ncol"]),
+        # Normalised here rather than left to the compiler, which does the
+        # same thing: the elevation the file carries is then exactly the one
+        # the size's third entry scales.
+        userdata=[(height - lowest) / span for height in grid["heights_mm"]],
+    )
+    spec.worldbody.add_geom(
+        name=ENVIRONMENT_TERRAIN_GEOM,
+        type=mujoco.mjtGeom.mjGEOM_HFIELD,
+        hfieldname=ENVIRONMENT_TERRAIN_GEOM,
+        pos=vector_m([(x0 + x1) / 2.0, (y0 + y1) / 2.0, lowest]),
+        quat=[1.0, 0.0, 0.0, 0.0],
+        friction=list(ENVIRONMENT_FLOOR_FRICTION),
+        solref=[CONTACT_TIMECONST_S, 1.0],
+        condim=3,
+        contype=1,
+        conaffinity=1,
+    )
+    return {"terrain": descriptor}
+
+
 def _add_collision_geoms(
     mujoco: Any,
     spec: Any,
@@ -3588,6 +3985,7 @@ def build_model(
     joint_dynamics: Sequence[Mapping[str, Any]] = (),
     actuators: Sequence[Mapping[str, Any]] = (),
     couplings: Sequence[Mapping[str, Any]] = (),
+    terrain: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One assembly, as a compiled MuJoCo model plus the evidence for it.
 
@@ -3614,6 +4012,9 @@ def build_model(
       design's own shapes override through the pair rules in :func:`_contact_parameters`
       (friction is the maximum, so a sole's declared friction wins). A
       grounded model gets no floor: its ground is whatever it grounded.
+    * ``terrain``, when a script declares one, replaces that plane with a
+      heightfield over the declared extent (:func:`_environment_terrain`,
+      ADR-714). It is refused on a grounded model.
 
     Returns the spec, the compiled model, the tree, and per-joint records
     carrying each joint's qpos address and its solved coordinate.
@@ -3711,7 +4112,11 @@ def build_model(
     native_bodies: dict[str, Any] = {"": spec.worldbody}
     native_joints: dict[str, Any] = {}
     joint_records: list[dict[str, Any]] = []
-    environment = _environment_floor(mujoco, spec, tree)
+    environment = (
+        _environment_floor(mujoco, spec, tree)
+        if terrain is None
+        else _environment_terrain(mujoco, spec, tree, terrain)
+    )
     for body in tree["bodies"]:
         name = str(body["name"])
         parent_name = body["parent"]
@@ -6926,6 +7331,8 @@ TASK_SEMANTIC_FIELDS = (
     # rather than judgement: a tracking reward reads it (G2), so a bundle
     # with another stride is another task.
     "reference",
+    # ADR-714: absent on flat ground. Another course is another task.
+    "terrain",
 )
 
 #: The bundle-level fields deliberately left out, and why each one is out.
@@ -10912,6 +11319,15 @@ def task_records(
         **({"reference": reference, "tracking": tracking}
            if reference is not None else {}),
         **judged,
+        # ADR-714: the declared course, so a trainer, a height scan and a
+        # terrain predicate read it from the bundle rather than parsing the
+        # heightfield back out of the XML. Absent on flat ground, so every
+        # earlier bundle and its digest are unchanged.
+        **(
+            {"terrain": json.loads(json.dumps(built["environment"]["terrain"]))}
+            if (built.get("environment") or {}).get("terrain")
+            else {}
+        ),
         # The two per-episode draw streams, both stated, because they are
         # deliberately different algorithms and a reader has to be able to
         # tell which numbers came from where (M9, ADR-097).

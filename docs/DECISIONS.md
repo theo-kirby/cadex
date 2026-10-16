@@ -42319,3 +42319,77 @@ check (the built solid's bounding box is Ø98 × 61.7 mm and its mass is
 940 g at the effective density); the mounting test, parametrised over every
 catalogued SKU, puts a screw in each hole. `pixi run test-engine`: 2986
 passed, 72 skipped.
+
+## ADR-714 — A free base can stand on a declared course: a heightfield (2026-10-16, orun7)
+
+**Context.** orun7's W1 asks for ground that is not flat — bumps, step-ups
+and step-downs, slopes — in the exported model and the task bundle, so a
+legged or wheeled robot can be trained across it. Until now a free base
+(ADR-335) stood on one infinite plane at z = 0 and the script could say
+nothing about the world.
+
+**Decision.** `assembly.mjcf(..., terrain={...})` declares a course, and
+`build_model` writes it as **one MuJoCo heightfield on the world body in
+place of the plane**.
+
+- **The declaration** is data: `x_range_mm`, `y_range_mm`, `cell_mm`
+  (default 20, 5–200) and `features`, each a `bump` (raised cosine, `x_mm`,
+  `y_mm`, `radius_mm`, `height_mm`), a `step` (`x_mm`, `height_mm`, across
+  the width) or a `slope` (`from_x_mm`, `to_x_mm`, `grade_deg`, holding its
+  height after). They add. Negative heights and grades go down.
+  `CadexDynamics.terrain_grid` validates it and samples heights at the grid
+  vertices, row 0 at −Y as MuJoCo reads them; it is pure, so every refusal
+  is tested without MuJoCo.
+- **Refused, by reason:** ground at the origin away from z = 0, where the
+  solved pose stands (`terrain_moves_start`); an extent that excludes the
+  origin (`terrain_excludes_start`); a course flat over its extent
+  (`terrain_is_flat`); more than 262,144 cells or 64 features
+  (`terrain_too_large`); an unknown feature kind or key, or a unit-mistake
+  number (`unknown_terrain_feature`, `malformed_terrain`); terrain on a
+  grounded model (`terrain_needs_free_base`).
+- **It replaces the plane** rather than lying on it: a plane at z = 0 would
+  cover every step down, and one at the lowest point would double every
+  contact on the flat. Beyond the extent there is no ground, so the extent
+  is the course and leaving it is a fall. The heightfield's contact
+  parameters are the plane's (friction 1.0, Cadex's contact spring), and a
+  50 mm base sits under its lowest point.
+- **It travels.** The manifest's `environment` carries `terrain` (extent,
+  grid, lowest and highest point, the validated features) in place of
+  `floor`; the MJCF carries the `<hfield>` inline; `task_records` copies the
+  descriptor into the bundle as `terrain`, and `terrain` joins
+  `TASK_SEMANTIC_FIELDS`: another course is another task. Absent on flat
+  ground, so every earlier model, bundle and digest is unchanged.
+- `("cylinder", "hfield")` and `("ellipsoid", "hfield")` join
+  `_MJX_UNSUPPORTED_PAIRS`, so a task whose cylinder foot can touch the
+  course is refused where it is written (ADR-281), and the MJX-gated test
+  that checks the table against `mjx.has_collision_fn` now covers `hfield`.
+
+**Why a heightfield and not placed boxes.** The charter leaves the form to
+whichever MJX trains reliably. Both have MJX contact functions with box,
+sphere and capsule feet. The heightfield wins on three counts. **One geom,
+whatever the course:** MJX evaluates every candidate pair it is handed, so
+a box per feature multiplies the contact work by the course's length.
+**Shape:** bumps and hills are smooth in a heightfield, and boxes can only
+stair-step them. **Re-draw:** the course is one elevation array, so a
+per-episode or per-environment re-draw is a model field. The costs are
+stated rather than hidden. A step is a one-cell ramp: 20 mm by default,
+against a 40–60 mm paw. A cylinder or ellipsoid foot is refused on a
+course.
+
+**Not in this decision**, and still W1's: the seeded random course and its
+re-draw in the trainer; the height-scan observation (privileged by default,
+O5); the terrain predicates (distance made good, falls, steps and slopes
+crossed); the course in `rollout_policy` and the dashboard; `cadex smoke`'s
+support check, which still looks for `environment/floor`; the proof on a
+second robot.
+
+**Evidence.** `test_dynamics_terrain.py` (15 tests). The grid's heights,
+its row order and the descriptor. Each refusal, by reason. In the compiled
+model, the heightfield in place of the plane, with ray-cast ground heights
+matching `terrain_height_mm` within 0.5 mm at seven points on and between
+the vertices. A block at the origin holds at 10 mm for 1 s. The exported
+file carries the course, and the bundle carries `terrain` in its semantic
+view. A cylinder foot is named as the `cylinder`/`hfield` pair. Measured
+in MJX (training venv, CPU): the exported file steps, and the block holds
+at 9.98 mm after 1,000 steps on a course with an 80 mm step, a −10° slope
+and a 40 mm bump.

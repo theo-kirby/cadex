@@ -4034,6 +4034,8 @@ def _execute_mjcf_export(
             joint_dynamics=model_inputs["joint_dynamics"],
             actuators=model_inputs["actuators"],
             couplings=model_inputs["couplings"],
+            # ADR-714: a declared course replaces the free base's plane.
+            terrain=properties.get("terrain"),
         )
         # Resolved against the tree that was just built, not against the
         # graph: a channel on a joint the spanning forest turned into a loop

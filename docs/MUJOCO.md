@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-15
+Verified against source: 2026-10-16
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -263,6 +263,32 @@ nothing else in the world (`docs/probes/ot6/finch/free_base.json`: held for
 2 s it stands, shoved at 0.3 m/s it falls onto the floor and not through it).
 Only `require_solved=True` holds a base — the unsolved path never refused,
 and holding there would move placements an accepted project may carry.
+
+**Terrain (ADR-714, 2026-10-16).** `assembly.mjcf(..., terrain=...)` puts a
+declared course under a free base **instead of** the plane: one MuJoCo
+heightfield, asset and geom both named `environment/terrain`, on the world
+body, sampled from `bump`, `step` and `slope` features that add
+(`CadexDynamics.terrain_grid`, pure and tested without MuJoCo). Its lowest
+vertex sits at the geom's z, with a 50 mm base beneath; its contact
+parameters are the plane's. It replaces the plane rather than lying on it,
+because a plane at z = 0 would cover every step down and one at the lowest
+point would double every contact on the flat — so the extent is the course,
+and leaving it is a fall. The manifest carries `environment.terrain` (extent,
+grid, lowest and highest, the validated features) in place of
+`environment.floor`, and `task_records` copies it into the bundle as
+`terrain`, a semantic field: another course is another task. A heightfield,
+not placed boxes, because it is one geom whatever the course holds (MJX
+evaluates every candidate pair, so a box per feature multiplies the contact
+work by the course's length), it expresses bumps and hills that boxes only
+stair-step, and its elevation is one model array a trainer can re-draw per
+environment. The cost is that a step is a one-cell ramp (20 mm by default)
+and that MJX has no hfield contact for a cylinder or an ellipsoid, which the
+ADR-281 refusal now names. Measured: MJX steps the exported file, and a block
+resting at the origin of a course with an 80 mm step, a 10° slope and a bump
+holds at 9.98 mm (of 10) after 1,000 steps. Still to come in W1: the seeded
+random course and its per-episode re-draw in the trainer, the height-scan
+channel, the terrain predicates, and the course in the rollout and the
+dashboard.
 
 ---
 

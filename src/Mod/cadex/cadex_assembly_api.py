@@ -100,6 +100,33 @@ _OCCURRENCE_PATH = re.compile(
 )
 
 
+def _plain_terrain(operation: str, value: Any, where: str = "terrain") -> Any:
+    """A terrain declaration as plain data: dicts, lists, strings and numbers.
+
+    The engine validates the course itself (``CadexDynamics.terrain_grid``)
+    and names what to change; this only makes sure what reaches it is data a
+    value can carry, so a NumPy array or a callable fails here, by name.
+    """
+
+    if isinstance(value, Mapping):
+        return {
+            str(key): _plain_terrain(operation, item, f"{where}[{key!r}]")
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [
+            _plain_terrain(operation, item, f"{where}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    raise _error(
+        operation, where,
+        "holds only dicts, lists, strings and numbers",
+        type(value).__name__,
+    )
+
+
 def _error(operation: str, parameter: str, message: str, value: Any = None) -> ValueError:
     received = "" if value is None else f" Received {value!r}."
     return ValueError(f"api.{operation}: invalid {parameter}: {message}.{received}")
@@ -4795,6 +4822,9 @@ class AssemblyDomainAPI:
         observations: Sequence[DomainValue] = (),
         gravity_m_s2: Sequence[float] | None = None,
         solver_step_s: float | None = None,
+        # Unannotated on purpose, like component's covers: the assembly
+        # page is held under one tool result (ADR-360). A mapping, or None.
+        terrain=None,
         label: str = "",
     ) -> DomainValue:
         """Export the assembly as a MuJoCo MJCF model file.
@@ -4839,9 +4869,22 @@ class AssemblyDomainAPI:
         dynamically inert -- measured, not assumed -- so a model that gains
         channels integrates identically to the one that had none, and
         everything this docstring promises above stays true of it.
+
+        ``terrain`` puts a course under a free base instead of the plane
+        (ADR-714): ``{"x_range_mm", "y_range_mm", "cell_mm", "features"}``,
+        features being ``bump``, ``step`` and ``slope`` dicts that add. See
+        docs/XSCRIPT.md for their keys.
         """
 
         operation = "mjcf"
+        if terrain is not None:
+            if not isinstance(terrain, Mapping):
+                raise _error(
+                    operation, "terrain",
+                    "is a dict with x_range_mm, y_range_mm and features",
+                    terrain,
+                )
+            terrain = _plain_terrain(operation, terrain)
         shared = self._mujoco_model(
             operation,
             assembly,
@@ -4864,6 +4907,7 @@ class AssemblyDomainAPI:
             observations=channels,
             gravity_m_s2=shared["gravity_m_s2"],
             solver_step_s=shared["solver_step_s"],
+            **({"terrain": terrain} if terrain is not None else {}),
             label=label,
         )
 

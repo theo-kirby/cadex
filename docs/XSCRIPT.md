@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-15
+Verified against source: 2026-10-16
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -81,6 +81,17 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   (reported as `free_base`, never as grounded), the dynamics export gives it
   a free joint, and the ground it stands on is the environment's plane at
   z = 0 — never a part of the script. A grounded assembly gets no such floor.
+  `assembly.mjcf(..., terrain={...})` swaps that plane for a declared course
+  (ADR-714): a heightfield over `x_range_mm` × `y_range_mm` at `cell_mm`
+  (default 20) built from `features` — `bump` (`x_mm`, `y_mm`, `radius_mm`,
+  `height_mm`, a raised cosine), `step` (`x_mm`, `height_mm`, across the
+  width, negative steps down) and `slope` (`from_x_mm`, `to_x_mm`,
+  `grade_deg`, holding its height after) — which add. The ground at the
+  origin stays at z = 0, nothing lies beyond the extent, and a grounded model
+  is refused. The course is in the file and in every task bundle built on it
+  as `terrain`. A step is a one-cell ramp, so `cell_mm` is also how sharp an
+  edge is; MJX has no heightfield contact for a cylinder or an ellipsoid, so a
+  task refuses one that can touch the course.
 - **`part.box`'s `origin` is a corner, not a centre.** `part.box(40, 40, 200)`
   occupies x ∈ [0, 40], y ∈ [0, 40], z ∈ [0, 200] — the origin is the
   minimum corner, and the solid is entirely on the positive side of the
