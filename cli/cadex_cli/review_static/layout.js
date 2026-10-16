@@ -5,17 +5,20 @@
 // areas, each showing one editor. A gutter between two areas resizes them;
 // an area's header picks its editor, splits it, maximizes it or closes it;
 // dragging a header onto another area docks it beside that area (an edge) or
-// swaps the two (the middle). Each editor is shown at most once, so picking
-// one shown elsewhere swaps the two areas' editors. An area may also be
-// empty, showing only its editor picker, so a preset can have more areas
-// than there are editors (ADR-573).
+// swaps the two (the middle). Most editors are shown at most once, so picking
+// one shown elsewhere swaps the two areas' editors; an editor that may be
+// shown more than once (`multi`: the 3D viewport, Activations, Network,
+// ADR-723) opens another copy instead, and a split of its area opens a copy
+// of it. An area may also be empty, showing only its editor picker, so a
+// preset can have more areas than there are editors (ADR-573).
 //
 // A preset (ADR-573) replaces the whole tree in one step: single, side by
 // side, stacked, 2 over 1, 1 over 2, three columns, three rows or quad, its
 // areas filled with the editors in their order and any left over empty.
 //
 // The layout is a tree: a split {dir: 'row'|'col', sizes, children} or an
-// area {editor}. It is this browser's own, kept in localStorage; a browser
+// area {editor, copy}, copy 0 (left out) being the editor's own markup and
+// the rest copies the editor's `instance(copy)` makes, once, and keeps. It is this browser's own, kept in localStorage; a browser
 // that refuses storage gets the default every visit. Below 700 px there is
 // no room to tile, so one editor fills the screen and a tab bar picks it.
 (function () {
@@ -72,15 +75,16 @@
       return node;
     }
     function strip(node) {
-      return node.editor ? { editor: node.editor }
+      return node.editor ? (node.copy ? { editor: node.editor, copy: node.copy } : { editor: node.editor })
         : { dir: node.dir, sizes: node.sizes.map(function (s) { return Number(s.toFixed(4)); }), children: node.children.map(strip) };
     }
     function valid(node, seen) {
       if (!node || typeof node !== 'object') return false;
       if (node.editor === EMPTY) return true;
       if (typeof node.editor === 'string') {
-        if (!editors[node.editor] || seen[node.editor]) return false;
-        seen[node.editor] = true;
+        var copy = node.copy || 0, key = node.editor + ':' + copy;
+        if (!editors[node.editor] || seen[key] || !(copy === 0 || editors[node.editor].multi && copy > 0 && copy === Math.floor(copy))) return false;
+        seen[key] = true;
         return true;
       }
       return (node.dir === 'row' || node.dir === 'col') && Array.isArray(node.children) && node.children.length >= 2
@@ -115,6 +119,15 @@
       return out;
     }
     function shown() { return areas().map(function (area) { return area.editor; }).filter(function (type) { return type !== EMPTY; }); }
+    // The lowest copy of a multi editor no area shows.
+    function freeCopy(type, except) {
+      var used = areas().filter(function (a) { return a.editor === type && a !== except; }).map(function (a) { return a.copy || 0; });
+      for (var k = 0; ; k++) if (used.indexOf(k) < 0) return k;
+    }
+    function instance(node) {
+      var editor = editors[node.editor];
+      return node.copy ? editor.instance(node.copy) : editor;
+    }
     function hidden() { var on = shown(); return order.filter(function (type) { return on.indexOf(type) < 0; }); }
 
     // A split of one child is that child; a split inside a split of the same
@@ -165,16 +178,27 @@
     function setEditor(id, type) {
       var found = find(id);
       if (!found || !found.node.editor || !(editors[type] || type === EMPTY) || found.node.editor === type) return false;
-      var other = type === EMPTY ? null : areas().filter(function (area) { return area.editor === type; })[0];
-      if (other) other.editor = found.node.editor;
+      var other = type === EMPTY || editors[type].multi ? null : areas().filter(function (area) { return area.editor === type; })[0];
+      if (other) { other.editor = found.node.editor; other.copy = found.node.copy; if (other.editor !== EMPTY && !editors[other.editor].multi) delete other.copy; }
       found.node.editor = type;
+      if (type !== EMPTY && editors[type].multi) found.node.copy = freeCopy(type, found.node); else delete found.node.copy;
+      if (!found.node.copy) delete found.node.copy;
       commit();
       return true;
     }
+    // A split opens a copy of the area's own editor when it may be shown more than once, else
+    // an editor not shown yet.
+    function splitType(id) {
+      var found = find(id), own = found && found.node.editor;
+      if (own && own !== EMPTY && editors[own].multi) return own;
+      return hidden()[0] || null;
+    }
     function split(id, dir, type) {
-      type = type || hidden()[0];
-      if (!type || shown().indexOf(type) >= 0 || !find(id)) return false;
-      insertBeside(id, { id: uid(), editor: type }, dir === 'row' ? 'right' : 'bottom');
+      type = type || splitType(id);
+      if (!type || !find(id) || (shown().indexOf(type) >= 0 && !editors[type].multi)) return false;
+      var node = { id: uid(), editor: type }, copy = editors[type].multi ? freeCopy(type) : 0;
+      if (copy) node.copy = copy;
+      insertBeside(id, node, dir === 'row' ? 'right' : 'bottom');
       commit();
       return true;
     }
@@ -189,12 +213,15 @@
       var source = find(sourceId), target = find(targetId);
       if (!source || !target || sourceId === targetId) return false;
       if (zone === 'center') {
-        var editor = source.node.editor;
-        source.node.editor = target.node.editor;
-        target.node.editor = editor;
+        var editor = source.node.editor, copy = source.node.copy;
+        source.node.editor = target.node.editor; source.node.copy = target.node.copy;
+        target.node.editor = editor; target.node.copy = copy;
+        [source.node, target.node].forEach(function (n) { if (!n.copy) delete n.copy; });
       } else {
         detach(sourceId);
-        insertBeside(targetId, { id: uid(), editor: source.node.editor }, zone);
+        var moved = { id: uid(), editor: source.node.editor };
+        if (source.node.copy) moved.copy = source.node.copy;
+        insertBeside(targetId, moved, zone);
       }
       commit();
       return true;
@@ -245,8 +272,10 @@
     function shelve() {
       order.forEach(function (type) {
         var editor = editors[type];
-        editor.home.appendChild(editor.tools);
-        editor.home.appendChild(editor.body);
+        (editor.copies ? [editor].concat(editor.copies()) : [editor]).forEach(function (one) {
+          one.home.appendChild(one.tools);
+          one.home.appendChild(one.body);
+        });
       });
     }
     function render() {
@@ -290,10 +319,11 @@
       return { tools: el('div', 'editor-tools'), body: body };
     }
     function buildArea(node) {
-      var editor = node.editor === EMPTY ? emptyEditor() : editors[node.editor];
+      var editor = node.editor === EMPTY ? emptyEditor() : instance(node);
       var area = el('section', 'area');
       area.dataset.area = node.id;
       area.dataset.editor = node.editor;
+      if (node.copy) area.dataset.copy = String(node.copy);
       var header = el('header', 'area-header');
       var grip = el('span', 'area-grip');
       grip.title = 'Drag onto another area to move this one';
@@ -302,7 +332,7 @@
       header.appendChild(typeSelect(node.editor, function (type) { setEditor(node.id, type); }));
       header.appendChild(editor.tools);
       var actions = el('span', 'area-actions');
-      var free = hidden().length > 0, alone = areas().length < 2;
+      var free = !!splitType(node.id), alone = areas().length < 2;
       var splitRow = iconButton('row', 'Split left and right', function () { split(node.id, 'row'); });
       var splitCol = iconButton('col', 'Split top and bottom', function () { split(node.id, 'col'); });
       splitRow.disabled = splitCol.disabled = !free || !!maximized;
@@ -451,7 +481,7 @@
       render: render, reset: reset, preset: preset, presets: Object.keys(PRESETS), setEditor: setEditor, split: split, close: close, move: move,
       maximize: maximize, show: show,
       tree: function () { return strip(tree); },
-      areas: function () { return areas().map(function (area) { return { id: area.id, editor: area.editor }; }); },
+      areas: function () { return areas().map(function (area) { return { id: area.id, editor: area.editor, copy: area.copy || 0 }; }); },
       shown: function () { return narrow.matches ? [tab] : (maximized ? [find(maximized).node.editor] : shown()); },
       mode: function () { return narrow.matches ? 'tabs' : 'areas'; }
     };

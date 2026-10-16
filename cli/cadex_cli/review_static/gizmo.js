@@ -8,6 +8,8 @@
 // along that axis, keeping its target and distance (Y up for top and bottom); a click on the view
 // already shown turns to the opposite one. The glide is about 0.4 s, eased, and instant under
 // prefers-reduced-motion; a press, pinch or wheel on the canvas takes the camera back mid-glide.
+// It works while a rollout plays and the view follows it (ADR-723): follow moves the target, the
+// gizmo the direction, and each leaves the other's alone.
 //
 // It reads and sets the viewer's camera (review_scene.js camera/setCamera) and repaints on its
 // draws; it writes nothing (ADR-537).
@@ -50,12 +52,16 @@
       var title = el('title'); title.textContent = end.name + ' view'; g.appendChild(title);
       g.appendChild(el('circle', { r: end.sign > 0 ? BALL : RING }));
       if (end.label) { var t = el('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central' }); t.textContent = end.label; g.appendChild(t); }
-      g.addEventListener('click', function (e) { e.stopPropagation(); snap(end); });
+      // A press and a release on the same end snap, rather than a click: the ends are restacked
+      // as the view turns, and a click is lost when its target moves between the two.
+      g.addEventListener('pointerdown', function (e) { e.stopPropagation(); pressed = end.key; });
+      g.addEventListener('pointerup', function (e) { e.stopPropagation(); if (pressed === end.key) snap(end); pressed = null; });
       ends[end.key] = g;
     });
     root.removeAttribute('hidden');   // an SVG element has no hidden property, only the attribute
 
-    var glide = null, shown = '';
+    var glide = null, shown = '', stacked = '', pressed = null;
+    root.addEventListener('pointerleave', function () { pressed = null; });
     function paint() {
       var c = viewer.camera(), sy = Math.sin(c.yaw), cy = Math.cos(c.yaw), sp = Math.sin(c.pitch), cp = Math.cos(c.pitch);
       // The camera's right, up and toward-the-camera vectors in the model's z-up frame.
@@ -66,11 +72,17 @@
         if (stems[end.key]) { stems[end.key].setAttribute('x2', x.toFixed(2)); stems[end.key].setAttribute('y2', y.toFixed(2)); }
         return { end: end, depth: end.sign * toward[end.axis] };
       }).sort(function (a, b) { return a.depth - b.depth; });
-      // Far to near, each stem just under its ball, so a near end is never hidden by a far one.
-      order.forEach(function (o) {
-        if (stems[o.end.key]) root.appendChild(stems[o.end.key]);
-        root.appendChild(ends[o.end.key]);
-      });
+      // Far to near, each stem just under its ball, so a near end is never hidden by a far one;
+      // only when the order changes, so a view redrawn every frame (playing, following) leaves
+      // the ends where a press found them.
+      var key = order.map(function (o) { return o.end.key; }).join(' ');
+      if (key !== stacked) {
+        stacked = key;
+        order.forEach(function (o) {
+          if (stems[o.end.key]) root.appendChild(stems[o.end.key]);
+          root.appendChild(ends[o.end.key]);
+        });
+      }
       shown = ENDS.filter(function (end) {
         return Math.abs(turn(c.yaw, end.view.yaw)) < 1e-3 && Math.abs(c.pitch - end.view.pitch) < 1e-3
           || Math.abs(end.view.pitch) > 1.5 && Math.abs(c.pitch - end.view.pitch) < 1e-3;

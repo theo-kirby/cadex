@@ -193,63 +193,48 @@
   }
 
   // -- the editors -----------------------------------------------------------------------------
+  // One core reads the rollout and its policy and runs the network once; any number of panels
+  // (ADR-723) draw it: Activations panels the motors, Network panels the network. The picked
+  // motor and a hovered neuron are the core's, so every panel shows the same moment the same
+  // way; which views are on, and whether a panel paints the viewport, is each panel's own.
   var WARM = [255, 80, 100], COOL = [90, 130, 255];
   function sign(c, a) { var k = c > 0 ? WARM : COOL; return 'rgba(' + k[0] + ',' + k[1] + ',' + k[2] + ',' + a.toFixed(2) + ')'; }
+  var DEFAULT_VIEWS = { gauges: true, bars: false, drivers: true, layers: true, paths: true };
+  function keptViews() {
+    var views = Object.assign({}, DEFAULT_VIEWS);
+    try { var kept = JSON.parse(localStorage.getItem(KEY) || 'null'); if (kept) Object.keys(views).forEach(function (k) { if (typeof kept[k] === 'boolean') views[k] = kept[k]; }); } catch (_) { /* defaults */ }
+    return views;
+  }
 
   function create(o) {
-    var viewer = o.viewer, body = o.body, netBody = o.network;
-    var motorsBox = o.motors, barsBox = o.bars, detail = o.detail, status = o.status, toggle = o.toggle;
-    var layersCanvas = o.layers, pathsCanvas = o.paths;
+    var viewer = o.viewer;
     var policyUrl = null, playback = null, policy = null, net = null, inputs = null;
-    var frames = [], scales = [], match = [], gauges = [], selected = 0, hover = null, frameAt = 0, blendAt = null;
-    var showInViewport = false, eased = {}, easedAt = 0, ticket = 0, cellBoxes = [], pathNodes = [], grads = null;
+    var frames = [], scales = [], match = [], motors = [], selected = 0, hover = null, frameAt = 0, blendAt = null;
+    var eased = {}, easedAt = 0, ticket = 0, grads = null, panels = [], statusLine = { text: '', state: 'empty' };
 
-    // -- which views show: each its own switch, kept by this browser -----------------------------
-    var views = { gauges: true, bars: false, drivers: true, layers: true, paths: true };
-    try { var kept = JSON.parse(localStorage.getItem(KEY) || 'null'); if (kept) Object.keys(views).forEach(function (k) { if (typeof kept[k] === 'boolean') views[k] = kept[k]; }); } catch (_) { /* defaults */ }
-    function applyViews() {
-      [[o.views, body], [o.networkViews, netBody]].forEach(function (pair) {
-        if (!pair[0] || !pair[1]) return;
-        pair[0].querySelectorAll('button[data-view]').forEach(function (b) {
-          b.setAttribute('aria-pressed', String(views[b.dataset.view]));
-          pair[1].dataset[b.dataset.view] = String(views[b.dataset.view]);
-        });
-      });
+    function say(text, state) {
+      statusLine = { text: text, state: state || '' };
+      panels.forEach(function (p) { if (p.status) { p.status.textContent = text; p.status.dataset.state = state || ''; if (p.kind === 'motors') p.status.hidden = !text; } });
     }
-    [o.views, o.networkViews].forEach(function (group) {
-      if (!group) return;
-      group.addEventListener('click', function (e) {
-        var b = e.target.closest('button[data-view]'); if (!b) return;
-        views[b.dataset.view] = !views[b.dataset.view];
-        try { localStorage.setItem(KEY, JSON.stringify(views)); } catch (_) { /* this visit only */ }
-        applyViews(); render();
-      });
-    });
-    applyViews();
-
-    toggle.addEventListener('click', function () {
-      showInViewport = !showInViewport;
-      toggle.setAttribute('aria-pressed', String(showInViewport));
-      eased = {}; paintViewport(true);
-    });
-    function paintRamp() { if (o.ramp) o.ramp.style.background = heat.gradient(); }
-    paintRamp();
-    heat.onChange(function () { paintRamp(); render(); paintViewport(true); });
-
-    function say(text, state) { status.textContent = text; status.dataset.state = state || ''; status.hidden = !text; }
-    function netSay(text, state) { if (!o.networkStatus) return; o.networkStatus.textContent = text; o.networkStatus.dataset.state = state || ''; }
+    function anyViewport() { return panels.some(function (p) { return p.kind === 'motors' && p.showInViewport; }); }
 
     function setPlayback(served) {
       ticket++;
       playback = served && served.available ? served : null;
       var url = playback && playback.policy;
-      gauges = []; motorsBox.textContent = ''; if (barsBox) barsBox.textContent = '';
+      motors = [];
+      if (playback) {
+        motors = (playback.channels || []).map(function (c) {
+          return { name: shortName(c.joint || String(c.actuator).split('/')[0]), joint: c.joint || String(c.actuator),
+                   low: Number(c.low), high: Number(c.high), rated: Number(c.effort_rated) || null, unit: c.joint_unit || c.unit || '' };
+        });
+      }
+      panels.forEach(buildMotors);
       if (!playback) { reset('Play a rollout in the 3D viewport — a checkpoint or a run’s own — to see its motors and its network.'); return; }
-      buildGauges();
       if (!url) { dropNetwork('This rollout has no policy file beside it, so only its motors are shown.'); setFrame(0, 0, 0); return; }
       if (url === policyUrl && policy) { attach(policy); return; }
       var mine = ticket; policyUrl = url; policy = null; net = null;
-      say('loading the policy…', 'loading'); netSay('loading the policy…', 'loading');
+      say('loading the policy…', 'loading');
       fetch(url, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (served) {
         if (mine !== ticket) return;
         if (!served.available) { dropNetwork('The policy could not be read: ' + served.reason); return; }
@@ -258,12 +243,9 @@
     }
     function reset(text) {
       policyUrl = null; policy = null; net = null; frames = []; playback = null; grads = null;
-      say(text, 'empty'); netSay(text, 'empty'); detail.textContent = ''; drawLayers(); drawPaths(); paintViewport(true);
+      say(text, 'empty'); render(); paintViewport(true);
     }
-    function dropNetwork(text) {
-      policy = null; net = null; frames = []; grads = null;
-      say(text, 'warn'); netSay(text, 'warn'); detail.textContent = ''; drawLayers(); drawPaths();
-    }
+    function dropNetwork(text) { policy = null; net = null; frames = []; grads = null; say(text, 'warn'); render(); }
 
     function attach(served) {
       policy = served; net = new Network(served); inputs = new Inputs(served, playback);
@@ -288,13 +270,15 @@
       });
       var known = match.filter(function (r) { return r != null; });
       var mean = known.length ? known.reduce(function (a, b) { return a + b; }, 0) / known.length : null;
-      body.dataset.match = mean == null ? '' : mean.toFixed(2);
+      panels.forEach(function (p) { if (p.kind === 'motors') p.body.dataset.match = mean == null ? '' : mean.toFixed(2); });
       var shape = [served.network.layers[0][0]].concat(served.network.layers.map(function (s) { return s[1]; })).join(' → ');
-      var line = (served.label ? served.label + ' · ' : '') + shape + (mean == null ? '' : ' · rebuilt commands match the recorded ones at r ' + mean.toFixed(2))
-          + (inputs.missing.length ? ' · not rebuilt: ' + inputs.missing.join(', ') : '');
-      say(line, 'ready'); netSay(line, 'ready');
-      gauges.forEach(function (g, m) { g.box.title = g.joint + (match[m] == null ? '' : ' · rebuilt vs recorded r ' + match[m].toFixed(2)); });
+      say((served.label ? served.label + ' · ' : '') + shape + (mean == null ? '' : ' · rebuilt commands match the recorded ones at r ' + mean.toFixed(2))
+          + (inputs.missing.length ? ' · not rebuilt: ' + inputs.missing.join(', ') : ''), 'ready');
+      panels.forEach(titleGauges);
       setFrame(frameAt, frameAt, 0);
+    }
+    function titleGauges(p) {
+      (p.gauges || []).forEach(function (g, m) { g.box.title = motors[m].joint + (match[m] == null ? '' : ' · rebuilt vs recorded r ' + match[m].toFixed(2)); });
     }
 
     // -- motors: gauges and bars -------------------------------------------------------------
@@ -305,10 +289,11 @@
       var p = polar(a0, r), q = polar(a1, r);
       return 'M' + p[0].toFixed(2) + ' ' + p[1].toFixed(2) + 'A' + r + ' ' + r + ' 0 ' + (a1 - a0 > 180 ? 1 : 0) + ' 1 ' + q[0].toFixed(2) + ' ' + q[1].toFixed(2);
     }
-    function buildGauges() {
-      (playback.channels || []).forEach(function (c, m) {
-        var name = shortName(c.joint || String(c.actuator).split('/')[0]);
-        var box = el('figure', { class: 'gauge', 'data-motor': String(m), 'data-joint': c.joint || '' });
+    function buildMotors(p) {
+      if (p.kind !== 'motors') return;
+      p.gauges = []; p.motorsBox.textContent = ''; if (p.barsBox) p.barsBox.textContent = '';
+      motors.forEach(function (mo, m) {
+        var box = el('figure', { class: 'gauge', 'data-motor': String(m), 'data-joint': mo.joint });
         var svg = el('svg', { viewBox: '0 0 100 100', 'aria-hidden': 'true' }, true);
         var track = el('path', { class: 'gauge-track', d: arc(START, START + SWEEP, R) }, true);
         var load = el('path', { class: 'gauge-load' }, true);
@@ -320,26 +305,25 @@
         svg.appendChild(track); svg.appendChild(load); svg.appendChild(cmd); svg.appendChild(pred);
         svg.appendChild(needle); svg.appendChild(el('circle', { class: 'gauge-hub', cx: CX, cy: CY, r: 3 }, true));
         svg.appendChild(value); svg.appendChild(effort);
-        var caption = el('figcaption'); caption.textContent = name;
+        var caption = el('figcaption'); caption.textContent = mo.name;
         box.appendChild(svg); box.appendChild(caption);
         box.addEventListener('click', function () { selected = m; render(); });
-        motorsBox.appendChild(box);
+        p.motorsBox.appendChild(box);
         // The same motor laid sideways: its name, the range as a track filled from zero to the
         // joint, the recorded command a dot and the network's a ring, and the angle and load.
         var row = el('div', { class: 'mbar', 'data-motor': String(m) });
-        var label = el('span', { class: 'mbar-name' }); label.textContent = name;
+        var label = el('span', { class: 'mbar-name' }); label.textContent = mo.name;
         var barTrack = el('span', { class: 'mbar-track' }), fill = el('span', { class: 'mbar-fill' });
         var zeroTick = el('span', { class: 'mbar-zero' }), bcmd = el('span', { class: 'mbar-command' }), bnet = el('span', { class: 'mbar-network' });
         barTrack.appendChild(fill); barTrack.appendChild(zeroTick); barTrack.appendChild(bcmd); barTrack.appendChild(bnet);
         var readout = el('span', { class: 'mbar-value' });
         row.appendChild(label); row.appendChild(barTrack); row.appendChild(readout);
         row.addEventListener('click', function () { selected = m; render(); });
-        if (barsBox) barsBox.appendChild(row);
-        gauges.push({ box: box, load: load, needle: needle, cmd: cmd, pred: pred, value: value, effort: effort,
-                      row: row, fill: fill, zero: zeroTick, bcmd: bcmd, bnet: bnet, readout: readout,
-                      joint: c.joint || String(c.actuator), low: Number(c.low), high: Number(c.high),
-                      rated: Number(c.effort_rated) || null, unit: c.joint_unit || c.unit || '' });
+        if (p.barsBox) p.barsBox.appendChild(row);
+        p.gauges.push({ box: box, load: load, needle: needle, cmd: cmd, pred: pred, value: value, effort: effort,
+                        row: row, fill: fill, zero: zeroTick, bcmd: bcmd, bnet: bnet, readout: readout });
       });
+      titleGauges(p);
     }
     function angleOf(g, v) {
       var span = g.high - g.low || 1, t = Math.max(-0.04, Math.min(1.04, (v - g.low) / span));
@@ -352,34 +336,33 @@
       return b && b[m] != null ? a[m] + (b[m] - a[m]) * f : a[m];
     }
     function loadOf(m) {
-      var g = gauges[m], e = blendAt && lerp(playback.efforts, blendAt.lo, blendAt.hi, blendAt.f, m);
+      var g = motors[m], e = blendAt && lerp(playback.efforts, blendAt.lo, blendAt.hi, blendAt.f, m);
       return e == null || !g.rated ? null : Math.abs(e) / g.rated;
     }
     // What a motor reads at this moment, for the gauges and the bars alike.
     function reading(m) {
-      var g = gauges[m], lo = blendAt.lo, hi = blendAt.hi, influence = hoverInfluence();
-      var u = loadOf(m);
+      var g = motors[m], lo = blendAt.lo, hi = blendAt.hi, influence = hoverInfluence(), u = loadOf(m);
       return { q: lerp(playback.joints, lo, hi, blendAt.f, m), c: (playback.commands[hi] || playback.commands[lo] || [])[m],
                n: frames[lo] ? frames[lo].command[m] : null, u: u,
                heat: influence ? influence[m] : u == null ? null : curve(u),
                note: influence ? 'Δ ' + Math.round(hover.delta[m]) + '°' : u == null ? '' : Math.round(u * 100) + '% rated',
                deg: /deg/.test(g.unit) ? '°' : '' };
     }
-    function paintGauges() {
-      gauges.forEach(function (g, m) {
-        var r = reading(m);
-        var zero = angleOf(g, Math.max(g.low, Math.min(g.high, 0)));
+    function paintGauges(p, readings) {
+      p.gauges.forEach(function (g, m) {
+        var r = readings[m], mo = motors[m];
+        var zero = angleOf(mo, Math.max(mo.low, Math.min(mo.high, 0)));
         if (r.q != null) {
-          var a = angleOf(g, r.q), tip = polar(a, R - 6);
+          var a = angleOf(mo, r.q), tip = polar(a, R - 6);
           g.needle.setAttribute('x2', tip[0].toFixed(2)); g.needle.setAttribute('y2', tip[1].toFixed(2));
           g.load.setAttribute('d', Math.abs(a - zero) > 0.5 ? arc(zero, a, R) : '');
           g.value.textContent = Math.round(r.q) + r.deg;
         }
         g.load.style.stroke = r.heat == null ? 'var(--ink-2)' : rampCss(r.heat);
         g.box.style.setProperty('--heat', r.heat == null ? 'transparent' : rampCss(r.heat));
-        if (r.c != null) { var pc = polar(angleOf(g, r.c), R); g.cmd.setAttribute('cx', pc[0].toFixed(2)); g.cmd.setAttribute('cy', pc[1].toFixed(2)); }
+        if (r.c != null) { var pc = polar(angleOf(mo, r.c), R); g.cmd.setAttribute('cx', pc[0].toFixed(2)); g.cmd.setAttribute('cy', pc[1].toFixed(2)); }
         g.cmd.style.display = r.c == null ? 'none' : '';
-        if (r.n != null) { var pn = polar(angleOf(g, r.n), R); g.pred.setAttribute('cx', pn[0].toFixed(2)); g.pred.setAttribute('cy', pn[1].toFixed(2)); }
+        if (r.n != null) { var pn = polar(angleOf(mo, r.n), R); g.pred.setAttribute('cx', pn[0].toFixed(2)); g.pred.setAttribute('cy', pn[1].toFixed(2)); }
         g.pred.style.display = r.n == null ? 'none' : '';
         g.effort.textContent = r.note;
         g.effort.style.fill = r.heat == null ? '' : rampCss(r.heat);
@@ -387,19 +370,19 @@
         g.box.dataset.over = String(r.u != null && r.u > 1);
       });
     }
-    function paintBars() {
-      gauges.forEach(function (g, m) {
-        var r = reading(m), z = fraction(g, Math.max(g.low, Math.min(g.high, 0)));
+    function paintBars(p, readings) {
+      p.gauges.forEach(function (g, m) {
+        var r = readings[m], mo = motors[m], z = fraction(mo, Math.max(mo.low, Math.min(mo.high, 0)));
         if (r.q != null) {
-          var q = fraction(g, r.q);
+          var q = fraction(mo, r.q);
           g.fill.style.left = (100 * Math.min(z, q)).toFixed(2) + '%';
           g.fill.style.width = (100 * Math.abs(q - z)).toFixed(2) + '%';
         }
         g.zero.style.left = (100 * z).toFixed(2) + '%';
         g.fill.style.background = r.heat == null ? 'var(--ink-2)' : rampCss(r.heat);
-        g.bcmd.style.left = r.c == null ? '' : (100 * fraction(g, r.c)).toFixed(2) + '%';
+        g.bcmd.style.left = r.c == null ? '' : (100 * fraction(mo, r.c)).toFixed(2) + '%';
         g.bcmd.hidden = r.c == null;
-        g.bnet.style.left = r.n == null ? '' : (100 * fraction(g, r.n)).toFixed(2) + '%';
+        g.bnet.style.left = r.n == null ? '' : (100 * fraction(mo, r.n)).toFixed(2) + '%';
         g.bnet.hidden = r.n == null;
         g.readout.textContent = (r.q == null ? '—' : Math.round(r.q) + r.deg) + (r.note ? ' · ' + r.note : '');
         g.readout.style.color = r.heat == null ? '' : rampCss(r.heat);
@@ -446,14 +429,13 @@
       ctx.font = '12px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif'); ctx.textBaseline = 'top';
       return { ctx: ctx, w: w, h: h, ink2: getComputedStyle(document.documentElement).getPropertyValue('--ink-2').trim() || '#999' };
     }
-    function drawLayers() {
-      if (!layersCanvas) return;
-      cellBoxes = [];
-      if (!views.layers || !shown(layersCanvas)) return;
-      var p = prepare(layersCanvas), ctx = p.ctx, frame = frames[frameAt];
+    function drawLayers(p) {
+      p.cellBoxes = [];
+      if (!p.views.layers || !shown(p.layers)) return;
+      var d = prepare(p.layers), ctx = d.ctx, frame = frames[frameAt];
       if (!net || !frame) return;
-      var boxes = layout(p.w, p.h); cellBoxes = boxes;
-      ctx.fillStyle = p.ink2;
+      var boxes = layout(d.w, d.h); p.cellBoxes = boxes;
+      ctx.fillStyle = d.ink2;
       var names = { input: 'inputs ' + net.layers[0].n, output: 'motors ' + net.layers[net.layers.length - 1].m };
       // Each column's name over it, or just its width where the name would run into the next.
       boxes.forEach(function (b) {
@@ -536,27 +518,26 @@
       }
       return { cols: cols, links: links };
     }
-    function drawPaths() {
-      if (!pathsCanvas) return;
-      pathNodes = [];
-      if (!views.paths || !shown(pathsCanvas)) return;
-      var p = prepare(pathsCanvas), ctx = p.ctx, frame = frames[frameAt], P = net && frame ? paths(frame) : null;
+    function drawPaths(p) {
+      p.pathNodes = [];
+      if (!p.views.paths || !shown(p.paths)) return;
+      var d = prepare(p.paths), ctx = d.ctx, frame = frames[frameAt], P = net && frame ? paths(frame) : null;
       if (!P) return;
       var labelW = Math.min(150, Math.max.apply(null, P.cols[0].units.map(function (u) { return ctx.measureText(policy.observations[u.i] || '').width; })) + 12);
-      var g = gauges[selected], motor = shortName(g ? g.joint : 'motor ' + selected) + '  ' + Math.round(frame.command[selected]) + '°';
-      var rightW = Math.min(160, ctx.measureText(motor).width + 16), top = 22, bottom = p.h - 8;
-      var x0 = labelW + 10, x1 = p.w - rightW - 10, n = P.cols.length;
+      var g = motors[selected], motor = (g ? g.name : 'motor ' + selected) + '  ' + Math.round(frame.command[selected]) + '°';
+      var rightW = Math.min(160, ctx.measureText(motor).width + 16), top = 22, bottom = d.h - 8;
+      var x0 = labelW + 10, x1 = d.w - rightW - 10, n = P.cols.length;
       var xs = P.cols.map(function (_, c) { return x0 + (x1 - x0) * c / (n - 1); });
       // Each unit's place, largest first from the top; the motor centred.
       P.cols.forEach(function (col, c) {
-        var max = Math.max.apply(null, col.units.map(function (u) { return Math.abs(u.r); })) || 1, k = col.units.length;
+        var max = Math.max.apply(null, col.units.map(function (u) { return Math.abs(u.r); })) || 1;
         col.units.forEach(function (u, i) {
           u.x = xs[c]; u.y = col.kind === 'output' ? (top + bottom) / 2 : top + (bottom - top) * (i + 0.5) / PER_COLUMN;
           u.rad = col.kind === 'output' ? 10 : 3 + 7 * Math.sqrt(Math.abs(u.r) / max);
           u.share = Math.abs(u.r) / max;
         });
       });
-      ctx.fillStyle = p.ink2;
+      ctx.fillStyle = d.ink2;
       P.cols.forEach(function (col, c) {
         var name = col.kind === 'input' ? 'inputs' : col.kind === 'output' ? 'motor' : 'layer ' + (col.layer + 1);
         ctx.textAlign = 'center'; ctx.fillText(name, xs[c], 2);
@@ -577,7 +558,7 @@
           ctx.fillStyle = rampCss(t); ctx.fill();
           ctx.lineWidth = hover && col.kind === 'hidden' && hover.layer === col.layer && hover.i === u.i ? 2.5 : 1.25;
           ctx.strokeStyle = ctx.lineWidth > 2 ? '#ededed' : sign(u.r, 0.95); ctx.stroke();
-          pathNodes.push({ x: u.x, y: u.y, r: Math.max(6, u.rad), kind: col.kind, layer: col.layer, i: u.i, v: u.v, rel: u.r });
+          p.pathNodes.push({ x: u.x, y: u.y, r: Math.max(6, u.rad), kind: col.kind, layer: col.layer, i: u.i, v: u.v, rel: u.r });
         });
       });
       ctx.textBaseline = 'middle'; ctx.fillStyle = '#d6d6d6';
@@ -588,15 +569,15 @@
       ctx.textAlign = 'start'; ctx.textBaseline = 'top';
     }
 
-    function renderDetail() {
-      detail.textContent = '';
+    function renderDetail(p) {
+      p.detail.textContent = '';
       var frame = frames[frameAt];
-      if (!views.drivers || !net || !frame || !gauges[selected]) return;
-      var g = gauges[selected], att = selectedAttribution(frame);
+      if (!p.views.drivers || !net || !frame || !motors[selected]) return;
+      var g = motors[selected], att = selectedAttribution(frame);
       var head = el('p'); head.className = 'activations-pick';
-      head.textContent = shortName(g.joint) + ': network ' + Math.round(frame.command[selected]) + '°' +
+      head.textContent = g.name + ': network ' + Math.round(frame.command[selected]) + '°' +
         (match[selected] == null ? '' : ' · rebuilt vs recorded r ' + match[selected].toFixed(2)) + ' · driven most by';
-      detail.appendChild(head);
+      p.detail.appendChild(head);
       var order = att.inputs.map(function (v, i) { return { i: i, v: v }; }).sort(function (x, y) { return Math.abs(y.v) - Math.abs(x.v); });
       var total = order.reduce(function (s, x) { return s + Math.abs(x.v); }, 0) || 1, list = el('ol');
       list.className = 'activations-drivers';
@@ -607,52 +588,19 @@
         bar.style.background = sign(x.v, 1);
         li.appendChild(name); li.appendChild(share); li.appendChild(bar); list.appendChild(li);
       });
-      detail.appendChild(list);
+      p.detail.appendChild(list);
     }
 
     // Hover: what silencing a hidden neuron would do to each motor, as heat on the gauges and parts.
     function setHover(layer, i) {
       var frame = frames[frameAt];
       if (!net || !frame) return null;
-      var delta = net.ablate(frame, layer, i), span = gauges.map(function (g) { return Math.abs(g.high - g.low) || 1; });
+      var delta = net.ablate(frame, layer, i), span = motors.map(function (g) { return Math.abs(g.high - g.low) || 1; });
       hover = { layer: layer, i: i, delta: delta, heat: delta.map(function (d, m) { return Math.min(1, Math.abs(d) / span[m] * 4); }) };
       return delta;
     }
     function hoverTitle(layer, i) {
       return 'layer ' + (layer + 1) + ' neuron ' + i + ' · ' + frames[frameAt].post[layer][i].toFixed(2) + ' · silenced, it would move each motor by Δ';
-    }
-    if (layersCanvas) {
-      layersCanvas.addEventListener('pointermove', function (e) {
-        var r = layersCanvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, found = null;
-        cellBoxes.forEach(function (b) {
-          if (found || x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) return;
-          var i = Math.floor((y - b.y) / b.ch) * b.across + Math.floor((x - b.x) / b.cw);
-          if (i >= 0 && i < b.col.n) found = { i: i, b: b };
-        });
-        var before = hover && hover.layer + ':' + hover.i;
-        if (!found || found.b.col.kind !== 'hidden') {
-          hover = null;
-          layersCanvas.title = found ? (found.b.col.kind === 'input' ? policy.observations[found.i] : shortName(gauges[found.i] && gauges[found.i].joint)) : '';
-        } else { setHover(found.b.col.layer, found.i); layersCanvas.title = hoverTitle(found.b.col.layer, found.i); }
-        if ((hover && hover.layer + ':' + hover.i) !== before) render();
-      });
-      layersCanvas.addEventListener('pointerleave', function () { if (hover) { hover = null; render(); } });
-      // A press on a motor's output cell picks it, as its gauge does.
-      layersCanvas.addEventListener('pointerdown', function (e) {
-        var r = layersCanvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, b = cellBoxes[cellBoxes.length - 1];
-        if (b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { selected = Math.min(b.col.n - 1, Math.floor((y - b.y) / b.ch)); render(); }
-      });
-    }
-    if (pathsCanvas) {
-      pathsCanvas.addEventListener('pointermove', function (e) {
-        var r = pathsCanvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, found = null;
-        pathNodes.forEach(function (u) { if (!found && Math.hypot(x - u.x, y - u.y) <= u.r) found = u; });
-        var before = hover && hover.layer + ':' + hover.i;
-        if (found && found.kind === 'hidden') { setHover(found.layer, found.i); pathsCanvas.title = hoverTitle(found.layer, found.i); }
-        else { hover = null; pathsCanvas.title = found && found.kind === 'input' ? policy.observations[found.i] + ' · ' + found.v.toFixed(2) : ''; }
-        if ((hover && hover.layer + ':' + hover.i) !== before) render();
-      });
-      pathsCanvas.addEventListener('pointerleave', function () { if (hover) { hover = null; render(); } });
     }
     function hoverInfluence() { return hover ? hover.heat : null; }
 
@@ -660,10 +608,11 @@
     function paintViewport(now) {
       var v = viewer && viewer();
       if (!v || !v.setHeat) return;
-      if (!showInViewport || !playback || !gauges.length) { v.setHeat(null); body.dataset.viewport = 'off'; return; }
+      var on = anyViewport() && playback && motors.length;
+      if (!on) { v.setHeat(null); panels.forEach(function (p) { if (p.kind === 'motors') p.body.dataset.viewport = 'off'; }); return; }
       var parts = (policy && policy.parts) || {}, influence = hoverInfluence(), map = {};
       var t = performance.now() / 1000, k = now ? 1 : 1 - Math.exp(-(t - easedAt) / EASE_S); easedAt = t;
-      gauges.forEach(function (g, m) {
+      motors.forEach(function (g, m) {
         var u = loadOf(m), target = influence ? influence[m] : u == null ? 0 : curve(u);
         var h = eased[m] == null || now ? target : eased[m] + (target - eased[m]) * k; eased[m] = h;
         var own = parts[g.joint] || {};
@@ -671,44 +620,138 @@
         // A motor's housing shows its own joint, over the segment it rides on.
         (own.motor || []).forEach(function (name) { map[name] = rampHex(h); });
       });
-      body.dataset.viewport = Object.keys(map).length ? 'on' : 'unmapped';
+      var state = Object.keys(map).length ? 'on' : 'unmapped';
+      panels.forEach(function (p) { if (p.kind === 'motors') p.body.dataset.viewport = p.showInViewport ? state : 'off'; });
       v.setHeat(Object.keys(map).length ? map : null);
     }
 
     function render() {
-      if (!playback || !blendAt) { drawLayers(); drawPaths(); return; }
-      if (shown(body)) {
-        if (views.gauges) paintGauges();
-        if (views.bars) paintBars();
-        renderDetail();
-      }
-      drawLayers(); drawPaths(); paintViewport(false);
+      var readings = playback && blendAt && motors.length ? motors.map(function (_, m) { return reading(m); }) : null;
+      panels.forEach(function (p) {
+        if (!shown(p.body)) return;
+        if (p.kind === 'motors') {
+          if (!readings) { p.detail.textContent = ''; return; }
+          if (p.views.gauges) paintGauges(p, readings);
+          if (p.views.bars) paintBars(p, readings);
+          renderDetail(p);
+        } else { drawLayers(p); drawPaths(p); }
+      });
+      if (readings) paintViewport(false);
     }
     // The 3D viewport's playback calls this on every seek: between frames lo and hi at f.
     function setFrame(lo, hi, f) {
       if (!playback) return;
       frameAt = lo; blendAt = { lo: lo, hi: hi, f: f };
-      if (!shown(body) && !shown(netBody)) { paintViewport(false); return; }
+      if (!panels.some(function (p) { return shown(p.body); })) { paintViewport(false); return; }
       render();
     }
-    // A resize redraws, and so does an editor brought into an area, rather than at the next seek.
-    if (window.ResizeObserver) {
-      var ro = new ResizeObserver(function () { render(); });
-      [layersCanvas, pathsCanvas, body, netBody].forEach(function (c) { if (c) ro.observe(c); });
+    heat.onChange(function () { panels.forEach(paintRamp); render(); paintViewport(true); });
+    function paintRamp(p) { if (p.ramp) p.ramp.style.background = heat.gradient(); }
+
+    // -- panels ----------------------------------------------------------------------------
+    // The views a panel shows, each a switch in its header; the first panel of a kind keeps its
+    // choice in this browser, a copy starts from the first's.
+    function wireViews(p, group, keep) {
+      p.views = keep ? keptViews() : Object.assign({}, panels.filter(function (q) { return q.views; })[0] ? panels.filter(function (q) { return q.views; })[0].views : DEFAULT_VIEWS);
+      function apply() {
+        if (!group) return;
+        group.querySelectorAll('button[data-view]').forEach(function (b) {
+          b.setAttribute('aria-pressed', String(!!p.views[b.dataset.view]));
+          p.body.dataset[b.dataset.view] = String(!!p.views[b.dataset.view]);
+        });
+      }
+      if (group) group.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-view]'); if (!b) return;
+        p.views[b.dataset.view] = !p.views[b.dataset.view];
+        if (keep) {
+          try { var all = keptViews(); all[b.dataset.view] = p.views[b.dataset.view]; localStorage.setItem(KEY, JSON.stringify(all)); } catch (_) { /* this visit only */ }
+        }
+        apply(); render();
+      });
+      apply();
     }
+    function observe(nodes) {
+      if (!window.ResizeObserver) return;
+      var ro = new ResizeObserver(function () { render(); });
+      nodes.forEach(function (n) { if (n) ro.observe(n); });
+    }
+    function addMotors(e) {
+      var p = { kind: 'motors', body: e.body, motorsBox: e.motors, barsBox: e.bars, detail: e.detail, status: e.status,
+                toggle: e.toggle, ramp: e.ramp, showInViewport: false, gauges: [] };
+      wireViews(p, e.views, !!e.keep);
+      if (p.toggle) p.toggle.addEventListener('click', function () {
+        p.showInViewport = !p.showInViewport;
+        p.toggle.setAttribute('aria-pressed', String(p.showInViewport));
+        eased = {}; paintViewport(true);
+      });
+      panels.push(p);
+      paintRamp(p); buildMotors(p); say(statusLine.text, statusLine.state);
+      if (net) p.body.dataset.match = panels[0].body.dataset.match || '';
+      observe([p.body]);
+      render();
+      return p;
+    }
+    function addNetwork(e) {
+      var p = { kind: 'network', body: e.network, status: e.networkStatus, layers: e.layers, paths: e.paths, cellBoxes: [], pathNodes: [] };
+      wireViews(p, e.networkViews, !!e.keep);
+      panels.push(p);
+      say(statusLine.text, statusLine.state);
+      if (p.layers) {
+        p.layers.addEventListener('pointermove', function (ev) {
+          var r = p.layers.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top, found = null;
+          p.cellBoxes.forEach(function (b) {
+            if (found || x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) return;
+            var i = Math.floor((y - b.y) / b.ch) * b.across + Math.floor((x - b.x) / b.cw);
+            if (i >= 0 && i < b.col.n) found = { i: i, b: b };
+          });
+          var before = hover && hover.layer + ':' + hover.i;
+          if (!found || found.b.col.kind !== 'hidden') {
+            hover = null;
+            p.layers.title = found ? (found.b.col.kind === 'input' ? policy.observations[found.i] : (motors[found.i] || {}).name || '') : '';
+          } else { setHover(found.b.col.layer, found.i); p.layers.title = hoverTitle(found.b.col.layer, found.i); }
+          if ((hover && hover.layer + ':' + hover.i) !== before) render();
+        });
+        p.layers.addEventListener('pointerleave', function () { if (hover) { hover = null; render(); } });
+        // A press on a motor's output cell picks it, as its gauge does.
+        p.layers.addEventListener('pointerdown', function (ev) {
+          var r = p.layers.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top, b = p.cellBoxes[p.cellBoxes.length - 1];
+          if (b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { selected = Math.min(b.col.n - 1, Math.floor((y - b.y) / b.ch)); render(); }
+        });
+      }
+      if (p.paths) {
+        p.paths.addEventListener('pointermove', function (ev) {
+          var r = p.paths.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top, found = null;
+          p.pathNodes.forEach(function (u) { if (!found && Math.hypot(x - u.x, y - u.y) <= u.r) found = u; });
+          var before = hover && hover.layer + ':' + hover.i;
+          if (found && found.kind === 'hidden') { setHover(found.layer, found.i); p.paths.title = hoverTitle(found.layer, found.i); }
+          else { hover = null; p.paths.title = found && found.kind === 'input' ? policy.observations[found.i] + ' · ' + found.v.toFixed(2) : ''; }
+          if ((hover && hover.layer + ':' + hover.i) !== before) render();
+        });
+        p.paths.addEventListener('pointerleave', function () { if (hover) { hover = null; render(); } });
+      }
+      observe([p.body, p.layers, p.paths]);
+      render();
+      return p;
+    }
+    // The first Activations and Network editors, from the page's own markup.
+    var first = o.body ? addMotors({ body: o.body, motors: o.motors, bars: o.bars, detail: o.detail, status: o.status, toggle: o.toggle,
+                                     views: o.views, ramp: o.ramp, keep: true }) : null;
+    var firstNet = o.network ? addNetwork({ network: o.network, networkStatus: o.networkStatus, layers: o.layers, paths: o.paths,
+                                            networkViews: o.networkViews, keep: true }) : null;
 
     return {
-      setPlayback: setPlayback, setFrame: setFrame,
-      setViewport: function (on) { if (!!on !== showInViewport) toggle.click(); return showInViewport; },
+      setPlayback: setPlayback, setFrame: setFrame, addMotors: addMotors, addNetwork: addNetwork,
+      setViewport: function (on) { if (first && !!on !== first.showInViewport) first.toggle.click(); return !!(first && first.showInViewport); },
       select: function (m) { selected = m; render(); return selected; },
       hoverNeuron: function (layer, i) { var d = setHover(layer, i); render(); return d; },
       clearHover: function () { hover = null; render(); },
       paths: function () { var f = frames[frameAt]; var P = net && f ? paths(f) : null; return P && P.cols.map(function (c) { return { kind: c.kind, layer: c.layer, units: c.units.map(function (u) { return u.i; }) }; }); },
-      views: function () { return Object.assign({}, views); },
+      views: function () { return Object.assign({}, first ? first.views : DEFAULT_VIEWS, firstNet ? { layers: firstNet.views.layers, paths: firstNet.views.paths } : {}); },
+      panels: function () { return panels.map(function (p) { return { kind: p.kind, views: Object.assign({}, p.views), viewport: !!p.showInViewport }; }); },
       state: function () {
-        return { policy: policyUrl, ready: !!net, frame: frameAt, selected: selected, motors: gauges.length,
-                 match: match.slice(), missing: inputs ? inputs.missing.slice() : [], viewport: showInViewport,
-                 command: frames[frameAt] ? frames[frameAt].command.slice() : null, views: Object.assign({}, views) };
+        return { policy: policyUrl, ready: !!net, frame: frameAt, selected: selected, motors: motors.length,
+                 match: match.slice(), missing: inputs ? inputs.missing.slice() : [], viewport: anyViewport(),
+                 command: frames[frameAt] ? frames[frameAt].command.slice() : null, views: this.views() };
       }
     };
   }

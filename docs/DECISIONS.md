@@ -42444,3 +42444,53 @@ reaches the bottom edge, and the seven phone tabs; `test_review_status.py`
 finds the scrubbers in the 3D viewport's header. Screenshots on orun7-cat
 (f1-g3, t = 4.6 s) checked the header, both network views maximised, the
 wireframe heat and the Green–red preset.
+
+## ADR-723 — More than one 3D viewport, Activations or Network at once; the gizmo snaps while a rollout plays (2026-10-16)
+
+**Context.** The owner asked to open two or more of the same panel: two 3D
+viewports, one wireframe and one shaded, at different camera angles, both
+moving when Play is pressed; the animation shared across everything, while
+lighting, style and the activation panels' views may differ. They also found
+that the navigation gizmo would not snap the view while a rollout played or
+the view followed it. Until now each editor showed at most once (ADR-534):
+picking one already shown swapped the two areas.
+
+**Decision.**
+
+- **Copies.** The 3D viewport, Activations and Network are `multi` editors
+  in `layout.js`: an area is `{editor, copy}`, picking one already shown or
+  splitting one opens another copy, and every other editor still shows once
+  and swaps. A copy is built from the editor's pristine markup the first
+  time it is asked for and kept; its ids become `data-ref`s, so the page's
+  hooks still name the first, and the stylesheet's rules on those elements
+  are written `:is(#x, [data-ref="x"])` to match both at the id's weight.
+- **One model, one timeline, a camera each.** `viewports.js` groups the 3D
+  viewports behind the viewer API review.js already used: what the model is
+  (load, ghost, poses, hidden and selected parts, heat, the global look
+  switches) goes to every viewport, and a viewport added later is brought up
+  to date; the meshes are fetched once for all. Style, lighting, camera,
+  gizmo and Follow are each viewport's own. A copy's source, scrubbers, Play
+  and status lines mirror the first's and work through it, so there is one
+  timeline whichever is touched.
+- **Activations and Network** become one core (the rollout, the policy run
+  once, the picked motor, the hovered neuron) with any number of panels,
+  each with its own views and, for Activations, its own Show in viewport.
+- **The gizmo** snaps on a press and release on the same end, and restacks
+  its ends only when their depth order changes. It used to restack on every
+  draw, and while a rollout played that moved the pressed element between
+  press and release, so Chrome never delivered the click.
+- **One load per source.** `setSource` now records the key of the model it
+  loads, so the next poll does not load it again and drop the rollout it
+  has just started. This double load was behind the occasional
+  `test_review_follow` and `test_review_reference` failures under the full
+  suite.
+
+**Evidence.** `test_dashboard_views.py`: copies open from split and from the
+picker while single editors still swap, no id is duplicated and a reload
+lays the copies out again; two viewports, one wireframe, are posed together
+by a seek, the copy's clock follows, the copy's gizmo turns only its camera
+and Follow moves only the copy's target, and the copy's Play runs the one
+timeline; with a 20 s rollout playing and Follow on, a real mouse press and
+release on the gizmo's +Z end snaps to Top and the view keeps following.
+`test_dashboard_activations.py` opens a second Activations panel whose views
+differ from the first's.

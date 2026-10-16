@@ -250,6 +250,15 @@ def test_browser_reruns_the_policy_to_the_recorded_commands_and_paints_the_parts
         assert [c["kind"] for c in paths] == ["input"] + ["hidden"] * (len(LAYERS) - 1) + ["output"]
         assert paths[-1]["units"] == [1] and all(0 < len(c["units"]) <= 8 for c in paths)
         assert page.evaluate("document.getElementById('network-paths').width") > 0
+        # A second Activations editor (ADR-723) reads the same motors with views of its own.
+        network = [a for a in page.evaluate("window.cadexReview.layout().areas()") if a["editor"] == "network"][0]
+        page.evaluate(f"window.cadexReview.layout().split({json.dumps(network['id'])}, 'col')")
+        page.evaluate(f"window.cadexReview.layout().setEditor({json.dumps(network['id'])}, 'activations')")
+        copy = ".area[data-editor=activations][data-copy='1']"
+        assert page.evaluate(f"document.querySelectorAll({json.dumps(copy + ' .gauge')}).length") == 4
+        page.click(f"{copy} [data-ref=activations-views] [data-view=gauges]")
+        panels = [p for p in page.evaluate("window.cadexReview.activations().panels()") if p["kind"] == "motors"]
+        assert [p["views"]["gauges"] for p in panels] == [True, False] and [p["views"]["bars"] for p in panels] == [True, True]
         page.click("#activations-viewport")
         assert page.evaluate("window.cadexReview.viewer().heat()") is None
     finally:

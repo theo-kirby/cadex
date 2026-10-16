@@ -248,7 +248,11 @@ A 4 px base: `--s1` 4, `--s2` 8, `--s3` 12, `--s4` 16, `--s5` 24, `--s6` 32.
   distance; a click on the view already shown (`data-view`) turns to the
   opposite one. The glide is eased over about 0.4 s and instant under
   `prefers-reduced-motion`; a press or wheel on the canvas takes the camera
-  back mid-glide. Fit stays instant. An orbit that starts from a snapped
+  back mid-glide. It works while a rollout plays and the view follows it
+  (ADR-723): Follow moves the target, the gizmo the direction. A snap is a
+  press and a release on the same end, and the ends are restacked only when
+  their depth order changes, so a view redrawn every frame keeps an end
+  under the pointer. Fit stays instant. An orbit that starts from a snapped
   top or bottom view keeps its pitch rather than jumping back to the
   usual ±1.5 rad limit.
 - **Motion** (ADR-720) is small and says something is alive: the **live**
@@ -640,8 +644,10 @@ ADR-539); split an area to bring in the 2D viewport. The viewport's look and the
 
 - **Resize**: drag the 4 px gutter between two areas; it moves that boundary
   only, and no area goes below 120 px.
-- **Pick the editor**: the dropdown at the left of an area's header. Each
-  editor shows at most once, so picking one already shown swaps the two areas.
+- **Pick the editor**: the dropdown at the left of an area's header. Most
+  editors show at most once, so picking one already shown swaps the two
+  areas. The **3D viewport**, **Activations** and **Network** may show more
+  than once (ADR-723): picking one already shown opens another copy of it.
 - **Move**: drag an area's header (its grip, the dotted strip at its left
   end, or any empty part of it) onto another area. A drop on an edge docks it
   on that side, splitting the target; a drop in the middle swaps the two. A
@@ -657,16 +663,41 @@ ADR-539); split an area to bring in the 2D viewport. The viewport's look and the
   editor in. Showing an editor (a link to a film, say) fills an empty area
   before it splits one.
 - **Split, maximize, close**: the four buttons at the right of the header.
-  A split opens an editor not shown yet beside the area, so with all four
-  shown there is nothing to split. Maximize (or Ctrl+Space over the area)
+  A split of a 3D viewport, Activations or Network opens a copy of it beside
+  the area; any other split opens an editor not shown yet, and with every
+  one shown there is nothing to split. Maximize (or Ctrl+Space over the area)
   gives the area the whole screen until it is pressed again. The last area
   cannot close.
 - **Kept**: the layout is this browser's (`localStorage`
-  `cadex.layout.v5`, empty areas included; `v4` had no Outliner, so a layout kept before ADR-676 opens as the new default, `v3` had no Status editor, and earlier keys held the Chat and an older Settings editor); View → Layout → **Reset** in the menu bar returns the
+  `cadex.layout.v5`, empty areas and copies included (an area's `copy`, 0
+  being the editor's own); `v4` had no Outliner, so a layout kept before ADR-676 opens as the new default, `v3` had no Status editor, and earlier keys held the Chat and an older Settings editor); View → Layout → **Reset** in the menu bar returns the
   default. A browser that refuses storage gets the default every visit.
 
 An editor's markup is never rebuilt by a layout change: the area moves the
-editor's own elements, so a canvas keeps its WebGL context. Below 700 px there is no tiling (§6).
+editor's own elements, so a canvas keeps its WebGL context. Below 700 px there is no tiling (§6), and a phone shows each editor's own, not its copies.
+
+**Copies** (ADR-723, `viewports.js`). A copy is made from the editor's
+markup as the page first had it, the first time an area asks for it, and
+kept while the page is open, so closing and reopening it keeps its camera.
+Every id in a copy becomes a `data-ref`, so the page's hooks (§2) still name
+the editor's own, and the stylesheet's rules for those elements name both
+(`:is(#x, [data-ref="x"])`).
+
+- **3D viewports** show one model on one timeline. Every viewport has its
+  own viewer, camera, gizmo, style (Shaded or Wireframe in its header) and
+  lighting (its header's menu), and its own **Follow**; the model, the
+  ghost, the poses, the hidden and selected parts and the heat are every
+  viewport's, and the meshes are fetched once for all of them. A copy's
+  source menu, scrubbers, Play and status lines are the first viewport's
+  own, mirrored: moving either moves the one timeline. The View menu's
+  render style and lighting set every viewport, and the first's are the
+  ones this browser keeps; its mesh lines, reflections, occlusion and
+  surface detail are every viewport's.
+- **Activations and Network** copies draw the one rollout and network: the
+  picked motor and a hovered neuron are shared, while each panel's views
+  (Gauges, Bars, Drivers; Layers, Paths) and each Activations panel's
+  **Show in viewport** are its own; the viewport is painted while any one
+  has it on. The first panel of each kind keeps its views in this browser.
 
 ## 15. Policy videos are drawn in the studio look (ADR-431)
 
