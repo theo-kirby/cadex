@@ -42878,3 +42878,65 @@ with no limits is refused; with gravity off and 20 N·m held on the elbow
 against its stop, the default stop yields 7.6° and 0.004 s yields 0.3°; the
 exported file keeps the time constant. Six of the ten fail without the
 change.
+
+## ADR-725 — The test suites hold contracts only (2026-10-16)
+
+**Decision.** The owner asked for the suites to be stripped to what is
+needed: delete every test, then keep the few that pin a contract.
+- The engine suite went from about 2,990 tests in about 10 minutes to 157
+  tests in about 32 seconds.
+- The CLI suite went from about 1,300 tests in about 9 minutes to 50 tests
+  in about 11 seconds.
+- 248 test files and about 106,000 lines were deleted.
+
+**What is kept**, each because AGENTS.md calls it a rule:
+- **Engine:**
+  - `test_engine_purity_guardrails.py` and
+    `test_headless_import_guardrails.py`: the dynamics import closure, and
+    no jax or mjx (ADR-102).
+  - `test_licensing_compliance.py`: no GPL source; every file's licence is
+    declared.
+  - `test_project_tool_surface.py`: the tool surface. One behaviour test
+    that imported a deleted module was dropped from it.
+  - `test_cadexd_protocol.py` and `test_response_schemas.py`: requests and
+    replies, and `docs/INTEGRATION.md`'s tables.
+  - `test_headless_build_options.py`: `BUILD_GUI=ON` is refused.
+  - `test_cadexd_lifecycle.py`: the packaged gate (ADR-023).
+  - `test_offboard_boundaries.py`, new: the boundary half of the old
+    `test_analysis_stress.py` and `test_dynamics_policy_trainer.py`. Neither
+    offboard tree is in CMake or `pixi.toml`, their pins are exact, the
+    trainer imports only the standard library at module scope, and
+    `analysis/` imports no GPL package (ADR-084, ADR-141, ADR-143).
+- **CLI:**
+  - `test_mcp_protocol.py`: the MCP server.
+  - `test_http_api.py`: the pinned HTTP API, and the op table against
+    `OP_ARG_SPECS`.
+  - `test_dashboard_read_only.py`: the dashboard writes nothing (ADR-537).
+  - Their shared helpers were extracted, unchanged, into
+    `cli/tests/review_helpers.py`.
+
+Supporting files kept: `dynamics_fixtures.py` and
+`dynamics_policy_fixtures.py` (the lifecycle gate uses them), `fake_cadexd.py`,
+`cdp_browser.py`, `fixtures/orun3-biped` and `response_schemas/`.
+`cadexd_latency_integration.py` stays as the slider latency bar. The
+training venv's own tests (`training/test_*.py`) and the inherited ctest are
+untouched.
+
+**Why.** The suites had become a ledger of every unit ever landed:
+- frozen probe evidence from ot7–ot11, Lark and Wren;
+- doc-wording pins;
+- per-feature behaviour tests.
+
+They cost about 20 minutes a gate, and an unattended run paid that at every
+accepted commit. Behaviour is verified by running the thing (a build, a
+rollout, an evaluation). Tests now pin only what must not drift silently.
+
+**Consequences.**
+- Many docs cite deleted test files, in "pinned by" or "test-enforced"
+  notes. Those citations are history (AGENTS.md, Methodology 2). Unless it
+  names a kept file, a claim is no longer enforced by a test.
+- Regressions in geometry, dynamics, evaluation metrics and the dashboard's
+  rendering are no longer caught by a suite. A regression that bites earns
+  a test back, with this ADR cited.
+- Charters that demand "a test for every new predicate" should be revised
+  to match.
