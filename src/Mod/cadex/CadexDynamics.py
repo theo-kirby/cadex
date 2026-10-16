@@ -7887,8 +7887,11 @@ MAXIMUM_GOALS = 4
 #: named tip can reach; ``phase`` is an angle that turns once per declared
 #: period from a start drawn per episode, told as its sine and cosine
 #: (ADR-598) -- the controller's own timer, which is the only way a reward
-#: or a policy can know how far an episode has run.
-GOAL_KINDS = ("value", "speed", "point", "phase")
+#: or a policy can know how far an episode has run; ``yaw_rate`` is one
+#: number that *is* the commanded turning rate of the base about world +Z,
+#: in degrees per second, anticlockwise positive (ADR-721), which is what
+#: lets a success spec read how well a turn was followed.
+GOAL_KINDS = ("value", "speed", "point", "phase", "yaw_rate")
 
 #: How many joint configurations a ``point`` goal may draw before the draw
 #: is refused, and how many whole episodes are drawn when the task is built
@@ -7992,6 +7995,12 @@ _SUCCESS_NEED_CORRECTIONS = {
         "kind='speed', between=[low, high]) in api.task(goals=[...]) -- or "
         "bound a metric that needs none: mean_forward_speed_mm_s is a speed "
         "in millimetres per second."
+    ),
+    "turn": (
+        "It is measured against a commanded yaw rate, and this task states "
+        "none. Give the task one -- assembly.goal('turn', kind='yaw_rate', "
+        "between=[low, high], resample_seconds=...) in api.task(goals=[...]) "
+        "-- or bound max_heading_deg, which needs none."
     ),
     "target": (
         "It is measured against a target point, and this task states none. "
@@ -8827,6 +8836,15 @@ GOAL_PHASE_ALGORITHM = (
     "and at control step s the angle is start + radians_per_step * (s - k * "
     "resample_steps) for the segment k in force; its channels are "
     "sin(angle) then cos(angle)"
+)
+
+#: What a scripted goal adds to :data:`GOAL_ALGORITHM` (ADR-721), appended
+#: only to bundles whose goal carries a ``sequence``, so every earlier bundle
+#: keeps its algorithm and its digest. No draw is removed: the stream is the
+#: one the unscripted algorithm states.
+GOAL_SEQUENCE_ALGORITHM = (
+    "; on a goal with a sequence, segment k < len(sequence) still takes its "
+    "uniform(low, high) draw and holds sequence[k] in its place"
 )
 
 #: Everything a reward or termination expression may name beyond the
@@ -10590,8 +10608,9 @@ def _goal_records(
                 f"{what} is a second {kind} goal beside {seen_kinds[kind]!r}.",
                 reason="duplicate_goal_kind",
                 correction=(
-                    "A success spec reads the commanded speed and the target "
-                    "point by kind, so a task states at most one of each. A "
+                    "A success spec reads the commanded speed, the commanded "
+                    "yaw rate and the target point by kind, so a task states "
+                    "at most one of each. A "
                     "further number a reward gives its own meaning is "
                     "kind='value', and a further clock is kind='phase'."
                 ),
@@ -10690,11 +10709,33 @@ def _goal_records(
                 # A speed is the surface's own unit and is never converted:
                 # the policy reads it, the reward names it and the spec
                 # divides by it, all in millimetres per second.
-                unit="mm/s" if kind == "speed" else "",
+                unit={"speed": "mm/s", "yaw_rate": "deg/s"}.get(kind, ""),
                 low=low,
                 high=high,
                 nominal=[0.5 * (low + high)],
             )
+            scripted = entry.get("sequence")
+            if scripted is not None:
+                # ADR-721: the opening segments, held in order instead of
+                # their draws. Refused here as well as in the API because a
+                # spec's goals arrive by the same road.
+                values = [float(value) for value in scripted]
+                if (
+                    not values
+                    or not all(math.isfinite(v) and low <= v <= high for v in values)
+                ):
+                    raise DynamicsError(
+                        f"{what} scripts {values!r}, which is not a list of "
+                        f"values between {low:g} and {high:g}.",
+                        reason="malformed_goal",
+                        correction=(
+                            "Give sequence=[v0, v1, ...], one finite number "
+                            "per opening segment, each inside the goal's "
+                            "between=[low, high]."
+                        ),
+                        observed={"goal": name, "sequence": [repr(v) for v in values]},
+                    )
+                record["sequence"] = values
             records.append(record)
             continue
 
@@ -11041,6 +11082,8 @@ def _success_records(
         # given a rollout nothing to be measured against.
         "command": "speed" in goal_kinds,
         "target": "point" in goal_kinds,
+        # ADR-721: the turning family reads the task's one yaw-rate goal.
+        "turn": "yaw_rate" in goal_kinds,
         # ADR-705: the reference family reads the task's gait reference.
         "reference": bool(task.get("reference")),
         # ADR-718: the terrain family reads the course the task stands on.
@@ -12271,6 +12314,9 @@ def task_records(
         ) + (
             GOAL_PHASE_ALGORITHM
             if any(entry["kind"] == "phase" for entry in goal) else ""
+        ) + (
+            GOAL_SEQUENCE_ALGORITHM
+            if any(entry.get("sequence") for entry in goal) else ""
         )} if goal else {}),
         # ADR-696: absent when the task observes no command, so its bundle
         # and digest are the ones it always had.
@@ -12907,9 +12953,13 @@ def draw_episode_goals(
     for entry in task.get("goal") or ():
         segments: list[list[float]] = []
         if str(entry["kind"]) != "point":
-            for _ in range(int(entry["segments"])):
+            scripted = list(entry.get("sequence") or ())
+            for index in range(int(entry["segments"])):
+                value = rng.uniform(float(entry["low"]), float(entry["high"]))
+                # ADR-721: a scripted segment takes its draw and holds its
+                # script, so the stream after it is the unscripted one.
                 segments.append(
-                    [rng.uniform(float(entry["low"]), float(entry["high"]))]
+                    [float(scripted[index]) if index < len(scripted) else value]
                 )
             drawn.append({"label": str(entry["label"]), "segments": segments})
             continue
@@ -15051,11 +15101,19 @@ def evaluate_success(
         # evaluation from outside.
         command = None
         segments: list[dict[str, Any]] = []
+        # ADR-721: the speed and yaw rate in force at every frame, for the
+        # tracking family.
+        tracked: dict[str, list[float]] = {}
         for entry in episode.get("goal") or ():
-            if entry["kind"] == "speed":
+            if entry["kind"] in ("speed", "yaw_rate"):
                 place = [row["channel"] for row in run["goal_channels"]].index(
                     entry["channels"][0]
                 )
+                tracked[entry["kind"]] = [
+                    float(frame["goal"][place]) for frame in run["frames"]
+                    if frame["frame_kind"] == "solver_output"
+                ]
+            if entry["kind"] == "speed":
                 command = CadexEvaluation.settled_command(
                     [(float(frame["nominal_time_s"]), float(frame["goal"][place]))
                      for frame in run["frames"]
@@ -15079,6 +15137,7 @@ def evaluate_success(
             reference=task.get("reference"),
             # ADR-718: the course this seed stood on, for the terrain family.
             terrain=course, ground=None if course is None else course_ground(course),
+            commands=tracked,
         )
         held = CadexEvaluation.check(spec["predicates"], measured["metrics"])
         steps = max(1, ended["steps"])

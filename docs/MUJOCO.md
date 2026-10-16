@@ -357,6 +357,19 @@ the test compiles course *k* as a listed course and compares geoms instead.
 Still to come in W1: the course in the rollout and the dashboard, and the
 proof on a second robot.
 
+**Turning commands and command tracking (ADR-721, 2026-10-16).** A goal
+of kind `yaw_rate` is the commanded turning rate of the floating base, in
+deg/s about world +Z, anticlockwise positive; drawn, resampled and observed
+like a `speed`. `sequence=[...]` scripts a value, speed or yaw-rate goal's
+opening segments (each draw still taken, so no other draw moves), which is
+how a success spec puts the same reversal on every seed. The tracking
+family reads a floating base against the commands in force at every frame:
+`speed_error_rms_mm_s` and `yaw_rate_error_rms_deg_s` (centred 0.5 s
+window, frames past 1 s and not within 0.5 s after any command change) and
+`reversal_heading_error_deg_max` (a held yaw-rate command that turns the
+commanded heading 180°, judged when it has). The trainer's host draw and
+the reference runner follow the same `GOAL_SEQUENCE_ALGORITHM`.
+
 **Terrain predicates, a held-out course per seed (ADR-718, 2026-10-16).**
 A success spec may bound `distance_made_good_mm` (net plan travel along the
 starting heading) and `falls` (the base tilted 60°, or its centre of mass

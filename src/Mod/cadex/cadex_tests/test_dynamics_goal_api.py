@@ -61,7 +61,7 @@ def test_the_agent_is_told_the_surface_exists() -> None:
     # ...and the notes, which are the page the agent is shown whole, say
     # what it is for in a sentence. The page has a size budget (ADR-360)
     # that ``cli/tests/test_client.py`` holds against a live engine.
-    assert "assembly.goal(name, kind='value'|'speed'|'point'|'phase', ...)" in assembly["notes"]
+    assert "assembly.goal(name, kind='value'|'speed'|'yaw_rate'|'point'|'phase', ...)" in assembly["notes"]
     assert "api.task(goals=[...])" in assembly["notes"]
 
 
@@ -172,7 +172,7 @@ def test_a_name_a_reward_could_not_write_is_refused(name) -> None:
 def test_a_kind_that_is_not_one_is_refused_with_the_kinds() -> None:
     with pytest.raises(ValueError) as refusal:
         _api().goal("target", kind="pose", between=[0, 1])
-    assert "['value', 'speed', 'point', 'phase']" in str(refusal.value)
+    assert "['value', 'speed', 'point', 'phase', 'yaw_rate']" in str(refusal.value)
 
 
 def test_a_range_is_two_numbers_in_order() -> None:

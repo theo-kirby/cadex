@@ -228,7 +228,7 @@ def test_a_goal_lands_in_the_bundle_resolved_and_self_contained() -> None:
     speed = made(WALK_TASK, mechanism=walker, motors=WALKER_MOTORS,
                  observations=WALKER_OBSERVATIONS)["bundle"]["goal"][0]
     assert (speed["kind"], speed["unit"], speed["channels"]) == ("speed", "mm/s", ["command"])
-    assert dyn.GOAL_KINDS == ("value", "speed", "point", "phase")
+    assert dyn.GOAL_KINDS == ("value", "speed", "point", "phase", "yaw_rate")
 
 
 def test_the_policy_reads_every_goal_after_its_sensor_channels() -> None:

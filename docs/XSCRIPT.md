@@ -510,6 +510,20 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `speed` | `name`, mm/s | `between=[low, high]`: the commanded forward speed | `speed_ratio`, `lateral_ratio` |
   | `point` | `name_x`, `name_y`, `name_z`, mm, world (or `frame=`'s) | a pose `tip` can reach | the reach metrics |
   | `phase` | `name_sin`, `name_cos` | a start phase over one turn; then it turns once every `period_seconds` | nothing |
+  | `yaw_rate` | `name`, deg/s | `between=[low, high]`: the commanded turning rate of the floating base about world +Z, anticlockwise (left) positive (ADR-721) | `yaw_rate_error_rms_deg_s`, `reversal_heading_error_deg_max` |
+
+  A task states at most one `speed`, one `yaw_rate` and one `point`.
+  `sequence=[v0, v1, ...]` scripts the opening segments of a `value`,
+  `speed` or `yaw_rate` goal (ADR-721): segment *k* holds `sequence[k]`, and
+  the segments past it are drawn. The draw is still taken for a scripted
+  segment, so a sequence moves no other draw in the seed's stream. It is
+  how a success spec asks every seed the same question — two seconds
+  straight, then a reversal:
+
+  ```python
+  turn = assembly.goal("turn", kind="yaw_rate", between=[-60, 60],
+                       resample_seconds=1.0, sequence=[0, 0, 60, 60, 60])
+  ```
 
   A `point` is a place the tip **can be**: the engine draws a pose with
   every joint the task drives in the middle `joint_fraction` (0.8) of its
@@ -625,6 +639,9 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `slip_share_max`, `duty_factor_min`, `duty_factor_max` | the share of a foot's travel made while on the floor; the share of frames in stance | `feet` |
   | `mean_forward_speed_mm_s`, `mean_lateral_speed_mm_s` | speed along and across the base's heading, after 1 s | `feet` |
   | `speed_ratio`, `lateral_ratio` | those speeds over the commanded one: the mean of the `speed` goal over the same settled frames | `feet` and a `speed` goal |
+  | `speed_error_rms_mm_s` | the RMS of the base's forward speed (along its heading, over a centred 0.5 s window) less the `speed` goal in force, over the frames past 1 s and not within 0.5 s after any command changed (ADR-721) | a floating base and a `speed` goal |
+  | `yaw_rate_error_rms_deg_s` | the same for the base's yaw rate about world +Z against the `yaw_rate` goal (ADR-721) | a floating base and a `yaw_rate` goal |
+  | `reversal_heading_error_deg_max` | for every held yaw-rate command that turns the commanded heading through 180° before it changes, the base's heading error at the moment it has (180°/\|rate\| after it was issued: 3 s at 60°/s); the worst one. Unmeasured, so failed, when the episode commanded none or ended first (ADR-721) | a floating base and a `yaw_rate` goal |
   | `final_error_mm_max`, `final_error_arm_lengths_max`, `time_to_target_s_max`, `overshoot_ratio_max` | a tip's worst error, arrival time and overshoot over the targets the episode held | `tip` and a `point` goal |
   | `turns`, `laps` | a body's net signed turns about an axis through a centre (anticlockwise seen from the axis tip is positive), so a body that rocks on an arc reads about zero; whole turns completed in the net direction (ADR-587) | `body` |
   | `final_distance_mm`, `mean_distance_mm`, `max_distance_mm` | the body's distance from the centre point at the last frame, on average, and at its furthest — no goal needed (ADR-587) | `body` |

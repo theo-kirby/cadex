@@ -26,6 +26,11 @@ kind:
   commands and the joints were, how hard each drive was pushed against its
   clamp and its continuous rating (ADR-707), and what the motion cost per
   unit of weight and distance (ADR-704);
+* **tracking**, for a floating base and the commands an episode issued
+  (ADR-721): how closely the base's forward speed and yaw rate followed a
+  commanded speed and yaw rate that change during the episode, outside a
+  settling window after each change, and how far a commanded 180-degree
+  turn was from done when the command said it should be;
 * **reference**, for feet and a task's gait reference (ADR-703): the
   footfall against the reference's phase offsets and duty factor, the stride
   frequency against its, and the joints' RMS error from it, phase-aligned
@@ -97,6 +102,17 @@ CLAMP_TOLERANCE = 1.0e-3
 #: above them is jitter (ADR-704).
 HIGH_FREQUENCY_STRIDE_MULTIPLE = 3.0
 
+#: Command tracking (ADR-721) reads the base's speed and yaw rate over a
+#: centred window this long -- about a stride at the gaits it is read on, so
+#: the surge and sway inside one stride are not charged as tracking error --
+#: and skips this long after every change of any command, which is the time
+#: a policy is given to respond to it.
+TRACKING_WINDOW_S = 0.5
+TRACKING_SETTLE_S = 0.5
+#: A reversal is a held yaw-rate command that turns the commanded heading
+#: through this much; it is judged at the moment the command has done so.
+REVERSAL_DEG = 180.0
+
 #: The foot whose touch-downs are a reference's clock: the left hind, the
 #: foot every phase offset is stated after (Hildebrand's convention).
 REFERENCE_ANCHOR = "LH"
@@ -121,8 +137,9 @@ FOOTFALL_MISSED = 0.5
 #: behaviour: ``base`` is a floating base, ``floor`` the one plane it stands
 #: on, ``feet`` and ``tip`` what the spec names, ``shove`` a timed
 #: disturbance in the spec's conditions, ``command`` a speed goal the task
-#: states and ``target`` a point goal it states (ADR-462). ``body`` is a body
-#: the spec names to be judged about a centre (ADR-587).
+#: states, ``turn`` a yaw-rate goal it states (ADR-721) and ``target`` a
+#: point goal it states (ADR-462). ``body`` is a body the spec names to be
+#: judged about a centre (ADR-587).
 METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "completed": ("episode", ()),
     "duration_s": ("episode", ()),
@@ -145,6 +162,9 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "duty_factor_min": ("gait", ("feet",)),
     "duty_factor_max": ("gait", ("feet",)),
     "foot_lowest_hip_heights_min": ("gait", ("feet",)),
+    "speed_error_rms_mm_s": ("tracking", ("base", "command")),
+    "yaw_rate_error_rms_deg_s": ("tracking", ("base", "turn")),
+    "reversal_heading_error_deg_max": ("tracking", ("base", "turn")),
     "speed_ratio": ("gait", ("feet", "command")),
     "lateral_ratio": ("gait", ("feet", "command")),
     "final_error_mm_max": ("reach", ("tip", "target")),
@@ -604,6 +624,105 @@ def settled_command(commands, *, settle_s: float = SETTLE_S) -> float | None:
     if not held:
         return None
     return held[0] if min(held) == max(held) else sum(held) / len(held)
+
+
+def tracking_metrics(samples, rig: Mapping[str, Any],
+                     commands: Mapping[str, Sequence[float]], *,
+                     settle_s: float = SETTLE_S, window_s: float = TRACKING_WINDOW_S,
+                     change_settle_s: float = TRACKING_SETTLE_S,
+                     reversal_deg: float = REVERSAL_DEG) -> dict[str, Any]:
+    """How closely a floating base followed commands that change (ADR-721).
+
+    ``commands`` maps ``"speed"`` (mm/s, forward along the base's heading)
+    and ``"yaw_rate"`` (deg/s about world +Z, anticlockwise positive) to the
+    value in force at each sample, one per sample; either may be absent.
+
+    The base's speed and yaw rate at a frame are read over a centred window
+    of ``window_s``: the speed as each frame's step along that frame's
+    heading, summed, so a base on a curve is not read as slow. A frame is counted when the window fits inside the
+    episode, the frame is past ``settle_s``, and no command of either kind
+    changed from ``change_settle_s`` before it to the end of its window --
+    so a policy is not charged for the moment it is told something new, and
+    a frame is not read against a command its window has already left.
+
+    * ``speed_error_rms_mm_s`` and ``yaw_rate_error_rms_deg_s``: the RMS of
+      measured minus commanded over the counted frames.
+    * ``reversal_heading_error_deg_max``: for every held yaw-rate command
+      that turns the commanded heading through ``reversal_deg`` before it
+      changes, the base's heading error at the moment the command has done
+      so (``reversal_deg / |rate|`` after it was issued) -- a 180-degree
+      turn at 60 deg/s is judged 3 s after it is commanded. The worst one;
+      ``None`` when the episode commanded none, or ended first.
+
+    Each is ``None`` when nothing could be counted, which a predicate reads
+    as a failure.
+    """
+
+    base = base_series(samples, rig)
+    times, n = base["time"], len(base["time"])
+    series = {kind: [float(value) for value in values]
+              for kind, values in commands.items() if values is not None}
+    for kind, values in series.items():
+        if len(values) != n:
+            raise ValueError(f"{kind} commands hold {len(values)} values for {n} samples")
+    half = max(1, int(round(0.5 * window_s / base["dt"]))) if n > 1 else 1
+    changes = sorted({times[i] for values in series.values()
+                      for i in range(1, n) if values[i] != values[i - 1]})
+
+    def counted(i: int) -> bool:
+        if i - half < 0 or i + half >= n or times[i] < settle_s - _EPS:
+            return False
+        return not any(times[i] - change_settle_s < moment <= times[i + half] + _EPS
+                       for moment in changes)
+
+    frames = [i for i in range(n) if counted(i)]
+    speed_errors, yaw_errors = [], []
+    for i in frames:
+        a, b = i - half, i + half
+        span = times[b] - times[a]
+        if "speed" in series:
+            # Each frame's step along that frame's own heading: a chord
+            # across the window would read a turning base as slow.
+            along = sum(
+                (base["point"][k + 1][0] - base["point"][k][0]) * base["forward"][k][0]
+                + (base["point"][k + 1][1] - base["point"][k][1]) * base["forward"][k][1]
+                for k in range(a, b)
+            ) / span
+            speed_errors.append(along - series["speed"][i])
+        if "yaw_rate" in series:
+            yaw_errors.append((base["heading"][b] - base["heading"][a]) / span
+                              - series["yaw_rate"][i])
+
+    reversals: list[dict[str, Any]] = []
+    rates = series.get("yaw_rate")
+    if rates:
+        starts = [0] + [i for i in range(1, n) if rates[i] != rates[i - 1]]
+        for k, start in enumerate(starts):
+            rate = rates[start]
+            if abs(rate) < _EPS:
+                continue
+            due = times[start] + reversal_deg / abs(rate)
+            # The command holds until the next one is issued; the last one
+            # holds to the episode's end.
+            until = times[starts[k + 1]] if k + 1 < len(starts) else times[-1]
+            if due > until + _EPS:
+                continue
+            at = min(range(start, n), key=lambda i: abs(times[i] - due))
+            turned = base["heading"][at] - base["heading"][start]
+            reversals.append({
+                "start_s": times[start], "due_s": times[at], "yaw_rate_deg_s": rate,
+                "turned_deg": turned,
+                "heading_error_deg": abs(turned - math.copysign(reversal_deg, rate)),
+            })
+    return {
+        "speed_error_rms_mm_s": _rms(speed_errors) if "speed" in series else None,
+        "yaw_rate_error_rms_deg_s": _rms(yaw_errors) if "yaw_rate" in series else None,
+        "reversal_heading_error_deg_max": (
+            max(row["heading_error_deg"] for row in reversals) if reversals else None
+        ),
+        "tracking": {"frames_counted": len(frames), "frames": n,
+                     "command_changes_s": changes, "reversals": reversals},
+    }
 
 
 # -- a tip and its targets --------------------------------------------------
@@ -1444,7 +1563,8 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
             drives: Mapping[str, Any] | None = None,
             reference: Mapping[str, Any] | None = None,
             terrain: Mapping[str, Any] | None = None,
-            ground: Any = None) -> dict[str, Any]:
+            ground: Any = None,
+            commands: Mapping[str, Sequence[float]] | None = None) -> dict[str, Any]:
     """Every behaviour metric one rollout can be read for, as one flat table.
 
     Which families are read is decided by what the rig and the episode
@@ -1468,6 +1588,9 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     for the reference family (ADR-705). A floating base is read for the
     terrain family (ADR-718): ``ground`` is the height of the ground it
     stood on and ``terrain`` the course, as :func:`terrain_metrics` takes.
+    ``commands`` is the speed and yaw rate in force at each sample, as
+    :func:`tracking_metrics` takes; with a floating base it is read for the
+    tracking family (ADR-721).
     """
 
     read: dict[str, Any] = dict(episode_metrics(episode))
@@ -1480,6 +1603,8 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
         if rig.get("feet"):
             read.update(gait_metrics(samples, rig, command_mm_s))
         read.update(terrain_metrics(samples, rig, terrain=terrain, ground=ground))
+        if commands:
+            read.update(tracking_metrics(samples, rig, commands))
     if rig.get("tip") is not None and segments:
         read.update(reach_metrics(samples, rig, segments))
     if rig.get("body") is not None:
@@ -1501,7 +1626,7 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     if reference is not None and read.get("feet"):
         read.update(reference_metrics(read["feet"], reference, drives=drives))
     for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives", "reference",
-                "terrain"):
+                "terrain", "tracking"):
         if key in read:
             detail[key] = read[key]
     return {"metrics": {name: read[name] for name in METRICS if name in read},

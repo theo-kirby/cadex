@@ -470,6 +470,8 @@ def test_the_vocabulary_is_exactly_what_the_families_measure() -> None:
     name there is one a family really returns as a number -- and the three
     spec fixtures above are written in it."""
 
+    import test_command_tracking as tracking
+
     measured = {
         "episode": evaluation.episode_metrics(DONE),
         "posture": balanced(standing()),
@@ -502,18 +504,25 @@ def test_the_vocabulary_is_exactly_what_the_families_measure() -> None:
         "terrain": evaluation.terrain_metrics(
             standing(), balance_rig(),
             terrain={"features": [{"kind": "step", "x_mm": 900.0, "height_mm": 40.0}]}),
+        # A base that follows a speed and a reversal exactly (ADR-721).
+        "tracking": evaluation.tracking_metrics(
+            tracking._drive(tracking.SPEED, tracking.REVERSE), tracking.RIG,
+            {"speed": tracking.SPEED, "yaw_rate": tracking.REVERSE}),
     }
     for name, (family, needs) in evaluation.METRICS.items():
         value = measured[family][name]
         assert isinstance(value, (int, float)) and not isinstance(value, bool), name
         assert set(needs) <= {"base", "floor", "feet", "tip", "shove", "command", "target",
-                              "body", "reference", "terrain"}, name
+                              "body", "reference", "terrain", "turn"}, name
     for spec in (WALK_SPEC, REACH_SPEC, BALANCE_SPEC):
         assert {row["metric"] for row in spec} <= set(evaluation.METRICS)
     # What needs a goal is what is a ratio of, or a distance from, one: a
-    # commanded speed for the two ratios, a target point for the reach.
+    # commanded speed for the two ratios and its tracking error (ADR-721), a
+    # commanded yaw rate for the turn's, a target point for the reach.
     assert {name for name, (_, needs) in evaluation.METRICS.items() if "command" in needs} == {
-        "speed_ratio", "lateral_ratio"}
+        "speed_ratio", "lateral_ratio", "speed_error_rms_mm_s"}
+    assert {name for name, (_, needs) in evaluation.METRICS.items() if "turn" in needs} == {
+        "yaw_rate_error_rms_deg_s", "reversal_heading_error_deg_max"}
     assert {name for name, (_, needs) in evaluation.METRICS.items() if "target" in needs} == {
         "final_error_mm_max", "final_error_arm_lengths_max",
         "time_to_target_s_max", "overshoot_ratio_max"}

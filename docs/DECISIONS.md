@@ -42729,3 +42729,54 @@ what it always meant, now computed exactly where the answer is exact.
 builds landings on a `step * 0.02` clock: the old code reads
 `0.10000000000000006` and fails; the fix reads `0.1` and the bound holds.
 The other eleven reference-metric tests are unchanged and pass.
+
+## ADR-721 — A commanded yaw rate, scripted goal openings, and command-tracking predicates (2026-10-16, orun7)
+
+**Context.** orun7's R1 asks a policy to follow a commanded forward speed
+and yaw rate, both re-sampled in the episode, including a 180° reversal,
+and to be judged on yaw-rate RMS error (≤ 20°/s outside a 0.5 s settling
+window after each change), speed RMS error (≤ 0.3 m/s) and the reversal
+done (heading within 20° of the new command) within 3 s. The task language
+had a forward `speed` goal and nothing for turning; `speed_ratio` compares
+a mean with a mean and cannot say how quickly a change was followed; and a
+goal's segments were always drawn, so no spec could put the same reversal
+on every evaluation seed.
+
+**Decision.** Three general locomotion features, for any floating base,
+legged or wheeled (charter O3):
+- `GOAL_KINDS` gains `yaw_rate`: one channel, deg/s about world +Z,
+  anticlockwise positive, drawn `uniform(low, high)` per segment like a
+  speed. At most one per task, read by kind. A success predicate on it
+  needs `turn`, with its own correction.
+- `assembly.goal(..., sequence=[...])` on a value, speed or yaw-rate goal:
+  segment *k* holds `sequence[k]` (each in `between`), later segments are
+  drawn. The draw is **still taken** for a scripted segment, so the stream
+  after it is the unscripted one. `GOAL_SEQUENCE_ALGORITHM` is appended to
+  the bundle's `goal_algorithm` only when a goal carries a sequence, so
+  every earlier bundle keeps its digest. The engine draw, the reference
+  runner and the trainer's host draw all apply it.
+- A **tracking** family in `CadexEvaluation`: `speed_error_rms_mm_s`
+  (needs `base`, `command`), `yaw_rate_error_rms_deg_s` and
+  `reversal_heading_error_deg_max` (need `base`, `turn`). Rates are read
+  over a centred 0.5 s window (about a stride, so in-stride surge is not
+  charged); a frame counts past 1 s and when no command changed from 0.5 s
+  before it to the end of its window. A reversal is a held yaw-rate command
+  that turns the commanded heading through 180° before it changes, judged
+  at `180/|rate|` after it was issued; none commanded reads unmeasured, so
+  a spec that bounds it fails rather than passes vacuously.
+  `evaluate_success` hands the per-frame speed and yaw-rate goals in.
+
+**Not in this decision.** The tail predicates (ground contact share, root
+pitch against the pelvis, tail yaw against the commanded yaw rate) and the
+R1 task and training on orun7-cat.
+
+**Evidence.** `test_command_tracking` (engine suite): the kind and the
+sequence round-trip the API and the bundle, with the appended algorithm;
+the engine draw, reference runner and trainer agree on a scripted stream
+and the stream after a scripted segment is the unscripted one; out-of-range
+or non-numeric sequences are refused; a synthetic base that tracks exactly
+reads zero error, a constant lag reads its size, the settling window drops
+the frames after a change; a turn at 60°/s for 3 s reads a reversal error
+equal to its heading shortfall, and one cut short or never commanded reads
+`None`; the `turn` need refuses a spec on a task with no yaw-rate goal.
+

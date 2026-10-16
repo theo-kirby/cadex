@@ -1246,7 +1246,7 @@ _SUCCESS_SCALE_KEYS = (
 
 #: What a goal may be (ADR-462). ``CadexDynamics.GOAL_KINDS`` is the same
 #: tuple, and ``test_goal_api`` holds the two equal.
-_GOAL_KINDS = ("value", "speed", "point", "phase")
+_GOAL_KINDS = ("value", "speed", "point", "phase", "yaw_rate")
 
 #: An observation's name, which becomes a name a reward formula writes. The
 #: same shape as a Python identifier because that is what it turns into,
@@ -4172,6 +4172,7 @@ class AssemblyDomainAPI:
         frame: DomainValue | None = None,
         period_seconds: float | None = None,
         resample_seconds: float | None = None,
+        sequence: Sequence[float] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Tell the policy where to go: a number or a place drawn per episode.
@@ -4228,13 +4229,30 @@ class AssemblyDomainAPI:
           sqrt(x*x + y*y)``. It is the controller's own timer, not a
           sensor reading. Turn the other way with ``-name_sin``.
 
-        A task states at most one ``speed`` and one ``point``; ``value``
-        and ``phase`` goals are free.
+        * ``"yaw_rate"`` -- the **commanded turning rate** of the floating
+          base about world +Z, in degrees per second, anticlockwise
+          (a left turn) positive, between ``between=[low, high]``. Its
+          channel is ``name``. Like ``speed`` it is a ``value`` the engine
+          knows the meaning of (ADR-721): a success spec reads
+          ``yaw_rate_error_rms_deg_s`` and ``reversal_heading_error_deg_max``
+          against it. The reward still has to pay for it.
+
+        A task states at most one ``speed``, one ``yaw_rate`` and one
+        ``point``; ``value`` and ``phase`` goals are free.
 
         ``resample_seconds`` draws the goal again that often during the
         episode, which is what makes a policy learn to *change* what it is
         doing. It must be a whole number of control steps. Omitted, the goal
         is held for the episode.
+
+        ``sequence=[v0, v1, ...]`` scripts the opening of a ``value``,
+        ``speed`` or ``yaw_rate`` goal (ADR-721): segment ``k`` holds
+        ``sequence[k]`` instead of its draw, and the segments past the
+        sequence are drawn as usual. Each value lies in ``between``. It is
+        how a success spec asks every seed the same question -- hold a
+        speed, then turn through 180 degrees -- and the draw is still taken
+        for each scripted segment, so stating a sequence moves no other
+        draw in the seed's stream.
 
         An episode played without a seed holds the middle of a range, or
         the point the tip already occupies.
@@ -4350,6 +4368,34 @@ class AssemblyDomainAPI:
                 )
             properties["low"] = low
             properties["high"] = high
+        if sequence is not None:
+            if clean_kind not in ("value", "speed", "yaw_rate"):
+                raise _error(
+                    operation, "sequence",
+                    "scripts the segments of a value, a speed or a yaw rate; "
+                    f"this is a {clean_kind}", sequence,
+                )
+            if isinstance(sequence, (str, bytes)) or not isinstance(sequence, Sequence) \
+                    or not 1 <= len(sequence) <= 64:
+                raise _error(
+                    operation, "sequence",
+                    "must be a list of 1 to 64 numbers, one per segment",
+                    sequence,
+                )
+            scripted = [
+                _number(operation, f"sequence[{index}]", value)
+                for index, value in enumerate(sequence)
+            ]
+            outside = [value for value in scripted
+                       if not properties["low"] <= value <= properties["high"]]
+            if outside:
+                raise _error(
+                    operation, "sequence",
+                    "holds values the goal's own range does not: every "
+                    f"scripted segment lies in between=[{properties['low']:g}, "
+                    f"{properties['high']:g}]", outside,
+                )
+            properties["sequence"] = scripted
         if resample_seconds is not None:
             properties["resample_seconds"] = _number(
                 operation, "resample_seconds", resample_seconds,
@@ -4576,6 +4622,14 @@ class AssemblyDomainAPI:
           A drawn box course is re-drawn for each evaluation seed from a
           stream the training pool never uses, so every seed is judged on
           a course the policy did not train on.
+        * with a floating base and commands that change (ADR-721):
+          ``speed_error_rms_mm_s`` against a ``speed`` goal, and
+          ``yaw_rate_error_rms_deg_s`` and ``reversal_heading_error_deg_max``
+          against a ``yaw_rate`` goal -- each rate over a centred 0.5 s
+          window, on frames past 1 s and not within 0.5 s after any command
+          changed; a reversal is a held yaw-rate command that turns the
+          commanded heading 180°, judged when it has (3 s at 60°/s), and is
+          unmeasured when none was commanded.
 
         ``feet`` names the ``api.component`` values that are feet; each
         needs a primitive collision shape, because a foot's height is its

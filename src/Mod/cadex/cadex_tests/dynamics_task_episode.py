@@ -355,8 +355,11 @@ def draw_goals(mujoco: Any, model: Any, task: dict, rng: Any) -> list[dict]:
     for entry in task.get("goal") or []:
         segments = []
         if str(entry["kind"]) != "point":
-            for _ in range(int(entry["segments"])):
-                segments.append([rng.uniform(float(entry["low"]), float(entry["high"]))])
+            # A scripted segment (ADR-721) takes its draw and holds its script.
+            scripted = list(entry.get("sequence") or ())
+            for index in range(int(entry["segments"])):
+                value = rng.uniform(float(entry["low"]), float(entry["high"]))
+                segments.append([float(scripted[index]) if index < len(scripted) else value])
             drawn.append({"label": str(entry["label"]), "segments": segments})
             continue
         if data is None:
