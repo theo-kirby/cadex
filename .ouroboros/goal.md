@@ -97,6 +97,21 @@ visible change to the hind feet**, and the operator confirmed it:
 - **Do not launch any R1 training until A3 and A4 are both in the
   rebuilt model.**
 
+**Owner revision 5, 2026-10-16 (iteration 38): shorter training runs.**
+The owner watches the curves, and they flatten early. r1-t3 added 7% to its
+reward per step between iterations 200 and 475, against 85% before 200.
+From here on:
+- **Default budget: 200–300 iterations.** Screening runs, which test a
+  reward, a reference or a design, use 100–150.
+- **Extend only on evidence, by warm start.** If the curve is still
+  clearly climbing at the end, warm-start from the policy on the same
+  bundle for another 100–200 iterations. Spend the saved GPU time on more
+  experiments, not on longer plateaus.
+- The record states the budget and why, and when a curve plateaued.
+- r1-t3 (600 iterations, started before this revision) runs to its end.
+  If the A3 paw changed after it started (accepted 0f036864), say whether
+  r1-t3's model is stale for A3.
+
 If the run achieves only one thing from here, it is this: **the cat, with a
 supple, actively used tail, turns and changes direction on command, and its
 tail never strikes the ground.**
