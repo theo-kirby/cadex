@@ -42706,3 +42706,26 @@ several seeds' placed courses rests 10 mm above that course's ground (fails
 without the re-boxing); `evaluate_success` end to end on three seeds, each
 row naming its own course and passing `falls`, `steps_crossed` and
 `distance_made_good_mm`; and the flat-ground refusal.
+
+## ADR-719 — Footfall phase error is counted on the frame grid (2026-10-16, orun7)
+
+**Context.** `CadexEvaluation.reference_metrics` read each landing's offset
+as `(t - due) / length` from float frame times. A rollout's times are
+`step * control_interval`, so a landing exactly 2 frames off in a 20-frame
+stride read `0.10000000000000003`–`0.10000000000000006`, and a spec bound of
+`footfall_phase_error_max <= 0.1` failed on every seed of orun7's f1-g2
+(`swift-crane-9674`): a gate decided by float noise, not by the gait.
+
+**Decision.** `gait()`'s per-foot record carries `frame_s`, the frame
+interval its landings lie on. `reference_metrics` snaps the anchor's
+landings and each foot's to whole frames (`round(t / frame_s)`), measures a
+foot's offset from its stride's anchor landing in frames, and divides by the
+stride's frame count once. The due moment, `expected * stride_frames`, stays
+a real number, so a reference offset that falls between frames is still
+measured to its fraction. No epsilon is added to any bound; the metric is
+what it always meant, now computed exactly where the answer is exact.
+
+**Evidence.** `test_reference_metrics::test_a_two_frame_offset_in_a_twenty_frame_stride_reads_exactly_a_tenth`
+builds landings on a `step * 0.02` clock: the old code reads
+`0.10000000000000006` and fails; the fix reads `0.1` and the bound holds.
+The other eleven reference-metric tests are unchanged and pass.

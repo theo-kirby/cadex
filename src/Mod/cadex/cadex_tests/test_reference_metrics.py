@@ -107,6 +107,24 @@ def test_a_foot_a_tenth_of_a_cycle_off_its_offset_reads_a_tenth() -> None:
         "duty_factor_error_max"] == pytest.approx(0.2, abs=0.03)
 
 
+def test_a_two_frame_offset_in_a_twenty_frame_stride_reads_exactly_a_tenth() -> None:
+    # ADR-719: a rollout's frame times are ``step * interval``, which carry
+    # float noise; read from them this offset was 0.1 + 6e-17 and failed a
+    # spec bound of exactly 0.1. Counted on the frame grid it is 0.1.
+    clock = [step * DT for step in range(400)]
+    landings = {"rl": 0, "rr": 0, "fr": 10, "fl": 10}  # a bound's frames, LH at 0
+    feet = {name: {"touchdowns_s": [clock[50 + 20 * k + at] for k in range(6)],
+                   "duty_factor": 0.3, "frame_s": DT}
+            for name, at in landings.items()}
+    bound = clip({"LH": 0.0, "RH": 0.0, "LF": 0.6, "RF": 0.5}, duty=0.3,
+                 period_s=20 * DT, gait="bound")
+    read = evaluation.reference_metrics(feet, bound)
+    assert read["reference"]["strides"] == 5
+    assert read["reference"]["feet"]["LF"]["phase_error"] == 0.1
+    assert read["footfall_phase_error_max"] == 0.1
+    assert read["footfall_phase_error_max"] <= 0.1  # a spec's bound of 0.1 holds
+
+
 def test_the_joints_are_compared_pose_for_pose_through_each_stride() -> None:
     samples, feet = walked()
     on = evaluation.reference_metrics(feet, clip(), drives=hip(PERIOD_FRAMES * DT))

@@ -510,6 +510,9 @@ def gait(time, foot: Mapping[str, Any], hip_height_mm: float, *,
         "duty_factor": (sum(settled) / len(settled)) if settled else None,
         # Each step's landing: the first stance frame after it (ADR-705).
         "touchdowns_s": [s["land_s"] for s in steps],
+        # The frame interval the landings lie on, so a timing read in
+        # frames is whole frames (ADR-719).
+        "frame_s": dt,
         # Steps begun after the settle, per settled second: one step per
         # stride, so this is the foot's stride frequency (ADR-704).
         "step_rate_hz": (
@@ -1155,7 +1158,8 @@ def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[
       the reference's;
     * ``footfall_phase_error_max``: per foot, the median over strides of how
       far, in cycles, its landing fell from where the reference's phase
-      offsets put it. A foot that did not land exactly once within half a
+      offsets put it, counted in whole frames of the landings' grid
+      (ADR-719). A foot that did not land exactly once within half a
       stride of that moment missed the stride, and the miss is
       :data:`FOOTFALL_MISSED`. The worst foot is the metric;
     * ``duty_factor_error_max``: the worst foot's settled duty factor less
@@ -1204,14 +1208,23 @@ def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[
     period = float(statistics.median(length for _, length in strides))
     detail["stride_hz"] = 1.0 / period
 
+    # ADR-719: landings lie on the frame grid, so timing is counted in whole
+    # frames and only the division by the stride's frames is inexact; a
+    # 2-frame offset in a 20-frame stride reads 0.1, not 0.1 + 3e-17.
+    frame_s = float(feet[names[REFERENCE_ANCHOR]]["frame_s"])
+
+    def on_grid(moment: float) -> int:
+        return round(moment / frame_s)
+
+    grid = [(on_grid(start), on_grid(start + length) - on_grid(start)) for start, length in strides]
     phase_errors, duty_errors = [], []
     for label, name in names.items():
         expected = (offsets[label] - offsets[REFERENCE_ANCHOR]) % 1.0
-        landings = feet[name]["touchdowns_s"]
+        landings = [on_grid(t) for t in feet[name]["touchdowns_s"]]
         errors = []
-        for start, length in strides:
-            due = start + expected * length
-            near = [t for t in landings if abs(t - due) < 0.5 * length]
+        for start, length in grid:
+            due = expected * length  # frames after the anchor's landing
+            near = [t - start for t in landings if abs(t - start - due) < 0.5 * length]
             errors.append(abs(near[0] - due) / length if len(near) == 1 else FOOTFALL_MISSED)
         error = float(statistics.median(errors))
         measured_duty = feet[name].get("duty_factor")

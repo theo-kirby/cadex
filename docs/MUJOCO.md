@@ -1626,7 +1626,8 @@ can bound four metrics read against it. The clock is the left hind's own
 landings, so a policy is compared stride by stride, whatever its stride
 frequency. `footfall_phase_error_max` is the worst foot's median landing
 error, in cycles, from the reference's phase offsets (a skipped or doubled
-landing is 0.5). `duty_factor_error_max` is the worst foot's duty factor
+landing is 0.5), counted in whole frames, so two frames of a 20-frame
+stride is exactly 0.1 (ADR-719). `duty_factor_error_max` is the worst foot's duty factor
 less the reference's. `stride_frequency_ratio` is the measured stride
 frequency over the reference's. `reference_joint_rms_deg` is the RMS joint
 error at the same phase of each stride. r5's trot, against a trot generated
