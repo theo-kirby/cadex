@@ -298,18 +298,12 @@ engine, runs the engine and CLI suites, stages the payload, and gates it
 through `test_cadexd_lifecycle` against the *packaged* tree; the Linux job
 also drives the packaged engine through the CLI.
 
-**Both jobs have been red since at least 2026-07-25, and neither has ever
-reached its gate** (ADR-060). Every run through the last one, 38804138041 on
-2026-10-15 (`gh run list --workflow cadex-app.yml`), fails at `Engine unit
-suite` on both platforms, with every later step skipped. The failures the
-release audit read (ADR-674: a wall-clock budget hit on the Linux runner,
-kernel crashes on macOS) were in tests ADR-725 has since deleted, and the
-suite CI runs is now the contract suite (157 tests locally, about 34 s),
-which has not yet run in CI. So the paragraph above describes an intent, not
-an observation: the packaged gate has never run in CI on either platform,
-which is how a payload that broke every assembly joint shipped on both.
-Verified locally on Linux; what the macOS gates say when they first run is
-not yet known.
+**Both jobs are green, and both gates have run** (since 2026-10-16). From at
+least 2026-07-25 to 2026-10-15 every run failed at `Engine unit suite`, in
+tests ADR-725 has since deleted, so no gate ever ran (ADR-060, ADR-674);
+that is how a payload that broke every assembly joint shipped on both
+platforms. Run 38947903206 on `8f3d14c9` passed every step: Linux x64 in
+19 min, macOS arm64 in 29 min, most of it the engine build.
 
 ## Open
 
