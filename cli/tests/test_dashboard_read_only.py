@@ -25,8 +25,8 @@ import pytest
 from cadex_cli.__main__ import main
 from cadex_cli.report import EXIT_OK
 from cadex_cli.review_server import serve, serve_projects
-from test_app import _projects
-from test_review_server import _get, _json, _open, _model_state, browser, needs_browser  # noqa: F401
+from review_helpers import _projects
+from review_helpers import _get, _json, _open, _model_state, browser, needs_browser  # noqa: F401
 
 PLATE = """
 p = params(width=num(30.0, unit="mm", min=10.0, max=90.0, step=1.0),

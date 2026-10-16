@@ -24,13 +24,13 @@ from cadex_cli import review_server
 from cadex_cli.review_record import WALK_LOCK_FILENAME
 from cadex_cli.review_server import (
     API_RESPONSE_KEYS, API_ROUTES, APP_API_ROUTES, ReviewHandler, serve, serve_projects)
-from test_review_checkpoints import RUN, _trace as _checkpoint_trace, _training_run
-from test_review_evaluation import _passing
-from test_review_record import REVISION_A, REVISION_B, _manifest, _project
-from test_review_revisions import _biped_store
-from test_review_server import _escaped_run, _get, _json, _mesh_run, _rewrite_record, _stage_accepted
-from test_review_server import _training_run as _untraced_run
-from test_review_reference import reference_bundle
+from review_helpers import RUN, _checkpoint_trace, _checkpoint_training_run as _training_run
+from review_helpers import _passing
+from review_helpers import REVISION_A, REVISION_B, _manifest, _project
+from review_helpers import _biped_store
+from review_helpers import _escaped_run, _get, _json, _mesh_run, _rewrite_record, _stage_accepted
+from review_helpers import _training_run as _untraced_run
+from review_helpers import reference_bundle
 
 REPO = Path(__file__).resolve().parents[2]
 STATIC = REPO / "cli" / "cadex_cli" / "review_static"
