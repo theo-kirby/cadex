@@ -42379,8 +42379,7 @@ course.
 **Not in this decision**, and still W1's: the seeded random course and its
 re-draw in the trainer; the height-scan observation (privileged by default,
 O5); the terrain predicates (distance made good, falls, steps and slopes
-crossed); the course in `rollout_policy` and the dashboard; `cadex smoke`'s
-support check, which still looks for `environment/floor`; the proof on a
+crossed); the course in `rollout_policy` and the dashboard; the proof on a
 second robot.
 
 **Evidence.** `test_dynamics_terrain.py` (15 tests). The grid's heights,
@@ -42393,3 +42392,13 @@ view. A cylinder foot is named as the `cylinder`/`hfield` pair. Measured
 in MJX (training venv, CPU): the exported file steps, and the block holds
 at 9.98 mm after 1,000 steps on a course with an 80 mm step, a −10° slope
 and a 40 mm bump.
+
+**Amendment (2026-10-16): `cadex smoke` stands a base on the course.** The
+support check looked only for `environment/floor`, so a free base on a
+declared course failed it ("no environment floor to rest on") although it
+stood. `smoke_runner.py` now takes the ground as `environment/floor` or, in
+its place, `environment/terrain`; the receipt's `checks.support.floor` and
+the penetration pairs name whichever it was. Evidence:
+`test_a_free_base_on_a_terrain_heightfield_is_supported_by_it`, a block on a
+heightfield plateau 40 mm up with no plane, fails before the change and
+passes after.

@@ -20,8 +20,9 @@ Five checks, each a fixture's known answer (``cli/tests/test_smoke.py``):
   MuJoCo's soft contact lets a resting part sink about 0.1--0.2 mm at the
   default ``solref``, which is why the default tolerance is above that;
 * **support** -- something of a free base's design (ADR-335) is touching the
-  environment floor at the end, the base's linear speed is under the rest
-  threshold, and the base still holds the attitude its accepted keyframe gave
+  environment's ground at the end -- its floor, or the terrain heightfield
+  that replaces the floor when the script declares a course (ADR-714) --
+  the base's linear speed is under the rest threshold, and the base still holds the attitude its accepted keyframe gave
   it, within ``--max-tilt-degrees`` (ADR-377: a design that toppled and
   settled satisfies the first two and is not standing); a grounded design
   holds its grounded bodies by construction, and says which;
@@ -54,6 +55,9 @@ from typing import Any
 
 SCHEMA = "cadex-smoke-dynamics-v1"
 ENVIRONMENT_FLOOR_GEOM = "environment/floor"
+#: ``CadexDynamics.ENVIRONMENT_TERRAIN_GEOM``: the heightfield an export
+#: writes in the floor's place when the script declares terrain (ADR-714).
+ENVIRONMENT_TERRAIN_GEOM = "environment/terrain"
 DEFAULT_KEYFRAME = "solved"
 #: How many penetrating pairs the receipt lists, worst first.
 MAXIMUM_REPORTED_PAIRS = 32
@@ -208,12 +212,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     def geom_name(index: int) -> str:
         return str(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, int(index)) or "")
 
-    floor = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, ENVIRONMENT_FLOOR_GEOM)
+    # The ground is the environment's floor, or the terrain heightfield an
+    # export writes in its place (ADR-714); a model carries one or neither.
+    floor, ground_name = -1, None
+    for name in (ENVIRONMENT_FLOOR_GEOM, ENVIRONMENT_TERRAIN_GEOM):
+        index = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, name)
+        if index >= 0:
+            floor, ground_name = index, name
+            break
 
     def geom_label(index: int) -> str:
-        # The floor belongs to the world body; name it as the floor rather
+        # The ground belongs to the world body; name it as the ground rather
         # than as "world" so a receipt reads the way the manifest does.
-        return ENVIRONMENT_FLOOR_GEOM if index == floor else body_name(model.geom_bodyid[index])
+        return ground_name if index == floor else body_name(model.geom_bodyid[index])
 
     # -- the loops -------------------------------------------------------
     # What the export writes for a loop closure: a connect or a weld between
@@ -486,7 +497,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "pass": (floor >= 0 and touching_floor and at_rest and held_attitude
                      and nonfinite_at is None),
             "base": base,
-            "floor": ENVIRONMENT_FLOOR_GEOM if floor >= 0 else None,
+            "floor": ground_name,
             "touching_floor_at_end": bool(touching_floor),
             "speed_mm_s": speed_mm_s,
             "rest_speed_mm_s": rest_speed,
@@ -498,9 +509,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "max_tilt_degrees": maximum_tilt,
         }
         if floor < 0:
-            failing.append("support: the free base has no environment floor to rest on")
+            failing.append("support: the free base has no environment floor or terrain to rest on")
         elif not touching_floor:
-            failing.append(f"support: {base} is not touching {ENVIRONMENT_FLOOR_GEOM} at the end")
+            failing.append(f"support: {base} is not touching {ground_name} at the end")
         if not at_rest:
             failing.append(
                 f"support: {base} is still moving at {speed_mm_s:.1f} mm/s "

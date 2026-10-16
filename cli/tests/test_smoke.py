@@ -62,6 +62,18 @@ BURIED_BLOCK = RESTING_BLOCK.replace('qpos="0 0 0.0100', 'qpos="0 0 0.0080')
 NO_FLOOR = RESTING_BLOCK.replace(
     '<geom name="environment/floor" type="plane" size="0 0 0.1" pos="0 0 0"/>', "")
 
+#: The block on terrain instead of a floor (ADR-714): a 5x5 heightfield,
+#: 400 mm square, whose middle nine points are a flat plateau 40 mm up. The
+#: block is keyframed on the plateau, so the only ground under it is
+#: ``environment/terrain`` and a plane at z = 0 would be 40 mm below it.
+ON_TERRAIN = """<mujoco><option timestep="0.002"/>
+<asset><hfield name="environment/terrain" nrow="5" ncol="5" size="0.2 0.2 0.04 0.01"
+ elevation="0 0 0 0 0  0 1 1 1 0  0 1 1 1 0  0 1 1 1 0  0 0 0 0 0"/></asset><worldbody>
+<geom name="environment/terrain" type="hfield" hfield="environment/terrain"/>
+<body name="comp_block" pos="0 0 0.05"><freejoint name="base"/>
+<geom name="comp_block/collision0" type="box" size="0.02 0.02 0.01" mass="0.05"/></body>
+</worldbody><keyframe><key name="solved" qpos="0 0 0.0500 1 0 0 0"/></keyframe></mujoco>"""
+
 #: A 100 mm tower, 20 mm square, standing 15° over -- past the 11.3° its
 #: own footprint can hold -- so it topples and lands on its side. Gravity is
 #: a tenth of Earth's and the contact is stiff so the landing sinks 0.2 mm,
@@ -186,6 +198,17 @@ def test_a_free_base_with_no_floor_never_rests(tmp_path) -> None:
     assert receipt["checks"]["finite"]["pass"] is True
     assert any("no environment floor" in line for line in receipt["failing"])
     assert any("still moving" in line for line in receipt["failing"])
+
+
+@needs_mujoco
+def test_a_free_base_on_a_terrain_heightfield_is_supported_by_it(tmp_path) -> None:
+    receipt = _runner(tmp_path, ON_TERRAIN)
+    assert receipt["verdict"] == "pass" and receipt["failing"] == [], receipt
+    support = receipt["checks"]["support"]
+    assert support["floor"] == "environment/terrain"
+    assert support["touching_floor_at_end"] is True and abs(support["drop_mm"]) < 0.5
+    (worst,) = receipt["checks"]["penetration"]["worst"]
+    assert {worst["first"], worst["second"]} == {"comp_block", "environment/terrain"}
 
 
 @needs_mujoco
