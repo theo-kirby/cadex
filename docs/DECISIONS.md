@@ -43447,3 +43447,35 @@ after is kept down by ADR-739 instead: a course that touches only the feet
 has only sphere–box pairs, the cheap ones. Box–box and capsule–box were the
 costly pairs. A robot whose feet are not spheres may still be slow on a
 course. That is a trade made in the open, not a cull that is silently wrong.
+
+## ADR-742 — The mat follows the camera, so the ground never ends (2026-10-16)
+
+**Context.** orun8's G2 asks that a playback or film is over drawn ground at
+every frame, for a 12 s episode at 4 m/s in any direction. The stage floor
+(ADR-600) was a square centred on the origin, sized from the fade: four
+times the fog's far distance, at least 24 m. It was restaged only when the
+camera's distance or aspect changed, so a followed rollout carried the
+camera off the mat. A cat 25 m out ran on the sky.
+
+**Decision.** `environment.js` gains `setCentre(centre, cover)`, and
+`review_scene.js` calls it on every draw with the camera's target and the
+design's distance from it. The mat is centred on the target and is never
+smaller than the fade asks. When a camera that does not follow is left
+behind, the mat grows to reach the design with 6 m to spare
+(`COVER_MARGIN`), and the far plane grows with it. `resizeStageFloor`
+takes a `centre` and re-offsets the texture, so the grid stays on the
+world's whole metres (ADR-343) wherever the mat lies. The film shares
+`draw()`, so the hero and rollout captures get the same ground.
+`stats().floor` reports `centre_mm` and `size_mm`.
+
+**Evidence.** `cli/tests/test_dashboard_ground.py` carries the design
+50 m in a synthetic trace, once followed and once not. At each of 21
+frames it checks two things: the design is over the mat with at least 1 m
+to spare, and the mat's edge is at least the fog's far distance from the
+camera and inside its far plane. The test fails on the old code. It takes
+4.4 s; occlusion and detail are off, as their shading says nothing about
+where the mat lies.
+
+**Not done here.** The course itself (ADR-734's boxes and slab) still ends at
+its extent. G1 replaces it with one surface, and the engine's run-out to
+the base plane is G1's feature work.

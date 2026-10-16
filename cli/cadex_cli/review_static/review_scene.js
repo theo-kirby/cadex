@@ -571,6 +571,7 @@ export function create(canvas, {labels=true}={}) {
   // depth buffer's precision scales with the shot and the mat never z-fights the design at any
   // zoom; far is the stage's, which follows the floor (environment.js), so the mat never pops.
   const NEAR_FRACTION=.002;
+  let stageFloor={roomSize:0, far:1, centre:[0,0]};
   function draw() {
     const w=canvas.clientWidth||canvas.width,h=canvas.clientHeight||canvas.height;
     if (renderer.domElement.width!==Math.floor(w*renderer.getPixelRatio()) || renderer.domElement.height!==Math.floor(h*renderer.getPixelRatio())) renderer.setSize(w,h,false);
@@ -579,8 +580,12 @@ export function create(canvas, {labels=true}={}) {
     camera.position.set(t[0]+d*cp*Math.cos(c.yaw),t[2]+d*Math.sin(c.pitch),-t[1]-d*cp*Math.sin(c.yaw));
     camera.lookAt(t[0],t[2],-t[1]);
     const key=JSON.stringify([d,w/h,floorZ]);
-    if (key!==staged) {stage=environment.setStage({camDist:d, floorZ}); staged=key;}
-    camera.near=Math.min(1,Math.max(1e-5,d*NEAR_FRACTION)); camera.far=Math.max(stage.far,d*4);
+    if (key!==staged) {stage=environment.setStage({camDist:d, floorZ, centre:[t[0],t[1]]}); staged=key;}
+    // The ground never ends (ADR-742): the mat is centred on the target and reaches the design
+    // wherever a rollout has carried it, so a long run is over drawn ground at every frame.
+    const at=centreAt(null);
+    stageFloor=environment.setCentre([t[0],t[1]], at?Math.hypot(at[0]/1000-t[0],at[1]/1000-t[1]):0);
+    camera.near=Math.min(1,Math.max(1e-5,d*NEAR_FRACTION)); camera.far=Math.max(stageFloor.far,d*4);
     camera.updateProjectionMatrix();
     // The presentation floor is front-sided: orbiting underneath remains a CAD inspection.
     paint();
@@ -992,7 +997,7 @@ export function create(canvas, {labels=true}={}) {
       proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length}, ghost:ghost.children.map(m=>m.name),
       colours:Object.fromEntries([...meshes].map(([n,m])=>[n,'#'+m.userData.colour.getHexString()])),
       hidden_world:[...meshes].filter(([,m])=>m.userData.world&&!m.visible).map(([n])=>n),
-      floor:{z_mm:floorZ*1000, source:floorSource, pitch_mm:(stage?.pitch??1)*1000},
+      floor:{z_mm:floorZ*1000, source:floorSource, pitch_mm:(stage?.pitch??1)*1000, centre_mm:stageFloor.centre.map(v=>v*1000), size_mm:stageFloor.roomSize*1000},
       terrain:terrain&&{kind:terrain.kind, boxes:(terrain.boxes||[]).length, course:terrain.course||null},
       clip:{near:camera.near, far:camera.far},
       finishes:Object.fromEntries([...meshes].map(([n,m])=>[n,m.userData.finish])),

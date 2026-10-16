@@ -89,7 +89,7 @@ export function prototypeMaterial({ palette = FALLBACK_TILE, labels = true } = {
 // The mat is pushed back in depth (polygon offset) rather than lowered under the design: a part
 // standing exactly on z=floorZ draws over it at any zoom, with no z-fighting and no visible gap.
 // It takes no environment reflection — it is the room, not a thing in it.
-export function buildStageFloor(world, { size = 10, floorZ = 0, palette = FALLBACK_TILE,
+export function buildStageFloor(world, { size = 10, floorZ = 0, centre = [0, 0], palette = FALLBACK_TILE,
                                          labels = true } = {}) {
   const group = new THREE.Group();
   const floor = new THREE.Mesh(
@@ -102,28 +102,29 @@ export function buildStageFloor(world, { size = 10, floorZ = 0, palette = FALLBA
   floor.receiveShadow = true;
   floor.userData.pitch = GRID_PITCH;
   group.add(floor);
-  resizeStageFloor(group, { size, floorZ });
+  resizeStageFloor(group, { size, floorZ, centre });
 
   world.add(group);
   return group;
 }
 
-// Resize a floor built by buildStageFloor without repainting its texture. The grid is anchored
-// to the world origin, not to the plane's corner: a block corner sits on x = y = 0 and every
-// line sits on a whole metre, whatever the floor's size. The viewer
-// grows the floor with the fog as the camera pulls back, so a grid laid from the corner slid
-// under the model on every zoom step and its "1 METER" lines stopped being where a metre is.
-export function resizeStageFloor(group, { size, floorZ }) {
+// Resize a floor built by buildStageFloor without repainting its texture, and centre it on
+// `centre` ([x, y], metres, sim frame). The grid is anchored to the world origin, not to the
+// plane's corner or centre: a block corner sits on x = y = 0 and every line sits on a whole metre,
+// whatever the floor's size and wherever it is centred. The viewer grows the floor with the fog as
+// the camera pulls back, and moves it with the camera's target as a rollout runs (ADR-742), so the
+// mat slides under the design while its metre lines stay where a metre is.
+export function resizeStageFloor(group, { size, floorZ, centre = [0, 0] }) {
   const floor = group.children[0], pitch = floor.userData.pitch, block = 2 * pitch;
   floor.scale.set(size, size, 1);
-  floor.position.set(0, 0, floorZ);
-  // uv' = uv·repeat + offset, and uv = (x + size/2) / size across the plane, so this offset puts
-  // tile coordinate x / block at world x.
-  const repeat = size / block, offset = -(size / 2) / block;
+  floor.position.set(centre[0], centre[1], floorZ);
+  // uv' = uv·repeat + offset, and uv = (x - cx + size/2) / size across the plane, so this offset
+  // puts tile coordinate x / block at world x.
+  const repeat = size / block, u = (centre[0] - size / 2) / block, v = (centre[1] - size / 2) / block;
   const map = floor.material.map;
   map.repeat.set(repeat, repeat);
-  map.offset.set(offset - Math.floor(offset), offset - Math.floor(offset));
+  map.offset.set(u - Math.floor(u), v - Math.floor(v));
   floor.userData.size = size;
+  floor.userData.centre = centre.slice();
   return group;
 }
-

@@ -585,8 +585,19 @@ above the design's lowest point (2 mm or 2 % of its height), under the
 design. The mat is pushed back in depth (polygon offset) rather than
 lowered, so a part resting on it never z-fights. A model that is nothing but
 world geometry is drawn as it is. `stats().floor` reports `z_mm`, `source`
-(`world` or `design`) and `pitch_mm`; `stats().hidden_world` names the parts
-not drawn.
+(`world` or `design`), `pitch_mm`, and the mat's `centre_mm` and `size_mm`;
+`stats().hidden_world` names the parts not drawn.
+
+**The ground never ends (ADR-742).** The mat is centred on the camera's
+target, not on the origin, and moves with it on every draw: a followed
+rollout carries the mat along under it, its grid still on the world's whole
+metres. It is as large as the fade asks (four times the fog's far distance)
+and, when the design has run away from a camera that does not follow, large
+enough to reach the design with 6 m to spare; the far plane grows with it.
+So a playback or a film that runs 50 m, in any direction, followed or not,
+is over drawn ground at every frame, and the mat's edge stays past the fade
+(`cli/tests/test_dashboard_ground.py`). Moving it repaints nothing: one
+plane is moved and scaled and its texture re-offset.
 
 **The course is drawn (ADR-734).** A model that stands on a declared course
 (ADR-714, ADR-716) is drawn on it. A box course is its boxes, over a slab
