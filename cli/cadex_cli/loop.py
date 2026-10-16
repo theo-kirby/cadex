@@ -112,6 +112,7 @@ EXTRA_SETTINGS: dict[str, tuple[str, type]] = {
     "command_slew_deg": ("--command-slew-deg", float),
     "goal_pool": ("--goal-pool", int),
     "checkpoint_every": ("--checkpoint-every", int),
+    "critic_warmup": ("--critic-warmup", int),
 }
 #: ``hidden`` is the one list: the layer widths, ``--hidden 64 64``.
 BASE_SETTINGS = ("iterations", "envs", "seed", "label", "init_from",

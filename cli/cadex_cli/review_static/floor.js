@@ -62,6 +62,16 @@ function greyboxTexture(palette = FALLBACK_TILE, repeatX = 1, repeatY = 1, label
   return tex;
 }
 
+// The mat's own material (ADR-734): the same greybox tile, for surfaces that are part of the
+// stage, such as a terrain course. The texture repeats every block (2·pitch); a caller gives its
+// geometry world-anchored uvs in blocks, so its grid lines sit on the mat's whole metres.
+export function prototypeMaterial({ palette = FALLBACK_TILE, labels = true } = {}) {
+  return new THREE.MeshStandardMaterial({
+    map: greyboxTexture(palette, 1, 1, labels),
+    roughness: 1, metalness: 0, side: THREE.DoubleSide, envMapIntensity: 0,
+  });
+}
+
 // The stage floor (sim frame): a single `size`×`size` greybox plane resting on z=floorZ, tiled into
 // "prototype map" squares a metre on a side (see greyboxTexture). Returns a THREE.Group (added
 // under `world`) holding one FRONT-facing (DoubleSide) plane a hair above z=floorZ — the surface

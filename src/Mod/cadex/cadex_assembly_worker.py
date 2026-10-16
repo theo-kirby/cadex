@@ -4950,6 +4950,8 @@ def _execute_policy_rollout(
                 {"goal_channels": list(run["goal_channels"])}
                 if "goal_channels" in run else {}
             ),
+            # ADR-734: the course the episode stood on, drawn.
+            **({"terrain": run["terrain"]} if "terrain" in run else {}),
             **({"clearance": clearance} if clearance else {}),
         },
         summary_extra={

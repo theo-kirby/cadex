@@ -399,6 +399,16 @@ box fell through it to the plane until the tree was re-boxed. The seed's
 scan and predicates read the same course, and its row's
 `detail.terrain.course` names it.
 
+**The course travels with the trace (ADR-734, 2026-10-16).** `rollout_policy`
+returns `terrain`, `terrain_drawing` of the course its task stood on: a box
+course's boxes as centres, `xyzw` turns and half-extents in mm, without the
+parked slots, and the plane; or a heightfield's grid of heights over its
+extent, sampled to at most 129 vertices a side. The worker's rollout trace,
+each checkpoint's trace and each evaluation seed's trace carry it, so the
+dashboard and an evaluation's film show the course an episode actually
+stood on, not the model's course 0. It is absent on flat ground, so every
+earlier trace is the document it was.
+
 **Height scan (ADR-715, 2026-10-16).** `assembly.observation(trunk,
 "height_scan", name="scan", role="privileged")` reads the ground round a
 component. `scan_0` .. `scan_14` are its height in mm above the ground at a
@@ -1759,9 +1769,13 @@ foot can supply, which is how a reference that is not dynamically possible
 Two trainer options matter here. `--reward-floor 0` clips each step's
 reward at zero, as Playground's locomotion recipes do (ADR-700). A warm
 start (`--init-from`, with `--init-from-task-change` and
-`--init-from-parent-task` across a reward or disturbance change) cannot
-cross onto a course: `terrain` and the model are not keys a curriculum may
-move (`training/README.md`).
+`--init-from-parent-task` across a reward or disturbance change) may cross
+onto a course when the robot is unchanged (ADR-736). Give it
+`--critic-warmup 10` (ADR-740). A course that touches only the feet
+(`terrain={"collides_with": [feet group], ...}`, ADR-739) keeps MJX off
+box–box and capsule–box pairs. terrain-cat's warm start from the flat
+turning policy (r1-t3) ran a full 12 s episode on the course by
+iteration 50 (`training/README.md`).
 
 ### What a good result looks like
 

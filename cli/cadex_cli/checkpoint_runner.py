@@ -107,6 +107,7 @@ def roll_out(plan: dict[str, Any]) -> dict[str, Any]:
         "frames": run["frames"],
         "actuator_channels": list(run["actuator_channels"]),
         **({"goal_channels": list(run["goal_channels"])} if "goal_channels" in run else {}),
+        **({"terrain": run["terrain"]} if "terrain" in run else {}),
         "dynamics": {
             "solver": "mujoco",
             "solver_step_s": float(run["solver_step_s"]),

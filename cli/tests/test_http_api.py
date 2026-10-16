@@ -88,6 +88,13 @@ def test_the_router_dispatches_from_the_table_alone() -> None:
                              for line in lines), lines
 
 
+#: The course a trace says its episode stood on (ADR-734): one box.
+COURSE = {"kind": "boxes", "x_range_mm": [-500.0, 500.0], "y_range_mm": [-500.0, 500.0],
+          "lowest_mm": 0.0, "highest_mm": 40.0, "plane_z_mm": 0.0,
+          "boxes": [{"shape": "block", "centre_mm": [0.0, 0.0, -5.0],
+                     "rotation_xyzw": [0.0, 0.0, 0.0, 1.0], "half_mm": [500.0, 500.0, 45.0]}]}
+
+
 @pytest.fixture
 def biped(tmp_path):
     """A biped that reaches every route in each of its shapes: accepted with
@@ -100,9 +107,10 @@ def biped(tmp_path):
     _manifest(root, REVISION_B)
     _mesh_run(root, "first", revision=REVISION_A)
     second = _mesh_run(root, "second", revision=REVISION_B)
-    # A rollout with timed frames, so its playback has frames to play.
-    (second / "rollout" / "assembly-simulation-trace.json").write_text(
-        json.dumps(motor_trace("000001", write_policy(second / "policy.cxpolicy"))))
+    # A rollout with timed frames, so its playback has frames to play, on a
+    # one-box course (ADR-734).
+    (second / "rollout" / "assembly-simulation-trace.json").write_text(json.dumps({
+        **motor_trace("000001", write_policy(second / "policy.cxpolicy")), "terrain": COURSE}))
     _rewrite_record(second, artifacts={**json.loads((second / "run.json").read_text())["artifacts"],
                                        "policy": "policy.cxpolicy"})
     broken = _mesh_run(root, "broken", revision=REVISION_A)
@@ -115,7 +123,8 @@ def biped(tmp_path):
     # A checkpoint with its policy beside it and a trace that records its motors (ADR-727); a
     # policy file the page cannot run; and the walk's own policy.
     header = write_policy(train / "walk.000040.cxpolicy")
-    (train / "walk.000040.rollout-trace.json").write_text(json.dumps(motor_trace("000040", header)))
+    (train / "walk.000040.rollout-trace.json").write_text(json.dumps(
+        {**motor_trace("000040", header), "terrain": COURSE}))
     (train / "walk.000080.cxpolicy").write_bytes(b"not yet rolled out")
     write_policy(train / "walk.cxpolicy", seed=5)
     _rewrite_record(run, artifacts={**json.loads((run / "run.json").read_text())["artifacts"],
