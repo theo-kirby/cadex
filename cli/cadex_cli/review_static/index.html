@@ -197,18 +197,13 @@
     </div>
   </section>
 
-  <!-- What the project is doing, and how training is going (ADR-542), as an editor of its own
-       (ADR-572), drawn by status.js (ADR-606): read from /api/project's stage on the page's poll. -->
+  <!-- What the project is doing (ADR-542), as an editor of its own (ADR-572), drawn by status.js
+       (ADR-606): read from /api/project's stage on the page's poll. -->
   <section class="editor" id="editor-status" data-editor="status" data-title="Status" data-short="Status">
     <div class="editor-tools">
       <span id="status-stage" class="chip">idle</span>
-      <!-- Training is Cadex's own view; Project is the agent's status.html, when it wrote one (ADR-607). -->
-      <span class="segmented" id="status-tabs" role="group" aria-label="Status view" hidden>
-        <button type="button" data-tab="training" aria-pressed="true">Training</button>
-        <button type="button" data-tab="project" aria-pressed="false">Project</button>
-      </span>
     </div>
-    <div class="editor-body" id="status" data-stage="idle" data-tab="training" aria-label="Project stage">
+    <div class="editor-body" id="status" data-stage="idle" aria-label="Project stage">
       <div class="status-head">
         <p id="status-line"></p>
         <div id="status-progress" class="progress" hidden><span></span></div>
@@ -220,33 +215,42 @@
         </div>
         <p id="status-warning" hidden></p>
       </div>
-      <div id="status-training">
-        <dl id="status-stats" hidden>
-          <div><dt>Reward/step</dt><dd id="status-reward-now">—</dd></div>
-          <div><dt>Best</dt><dd id="status-best">—</dd></div>
-          <div><dt>Loss</dt><dd id="status-loss-now">—</dd></div>
-          <div><dt>Episode</dt><dd id="status-episode-now">—</dd></div>
-          <div><dt>Action std</dt><dd id="status-std-now">—</dd></div>
-          <div id="status-eta-tile"><dt>ETA</dt><dd id="status-eta">—</dd></div>
-        </dl>
-        <!-- One chart per measure, each on its own axis (ADR-606); drawn at the area's width. -->
-        <div class="charts" id="status-charts" hidden>
-          <figure class="chart"><figcaption>Reward per step</figcaption><svg id="status-reward" role="img" aria-label="Reward per step by iteration"></svg></figure>
-          <figure class="chart"><figcaption>Loss</figcaption><svg id="status-loss" role="img" aria-label="Loss by iteration"></svg></figure>
-          <figure class="chart"><figcaption>Episode length (steps)</figcaption><svg id="status-episode" role="img" aria-label="Episode length by iteration"></svg></figure>
-          <figure class="chart"><figcaption>Action std</figcaption><svg id="status-std" role="img" aria-label="Action standard deviation by iteration"></svg></figure>
-        </div>
-        <section id="status-eval" class="status-section" hidden>
-          <h2>Latest evaluation <span id="status-eval-verdict" class="chip"></span></h2>
-          <p id="status-eval-line" class="muted"></p>
-          <table id="status-eval-list" class="status-table"><thead><tr><th>Predicate</th><th>Bound</th><th>Seeds passed</th><th class="num">Median</th></tr></thead><tbody></tbody></table>
-        </section>
-        <section id="status-runs" class="status-section" hidden>
-          <h2>Runs <span id="status-runs-count" class="muted small"></span></h2>
-          <table class="status-table"><thead><tr><th>Run</th><th class="num c-iter">Iterations</th><th class="num">Best</th><th class="num">Δ best</th><th>Outcome</th><th>Evaluation</th></tr></thead><tbody id="status-runs-body"></tbody></table>
-        </section>
-      </div>
+      <!-- The agent's own status.html, when it wrote one (ADR-607). -->
       <div id="status-panel" hidden></div>
+    </div>
+  </section>
+
+  <!-- How training is going (ADR-732; in Status from ADR-606): the run's numbers, its charts, the
+       latest evaluation and every run, drawn by status.js from the same poll. -->
+  <section class="editor" id="editor-training" data-editor="training" data-title="Training" data-short="Training">
+    <div class="editor-tools">
+      <span id="training-run" class="muted">no runs</span>
+    </div>
+    <div class="editor-body" id="training" aria-label="Training">
+      <dl id="training-stats" hidden>
+        <div><dt>Reward/step</dt><dd id="training-reward-now">—</dd></div>
+        <div><dt>Best</dt><dd id="training-best">—</dd></div>
+        <div><dt>Loss</dt><dd id="training-loss-now">—</dd></div>
+        <div><dt>Episode</dt><dd id="training-episode-now">—</dd></div>
+        <div><dt>Action std</dt><dd id="training-std-now">—</dd></div>
+        <div id="training-eta-tile"><dt>ETA</dt><dd id="training-eta">—</dd></div>
+      </dl>
+      <!-- One chart per measure, each on its own axis (ADR-606); drawn at the area's width. -->
+      <div class="charts" id="training-charts" hidden>
+        <figure class="chart"><figcaption>Reward per step</figcaption><svg id="training-reward" role="img" aria-label="Reward per step by iteration"></svg></figure>
+        <figure class="chart"><figcaption>Loss</figcaption><svg id="training-loss" role="img" aria-label="Loss by iteration"></svg></figure>
+        <figure class="chart"><figcaption>Episode length (steps)</figcaption><svg id="training-episode" role="img" aria-label="Episode length by iteration"></svg></figure>
+        <figure class="chart"><figcaption>Action std</figcaption><svg id="training-std" role="img" aria-label="Action standard deviation by iteration"></svg></figure>
+      </div>
+      <section id="training-eval" class="status-section" hidden>
+        <h2>Latest evaluation <span id="training-eval-verdict" class="chip"></span></h2>
+        <p id="training-eval-line" class="muted"></p>
+        <table id="training-eval-list" class="status-table"><thead><tr><th>Predicate</th><th>Bound</th><th>Seeds passed</th><th class="num">Median</th></tr></thead><tbody></tbody></table>
+      </section>
+      <section id="training-runs" class="status-section" hidden>
+        <h2>Runs <span id="training-runs-count" class="muted small"></span></h2>
+        <table class="status-table"><thead><tr><th>Run</th><th class="num c-iter">Iterations</th><th class="num">Best</th><th class="num">Δ best</th><th>Outcome</th><th>Evaluation</th></tr></thead><tbody id="training-runs-body"></tbody></table>
+      </section>
     </div>
   </section>
 

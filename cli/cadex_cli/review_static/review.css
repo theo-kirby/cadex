@@ -176,20 +176,21 @@ canvas:is(#viewer, [data-ref="viewer"]) { display: block; width: 100%; height: 1
                 background: var(--surface); font-size: var(--fs-0); color: var(--ink-2); overflow-wrap: anywhere; }
 :is(#checkpoint-status, [data-ref="checkpoint-status"])[data-state="failed"] { color: var(--bad); } :is(#revision-status, [data-ref="revision-status"])[data-state="missing"] { color: var(--warn); }
 :is(#model-status, [data-ref="model-status"])[data-state="missing"] { color: var(--warn); } :is(#model-status, [data-ref="model-status"])[data-state="error"] { color: var(--bad); }
-/* Status (ADR-542; an editor since ADR-572): the stage chip in the area's header, the detail in its body. */
-/* Since ADR-606 it uses its area: real charts with axes, the latest evaluation and the runs. */
-#status { padding: var(--s3); overflow: auto; font-size: var(--fs-0); color: var(--ink); font-variant-numeric: tabular-nums;
+/* Status (ADR-542; an editor since ADR-572): the stage chip in the area's header, the detail in its body.
+   Training (ADR-732) has the run's numbers, real charts with axes (ADR-606), the latest evaluation and the runs. */
+#status, #training { padding: var(--s3); overflow: auto; font-size: var(--fs-0); color: var(--ink); font-variant-numeric: tabular-nums;
           container-type: inline-size; }
-#status[data-tab="project"] { display: flex; flex-direction: column; }
+#status { display: flex; flex-direction: column; }
+#training-run { font-family: var(--mono); padding: 0 var(--s2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#training > :first-child { margin-top: 0; }
 .status-head { display: flex; flex-direction: column; gap: var(--s1); }
 #status-line { margin: 0; overflow-wrap: anywhere; color: var(--ink); font-size: var(--fs-1); }
 #status-progress { margin: 2px 0; }
 #status-stage { flex: none; }
-#status-tabs { margin-left: auto; }
 #status-run { color: var(--ink-2); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#status-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: var(--s2); margin: var(--s3) 0 0; }
-#status-stats div { display: flex; flex-direction: column; min-width: 0; padding: var(--s2); background: var(--surface-2); border-radius: var(--radius-sm); }
-#status-stats dt { color: var(--ink-2); } #status-stats dd { margin: 0; white-space: nowrap; font-size: var(--fs-2); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+#training-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: var(--s2); margin: var(--s3) 0 0; }
+#training-stats div { display: flex; flex-direction: column; min-width: 0; padding: var(--s2); background: var(--surface-2); border-radius: var(--radius-sm); }
+#training-stats dt { color: var(--ink-2); } #training-stats dd { margin: 0; white-space: nowrap; font-size: var(--fs-2); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--s3); margin-top: var(--s3); }
 figure.chart { margin: 0; min-width: 0; padding: var(--s2) var(--s2) var(--s1); background: var(--surface-2); border-radius: var(--radius-sm); }
 figure.chart figcaption { color: var(--ink); font-weight: 600; margin-bottom: var(--s1); }

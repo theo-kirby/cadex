@@ -33,11 +33,11 @@
   // (`cadex app`) it is `p/<name>/` under the index, and NAME is that project.
   var NAME = (location.pathname.match(/\/p\/([^/]+)\/(?:index\.html)?$/) || [null, null])[1];
   var POLL_MS = 2000;
-  var ORDER = ['view3d', 'status', 'view2d', 'outliner', 'activations', 'network', 'settings'];
-  // The 3D viewport with the Outliner over Status beside it, as Blender has its Outliner over its
-  // Properties; split an area for the 2D one.
-  var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.75, 0.25], children: [{ editor: 'view3d' },
-    { dir: 'col', sizes: [0.4, 0.6], children: [{ editor: 'outliner' }, { editor: 'status' }] }] };
+  var ORDER = ['view3d', 'status', 'training', 'view2d', 'outliner', 'activations', 'network', 'settings'];
+  // The 3D viewport with the Outliner over Status over Training beside it, as Blender has its
+  // Outliner over its Properties; split an area for the 2D one.
+  var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.72, 0.28], children: [{ editor: 'view3d' },
+    { dir: 'col', sizes: [0.3, 0.2, 0.5], children: [{ editor: 'outliner' }, { editor: 'status' }, { editor: 'training' }] }] };
   var STYLES = ['shaded', 'wireframe'];
   // The shaded look (ADR-676): four lighting setups and two matcaps (shading.js LOOKS).
   var LOOKS = ['studio', 'softbox', 'dramatic', 'daylight', 'aluminium', 'clay'];
@@ -1088,7 +1088,7 @@
                                                    low: $('settings-heat-low'), mid: $('settings-heat-mid'), high: $('settings-heat-high'),
                                                    preview: $('settings-heat-preview'), reset: $('settings-heat-reset') });
     state.layout = window.CadexLayout.create({ root: $('screen'), shelf: $('editor-shelf'), editors: editors, order: ORDER,
-                                               storageKey: 'cadex.layout.v5', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
+                                               storageKey: 'cadex.layout.v6', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
     state.outliner = window.CadexOutliner.create({ tree: $('outliner-tree'), filter: $('outliner-filter'), group: $('outliner-group'),
                                                    showAll: $('outliner-show-all'), summary: $('outliner-summary'), scope: $('model'),
                                                    viewer: function () { return state.viewer; } });

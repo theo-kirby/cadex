@@ -43181,3 +43181,36 @@ engine in the worktree). Driven in headless Chromium over `ball-plate`:
 collapsing the 3D viewport's and the Outliner's headers hid both and wrote
 `collapsed: true` to both areas; both stayed collapsed across a reload; the
 caret restored one; no page errors.
+
+## ADR-732 — Training becomes its own editor, out of Status (2026-10-16)
+
+**Context.** The owner asked for training to be its own module: the stats,
+the plots and the runs viewable in an area of their own instead of inside
+Status, where they shared the area with the stage, the agent's activity
+and, behind a Training/Project switch, the agent's own `status.html` panel.
+
+**Decision.**
+
+- A **Training** editor (`training`, `#editor-training`) holds what Status's
+  Training tab held: the tiles, the four charts (ADR-606), the latest
+  evaluation and the runs. Its header names the run it reads. Its ids move
+  from `status-*` to `training-*`; the classes `status-section` and
+  `status-table` stay as they were. `status.js` still draws both editors
+  from the one poll, since the agent's panel message carries the same runs
+  and evaluation.
+- **Status** keeps the stage chip, the line and progress bar, the run, the
+  agent's activity and the warning. The Training/Project switch
+  (`#status-tabs`) goes: the agent's panel, when there is one, shows under
+  the activity and fills the rest of the area.
+- The default layout puts Training under Status in the right-hand column
+  (Outliner 30%, Status 20%, Training 50%), and the editor order is 3D
+  viewport, Status, Training, 2D viewport, Outliner, Activations, Network,
+  Settings. The layout key moves to `cadex.layout.v6`, so a layout kept
+  before this opens as the new default and Training is on screen.
+- `cadex hero`'s dashboard screenshot lays out the viewport beside Training.
+
+**Evidence.** `pixi run python -m pytest cli/tests` 49 passed, 1 skipped
+(no engine in the worktree; `test_http_api` pins the new key in
+`docs/CLI.md`). Driven in headless Chromium: `ball-plate` drew three charts
+and nine runs in Training; `cat-bound` drew four charts and four runs, with
+its agent panel in Status; no page errors.
