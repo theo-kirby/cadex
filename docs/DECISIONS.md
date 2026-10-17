@@ -44315,3 +44315,104 @@ order and width checks. No channel, op or bundle field changes.
 track_contact, over_rated, height, posture, heading; channels `cl`,
 `cl_down`, `cr`, `cr_down`, `ref_l_*`, `ref_r_*`). `orun9-quad`'s accepted
 script rebuilds. `pixi run test-engine` and the CLI suite pass.
+
+## ADR-758 — B3's randomised quadruped family is a set of built variants of one parametric robot (2026-10-17, orun9)
+
+**Context.** B3 asks for a quadruped base trained on a randomised family,
+where each episode draws segment lengths, masses and knee direction across a
+stated range. The engine's randomisation moves only `mass`, `damping`,
+`armature` and `friction_loss` (`RANDOMISATION_TARGETS`,
+`CadexDynamics.py`). A segment length or a knee direction is geometry: it
+moves the joint and collision frames, the inertias, the joint limits, the
+reset pose and the generated gait. The trainer imports no engine code
+(ADR-084), so it cannot rebuild a robot. And editing the exported MJCF
+inside the trainer would train on mechanisms the engine never built or
+checked.
+
+**Decision.** The family is **a set of built variants of one parametric
+robot**. Each variant is a whole Cadex build: fit, mounting and the joint
+sweep must pass, the gait is generated on that variant's own legs, and the
+`body=` block (ADR-755) is resolved for it. The trainer will batch the
+variants (below). Masses are drawn per environment by the bundle's own
+randomisation, as before.
+
+- **The robot.** `~/cadex-projects/orun9-qfam` is `orun9-quad`'s
+  (quad-qdd's) script with three changes, in `~/orun9-progress/b3/qfam-script.py`:
+  `knee_f`/`knee_h` (±1: the front and hind knee ahead of or behind the
+  hip–foot line); `thigh`/`shin` widened to 160–240 mm; and a `body=`
+  block whose `morph` carries each leg's `knee_dir`, `thigh_m`, `shank_m`
+  and the hip height. Two measured defects were fixed. With thigh ≠ shin
+  the foot is not under the hip, so the foot collision follows the shin,
+  and the reset tilt's lift is taken from the farthest foot. The standing
+  COM is the hip height less 51.7 mm, measured on the 200/200 build.
+- **The ranges.** Thigh and shank are each uniform in 160–240 mm, drawn by
+  `random.Random(758)` and rounded to 5 mm. Knee direction is ±1 front and
+  ±1 hind, all four combinations, two draws each.
+  - Masses are drawn per environment (`RANDOMISATION_MODE`). The chassis
+    and each thigh, shin and drive case (12 AK80-9) are scaled ×0.8–1.2,
+    and the battery ×0.7–1.3: 22 entries of the 32 allowed. That is
+    9.27 ± 1.76 kg (7.5–11.0 kg) on the 200/200 build.
+  - Fixed across the family: hip spacing (400 mm), abduction offset, foot
+    radius, the 40° stance, the drives and their gains, and the 250 mm/s
+    trot spec.
+- **The variants.** Eight were drawn and seven build (v0, v1, v3–v7). The
+  drawn lengths came out at 180–235 mm, hip heights at 292–357 mm, and
+  build masses at 9.22–9.33 kg. v2 (200/215, front knee ahead, hind behind)
+  fails in OCCT: the bolt-hole cut on `shin_rl` gives an invalid shape, on
+  both tries. It is left out and not redrawn; v6 has the same knee
+  combination. v0 is quad-qdd's own point (200/200, both knees behind). It
+  is **held out** of the base's training set, so `orun9-quad` and its cold
+  curve (b1-q1, walk 10/10 at 150) are a fine-tune target the base never
+  saw. That is an interpolation test, because v0 lies inside the ranges.
+  The cat is the extrapolation test.
+- **One topology, measured.** All seven compile in stock MuJoCo to the same
+  sizes and array shapes. The fields that differ are `geom_pos`, `jnt_pos`,
+  `site_pos`, `body_ipos`/`iquat`/`mass`/`inertia` and `jnt_range`, plus
+  what is derived from them (`body_subtreemass`, `dof_M0`,
+  `*_invweight0`, `actuator_acc0`, `dof_length`). These are the kind of
+  fields the trainer already batches per environment for a mass draw
+  (`randomised_models`). The tasks also differ, per variant:
+  - the tracking clip (41–48 samples, its period and reset states);
+  - the height reward's and the crouch termination's constant (the
+    standing COM);
+  - the shove's newtons, the reset lift and the success spec's shove;
+  - the hip action box, which is mirrored with the knee direction
+    (−35…15° or −15…35°);
+  - `body.morph`.
+
+  The actor's channels, actions, reward terms and network shapes are the
+  same.
+
+**The trainer's half (B3's next unit, not implemented).** `--family DIR…`
+takes the variants' bundles; environment *e* is variant *e* mod *K*, held
+for the run. The batched model is each variant's fields gathered by
+environment, the same move a mass draw already makes. Reward and termination
+are compiled per variant and selected by the variant index. The tracking
+tables are padded to the longest clip, with each variant's own sample count.
+The action boxes are per variant. The `morph.*` constants become actor
+inputs (ADR-755 recorded them for this). The result is an ordinary policy
+whose header records the family, which `--init-from-base` maps onto any
+quadruped (ADR-755).
+
+**Rejected.**
+- *Trainer-side geometry randomisation* (scaling `body_pos`/`geom_size` on
+  the host): the mechanisms trained on would not be ones the engine built,
+  checked for fit or swept, and a knee flip is not a scale.
+- *Redrawing v2 until it builds*: a failed point is a fact about the script,
+  and the knee combination is covered.
+- *Engine `length` randomisation targets*: these would mean rebuilding the
+  gait reference, the reset pose and the limits per draw inside the
+  engine's task build, which is more engine for the same family.
+
+**Measured: a knee-forward variant trains by the recipe.** `b3-v1cold`
+trained v1 (185/225 mm, all four knees ahead of the hip–foot line) cold by
+the recipe exactly as b1-q1, with 200 iterations at 8192 environments in
+965 s. It ran on the family's first task, the 10 mass entries without the
+drive cases (9.27 ± 0.78 kg), because the cases were added after it
+launched; the walk spec it was judged on is unchanged. It was judged on the family's walk spec (10 frozen seeds 9101–9110):
+4/10 at 50, 8/10 at 100, **10/10 at 150 and 200**. b1-q1 on quad-qdd went
+0/10, 0/10, 10/10. `b3-v7cold` (v7, 180/180 mm, the front knee
+behind and the hind knee ahead) used the widened 22-entry task and took 915
+s. It went 0/10 at 50, 0/10 at 100 (standing still), and **10/10 at 150 and
+200**. So the recipe's cold curve is 150 iterations on all three knee
+arrangements tried. Evidence: `docs/probes/orun9/b3-family.md`.

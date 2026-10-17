@@ -155,9 +155,15 @@ These are the parts of B1's criterion no run has shown yet. The recipe's
 proof (a cold walk on one new quadruped and one biped, 10 seeds, ≤ 300
 iterations) is what settles them.
 
-- **Inverted knees.** The generator's IK pulls toward the home pose, so a
-  leg keeps the knee direction its build pose has; no run has tried a
-  backward-bending knee.
+- **Inverted knees: shown on one quadruped.** The generator's IK pulls
+  toward the home pose, so a leg keeps the knee direction its build pose
+  has. orun9's `b3-v1cold` built quad-qdd's legs with all four knees ahead
+  of the hip–foot line (`orun9-qfam` v1, thigh 185, shank 225 mm,
+  ADR-758). Following the same steps cold, it passed the walk spec 10/10
+  at iterations 150 and 200 (4/10 at 50, 8/10 at 100), as b1-q1 did with
+  the knees behind. `b3-v7cold` (v7, 180/180 mm, the front knee behind
+  and the hind knee ahead) also passed 10/10 at 150 and 200, after standing
+  still at 100 (`docs/probes/orun9/b3-family.md`). No biped has tried it.
 - **Uneven legs** (short forelegs). The generator scales the stride from
   one hip height, the mean of the four legs', and gives every leg the same
   stride length, so a short leg is asked the long leg's stride; no run has

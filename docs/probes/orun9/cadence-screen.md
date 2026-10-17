@@ -85,3 +85,39 @@ about 8 min between c1-c6's end and this launch: the judge and the rebuild
 had to run first, because `judge2.py` judges against the accepted revision,
 which must keep c1-c6's cadence. Judge it with
 `~/orun9-progress/c1c7/judge_c7.sh`.
+
+## c1-c7 judged (cadence 0.8; orun9, iteration 12)
+
+c1-c7 was warm-started from c1-c6 at iteration 100 and trained for 100
+iterations. Its checkpoints at 50 and 100 were judged on all six specs, 10
+frozen seeds each (`judge_c7.sh`). Failing predicates are given with their
+pass count and median.
+
+| spec | c1-c6 @100 (0.6) | c1-c7 @50 | c1-c7 @100 |
+|---|---|---|---|
+| run | 0/10; tracks_speed 597 mm/s | 0/10; tracks_speed 654 | 0/10; tracks_speed 614 |
+| stand | 0/10; still 389 mm | 0/10; still 453 | 0/10; still 449 |
+| shove | 9/10 | 9/10 | 9/10 (completes, upright, recovers 9/10) |
+| turn2 | 6/10; tail_clear 6/10 | **10/10** | 9/10; tail_clear 9/10 |
+| reverse | 0/10; 68° | 0/10; 52.5° | 0/10; **48.6°** |
+| points | 0/10; closest 6,337 mm | 0/10; 5,430 | 0/10; 4,730 |
+
+`within_rated` passes 10/10 on `run` at both checkpoints (worst drive
+0.92 and 0.91 of rated, against 0.88 for c1-c6).
+
+**Speed per command segment** on `run` at c1-c7 @100, in mm/s across the
+10 seeds:
+
+| 0.5 | 3.0 | 1.5 | 0.5 | 3.0 |
+|---|---|---|---|---|
+| 452–531 | 2229–2427 | 1875–2030 | 539–694 | 2154–2366 |
+
+**Finding.** Cadence 0.8 bought no speed. The 3 m/s segments are where
+c1-c6 had them (2364–2445 and 2079–2394): at 4.15 Hz the cat shortened
+its stride rather than run faster, so above cadence 0.6 the clock no longer
+limits top speed. Run RMS did not fall (614 against 597), and stand drift
+stayed high (449 mm). What c1-c7 did gain is in the turns: the tail clears
+again (turn2 9–10/10, against 6/10), and reverse came within 48.6° of its
+heading against 68°. It passes no clause c1-c6 did not. So c1-c6 and
+c1-c7 are two consecutive judged cat runs with no new clause, and under O1
+the next GPU run is a B run.
