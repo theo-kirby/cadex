@@ -1673,6 +1673,10 @@ schedule, and body height and pitch. No motion capture is involved.
 - **Refusal.** A foot that cannot be reached raises `GaitUnreachable`,
   naming the leg, the moment in the stride, the miss and the joints at a
   stop. It never clamps silently.
+- **Two feet (ADR-754).** `legs` keyed `L`, `R` builds a biped's stride:
+  `walk` (duty 0.6) and `run` (duty 0.35), the feet half a stride apart and
+  the left foot the phase reference (Alexander 1984). In a task,
+  `assembly.gait([foot_l, foot_r], gait="walk", speed_mm_s=...)`.
 
 Measured on panel-cat-3's legs (hip height 427 mm), against Alexander's
 stride:

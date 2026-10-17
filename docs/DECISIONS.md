@@ -44067,3 +44067,41 @@ Reward/step held at 6.59–7.01 from iteration 1, where c1-t7 sank from 6.19
 to 4.97–5.29. Iteration 0 was 5.45 in both, the same draw. The probe's
 header records 26,869,760 (24,576,000 + 14 × 8192 × 20), and its witness
 agrees with the engine to 1.5e-7.
+
+## ADR-754 — A gait reference for two feet (2026-10-17, orun8)
+
+**Context.** `CadexGait.generate` (ADR-702) and `api.gait` (ADR-703) took
+exactly four feet, `LF RF LH RH`, and refused any other set. B1's recipe
+(`training/RECIPE.md`) starts every cold legged run from a reference, so a
+biped could not follow it, and neither B1's biped proof nor B4 could start.
+
+**Decision.**
+- **Two foot labels, `L` and `R`.** `legs` keyed `L`, `R` (and `api.gait`
+  given two foot components, left then right) builds a biped's stride.
+  The left foot is the phase reference, as the left hind is a quadruped's;
+  `CadexEvaluation`'s reference judge anchors on it when the clip has no
+  `LH` (`BIPED_REFERENCE_ANCHOR`).
+- **Two named gaits, `walk` and `run`** (`CadexGait.BIPED_GAITS`): the feet
+  half a stride apart, duty 0.6 (double support) and 0.35 (an aerial
+  phase), natural below and above Fr 0.5 (Alexander 1984, Int. J. Robotics
+  Research 3:49). Explicit `offsets` (`{'L', 'R'}`) and `duty` work as for
+  four feet. The stride scale (`2.3 h Fr^0.3`, Alexander 1976, fitted across
+  bipeds and quadrupeds) and the IK are the same code.
+- **The clip's shape is unchanged.** Its per-foot maps are keyed `L`, `R`;
+  its `sources` are `BIPED_SOURCES`. Every reader (the tracking channels,
+  `ref_l_lift` … `ref_r_down`, the judge, the trainer) was already keyed by
+  whatever feet the clip names.
+- **The four-foot path is byte-identical.** Three quadruped clips (walk,
+  trot, bound) generated before and after the change hash the same.
+
+**Measured.** On a synthetic biped (3-joint legs, 351 mm hip), walk at 0.5
+m/s and run at 1.4 m/s solve to < 1 µm with knees bending forward and
+with knees inverted; the run has 6 of 24 samples with both feet up, the
+walk none. On a Cadex project (`orun8-biped`, a copy of orun4-biped-sts,
+roll-pitch-knee legs, 258 mm hip), `api.gait([foot_l, foot_r],
+gait="walk", speed_mm_s=160)` builds into the task bundle: 47 samples,
+stride 150 mm, IK miss < 1 µm, and the six `ref_*` channels.
+
+**Not done.** A biped's legs are still scaled from one mean hip height
+and given one stride, as a quadruped's are; no biped has trained on the
+reference yet (B1's biped proof).

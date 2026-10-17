@@ -147,10 +147,10 @@ These are the parts of B1's criterion no run has shown yet. The recipe's
 proof (a cold walk on one new quadruped and one biped, 10 seeds, ≤ 300
 iterations) is what settles them.
 
-- **A biped has no reference.** `CadexGait.generate` takes exactly four feet
-  (`FEET = LF, RF, LH, RH`) and refuses any other set, so steps 1.1–1.4
-  cannot be followed on a biped today. A two-foot gait (walk and run
-  offsets) is an engine change with an ADR before the biped proof.
+- **A biped's reference has not trained.** Since ADR-754 `CadexGait` builds
+  a two-foot `walk` or `run` (`assembly.gait([foot_l, foot_r], ...)`), and
+  it builds into `orun8-biped`'s task bundle, so steps 1.1–1.4 can be
+  followed on a biped; no biped has trained on one yet.
 - **Inverted knees.** The generator's IK pulls toward the home pose, so a
   leg keeps the knee direction its build pose has; no run has tried a
   backward-bending knee.

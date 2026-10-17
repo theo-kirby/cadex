@@ -120,6 +120,8 @@ WAYPOINT_REACH_MM = 300.0
 #: The foot whose touch-downs are a reference's clock: the left hind, the
 #: foot every phase offset is stated after (Hildebrand's convention).
 REFERENCE_ANCHOR = "LH"
+#: A biped reference's clock: its left foot (ADR-754).
+BIPED_REFERENCE_ANCHOR = "L"
 
 #: A fall (ADR-718): the base tilted this far from its reference pose, or its
 #: centre of mass came down to this share of its starting height above the
@@ -1493,10 +1495,11 @@ def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[
                 "command_rate_reference_ratio": None,
                 "joint_acceleration_reference_ratio": None,
                 "reference": {"gait": reference.get("gait"), "missing_feet": missing}}
-    anchor = [t for t in feet[names[REFERENCE_ANCHOR]]["touchdowns_s"] if t >= settle_s - _EPS]
+    anchor_label = REFERENCE_ANCHOR if REFERENCE_ANCHOR in names else BIPED_REFERENCE_ANCHOR
+    anchor = [t for t in feet[names[anchor_label]]["touchdowns_s"] if t >= settle_s - _EPS]
     strides = [(a, b - a) for a, b in zip(anchor, anchor[1:]) if b - a > _EPS]
     detail: dict[str, Any] = {
-        "gait": reference.get("gait"), "anchor": names[REFERENCE_ANCHOR],
+        "gait": reference.get("gait"), "anchor": names[anchor_label],
         "strides": len(strides),
         "reference_stride_hz": float(parameters["stride_frequency_hz"]),
         "stride_hz": None, "feet": {}, "joints": [],
@@ -1513,7 +1516,7 @@ def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[
     # ADR-719: landings lie on the frame grid, so timing is counted in whole
     # frames and only the division by the stride's frames is inexact; a
     # 2-frame offset in a 20-frame stride reads 0.1, not 0.1 + 3e-17.
-    frame_s = float(feet[names[REFERENCE_ANCHOR]]["frame_s"])
+    frame_s = float(feet[names[anchor_label]]["frame_s"])
 
     def on_grid(moment: float) -> int:
         return round(moment / frame_s)
@@ -1521,7 +1524,7 @@ def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[
     grid = [(on_grid(start), on_grid(start + length) - on_grid(start)) for start, length in strides]
     phase_errors, duty_errors = [], []
     for label, name in names.items():
-        expected = (offsets[label] - offsets[REFERENCE_ANCHOR]) % 1.0
+        expected = (offsets[label] - offsets[anchor_label]) % 1.0
         landings = [on_grid(t) for t in feet[name]["touchdowns_s"]]
         errors = []
         for start, length in grid:
@@ -1544,7 +1547,7 @@ def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[
     if drives is not None:
         columns = {str(name): i for i, name in enumerate(reference["joints"])}
         angles = reference["joint_angles_rad"]
-        start_phase = offsets[REFERENCE_ANCHOR]
+        start_phase = offsets[anchor_label]
         pooled: list[float] = []
         for c, channel in enumerate(drives["channels"]):
             column = columns.get(str(channel.get("joint", "")))

@@ -38,6 +38,12 @@ the floating base. A joint that more than one chain passes through (a spine)
 is a body joint: it holds its home angle, or follows ``spine_amplitude_deg``
 when it is named as ``spine_joint``.
 
+**Two feet (ADR-754).** ``legs`` keyed ``L`` and ``R`` instead builds a
+biped's stride from :data:`BIPED_GAITS`: the left foot is the phase
+reference, and the same dynamic-similarity scale and inverse kinematics
+apply, Alexander's relation having been fitted across bipeds and
+quadrupeds alike. The four-foot path is unchanged by it.
+
 This is the one module beside ``CadexDynamics`` that drives a ``MjModel``,
 and it does not import ``mujoco`` itself: the module comes from
 ``CadexDynamics``'s single import site, or from the caller. It is outside
@@ -57,6 +63,9 @@ GRAVITY = 9.80665
 
 #: Foot labels: left/right, fore/hind. The left hind is the phase reference.
 FEET = ("LF", "RF", "LH", "RH")
+
+#: A biped's foot labels (ADR-754). The left foot is the phase reference.
+BIPED_FEET = ("L", "R")
 
 #: The named gaits. ``offsets`` is each foot's touch-down as a fraction of
 #: the stride after the left hind's; ``duty`` the share of the stride each
@@ -86,6 +95,18 @@ GAITS: dict[str, dict[str, Any]] = {
               "duty": 0.3, "froude": (2.0, math.inf), "pitch_deg": 6.0, "spine_deg": 10.0},
 }
 
+#: A biped's named gaits (ADR-754), on the same terms as :data:`GAITS`: the
+#: feet alternate half a stride apart; a walk keeps a foot down more than
+#: half the stride (double support), a run less (an aerial phase). The
+#: walk-to-run change near Fr 0.5 and the duty factors either side of 0.5
+#: follow Alexander 1984 (Int. J. Robotics Research 3:49).
+BIPED_GAITS: dict[str, dict[str, Any]] = {
+    "walk": {"offsets": {"L": 0.0, "R": 0.5},
+             "duty": 0.6, "froude": (0.0, 0.5), "pitch_deg": 0.0, "spine_deg": 0.0},
+    "run": {"offsets": {"L": 0.0, "R": 0.5},
+            "duty": 0.35, "froude": (0.5, math.inf), "pitch_deg": 0.0, "spine_deg": 0.0},
+}
+
 #: What the clip cites, carried in it so a reader need not find this file.
 SOURCES = (
     "Hildebrand M. 1965. Symmetrical gaits of horses. Science 150:701-708.",
@@ -94,6 +115,14 @@ SOURCES = (
     "(stride length / hip height = 2.3 Fr^0.3).",
     "Alexander R.McN., Jayes A.S. 1983. A dynamic similarity hypothesis for the gaits "
     "of quadrupedal mammals. J. Zool. 201:135-152.",
+)
+
+#: What a biped's clip cites (ADR-754).
+BIPED_SOURCES = (
+    SOURCES[2],
+    "Alexander R.McN. 1984. The gaits of bipedal and quadrupedal animals. "
+    "Int. J. Robotics Research 3(2):49-59 (walk to run near Fr 0.5; duty factor "
+    "above 0.5 walking, below it running).",
 )
 
 #: IK acceptance: a foot further than this from its target is unreachable.
@@ -119,30 +148,45 @@ class GaitUnreachable(GaitError):
     """A foot target a leg cannot reach inside its joint limits."""
 
 
-def gait_parameters(gait: str | Mapping[str, Any]) -> dict[str, Any]:
-    """A named gait's footfall, or explicit ``offsets`` and ``duty``, checked."""
+def feet_of(legs: Mapping[str, Any]) -> tuple[str, ...]:
+    """The foot labels ``legs`` is keyed by: :data:`FEET`, or :data:`BIPED_FEET` (ADR-754)."""
 
+    for feet in (FEET, BIPED_FEET):
+        if sorted(legs) == sorted(feet):
+            return feet
+    raise GaitError(f"legs must name exactly {FEET}, or {BIPED_FEET} for a biped, "
+                    f"got {sorted(legs)}", reason="bad_legs", legs=dict(legs))
+
+
+def gait_parameters(gait: str | Mapping[str, Any],
+                    feet: tuple[str, ...] = FEET) -> dict[str, Any]:
+    """A named gait's footfall, or explicit ``offsets`` and ``duty``, checked.
+
+    ``feet`` picks the table: :data:`GAITS` for four, :data:`BIPED_GAITS` for two.
+    """
+
+    table = BIPED_GAITS if feet == BIPED_FEET else GAITS
     if isinstance(gait, str):
-        if gait not in GAITS:
-            raise GaitError(f"unknown gait {gait!r}; known: {sorted(GAITS)}",
+        if gait not in table:
+            raise GaitError(f"unknown gait {gait!r}; known: {sorted(table)}",
                             reason="unknown_gait", gait=gait)
-        base = dict(GAITS[gait], name=gait)
+        base = dict(table[gait], name=gait)
     else:
-        base = dict(GAITS.get(str(gait.get("name", "")), {}))
+        base = dict(table.get(str(gait.get("name", "")), {}))
         base.update(gait)
         base.setdefault("name", "custom")
         base.setdefault("froude", (0.0, math.inf))
         base.setdefault("pitch_deg", 0.0)
         base.setdefault("spine_deg", 0.0)
     offsets = dict(base.get("offsets") or {})
-    if sorted(offsets) != sorted(FEET):
-        raise GaitError(f"offsets must name exactly {FEET}, got {sorted(offsets)}",
+    if sorted(offsets) != sorted(feet):
+        raise GaitError(f"offsets must name exactly {feet}, got {sorted(offsets)}",
                         reason="bad_offsets", offsets=offsets)
     duty = float(base.get("duty", float("nan")))
     if not 0.0 < duty < 1.0:
         raise GaitError(f"duty factor must lie in (0, 1), got {duty}",
                         reason="bad_duty", duty=duty)
-    base["offsets"] = {foot: float(offsets[foot]) % 1.0 for foot in FEET}
+    base["offsets"] = {foot: float(offsets[foot]) % 1.0 for foot in feet}
     base["duty"] = duty
     return base
 
@@ -168,12 +212,12 @@ def stride(speed_m_s: float, hip_height_m: float, *,
             "period_s": length / speed_m_s}
 
 
-def contact_schedule(offsets: Mapping[str, float], duty: float,
-                     samples: int) -> dict[str, list[int]]:
+def contact_schedule(offsets: Mapping[str, float], duty: float, samples: int,
+                     feet: tuple[str, ...] = FEET) -> dict[str, list[int]]:
     """Each foot's down (1) or up (0) at ``samples`` even phases of one stride."""
 
     out: dict[str, list[int]] = {}
-    for foot in FEET:
+    for foot in feet:
         out[foot] = [int(((k / samples - offsets[foot]) % 1.0) < duty - 1e-12)
                      for k in range(samples)]
     return out
@@ -213,15 +257,14 @@ def _mujoco(module: Any | None) -> Any:
 def leg_chains(model: Any, legs: Mapping[str, str], *, mujoco: Any | None = None) -> dict[str, Any]:
     """Each leg's own joints (root to foot), and the body joints legs share.
 
-    ``legs`` maps each of :data:`FEET` to its foot body's name. A chain is
+    ``legs`` maps each of :data:`FEET` (or :data:`BIPED_FEET`) to its foot
+    body's name. A chain is
     every hinge or slide joint on the path from the foot body to the base;
     a joint on more than one path is a body joint, not a leg's.
     """
 
     mj = _mujoco(mujoco)
-    if sorted(legs) != sorted(FEET):
-        raise GaitError(f"legs must name exactly {FEET}, got {sorted(legs)}",
-                        reason="bad_legs", legs=dict(legs))
+    feet_of(legs)
     paths: dict[str, list[int]] = {}
     for foot, body_name in legs.items():
         body = mj.mj_name2id(model, mj.mjtObj.mjOBJ_BODY, body_name)
@@ -301,7 +344,8 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
     import numpy as np  # noqa: PLC0415
 
     mj = _mujoco(mujoco)
-    params = gait_parameters(gait)
+    feet = feet_of(legs)
+    params = gait_parameters(gait, feet)
     duty, offsets = params["duty"], params["offsets"]
     structure = leg_chains(model, legs, mujoco=mj)
     chains, body_joints = structure["chains"], structure["body_joints"]
@@ -333,8 +377,8 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
     data.qpos[:] = home
     mj.mj_kinematics(model, data)
 
-    feet_body = {foot: mj.mj_name2id(model, mj.mjtObj.mjOBJ_BODY, legs[foot]) for foot in FEET}
-    point_local = {foot: _foot_point(model, data, feet_body[foot]) for foot in FEET}
+    feet_body = {foot: mj.mj_name2id(model, mj.mjtObj.mjOBJ_BODY, legs[foot]) for foot in feet}
+    point_local = {foot: _foot_point(model, data, feet_body[foot]) for foot in feet}
 
     def world_point(foot: str) -> Any:
         b = feet_body[foot]
@@ -342,8 +386,8 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
 
     base_home = home[:3].copy()
     quat_home = home[3:7].copy()
-    foot_home = {foot: world_point(foot) - base_home for foot in FEET}
-    hips = {foot: float(data.xanchor[chains[foot][0]][2] - world_point(foot)[2]) for foot in FEET}
+    foot_home = {foot: world_point(foot) - base_home for foot in feet}
+    hips = {foot: float(data.xanchor[chains[foot][0]][2] - world_point(foot)[2]) for foot in feet}
     hip_height = float(np.mean(list(hips.values())))
 
     s = stride(speed_m_s, hip_height, stride_length_m=stride_length_m)
@@ -360,12 +404,12 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
             limits[j] = (float(lo), float(hi)) if model.jnt_limited[j] else (-math.inf, math.inf)
 
     qpos = np.zeros((samples, model.nq))
-    targets = {foot: np.zeros((samples, 3)) for foot in FEET}
-    residual = {foot: 0.0 for foot in FEET}
+    targets = {foot: np.zeros((samples, 3)) for foot in feet}
+    residual = {foot: 0.0 for foot in feet}
     body_x = np.zeros(samples)
     body_z = np.zeros(samples)
     body_pitch = np.zeros(samples)
-    contact = contact_schedule(offsets, duty, samples)
+    contact = contact_schedule(offsets, duty, samples, feet)
     q = home.copy()
     jacp = np.zeros((3, model.nv))
     damping, posture = 1e-6, 0.1
@@ -379,7 +423,7 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
         if spine is not None:
             q[model.jnt_qposadr[spine]] = home[model.jnt_qposadr[spine]] + spine_amp * math.sin(
                 2.0 * math.pi * phase)
-        for foot in FEET:
+        for foot in feet:
             travel, lift, _down = foot_path(phase, offsets[foot], duty, length, swing)
             # the stance this foot is in (or swinging from) began at its offset;
             # its centre is duty/2 later, and the foot sat at home under the body then
@@ -393,7 +437,7 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
             mj.mj_kinematics(model, data)
             mj.mj_comPos(model, data)
             worst = 0.0
-            for foot in FEET:
+            for foot in feet:
                 err = targets[foot][k] - world_point(foot)
                 worst = max(worst, float(np.linalg.norm(err)))
                 if np.linalg.norm(err) < 1e-6:
@@ -433,7 +477,7 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
                 break
         data.qpos[:] = q
         mj.mj_kinematics(model, data)
-        for foot in FEET:
+        for foot in feet:
             miss = float(np.linalg.norm(targets[foot][k] - world_point(foot)))
             residual[foot] = max(residual[foot], miss)
             if miss > TOLERANCE_M:
@@ -470,11 +514,11 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
             "pitch_amplitude_deg": math.degrees(pitch_amp),
             "spine_joint": spine_joint, "spine_amplitude_deg": math.degrees(spine_amp),
         },
-        "sources": list(SOURCES),
+        "sources": list(BIPED_SOURCES if feet == BIPED_FEET else SOURCES),
         "sample_dt_s": dt,
         "samples": samples,
         "legs": {foot: {"foot_body": legs[foot],
-                        "joints": [model.joint(j).name for j in chains[foot]]} for foot in FEET},
+                        "joints": [model.joint(j).name for j in chains[foot]]} for foot in feet},
         "body_joints": [model.joint(j).name for j in body_joints],
         "joints": [model.joint(j).name for j in joint_ids],
         "joint_angles_rad": [[float(qpos[k][model.jnt_qposadr[j]]) for j in joint_ids]
@@ -482,11 +526,11 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
         "joint_limits_rad": [[float(model.jnt_range[j][0]), float(model.jnt_range[j][1])]
                              if model.jnt_limited[j] else None for j in joint_ids],
         "qpos": qpos.tolist(),
-        "foot_positions_m": {foot: targets[foot].tolist() for foot in FEET},
+        "foot_positions_m": {foot: targets[foot].tolist() for foot in feet},
         "contact": contact,
         "body": {"x_m": body_x.tolist(), "z_m": body_z.tolist(),
                  "pitch_deg": [math.degrees(p) for p in body_pitch]},
-        "ik": {"tolerance_m": TOLERANCE_M, "max_miss_m": {foot: residual[foot] for foot in FEET}},
+        "ik": {"tolerance_m": TOLERANCE_M, "max_miss_m": {foot: residual[foot] for foot in feet}},
     }
 
 

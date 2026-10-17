@@ -1292,6 +1292,8 @@ _CHANNEL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,47}$")
 #: (ADR-703).
 _GAIT_NAMES = ("walk", "trot", "pace", "canter", "transverse_gallop",
                "rotary_gallop", "half_bound", "bound")
+#: A biped's named gaits, ``CadexGait.BIPED_GAITS``'s keys (ADR-754).
+_BIPED_GAIT_NAMES = ("walk", "run")
 
 #: What a control formula may name. ``initialValue`` is deliberately absent
 #: and refused by name below.
@@ -4498,7 +4500,9 @@ class AssemblyDomainAPI:
         """Declare a procedural gait reference for a legged task (ADR-702, ADR-703).
 
         ``feet`` is four foot components in the order left fore, right fore,
-        left hind, right hind. ``gait`` names a footfall -- walk, trot, pace,
+        left hind, right hind -- or, for a biped, two: left, right (ADR-754),
+        whose gaits are walk and run and whose offsets are keyed ``L``, ``R``
+        after the left foot's. ``gait`` names a footfall -- walk, trot, pace,
         canter, transverse_gallop, rotary_gallop, half_bound, bound -- or
         ``offsets`` (each foot's touch-down as a fraction of the stride after
         the left hind's, keyed ``LF``, ``RF``, ``LH``, ``RH``) and ``duty``
@@ -4521,12 +4525,16 @@ class AssemblyDomainAPI:
         foot_values = _values(
             operation, "feet", feet, output_type="component_link", minimum=1
         )
-        if len(foot_values) != 4:
+        if len(foot_values) not in (2, 4):
             raise _error(
                 operation, "feet",
                 "takes exactly four foot components: left fore, right fore, "
-                "left hind, right hind", len(foot_values),
+                "left hind, right hind; or two for a biped: left, right",
+                len(foot_values),
             )
+        biped = len(foot_values) == 2
+        names = _BIPED_GAIT_NAMES if biped else _GAIT_NAMES
+        labels = ("L", "R") if biped else ("LF", "RF", "LH", "RH")
         properties: dict[str, Any] = {
             "feet": foot_values,
             "speed_mm_s": _number(
@@ -4536,8 +4544,8 @@ class AssemblyDomainAPI:
         }
         if gait is not None:
             clean = str(gait).strip().lower()
-            if offsets is None and clean not in _GAIT_NAMES:
-                raise _error(operation, "gait", f"must be one of {list(_GAIT_NAMES)}", gait)
+            if offsets is None and clean not in names:
+                raise _error(operation, "gait", f"must be one of {list(names)}", gait)
             if not _CHANNEL_NAME.fullmatch(clean):
                 raise _error(operation, "gait", "must be a short name for the footfall", gait)
             properties["gait"] = clean
@@ -4547,16 +4555,16 @@ class AssemblyDomainAPI:
                 "an explicit footfall needs both offsets and duty",
             )
         if offsets is not None:
-            if not isinstance(offsets, Mapping) or sorted(offsets) != ["LF", "LH", "RF", "RH"]:
+            if not isinstance(offsets, Mapping) or sorted(offsets) != sorted(labels):
                 raise _error(
                     operation, "offsets",
-                    "expected {'LF': f, 'RF': f, 'LH': f, 'RH': f}, each a "
-                    "fraction of the stride", offsets,
+                    "expected {" + ", ".join(f"'{foot}': f" for foot in labels)
+                    + "}, each a fraction of the stride", offsets,
                 )
             properties["offsets"] = {
                 foot: _number(operation, f"offsets[{foot!r}]", offsets[foot],
                               minimum=0.0, maximum=1.0)
-                for foot in ("LF", "RF", "LH", "RH")
+                for foot in labels
             }
             properties["duty"] = _number(
                 operation, "duty", duty, minimum=0.0, maximum=1.0, strict_minimum=True

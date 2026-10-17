@@ -5062,8 +5062,8 @@ def _gait_input(
 ) -> dict[str, Any]:
     """One ``api.gait`` value, by output name and in the API's units (ADR-703).
 
-    The feet become a map from ``LF``/``RF``/``LH``/``RH`` to each foot's
-    component; CadexDynamics generates the stride, at bundle-build time, on
+    The feet become a map from ``LF``/``RF``/``LH``/``RH`` (or a biped's
+    ``L``/``R``, ADR-754) to each foot's component; CadexDynamics generates the stride, at bundle-build time, on
     the exported model.
     """
 
@@ -5074,7 +5074,8 @@ def _gait_input(
         "gait": properties.get("gait"),
         "speed_mm_s": float(properties.get("speed_mm_s")),
         "feet": {foot: component_outputs[id(value)]
-                 for foot, value in zip(("LF", "RF", "LH", "RH"), feet)},
+                 for foot, value in zip(("L", "R") if len(feet) == 2 else ("LF", "RF", "LH", "RH"),
+                                        feet)},
     }
     if properties.get("offsets") is not None:
         resolved["offsets"] = {k: float(v) for k, v in dict(properties["offsets"]).items()}
