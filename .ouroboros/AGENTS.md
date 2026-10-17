@@ -6,13 +6,15 @@ does not rewrite it. Keep it true.
 
 ## The shape of a run
 
-A run is a loop of iterations against a charter. Each iteration an **actor**
-does one unit of work and commits it, and a **critic** reads the change and the
-memory, accepts or rejects it, answers as the sleeping user would, and writes
-the message the next iteration starts from. When the memory says a reconcile
-is due, the actor's next iteration is housekeeping instead of a unit. A
-separate maintainer and planner exist but are off unless the config turns them
-on (they were on for nt1 through ot4; see RUNS.md for what that bought). It
+A run is a loop of iterations against a charter. Each iteration has three roles, in order. The **actor** does one unit of work,
+commits it and ends with a report. The **critic** reads the change and the memory,
+accepts or rejects it, answers as the sleeping user would, and writes the message
+the next iteration starts from. The **scribe** records the unit in the governor
+graph (a rejected one as a dead end), folds the memory when a fold is due, renders
+`STATE.md`, and keeps the run's page. Agents reach memory only through
+`ouroboros mem`, and only the scribe writes it. There is no maintainer, planner or
+plan layer any more (Ouroboros `a38d801`, 2026-10-17); `journal.md`, `plan.md` and
+`handoff/` are gone with them. It
 runs on a branch (`ouroboros/<run>`), as a systemd user unit
 (`ouroboros-<run>.service`, `launcher: systemd`), for as long as the charter's
 stop rules allow.
@@ -67,6 +69,8 @@ under their original charter. Save edits atomically and check loop.log for
     ouroboros refresh         # after switching accounts or restoring credits
     ouroboros status          # one shot
     ouroboros top             # the live view, in a window of its own
+    ouroboros view            # serves runs/<run>/view/, the run's page the scribe keeps
+    ouroboros mem orient      # the memory, as the roles see it
     journalctl --user -u ouroboros-<run>.service -f   # the loop's console log
     systemctl --user status ouroboros-<run>.service    # the unit, its memory and its processes
 
@@ -74,6 +78,10 @@ After switching a harness login or restoring credits, `ouroboros refresh`
 (alias `ouroboros --refresh`) rechecks configured providers and wakes backoff.
 Active turns finish first. It uses small no-tool availability probes; failed
 probes retain cooldowns. This does not reload configuration.
+
+The run's page replaces the hand-built `~/orunN-progress/site` pages of orun6
+to orun8. Serve it on the tailnet for the owner: `ouroboros view` on a local
+port, then `tailscale serve --bg --set-path /<run>/ http://127.0.0.1:<port>`.
 
 **5. Reading it.** Use the `ouroboros-checkup` skill. It works mid-run and after,
 and it leads with the question the numbers hide: is this moving, or going in
@@ -111,8 +119,8 @@ operator, including you, reads first.
 - **Naming:** `orun<n>`, from orun1 (2026-10-02). ot1 to ot11 were `ot<n>`,
   Ouroboros Test; nt1 to nt3 before them. Runs are not nights: one may start
   in the afternoon and go for two days, so never name one for a time of day.
-- **Harnesses:** ot9 uses `claude-opus-5-5` for every Ouroboros role and
-  product-agent call, with no fallback. See `.ouroboros/config.yml`. Verify
+- **Harnesses:** since ot9, `claude-opus-5-5` for every Ouroboros role
+  (actor, critic, scribe, reporter) and product-agent call, with no fallback. See `.ouroboros/config.yml`. Verify
   product-model access and the usage window before launch; actor availability
   alone does not establish product access.
 - **Green means** both suites, from `~/cadex`:
@@ -123,7 +131,8 @@ operator, including you, reads first.
 - **Pre-flight, learned the hard way:** `git status` must be clean *including
   untracked directories* -- an untracked `src/3rdParty/GSL/` blocked ot4's
   launch. Check `governor version` runs (memory is the governor graph, ADR-672).
-  Confirm both harnesses are logged in.
+  Confirm both harnesses are logged in. `~/ouroboros` tracks upstream `main`
+  (the old local `reporter` branch is merged into it).
 - **Never:** hand-edit `STATE.md` or `PLAN.md`; they are generated from the
   governor graph. `docs/ROADMAP.md` is hand-maintained: tick its checkboxes
   when a work item lands (AGENTS.md, Methodology 8). Never squash a run branch: records cite commit SHAs.
