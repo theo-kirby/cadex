@@ -191,3 +191,62 @@ reward stops the wrist going over rated while it closes.
 **Judging order.** Read `within_rated` on points first, then turn2's
 `tail_clear`, then `reaches`. If `j_wrist_r` crosses rated on points, it is
 O8's binding drive for points, and the waypoint weight is not raised again.
+
+## Where `j_wrist_r`'s points load goes (O8, iteration 22)
+
+Before any further C reward change, I measured how `j_wrist_r` spends its RMS
+on points. I used the judged traces of c1-c10 @100 and c1-c8 @100 on the 10
+frozen seeds. The scripts are `~/orun9-progress/wrist/` (`wrist_legs.py`,
+`wrist_dc.py`, `lr.py`). Each seed's whole-episode maximum is checked equal
+to the engine's `effort_rms_rated_ratio_max`.
+
+The spec's three legs are 4.0 s each on every seed: the target changes on
+time, not on arrival. So a leg is a fixed window, and the drive's load can
+be read per leg.
+
+**By leg and phase** (RMS over rated, medians over the 30 legs):
+
+| drive | c1-c8 whole leg | c1-c8 first 1 s / rest | c1-c10 whole leg | c1-c10 first 1 s / rest |
+|---|---|---|---|---|
+| `j_wrist_r` | 0.836 | 0.920 / 0.787 | 1.031 | 1.063 / 0.980 |
+| `j_wrist_l` | 0.820 | 0.737 / 0.834 | 0.746 | 0.703 / 0.782 |
+| `j_shoulder_r` | 0.846 | 0.847 / 0.871 | 0.873 | 0.849 / 0.892 |
+
+- **Speed is not the cause.** Per-leg `j_wrist_r` RMS against the leg's
+  mean planar speed: Pearson r = +0.00 at c1-c10 and +0.00 at c1-c8, over
+  30 legs each. Legs at 133–216 mm/s carry 0.99–1.07 (seeds 1003, 1005,
+  1008). Mean leg speed is 133–1,592 mm/s, with a median of about 0.6 m/s.
+- **Turning into a new leg is not the cause either.** The first second of a
+  leg runs only 0.08 above the rest at c1-c10 (1.063 against 0.980). The
+  drive is over rated while it cruises.
+- **It is static hold plus swing.** On points, c1-c10's `j_wrist_r` mean
+  effort is −0.521 of rated and its swing (std) is 0.829. At c1-c8 they
+  were −0.448 and 0.712. The waypoint rungs 8 → 12 raised both.
+
+**Left against right**, whole episode (median RMS over rated, l/r):
+
+| spec | scap | shoulder | elbow | wrist |
+|---|---|---|---|---|
+| c1-c10 run | 0.59/0.57 | 0.67/0.64 | 0.60/0.62 | 0.84/0.82 |
+| c1-c10 turn2 | 0.59/0.59 | 0.60/0.59 | 0.66/0.75 | 0.66/0.65 |
+| c1-c10 reverse | 0.60/0.58 | 0.60/0.60 | 0.63/0.77 | 0.62/0.63 |
+| c1-c10 points | 0.69/0.52 | 0.65/0.86 | 0.66/0.50 | **0.73/0.98** |
+| c1-c8 points | 0.59/0.48 | 0.66/0.84 | 0.63/0.45 | 0.84/0.84 |
+
+The run spec commands up to 3 m/s, and its wrists are symmetric at
+0.84/0.82. Points moves at about 0.6 m/s, and its right fore shoulder and
+wrist carry 0.86 and 0.98, while the left elbow and scap take the
+difference. At 12, the waypoint pay moved the right wrist from 0.84 to 0.98
+and the left wrist from 0.84 to 0.73.
+
+**Finding.** Points binds on a lopsided nav-mode gait, not on the
+torque-speed trade. Raising the waypoint weight paid for closing speed with
+this asymmetry. An effort price that is uniform across drives does not
+target it: at 1.2× rated the price is −0.35 a step against +24.0 of
+waypoint pay. Nav mode does read the trot reference: `track_reference`
+(weight 1) is gated on in both modes. But it pays at most 4 a step,
+against up to 24 for the waypoint at ×16, so nothing holds nav mode to the
+symmetric gait. Under the owner's note to prefer more reference over
+another penalty, the next C lever is the reference's weight in nav mode. A
+left/right symmetry term is the alternative. Another waypoint or effort
+weight is not the lever.
