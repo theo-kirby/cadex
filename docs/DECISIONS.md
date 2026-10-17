@@ -43646,6 +43646,55 @@ and an iteration's cost on such a course, are G3's probe. A stone adds a
 box slot, up to nine a patch, so a pool with rock costs more collision
 pairs than one without. A heightfield course still ends at its extent: it
 is not trained on (O5) and gains no run-out. The film still draws a course
-as its boxes, now including 100 m run-out blocks. A bundle written before
+as its boxes, now including 100 m run-out blocks (since ADR-746, the one
+ground). A bundle written before
 this ADR whose last segment is a ramp is refused by the trainer's box-count
 check, since the trainer now adds that segment's run-out block.
+
+## ADR-746 — The film draws a course as the dashboard's one ground (2026-10-16)
+
+orun8 G1's last part. An evaluation's film drew a seed's course as its
+boxes and domes' caps, solids in a colour a step lighter than the mat
+(`film.terrain_triangles`, `TERRAIN_LOOK`): objects on a floor, and since
+ADR-745 100 m run-out blocks among them. It now draws the dashboard's one
+ground.
+
+`film.terrain_surface` ports `review_scene.js`'s `sampleSurface` line for
+line (its `TERRAIN` sampling is `film.SURFACE`; halves round up, as
+JavaScript's `Math.round`), and `film.Ground.at` ports `groundAt`.
+`film.Ground` draws the surface in tiles of 48 sample cells, prepared on
+demand with a one-cell ring that is dropped after normals are smoothed, so
+a dome shades smoothly across a tile edge; at most 512 tiles are kept. A
+shot draws the tiles under its window, between the course's lowest and
+highest points, and inside the mat's fade, at a power-of-two stride that
+keeps a cell about a pixel tall where the view foreshortens the ground
+(1 in the video and detail sheets, 4 on a 12.7 m overview). The ground is
+the stage: it frames nothing, and the video's `_studio_frames` takes it as
+`ground` and asks it per frame.
+
+The engine's renderer gains a ground material, `CadexStudio.GROUND`: a
+subsample on it is painted with the mat at its world point (`_floor` now
+returns the mat by pixel and by world point), with the mat's fade and
+contact shadow, and lit by its diffuse light over level ground's, so level
+ground at the plane is the mat pixel for pixel, with no seam where the
+surface's tiles end, and a wall or slope reads by its light alone. Any
+other material renders exactly as before.
+
+**Evidence.** `test_dashboard_ground.py`'s held-out test now also builds
+`film.Ground` from each of the 10 courses and holds its height to the
+dashboard's `groundAt` within 1e-6 mm at all 1,000 points, off-surface
+points agreeing too; with the port's pitch changed from 25 to 26 mm it
+fails. On terrain-cat's rough-c4 iteration-50 trace (the cat on its
+course), a 512 px video frame takes 8.8 s with the ground (73,728 ground
+triangles) against 7.0 s without; the overview and detail sheets take 98 s
+and 109 s, inside the 300 s bound. A 12.7 m overview window of ground
+against bare mat is the same image. Frames:
+`docs/probes/orun8/g1-film-frame.png` (the cat on a step's crease) and
+`g1-film-every-kind.png` (a held-out course with a rock patch, a platform,
+a mogul, a step and slopes, drawn by the film's renderer).
+
+**Not done here.** The cat's ~100-part mesh already costs 7 s a 512 px
+video frame without a ground, so its 12 s, 121-frame video exceeds
+`video.RENDER_SECONDS` (300 s) with or without one; that bound is the
+film's, not the ground's, and is unchanged. G3's MJX probe of the new kinds
+is next.

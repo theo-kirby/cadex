@@ -211,6 +211,13 @@ PROXY_SIZE = 512
 #: the scene background between these multiples of the framed extent,
 #: measured on the floor from the point under the image centre.
 FLOOR_FADE = (0.75, 1.9)
+#: The material of a ground a design stands on (orun8 G1, ADR-746): a course
+#: drawn as one surface is painted with the mat itself at each point it shows
+#: (:func:`_floor`), faded as the mat fades and lit relative to level ground,
+#: so where it lies level at the mat's height it is the mat, without a seam,
+#: and a wall or a slope reads by its light alone. Prepared like a painted
+#: material, so each triangle carries the corners its points are read from.
+GROUND = ('ground', None, None)
 INDEX_PALETTE = [(91, 157, 205), (230, 151, 76), (115, 182, 135), (180, 134, 200)]
 LIMITS = {'buffer_bytes': MAX_BYTES, 'triangles': MAX_TRIANGLES, 'input_triangles': MAX_INPUT_TRIANGLES,
           'vertices_per_source': MAX_VERTICES,
@@ -751,7 +758,8 @@ def _contact_shadow(prepared, floor=None):
 
 
 def _floor(basis, bounds, size, floor_z):
-    """``pixel(ox, oy, dark) -> rgb``: the dark prototype mat behind a view.
+    """``(pixel(ox, oy, dark) -> rgb, point(fx, fy, dark) -> rgb)``: the dark
+    prototype mat behind a view, by pixel and by world point.
 
     The mat is the viewport's (:data:`PALETTE`): a ``tile_a``/``tile_b``
     checker one grid pitch square, major lines on every multiple of the pitch
@@ -762,20 +770,34 @@ def _floor(basis, bounds, size, floor_z):
     at a point linear in the pixel, so each line's coverage of a pixel is
     exact to first order: that is what antialiases the grid. ``dark`` is the
     contact shadow's multiplier at the pixel. A view that cannot see the
-    floor (level or from below) gets the plain background.
+    floor (level or from below) gets the plain background behind it.
+    ``point`` paints a ground (:data:`GROUND`) with the same mat at the world
+    point it shows, faded the same way, so ground lying at the mat's height
+    is the mat; seen level, unfaded at the line width a level view gives.
     """
     palette = PALETTE
     bg = palette['bg']
     right, up, toward = basis
     rx, ry, rz = right; ux, uy, uz = up; tx, ty, tz = toward
-    if floor_z is None or tz <= 0.05:
-        return lambda ox, oy, dark: bg
     lo, hi = bounds
+    pitch = GRID_PITCH_MM
+    half = pitch * LINE_FRACTION / 2
+    tile_a, tile_b, line = palette['tile_a'], palette['tile_b'], palette['line']
+    if floor_z is None or tz <= 0.05:
+        footprint = max(hi[0] - lo[0], hi[1] - lo[1]) / size or 1e-9
+
+        def level(fx, fy, dark):
+            i, j = math.floor(fx / pitch), math.floor(fy / pitch)
+            base = tile_a if (i + j) % 2 == 0 else tile_b
+            dx, dy = fx - pitch * round(fx / pitch), fy - pitch * round(fy / pitch)
+            cover_x = min(1.0, max(0.0, (half - abs(dx)) / footprint + 0.5))
+            cover_y = min(1.0, max(0.0, (half - abs(dy)) / footprint + 0.5))
+            cover = cover_x + cover_y - cover_x * cover_y
+            return [(base[c] + (line[c] - base[c]) * cover) * dark for c in range(3)]
+        return (lambda ox, oy, dark: bg), level
     extent = max(hi[0] - lo[0], hi[1] - lo[1])
     step = extent / size
     cx0, cy0 = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
-    pitch = GRID_PITCH_MM
-    half = pitch * LINE_FRACTION / 2
 
     def at(sx, sy):
         along = (floor_z - sx*rz - sy*uz) / tz
@@ -787,12 +809,13 @@ def _floor(basis, bounds, size, floor_z):
     wx = abs(ax - mx) + abs(bx - mx) or 1e-9
     wy = abs(ay - my) + abs(by - my) or 1e-9
     near, far = FLOOR_FADE[0] * extent, FLOOR_FADE[1] * extent
-    tile_a, tile_b, line = palette['tile_a'], palette['tile_b'], palette['line']
 
     def pixel(ox, oy, dark):
         sx = cx0 + (ox + .5 - size / 2) * step
         sy = cy0 - (oy + .5 - size / 2) * step
-        fx, fy = at(sx, sy)
+        return point(*at(sx, sy), dark)
+
+    def point(fx, fy, dark):
         distance = math.hypot(fx - mx, fy - my)
         if distance >= far:
             return bg
@@ -808,7 +831,7 @@ def _floor(basis, bounds, size, floor_z):
         f = (distance - near) / (far - near)
         f = f * f * (3 - 2 * f)
         return [mat[c] + (bg[c] - mat[c]) * f for c in range(3)]
-    return pixel
+    return pixel, point
 
 
 def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
@@ -838,7 +861,10 @@ def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
     # The mat lies at the shadow's floor, or under the design's lowest point
     # when no shadow was measured.
     mat_z = shadow[0] if shadow is not None else min((p[2] for _, tri, _ in prepared for p in tri), default=0.0)
-    backdrop = _floor(basis, bounds, size, mat_z)
+    backdrop, ground = _floor(basis, bounds, size, mat_z)
+    # Level ground's diffuse light, which a ground facet's is read against.
+    level = (0.36 + 0.08 * uz + 0.58 * max(0.0, rz*key[0] + uz*key[1] + tz*key[2])
+             + 0.20 * max(0.0, rz*fill[0] + uz*fill[1] + tz*fill[2]))
     image, covered = bytearray(3 * size * size), 0
     inv = 1.0 / (samples * samples)
     for oy in range(size):
@@ -864,15 +890,6 @@ def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
                     w1 = min(1.0, max(0.0, px*w1x + py*w1y))
                     w2 = min(1.0 - w1, max(0.0, px*w2x + py*w2y))
                     w0 = 1.0 - w1 - w2
-                    if len(material) == 2:
-                        rgb, finish = material
-                    else:
-                        # A painted surface (a board): what is under this
-                        # subsample, from its corners where they were prepared.
-                        p0, p1, p2 = material[3]
-                        rgb, finish = material[2]((w0*p0[0] + w1*p1[0] + w2*p2[0],
-                                                   w0*p0[1] + w1*p1[1] + w2*p2[1],
-                                                   w0*p0[2] + w1*p1[2] + w2*p2[2]))
                     (a0, a1, a2), (b0, b1, b2), (c0, c1, c2) = vn
                     nx, ny, nz = w0*a0 + w1*b0 + w2*c0, w0*a1 + w1*b1 + w2*c1, w0*a2 + w1*b2 + w2*c2
                     length = math.sqrt(nx*nx + ny*ny + nz*nz) or 1.0
@@ -881,6 +898,23 @@ def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
                     nx, ny, nz = nx/length, ny/length, nz/length
                     diffuse = (0.36 + 0.08 * ny + 0.58 * max(0.0, nx*key[0] + ny*key[1] + nz*key[2])
                                + 0.20 * max(0.0, nx*fill[0] + ny*fill[1] + nz*fill[2]))
+                    if len(material) == 2:
+                        rgb, finish = material
+                    else:
+                        # A painted surface (a board, a ground): what is under this
+                        # subsample, from its corners where they were prepared.
+                        p0, p1, p2 = material[3]
+                        point = (w0*p0[0] + w1*p1[0] + w2*p2[0], w0*p0[1] + w1*p1[1] + w2*p2[1],
+                                 w0*p0[2] + w1*p1[2] + w2*p2[2])
+                        if material[0] == GROUND[0]:
+                            mat = ground(point[0], point[1],
+                                         1.0 if lookup is None else lookup(point[0], point[1]))
+                            light = diffuse / level
+                            r += min(255.0, mat[0]*light)
+                            g += min(255.0, mat[1]*light)
+                            b += min(255.0, mat[2]*light)
+                            continue
+                        rgb, finish = material[2](point)
                     spec, power, metal, sheen = finish if len(finish) == 4 else (*finish, 0.0, 0.0)
                     gloss = spec * max(0.0, nx*half[0] + ny*half[1] + nz*half[2]) ** power
                     # The studio as a surface sees it mirrored (:func:`_sky`): the

@@ -18,7 +18,8 @@ And what is drawn is what the paws touch (ADR-745): on 10 held-out courses
 the engine draws -- steps, slopes, moguls, platforms and rock patches, with
 their run-outs -- the drawn height and MuJoCo's own ray onto the placed
 course agree within 5 mm at 1,000 points, on the course, on its features and
-past its extent.
+past its extent. The film draws the same ground (ADR-746): its port of the
+sampler reads the same height at every one of those points.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ import pytest
 from conftest import SOURCE_MODULE_DIR
 
 from cadex_cli.browser import HeadlessBrowser
+from cadex_cli.film import Ground
 from cadex_cli.review_server import serve_projects, terrain_block
 from review_helpers import BROWSER, REVISION_B, _model_state, _open, _projects, _stage_accepted, needs_browser
 
@@ -272,6 +274,11 @@ def test_the_drawn_ground_is_the_ground_physics_stands_on(app, small_browser) ->
             points.append((f["x_mm"] + rng.uniform(-1, 1) * reach[0], f["y_mm"] + rng.uniform(-1, 1) * reach[1]))
         drawn = page.evaluate("(function (p) { var v = window.cadexReview.viewer(); "
                               "return p.map(function (q) { return v.groundAt(q[0], q[1]); }); })(%s)" % json.dumps(points))
+        # The film draws the same one ground (ADR-746): its port of the sampler gives the same mesh.
+        filmed = Ground(block)
+        for (x, y), height in zip(points, drawn):
+            assert (filmed.at(x, y) is None) == (height is None), (seed, x, y)
+            assert height is None or filmed.at(x, y) == pytest.approx(height, abs=1e-6), (seed, x, y)
         # Off the surface the mat is the drawn ground: where a course ends at its plane, the plane.
         mat = page.evaluate("window.cadexReview.viewer().stats().floor.z_mm")
         drawn = [mat if height is None else height for height in drawn]

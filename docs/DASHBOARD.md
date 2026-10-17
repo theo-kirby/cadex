@@ -641,9 +641,17 @@ evaluation seed is shown on its held-out course. With a course the mat lies
 at a box course's plane, the ground beyond its extent, or 50 mm under a
 heightfield's lowest point (`stats().floor.source` is `terrain`), and
 `stats().terrain` names the kind, the box and dome counts and the course. An
-evaluation's film draws the same course under the solids (`film.py`,
-`terrain_triangles`), still as its boxes and its domes' caps and not yet as
-one ground, and its
+evaluation's film draws the same one ground under the solids (ADR-746):
+`film.terrain_surface` is a port of `sampleSurface` (`SURFACE` is
+`TERRAIN`'s sampling), held to `groundAt` at every point the held-out test
+compares, and `film.Ground` draws it in tiles of 48 cells, prepared on
+demand with a ring so normals are smoothed across tile edges, choosing per
+shot the tiles under the window and inside the mat's fade at a stride
+that keeps a cell about a pixel tall. The renderer paints it with the mat
+itself (`CadexStudio.GROUND`): each point the checker and line the mat
+has there, faded as the mat fades, lit relative to level ground, so level
+ground at the plane is the mat and a wall or slope reads by its light
+(`docs/probes/orun8/g1-film-frame.png`, `g1-film-every-kind.png`). Its
 seed row's `terrain` names it.
 
 **The clip planes follow the shot (ADR-600).** The camera's near plane is

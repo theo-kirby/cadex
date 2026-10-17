@@ -318,11 +318,6 @@ def _carried(pose: Mapping[str, Any], local: Sequence[float]) -> tuple[float, fl
     return tuple(origin[i] + sum(rows[i][j] * float(local[j]) for j in range(3)) for i in range(3))
 
 
-#: The course a seed stood on (ADR-734), drawn a step lighter than the mat
-#: as the dashboard draws it (``review_scene.js``'s ``TERRAIN``).
-TERRAIN_LOOK = ("mechanism", (58, 60, 64))
-
-
 def read_terrain(path: Path) -> dict[str, Any] | None:
     """The course a trace says its episode stood on, checked as the dashboard
     checks it, or ``None`` on flat ground. The trace was already held to its
@@ -333,60 +328,296 @@ def read_terrain(path: Path) -> dict[str, Any] | None:
     return terrain_block(json.loads(path.read_bytes()).get("terrain"))
 
 
-def terrain_triangles(block: Mapping[str, Any]) -> list[tuple]:
-    """A drawn course (``CadexDynamics.terrain_drawing``) as triangles, mm."""
+#: The dashboard's ground sampler (``review_scene.js``'s ``TERRAIN``): its
+#: finest spacing and most samples, a wall's half-width, the most breaks a
+#: side, the margin past a box course, the blend to the mat, the reach a box
+#: corner widens the fine span by, and the run-out's spacing (ADR-743, ADR-745).
+SURFACE = {"pitch_mm": 25.0, "samples": 120000, "wall_mm": 0.5, "breaks": 512, "margin_mm": 500.0,
+           "blend_mm": 1500.0, "reach_mm": 10000.0, "far_mm": 2500.0}
 
-    triangles: list[tuple] = []
-    for box in block.get("boxes") or ():
-        x, y, z, w = box["rotation_xyzw"]
-        turn = ((1 - 2*(y*y + z*z), 2*(x*y - w*z), 2*(x*z + w*y)),
-                (2*(x*y + w*z), 1 - 2*(x*x + z*z), 2*(y*z - w*x)),
-                (2*(x*z - w*y), 2*(y*z + w*x), 1 - 2*(x*x + y*y)))
-        centre, half = box["centre_mm"], box["half_mm"]
 
-        def corner(sx: int, sy: int, sz: int) -> tuple[float, float, float]:
-            local = (sx * half[0], sy * half[1], sz * half[2])
-            return tuple(centre[r] + sum(turn[r][c] * local[c] for c in range(3)) for r in range(3))
+def _round(value: float) -> float:
+    # JavaScript's Math.round: halves go up.
+    return math.floor(value + 0.5)
 
-        # Each face as two triangles wound outward.
-        for a, b, c, d in (((-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1)),
-                           ((-1, -1, -1), (-1, 1, -1), (1, 1, -1), (1, -1, -1)),
-                           ((1, -1, -1), (1, 1, -1), (1, 1, 1), (1, -1, 1)),
-                           ((-1, -1, -1), (-1, -1, 1), (-1, 1, 1), (-1, 1, -1)),
-                           ((-1, 1, -1), (-1, 1, 1), (1, 1, 1), (1, 1, -1)),
-                           ((-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1))):
-            p = [corner(*v) for v in (a, b, c, d)]
-            triangles += [(p[0], p[1], p[2]), (p[0], p[2], p[3])]
-    plane = block.get("plane_z_mm")
-    for dome in block.get("domes") or ():
-        # The cap above the plane (ADR-744), in rings from its peak to its foot.
-        (cx, cy, cz), radius = dome["centre_mm"], dome["radius_mm"]
-        low = -1.0 if plane is None else max(-1.0, min(1.0, (plane - cz) / radius))
-        rings, sides = 6, 24
 
-        def at(ring: int, side: int) -> tuple[float, float, float]:
-            z = 1.0 - (1.0 - low) * ring / rings
-            r, a = math.sqrt(max(0.0, 1.0 - z * z)), 2 * math.pi * side / sides
-            return (cx + radius * r * math.cos(a), cy + radius * r * math.sin(a), cz + radius * z)
+def _box_axes(box: Mapping[str, Any]) -> list[list[float]]:
+    """A box's axes in the world, the columns of its rotation."""
 
-        for ring in range(rings):
-            for side in range(sides):
-                a, b, c, d = at(ring, side), at(ring, side + 1), at(ring + 1, side + 1), at(ring + 1, side)
-                triangles += [(a, d, c)] if ring == 0 else [(a, d, c), (a, c, b)]
-    grid = block.get("grid")
-    if grid:
+    qx, qy, qz, qw = box["rotation_xyzw"]
+    return [[1 - 2*(qy*qy + qz*qz), 2*(qx*qy + qz*qw), 2*(qx*qz - qy*qw)],
+            [2*(qx*qy - qz*qw), 1 - 2*(qx*qx + qz*qz), 2*(qy*qz + qx*qw)],
+            [2*(qx*qz + qy*qw), 2*(qy*qz - qx*qw), 1 - 2*(qx*qx + qy*qy)]]
+
+
+def _box_top(box: Mapping[str, Any], axes, x: float, y: float) -> float:
+    """The highest point of a box on the vertical at (x, y), or -inf."""
+
+    (cx, cy, cz), half = box["centre_mm"], box["half_mm"]
+    dx, dy = x - cx, y - cy
+    lo, hi = -math.inf, math.inf
+    for i in range(3):
+        a = axes[i]
+        o, d, h = a[0]*dx + a[1]*dy - a[2]*cz, a[2], half[i]
+        if abs(d) < 1e-12:
+            if abs(o) > h:
+                return -math.inf
+            continue
+        p, q = (-h - o) / d, (h - o) / d
+        lo, hi = max(lo, min(p, q)), min(hi, max(p, q))
+    return hi if lo <= hi else -math.inf
+
+
+def _sample_axis(lo: float, hi: float, pitch: float, breaks: Sequence[float]) -> list[float]:
+    """Every ``pitch`` across [lo, hi], and each break on both sides of it."""
+
+    n = max(1, math.ceil((hi - lo) / pitch))
+    at = [lo + (hi - lo) * k / n for k in range(n + 1)]
+    for v in breaks:
+        if lo < v < hi:
+            at += [v - SURFACE["wall_mm"], v + SURFACE["wall_mm"]]
+    at.sort()
+    return [v for i, v in enumerate(at) if i == 0 or v - at[i - 1] > .01]
+
+
+def terrain_surface(block: Mapping[str, Any]) -> tuple[list[float], list[float], Any]:
+    """``(xs, ys, height)``: the course as the dashboard draws it, one ground
+    (``review_scene.js``'s ``sampleSurface``, ADR-743): its sample axes and
+    the height (mm) at any of their crossings. A port, held to the dashboard's
+    own by ``test_dashboard_ground.py``."""
+
+    (x0, x1), (y0, y1) = block["x_range_mm"], block["y_range_mm"]
+    bx: list[float] = []
+    by: list[float] = []
+    far = None
+    if block["kind"] == "boxes":
+        boxes = [(box, _box_axes(box)) for box in block.get("boxes") or ()]
+        domes = list(block.get("domes") or ())
+        plane = block.get("plane_z_mm")
+        plane = block["lowest_mm"] if plane is None else plane
+        # Each box's plan footprint, so a point far from it never asks it.
+        reach = []
+        for box, axes in boxes:
+            spread = [sum(abs(axes[i][k]) * box["half_mm"][i] for i in range(3)) for k in range(2)]
+            reach.append((box["centre_mm"][0] - spread[0] - 1e-6, box["centre_mm"][0] + spread[0] + 1e-6,
+                          box["centre_mm"][1] - spread[1] - 1e-6, box["centre_mm"][1] + spread[1] + 1e-6))
+
+        def exact(x: float, y: float, skip: int = -1) -> float:
+            z = plane
+            for k, (box, axes) in enumerate(boxes):
+                r = reach[k]
+                if k != skip and r[0] <= x <= r[1] and r[2] <= y <= r[3]:
+                    z = max(z, _box_top(box, axes, x, y))
+            for dome in domes:
+                (cx, cy, cz), radius = dome["centre_mm"], dome["radius_mm"]
+                d2 = radius * radius - (x - cx) ** 2 - (y - cy) ** 2
+                if d2 >= 0:
+                    z = max(z, cz + math.sqrt(d2))
+            return z
+
+        ex0, ex1, ey0, ey1 = x0, x1, y0, y1
+        near = lambda v, lo, hi: lo - SURFACE["reach_mm"] <= v <= hi + SURFACE["reach_mm"]
+        ox0, ox1, oy0, oy1 = x0, x1, y0, y1
+        for box, axes in boxes:
+            for sx in (-1, 1):
+                for sy in (-1, 1):
+                    for sz in (-1, 1):
+                        local = (sx * box["half_mm"][0], sy * box["half_mm"][1], sz * box["half_mm"][2])
+                        x = box["centre_mm"][0] + sum(axes[i][0] * local[i] for i in range(3))
+                        y = box["centre_mm"][1] + sum(axes[i][1] * local[i] for i in range(3))
+                        bx.append(x); by.append(y)
+                        ox0, ox1, oy0, oy1 = min(ox0, x), max(ox1, x), min(oy0, y), max(oy1, y)
+                        if near(x, ex0, ex1):
+                            x0, x1 = min(x0, x), max(x1, x)
+                        if near(y, ey0, ey1):
+                            y0, y1 = min(y0, y), max(y1, y)
+        # A box turned about x or y meets the ground under it in a crease: a break too.
+        for k, (box, axes) in enumerate(boxes):
+            if all(abs(abs(a[0]) + abs(a[1]) + abs(a[2]) - 1) < 1e-9 for a in axes):
+                continue
+            c = box["centre_mm"]
+            z0 = exact(c[0], c[1], k)
+            for i, a in enumerate(axes):
+                for sign in (-1, 1):
+                    h, dz = sign * box["half_mm"][i], a[2] * (z0 - c[2])
+                    if abs(a[2]) < 1e-9:
+                        continue
+                    if abs(a[1]) < 1e-9 and abs(a[0]) > 1e-9:
+                        bx.append(c[0] + (h - dz) / a[0])
+                    if abs(a[0]) < 1e-9 and abs(a[1]) > 1e-9:
+                        by.append(c[1] + (h - dz) / a[1])
+        for dome in domes:
+            (cx, cy, cz), radius = dome["centre_mm"], dome["radius_mm"]
+            r = math.sqrt(max(0.0, radius ** 2 - (plane - cz) ** 2))
+            x0, x1, y0, y1 = min(x0, cx - r), max(x1, cx + r), min(y0, cy - r), max(y1, cy + r)
+        ox0, ox1, oy0, oy1 = min(ox0, x0), max(ox1, x1), min(oy0, y0), max(oy1, y1)
+        bx = list(dict.fromkeys(_round(v * 100) / 100 for v in bx))
+        by = list(dict.fromkeys(_round(v * 100) / 100 for v in by))
+        if len(bx) > SURFACE["breaks"]:
+            bx = []
+        if len(by) > SURFACE["breaks"]:
+            by = []
+        blend = SURFACE["blend_mm"]
+        runout = ox0 < x0 - blend or ox1 > x1 + blend or oy0 < y0 - blend or oy1 > y1 + blend
+
+        def height(x: float, y: float) -> float:
+            cx, cy = min(ox1, max(ox0, x)), min(oy1, max(oy0, y))
+            if not runout or (cx == x and cy == y):
+                return exact(x, y)
+            edge, t = exact(cx, cy), min(1.0, math.hypot(x - cx, y - cy) / blend)
+            return edge + (plane - edge) * t * t * (3 - 2 * t)
+
+        run = SURFACE["margin_mm"]
+        if runout:
+            far = (ox0, ox1, oy0, oy1)
+    else:
+        grid = block["grid"]
         rows, columns, heights = grid["rows"], grid["columns"], grid["heights_mm"]
-        (x0, x1), (y0, y1) = block["x_range_mm"], block["y_range_mm"]
+        (gx0, gx1), (gy0, gy1), mat = block["x_range_mm"], block["y_range_mm"], block["lowest_mm"] - 50
+        bx = [gx0 + (gx1 - gx0) * k / (columns - 1) for k in range(columns)]
+        by = [gy0 + (gy1 - gy0) * r / (rows - 1) for r in range(rows)]
 
-        def vertex(r: int, c: int) -> tuple[float, float, float]:
-            return (x0 + (x1 - x0) * c / (columns - 1), y0 + (y1 - y0) * r / (rows - 1),
-                    heights[r * columns + c])
+        def height(x: float, y: float) -> float:
+            cx, cy = min(gx1, max(gx0, x)), min(gy1, max(gy0, y))
+            k = int(_round((cx - gx0) / (gx1 - gx0) * (columns - 1)))
+            r = int(_round((cy - gy0) / (gy1 - gy0) * (rows - 1)))
+            edge, t = heights[r * columns + k], min(1.0, math.hypot(x - cx, y - cy) / SURFACE["blend_mm"])
+            return edge + (mat - edge) * t * t * (3 - 2 * t)
 
-        for r in range(rows - 1):
-            for c in range(columns - 1):
-                a, b, d, e = vertex(r, c), vertex(r, c + 1), vertex(r + 1, c), vertex(r + 1, c + 1)
-                triangles += [(a, b, e), (a, e, d)]
-    return triangles
+        run = SURFACE["blend_mm"]
+    x0, x1, y0, y1 = x0 - run, x1 + run, y0 - run, y1 + run
+    pitch = max(SURFACE["pitch_mm"], math.sqrt((x1 - x0) * (y1 - y0) / SURFACE["samples"]))
+
+    def outer(lo: float, hi: float, a, b, breaks) -> list[float]:
+        if far is None:
+            return _sample_axis(lo, hi, pitch, breaks)
+        blend, spacing = SURFACE["blend_mm"], SURFACE["far_mm"]
+        return sorted(set(_sample_axis(min(lo, a) - blend, lo, spacing, breaks)
+                          + _sample_axis(lo, hi, pitch, breaks)
+                          + _sample_axis(hi, max(hi, b) + blend, spacing, breaks)))
+
+    def own(a: list[float], lo: float, hi: float, grid: list[float]) -> list[float]:
+        return [v for v in a if v < lo] + grid + [v for v in a if v > hi]
+
+    if block["kind"] == "boxes":
+        xs = outer(x0, x1, far and far[0], far and far[1], bx)
+        ys = outer(y0, y1, far and far[2], far and far[3], by)
+    else:
+        xs = own(_sample_axis(x0, x1, pitch, []), bx[0], bx[-1], bx)
+        ys = own(_sample_axis(y0, y1, pitch, []), by[0], by[-1], by)
+    return xs, ys, height
+
+
+class Ground:
+    """A course drawn as one ground (orun8 G1, ADR-746): the dashboard's
+    surface (:func:`terrain_surface`), split on its own sample lines into
+    tiles prepared on demand and painted with the mat (``GROUND``). A view
+    draws the tiles under its window and inside the mat's fade, at a stride
+    that keeps a cell about a pixel tall: what the dashboard draws, at the
+    detail the frame can show."""
+
+    #: Cells a tile spans along each axis, and the most tiles kept prepared.
+    TILE = 48
+    KEPT = 512
+
+    def __init__(self, block: Mapping[str, Any]) -> None:
+        self.xs, self.ys, self._height = terrain_surface(block)
+        self.low, self.high = float(block["lowest_mm"]), float(block["highest_mm"])
+        plane = block.get("plane_z_mm")
+        self.low = min(self.low, float(plane) if plane is not None else self.low - 50.0)
+        self._z: dict[tuple[int, int], float] = {}
+        self._tiles: dict[tuple, list] = {}
+        self._axes: dict[int, tuple[list[int], list[int]]] = {}
+
+    def z(self, k: int, r: int) -> float:
+        """The height at the crossing of sample columns ``k`` and row ``r``."""
+
+        key = (k, r)
+        if key not in self._z:
+            self._z[key] = self._height(self.xs[k], self.ys[r])
+        return self._z[key]
+
+    def at(self, x: float, y: float) -> float | None:
+        """The drawn height at (x, y), read off the surface's own triangles
+        (each cell split on its (0,0)-(1,1) diagonal), or ``None`` off it:
+        ``groundAt`` in ``review_scene.js``."""
+
+        xs, ys = self.xs, self.ys
+        if not (xs[0] <= x <= xs[-1] and ys[0] <= y <= ys[-1]):
+            return None
+        k = min(len(xs) - 2, bisect.bisect_right(xs, x) - 1)
+        r = min(len(ys) - 2, bisect.bisect_right(ys, y) - 1)
+        u, v = (x - xs[k]) / (xs[k + 1] - xs[k]), (y - ys[r]) / (ys[r + 1] - ys[r])
+        z00, z10, z01, z11 = self.z(k, r), self.z(k + 1, r), self.z(k, r + 1), self.z(k + 1, r + 1)
+        return z00 + u*(z10 - z00) + v*(z11 - z10) if u >= v else z00 + v*(z01 - z00) + u*(z11 - z01)
+
+    def _strided(self, stride: int) -> tuple[list[int], list[int]]:
+        if stride not in self._axes:
+            pick = lambda n: sorted(set(range(0, n, stride)) | {n - 1})
+            self._axes[stride] = (pick(len(self.xs)), pick(len(self.ys)))
+        return self._axes[stride]
+
+    def _tile(self, stride: int, i: int, j: int) -> list:
+        key = (stride, i, j)
+        if key in self._tiles:
+            self._tiles[key] = self._tiles.pop(key)
+            return self._tiles[key]
+        kx, ky = self._strided(stride)
+        # A ring of one cell round the tile is prepared with it and dropped,
+        # so its normals are smoothed across the tile's edge as across any other.
+        c0, c1 = i * self.TILE, min(len(kx) - 1, (i + 1) * self.TILE)
+        r0, r1 = j * self.TILE, min(len(ky) - 1, (j + 1) * self.TILE)
+        cells = [(c, r) for r in range(r0, r1) for c in range(c0, c1)]
+        cells += [(c, r) for r in range(max(0, r0 - 1), min(len(ky) - 1, r1 + 1))
+                  for c in range(max(0, c0 - 1), min(len(kx) - 1, c1 + 1))
+                  if not (c0 <= c < c1 and r0 <= r < r1)]
+
+        def corner(c: int, r: int) -> tuple[float, float, float]:
+            return (self.xs[kx[c]], self.ys[ky[r]], self.z(kx[c], ky[r]))
+
+        triangles = []
+        for c, r in cells:
+            p00, p10, p01, p11 = corner(c, r), corner(c + 1, r), corner(c, r + 1), corner(c + 1, r + 1)
+            triangles += [(p00, p10, p11), (p00, p11, p01)]
+        inner = 2 * (c1 - c0) * (r1 - r0)
+        tile = studio_render._prepare([(studio_render.GROUND, triangles)])[:inner]
+        self._tiles[key] = tile
+        while len(self._tiles) > self.KEPT:
+            self._tiles.pop(next(iter(self._tiles)))
+        return tile
+
+    def visible(self, basis, bounds, size: int) -> list:
+        """The prepared tiles a view of ``bounds`` along ``basis`` can show."""
+
+        (rx, ry, rz), (ux, uy, uz), (tx, ty, tz) = basis
+        lo, hi = bounds
+        extent = max(hi[0] - lo[0], hi[1] - lo[1])
+        cx, cy = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
+        far = studio_render.FLOOR_FADE[1] * extent
+        if tz > 0.05:
+            def at(sx: float, sy: float, z: float) -> tuple[float, float]:
+                along = (z - sx*rz - sy*uz) / tz
+                return sx*rx + sy*ux + along*tx, sx*ry + sy*uy + along*ty
+            plan = [at(sx, sy, z) for sx in (lo[0], hi[0]) for sy in (lo[1], hi[1]) for z in (self.low, self.high)]
+            mx, my = at(cx, cy, self.low)
+            x0 = max(min(p[0] for p in plan), mx - far); x1 = min(max(p[0] for p in plan), mx + far)
+            y0 = max(min(p[1] for p in plan), my - far); y1 = min(max(p[1] for p in plan), my + far)
+        else:
+            mx, my = cx*rx + cy*ux, cx*ry + cy*uy
+            x0, x1, y0, y1 = mx - far, mx + far, my - far, my + far
+        if x1 < self.xs[0] or x0 > self.xs[-1] or y1 < self.ys[0] or y0 > self.ys[-1]:
+            return []
+        # A cell about a pixel tall where the view foreshortens the ground most.
+        stride = 1
+        while stride < 64 and 2 * stride * SURFACE["pitch_mm"] * max(tz, 0.1) <= extent / size:
+            stride *= 2
+        kx, ky = self._strided(stride)
+        xs, ys = [self.xs[k] for k in kx], [self.ys[r] for r in ky]
+        c0 = max(0, bisect.bisect_right(xs, x0) - 1) // self.TILE
+        c1 = min(len(xs) - 2, bisect.bisect_left(xs, x1)) // self.TILE
+        r0 = max(0, bisect.bisect_right(ys, y0) - 1) // self.TILE
+        r1 = min(len(ys) - 2, bisect.bisect_left(ys, y1)) // self.TILE
+        return [tri for j in range(r0, r1 + 1) for i in range(c0, c1 + 1) for tri in self._tile(stride, i, j)]
 
 
 def terrain_floor(block: Mapping[str, Any] | None) -> float | None:
@@ -404,9 +635,9 @@ class _Stage:
 
     def __init__(self, meshes: Mapping[str, list], looks: Mapping[str, tuple],
                  world_flats: Mapping[str, array]) -> None:
-        #: The course under the solids (ADR-734), drawn in every shot and
-        #: framing none: set per seed, from its trace.
-        self.ground: list = []
+        #: The course under the solids (ADR-734), one ground (:class:`Ground`)
+        #: drawn in every shot and framing none: set per seed, from its trace.
+        self.ground: Ground | None = None
         self.names = [name for name in meshes if name in looks]
         _require(self.names, "nothing to draw once world geometry is left out")
         self.local = {name: studio_render._prepare(
@@ -465,7 +696,8 @@ class _Stage:
         posed = [tri for name in self.names
                  for tri in studio_video._posed(self.local[name], poses[name])]
         shadow = studio_render._contact_shadow(posed, floor=floor)
-        pixels, _ = studio_render.studio(posed + self.ground, basis, bounds=bounds, size=FRAME,
+        ground = self.ground.visible(basis, bounds, FRAME) if self.ground else []
+        pixels, _ = studio_render.studio(posed + ground, basis, bounds=bounds, size=FRAME,
                                          shadow=shadow)
         canvas = studio_render.Canvas(FRAME, FRAME, (0, 0, 0))
         canvas.pixels = bytearray(pixels)
@@ -678,7 +910,7 @@ def detail_start(row: Mapping[str, Any], times: Sequence[float], given: float | 
 
 def _video(stage_names, looks, source, meshes, frames, times, out: Path, seed: int,
            floor: float, points: Sequence[Sequence[float]] | None = None, *,
-           name: str | None = None, draw=None, ground: Sequence = ()) -> dict[str, Any]:
+           name: str | None = None, draw=None, ground: Ground | None = None) -> dict[str, Any]:
     """The seed's rollout as a studio video, encoded and decoded back before it is kept.
 
     With ``points``, each frame's target is kept inside the window and
@@ -802,8 +1034,7 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
             f"seed {seed} drew a point goal and its trace carries none to mark")
         points = target["points"] if target else None
         course = read_terrain(out / str(row["trace"]["file"]))
-        stage.ground = (studio_render._prepare([(studio_render.material(TERRAIN_LOOK),
-                                                 terrain_triangles(course))]) if course else [])
+        stage.ground = Ground(course) if course else None
         if course is not None:
             floor, floor_source = terrain_floor(course), "the course's plane (ADR-734)"
         else:
