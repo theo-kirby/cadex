@@ -72,3 +72,14 @@ accepted script.
 Both are engine fixes, each with an ADR: the candidate names, and the
 contact channel's round trip on capsule feet. After them, `b1b-script.py`
 should build as written, and the cold biped run is the next B GPU slot.
+
+## Fixed (iteration 8)
+
+Both refusals are engine fixes. Defect 2 is ADR-756: the candidate foot
+channels come from the reference's own feet. Defect 1 is ADR-757. Its cause
+was not the sensor. The keyframe stands the flat capsules exactly on the
+floor, at −5.2e-18 m in the compiled model and at 0 in the reload, so the
+touch read 0.92 N in one and 0 N in the other. A touch at tangency is no
+longer compared on export. `b1b-script.py` now builds as written on a scratch
+copy of the project; the project's accepted revision is still unchanged,
+and no biped run has been launched.

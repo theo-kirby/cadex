@@ -44216,3 +44216,63 @@ its resolution into the bundle; the trainer's remap and the third path in
 own robot under a `body` block is the identity, and that a remap onto the
 same robot with its actions and legs permuted produces the same actions
 on the matching inputs. Status: **decided, not implemented.**
+
+## ADR-756 — A biped reward may name its reference's foot channels (2026-10-17, orun9)
+
+**Context.** ADR-706 compiles a task's reward and termination twice: first
+against every channel a reference *could* add (`_tracking_candidates`),
+because which joints the stride poses is known only once it is generated,
+then against the exact ones. The first list hard-coded the four quadruped
+feet, `lf rf lh rh`. ADR-754's two-foot reference names its channels
+`ref_l_lift`, `ref_r_lift`, `ref_l_down` and `ref_r_down`, so a biped reward
+naming them was refused as not an observation channel of the task before
+the stride was ever built. That blocked recipe step 1.1 (track foot lift and
+contact) on B1's biped (`docs/probes/orun9/b1-biped.md`).
+
+**Decision.** The candidate feet are the labels the declared reference
+keys in `feet` (`LF RF LH RH`, or `L R`), lower-cased, which are the labels
+`_tracking_records` gives the clip's channels. A quadruped's candidates are
+unchanged. No channel, op or bundle field changes.
+
+**Measured.** A scratch copy of `orun9-biped` with B1's biped task minus its
+foot `contact` channels (`b1b-script.py` without `cl`/`cr` and the
+`track_contact` term) was refused with "reward 'track_lift' names
+'ref_l_lift', 'ref_r_lift'" before; after, `cadex script --set` accepts it
+and the bundle's tracking channels end `ref_l_lift ref_r_lift ref_l_down
+ref_r_down`. `pixi run test-engine` and the CLI suite pass.
+
+The other biped blocker, the foot `contact` channel's export check, is
+ADR-757.
+
+## ADR-757 — A touch at exact tangency is not compared on export (2026-10-17, orun9)
+
+**Context.** `_verify_exported_sensors` compares the exported file's
+observation values at the solved keyframe against the engine's own compiled
+model, at 1e-5 relative. B1's biped (`orun9-biped`, twin-keel capsule feet)
+failed it with 0.92 relative drift as soon as a foot `contact` channel
+(ADR-698) was declared (`docs/probes/orun9/b1-biped.md`, defect 1).
+
+**Measured.** Dumping both models at the keyframe: every sensor agrees to
+1e-6 but the two touch channels, which read 0.922 N and 0.922 N in the
+compiled model and 0 and 0 in the reload. The keyframe stands the flat
+capsules exactly on the floor. In the compiled model each capsule's contact
+is at −5.2e-18 m (round-off) and carries 0.46 N a contact. The reloaded XML
+puts them at exactly 0.0 m, with two zero-force contacts per capsule. The
+joint pose agrees exactly. So the sensor is not mismatched: a touch at
+tangency is a constraint force set by round-off, and either value is right.
+The quadruped's ball feet passed only because their round-off happened to
+fall the same way in both models.
+
+**Decision.** A `contact` channel whose body has a contact within
+`MJCF_WRITER_ZERO` (1e-12 m) of zero distance, in either model, is left out
+of the keyframe value comparison (`_touches_tangent`). Every other channel,
+and a touch channel whose body is clear of the floor or in real
+penetration, is compared as before. The pose that puts the foot there is
+still held by `_verify_exported_pose`, and the site and sensor by the count,
+order and width checks. No channel, op or bundle field changes.
+
+**Result.** `b1b-script.py` builds as written on a scratch copy of
+`orun9-biped` (task reward: alive, speed, track_pose, track_lift,
+track_contact, over_rated, height, posture, heading; channels `cl`,
+`cl_down`, `cr`, `cr_down`, `ref_l_*`, `ref_r_*`). `orun9-quad`'s accepted
+script rebuilds. `pixi run test-engine` and the CLI suite pass.

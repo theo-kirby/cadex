@@ -10165,6 +10165,20 @@ def _add_observation_sensors(
             sensor.refname = str(record["frame"])
 
 
+def _touches_tangent(mujoco: Any, model: Any, data: Any, body: str) -> bool:
+    """Whether a contact on ``body`` is at zero distance, to the writer's
+    precision, so the force it carries is round-off (ADR-757)."""
+
+    index = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body)
+    for contact in range(int(data.ncon)):
+        record = data.contact[contact]
+        bodies = {int(model.geom_bodyid[int(record.geom1)]),
+                  int(model.geom_bodyid[int(record.geom2)])}
+        if index in bodies and abs(float(record.dist)) < MJCF_WRITER_ZERO:
+            return True
+    return False
+
+
 def _verify_exported_sensors(
     mujoco: Any,
     reloaded: Any,
@@ -10241,7 +10255,21 @@ def _verify_exported_sensors(
     )
     mujoco.mj_resetDataKeyframe(reloaded, there, key_there)
     mujoco.mj_forward(reloaded, there)
-    drift = _field_drift(here.sensordata, there.sensordata)
+    # ADR-757: a touch whose body rests exactly tangent at the keyframe reads
+    # a force set by round-off -- a flat capsule at -5e-18 m in one model and
+    # 0 in the other read 0.92 N and 0 N -- so its value is not compared.
+    # The pose that puts it there is (_verify_exported_pose).
+    left = [float(value) for value in here.sensordata]
+    right = [float(value) for value in there.sensordata]
+    for index, record in enumerate(observations):
+        if record.get("contact") and (
+            _touches_tangent(mujoco, with_sensors, here, str(record["contact"]["body"]))
+            or _touches_tangent(mujoco, reloaded, there, str(record["contact"]["body"]))
+        ):
+            start = int(reloaded.sensor_adr[index])
+            for slot in range(start, start + int(record["dim"])):
+                left[slot] = right[slot] = 0.0
+    drift = _field_drift(left, right)
     if drift > MJCF_FIELD_TOLERANCE:
         raise DynamicsError(
             f"The MJCF exported for {context} changed its observation values "
@@ -12249,15 +12277,18 @@ def _tracking_records(
     }
 
 
-def _tracking_candidates(observations: Sequence[Mapping[str, Any]]) -> list[str]:
+def _tracking_candidates(observations: Sequence[Mapping[str, Any]],
+                         reference: Mapping[str, Any]) -> list[str]:
     """Every name :func:`_tracking_records` could add, before the stride
-    says which joints it poses (ADR-706)."""
+    says which joints it poses (ADR-706); the feet are the labels the
+    declared reference keys, ``L R`` for a biped (ADR-756)."""
 
+    feet = [str(foot).lower() for foot in (reference.get("feet") or {})]
     return [f"{TRACKING_PREFIX}_sin", f"{TRACKING_PREFIX}_cos"] + [
         f"{record['channels'][0]}_ref" for record in observations
         if str(record.get("kind")) == "position"
     ] + [f"{TRACKING_PREFIX}_{foot}_{kind}" for kind in ("lift", "down")
-         for foot in ("lf", "rf", "lh", "rh")]
+         for foot in feet]
 
 
 def tracking_channels(task: Mapping[str, Any], *, policy_only: bool = False) -> list[str]:
@@ -12878,7 +12909,7 @@ def task_records(
     # every name a reference could add, and again against the exact ones.
     taken = list(channels)
     if task.get("reference"):
-        channels = channels + _tracking_candidates(observations)
+        channels = channels + _tracking_candidates(observations, task["reference"])
 
     # -- reward and termination --------------------------------------------
     reward_rows: list[dict[str, Any]] = []

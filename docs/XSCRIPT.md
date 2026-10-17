@@ -615,8 +615,9 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   the episode's first step: `ref_sin` and `ref_cos`, which the policy
   reads; and, privileged, `<name>_ref` for each `position` observation of a
   joint the stride poses (its unit), `ref_<foot>_lift` in mm above the
-  reference foot's lowest point and `ref_<foot>_down` for `lf`, `rf`, `lh`,
-  `rh`. A step is scored against the reference where it lands, so
+  reference foot's lowest point and `ref_<foot>_down` for each foot the
+  reference names, lower-cased (`lf`, `rf`, `lh`, `rh`; a biped's `l`, `r`,
+  ADR-756). A step is scored against the reference where it lands, so
   `exp(-((q_knee - q_knee_ref) / 15)^2)` is a joint-tracking reward term. A
   name one of them would take is refused as `tracking_channel_clash`.
   `assembly.task(..., reference_start="random")` (default `"phase0"`) starts
