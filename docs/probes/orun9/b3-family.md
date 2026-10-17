@@ -265,3 +265,37 @@ The training curves side by side, as reward a step (sigma):
   300 pass v0 10/10 with 0 fine-tune iterations. For the cat, the
   different-shape quadruped, a fine-tune will need iterations, so it
   should use 3e-5, not the default.
+
+## A fine-tune from the base that already passes (b3-ft250)
+
+`b3-ft250` is b3-ftlr's setup (3e-5, 75 iterations, critic warm-up 10,
+checkpoints every 25) from `b3-base1` at iteration **250**, which passes v0
+**10/10 zero-shot**. It asks whether training iterations on v0 keep or
+improve a base that already walks it. Launched with `launch_ft.py b3-ft250
+000250 75 3e-5`; judged with `RUN=b3-ft250 judge_ft.sh`; reports
+`evaluations/b3-ft250-walk-*`.
+
+| it | passed | failing (seeds) | forward mm/s | lateral mm/s | steps min | clearance | rated |
+|---|---|---|---|---|---|---|---|
+| 0 (zero-shot) | **10/10** | | 231 | −15 | 10 | 0.039 | 0.49 |
+| 25 | **0/10** | W5-lateral 10 (−51 to −56, bound ±50) | 289 | −53 | 10 | 0.054 | 0.59 |
+| 50 | **9/10** | seed 9107 falls at frame 37 | 287 | +28 | 10 | 0.064 | 0.46 |
+| 75 | **9/10** | seed 9107 falls at frame 39 | 281 | +30 | 11 | 0.047 | 0.56 |
+
+Reward a step (sigma): 12.38 (0.110) at 0, 12.81 (0.110) at 10, 12.89
+(0.111) at 11, 12.90 (0.120) at 25, 12.96 (0.126) at 50, 13.65 (0.123)
+at 74.
+
+- **3e-5 holds the base**, as in b3-ftlr: sigma went 0.110 → 0.111 on the
+  first actor update and stayed under 0.126.
+- **But 75 iterations on v0 made the policy worse on the spec**, while the
+  reward rose 10%. At 25 every seed drifts sideways just past the ±50 mm/s
+  bound; at 50 and 75 the drift flips sign and one seed falls in its first
+  0.8 s. The fine-tune pushes forward speed from 231 to 281–289 mm/s
+  against the 250 command (bound 175–325), so the reward is buying speed
+  the spec does not ask for.
+- **So on v0 the base's best number is the zero-shot one** (10/10 at 0
+  fine-tune iterations). A fine-tune with iterations does not reach 10/10 at
+  any checkpoint ≤ 75 from either base 150 (b3-ftlr, 9/10) or base 250
+  (b3-ft250, 9/10). For a target the base already walks, judge the
+  zero-shot file first and keep it if it passes (recipe §4.4).

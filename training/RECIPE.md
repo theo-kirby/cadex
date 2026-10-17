@@ -127,7 +127,14 @@ the engine's (`docs/MUJOCO.md`, `docs/XSCRIPT.md`).
    fix, 1,012 [rec: bright-thistle-0405].
 5. **A warm start needs the same observations, actions and reference**; a
    reward, goal or spec change is a declared curriculum step
-   (`--init-from-task-change`). A new actor input means a cold start.
+   (`--init-from-task-change`). A new actor input or action needs the
+   task's `body=` block (ADR-755): `--init-from-base` then maps the old
+   policy onto the new layout, a new input starting as a zero first-layer
+   row with fresh statistics while the shared inputs keep theirs (ADR-760),
+   and a new action as a zero output at its box centre. Without a `body=`
+   block it is still a cold start. The remap is shown across robots (orun9
+   `b3-base1` onto v0); a same-robot input change through it has not been
+   run.
 6. **A fine-tune from a base model (`--init-from-base`, ADR-755) trains at
    `--learning-rate 3e-5`, a tenth of the default.** At 3e-4 the first actor
    update after the warm-up threw a base at sigma 0.14 out to 0.47, and the
