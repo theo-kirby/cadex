@@ -128,6 +128,13 @@ the engine's (`docs/MUJOCO.md`, `docs/XSCRIPT.md`).
 5. **A warm start needs the same observations, actions and reference**; a
    reward, goal or spec change is a declared curriculum step
    (`--init-from-task-change`). A new actor input means a cold start.
+6. **A fine-tune from a base model (`--init-from-base`, ADR-755) trains at
+   `--learning-rate 3e-5`, a tenth of the default.** At 3e-4 the first actor
+   update after the warm-up threw a base at sigma 0.14 out to 0.47, and the
+   fine-tune then followed a cold curve (orun9 `b3-ft150`: 6/10 at 25, 0/10
+   at 50 and 75). At 3e-5 sigma held and it walked 9/10 at 50 and 75
+   (`b3-ftlr`, `docs/probes/orun9/b3-family.md`). Shown on one quadruped
+   pair, base and v0; not yet on a cat-sized extrapolation or a biped.
 
 ## 4. Budgets
 

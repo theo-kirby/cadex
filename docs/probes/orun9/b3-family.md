@@ -1,6 +1,6 @@
 # orun9 B3: the randomised quadruped family
 
-Verified against source: 2026-10-17. Frozen evidence (orun9, iterations 12 and 15).
+Verified against source: 2026-10-17. Frozen evidence (orun9, iterations 12, 15 and 17).
 
 B3's base model trains on a randomised quadruped family. ADR-758 sets out
 how the family is made: as built variants of one parametric robot,
@@ -202,3 +202,66 @@ Limits of this result:
   On the pre-fix trainer a 3-iteration CPU fine-tune of the final base
   onto v0 fell from 1,280-step episodes to 85; on the fixed one it held
   1,280 with the carried statistics moved < 1e-4 of their std.
+
+## Fine-tunes with training iterations (b3-ft150, b3-ftlr)
+
+Both start from `b3-base1` at iteration 150, which scores **0/10** on v0
+zero-shot (above). Each trains it on v0 for 75 iterations, half the cold
+150, through ADR-760's remap with the base's normaliser carried (24.58 M
+samples). The other settings are the recipe's: 8,192 environments, unroll
+20, seed 0, critic warm-up 10 and checkpoints every 25. The two runs
+differ only in the learning rate. Each checkpoint was judged on v0's walk
+spec over the 10 frozen seeds, the same way as the zero-shot table. The
+scripts are `launch_ft.py`, `launch_diag.py` and `judge_ft.sh` in
+`~/orun9-progress/b3ft/`; the reports are `evaluations/b3-ft150-walk-*` and
+`evaluations/b3-ftlr-walk-*`.
+
+| run | it | passed | failing (seeds) | forward mm/s | steps min | clearance | rated |
+|---|---|---|---|---|---|---|---|
+| b3-ft150 (lr 3e-4) | 25 | **6/10** | W3-speed 3, W6-steps 1, one fall | 195 | 7 | 0.051 | 0.68 |
+| b3-ft150 | 50 | **0/10** | W3-speed 10, W6-steps 8, W7-clearance 6 | 90 | 1.5 | 0.029 | 0.59 |
+| b3-ft150 | 75 | **0/10** | W3-speed 10, W6-steps 10, W7-clearance 8 | 130 | 2 | 0.015 | 0.56 |
+| b3-ftlr (lr 3e-5) | 25 | **4/10** | W6-steps 6, W7-clearance 5, four falls | 264 | 3 | 0.029 | 0.51 |
+| b3-ftlr | 50 | **9/10** | W6-steps 1 (seed 9108: 3 steps, min 4) | 295 | 5 | 0.029 | 0.52 |
+| b3-ftlr | 75 | **9/10** | W6-steps 1 (seed 9105: 3 steps, min 4) | 295 | 6.5 | 0.038 | 0.58 |
+| b3-v1cold (cold) | 50 / 100 / 150 | 4 / 8 / **10**/10 | | 163 / 229 / 236 | | | |
+| b3-v7cold (cold) | 50 / 100 / 150 | 0 / 0 / **10**/10 | | 104 / 5 / 273 | | | |
+
+The training curves side by side, as reward a step (sigma):
+
+| it | b3-ft150 | b3-ftlr | b3-v1cold | b3-v7cold |
+|---|---|---|---|---|
+| 0 | 11.60 (0.141) | 11.60 (0.141) | −5.44 | −5.30 |
+| 10 (warm-up ends) | 11.92 (0.141) | 11.92 (0.141) | 2.52 (0.69) | 2.53 (0.71) |
+| 11 | **0.51 (0.473)** | 12.22 (0.142) | 2.85 | 2.92 |
+| 12 | −2.37 (0.652) | 12.56 (0.143) | 3.21 | 3.29 |
+| 25 | 7.16 (0.460) | 12.39 (0.152) | 5.40 (0.52) | 7.13 (0.51) |
+| 50 | 10.83 (0.306) | 12.41 (0.155) | 10.26 (0.34) | 10.69 (0.35) |
+| 74 | 12.21 (0.243) | 13.16 (0.146) | 12.66 (0.23) | 12.49 (0.25) |
+
+- **At the default learning rate the fine-tune throws the base away.**
+  b3-ft150's first actor update, the iteration after the critic warm-up,
+  moved sigma from 0.141 to 0.473. Over the base's own iterations 140–160
+  sigma moved about 0.001 an iteration. Reward a step fell from 11.9 to
+  0.5 and episodes from about 23,000 steps to 121. From there its curve is
+  a cold run's: 7.2, 10.8 and 12.2 at 25, 50 and 74, against 5.4–7.1,
+  10.3–10.7 and 12.5–12.7 cold. Its 6/10 at 25 is gone by 50.
+- **The cause is the step size.** A 15-iteration repeat of b3-ft150 at a
+  tenth of the rate (`b3-dlr`, same settings otherwise) kept sigma at
+  0.141–0.144 and raised reward from 11.93 to 12.96 in four actor
+  iterations. The jump shrank far more than tenfold, so this is an
+  instability at 3e-4, not a step in proportion to the rate. Why the cat's
+  warm starts at 3e-4 do not show it (c1-c9's sigma went from 0.561 to
+  0.578) is not measured. Two differences that could explain it: the base
+  sits at a narrow sigma of 0.14, and its Adam moments start from zero on
+  a network that has converged.
+- **At 3e-5 the fine-tune nearly makes the proof:** 9/10 at 50 and at 75,
+  where the cold runs had 0–4/10 at 50 and 0–8/10 at 100. The one failing
+  seed, a different one at each checkpoint, has a foot that takes 3 steps
+  where the spec asks 4 (`step_count_ratio` 3.67). The gait is lopsided,
+  not falling. Forward speed is 295 mm/s against the 250 command.
+- **So B3's proof is not met by a fine-tune with iterations at ≤ 75.** The
+  standing B3 number is still the zero-shot one: base iterations 250 and
+  300 pass v0 10/10 with 0 fine-tune iterations. For the cat, the
+  different-shape quadruped, a fine-tune will need iterations, so it
+  should use 3e-5, not the default.
