@@ -1,8 +1,10 @@
 # The cold-start recipe for a legged policy
 
-Verified against source: 2026-10-17. Provenance: `[Cadex-new]`. A draft of
-orun8's B1 (`wild-forest-4815`); it is **not yet proven** on a robot other
-than the cat (see *What is not proven*).
+Verified against source: 2026-10-17. Provenance: `[Cadex-new]`. orun8's B1
+draft (`wild-forest-4815`), half proven: a cold quadruped that is not the cat
+followed it to its walk spec on 10/10 seeds by iteration 150 (orun9 `b1-q1`,
+`docs/probes/orun9/b1-quad.md`); the biped has not run (see *What is not
+proven*).
 
 This is the order of work that has made a cold legged policy train quickly
 in Cadex, written from the runs that showed it. Each step names the record
@@ -160,6 +162,10 @@ iterations) is what settles them.
   tried legs of different length.
 - **A stand-first stage.** Only stand-and-move in one task (step 1.7) has a
   run behind it.
-- **Any robot but the cat.** Every C1 run in this recipe is the orun8 cat
-  (`0f036864`); Go1 is the one other robot the trainer has trained
-  [rec: cold-meadow-3037].
+- **A robot but the cat: the quadruped is proven, the biped is not.**
+  orun9's `b1-q1` followed steps 0.1–4.1 cold on `orun9-quad` (9.27 kg,
+  twelve AK80-9 position servos, a 250 mm/s trot generated on its legs): the
+  walk spec passed 10/10 at iterations 150, 200, 250 and 300, 0/10 at 50
+  and 100, at 4.5 s an iteration (`docs/probes/orun9/b1-quad.md`). Every
+  run here used position drives about the build stance; no torque-drive
+  robot has followed the recipe.
