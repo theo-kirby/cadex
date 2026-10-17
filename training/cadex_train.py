@@ -747,7 +747,10 @@ def remap_from_base(np: Any, header: dict[str, Any], weights: Sequence[float],
     mean 0 and std 1. Outputs match by slot: a matched action copies its
     last-layer column and bias, negated where the signs differ; a target
     action the source lacks is a zero column and bias, its box centre; its
-    exploration width is the default's. Hidden layers are copied."""
+    exploration width is the default's. Hidden layers are copied.
+    ``carried`` marks, per target input, whether its statistics are the
+    source's (a matched input) or fresh (mean 0, std 1), so a warm start
+    keeps the source's sample count on the former only (ADR-760)."""
 
     source = header["body"]
     network = header["network"]
@@ -818,7 +821,8 @@ def remap_from_base(np: Any, header: dict[str, Any], weights: Sequence[float],
     return {"layers": [(np.asarray(w, dtype=np.float32), np.asarray(b, dtype=np.float32))
                        for w, b in mapped],
             "mean": [float(v) for v in mean_t], "std": [float(v) for v in std_t],
-            "log_std": log_std, "counts": counts}
+            "log_std": log_std, "counts": counts,
+            "carried": [str(name) in s_index for name, _gain, _centre in target["inputs"]]}
 
 
 # ---------------------------------------------------------------------------
@@ -3606,6 +3610,9 @@ def train(
     # ADR-753: how many more samples the actor's statistics rest on than the
     # critic's. Zero on a cold run; on a warm start, the source's count.
     actor_count_offset = 0
+    # ADR-760: per actor input, whether it keeps the source's sample count;
+    # None when every input does.
+    actor_carried: list[bool] | None = None
     if not getattr(options, "init_from", "") and (
             str(getattr(options, "init_from_task_change", "") or "").strip()
             or str(getattr(options, "init_from_parent_task", "") or "").strip()
@@ -3633,9 +3640,14 @@ def train(
                                      body_layout(bundle["task"]))
             base_counts = mapped["counts"]
             decoded = {"weights": flat_parameters(np, mapped["layers"])}
+            if not all(mapped["carried"]):
+                actor_carried = list(mapped["carried"]) + [True] * len(family_morph_names(bundle))
             source_header = {
                 **source_header,
-                "normaliser": {"mean": mapped["mean"], "std": mapped["std"], "count": 1},
+                # ADR-760: the matched inputs keep the base's samples; the
+                # target's new inputs start fresh (see actor_carried).
+                "normaliser": {"mean": mapped["mean"], "std": mapped["std"],
+                               "count": source_normaliser_count(source_header)},
                 "exploration": {**(source_header.get("exploration") or {}),
                                 "log_std": mapped["log_std"]},
             }
@@ -3679,16 +3691,20 @@ def train(
             std = jnp.asarray(stats["std"], dtype=jnp.float32)
             actor_count = source_normaliser_count(source_header)
             actor_count_offset = actor_count - 1
+            weight = (float(actor_count) if actor_carried is None else
+                      jnp.where(jnp.asarray(actor_carried), float(actor_count), 1.0))
             normaliser = normaliser.replace(
                 count=brax_types.UInt64(hi=0, lo=1),
                 mean={**normaliser.mean, "state": mean},
                 summed_variance={**normaliser.summed_variance,
-                                 "state": jnp.square(std) * float(actor_count)},
+                                 "state": jnp.square(std) * weight},
                 std={**normaliser.std, "state": std},
             )
             if not options.quiet:
+                fresh = ("" if actor_carried is None else
+                         f" ({actor_carried.count(False)} new inputs start fresh)")
                 print(f"normaliser  the actor's statistics carry the source's "
-                      f"{actor_count} samples", flush=True)
+                      f"{actor_count} samples{fresh}", flush=True)
 
         source_training = source_header.get("training") or {}
         init_from_provenance = {
@@ -3781,6 +3797,8 @@ def train(
     std_floor = {"state": jnp.asarray(floor[env.actor_idx]),
                  "privileged_state": jnp.asarray(floor)}
 
+    carried_mask = None if actor_carried is None else jnp.asarray(actor_carried)
+
     def floored(normaliser):
         return normaliser.replace(std={
             name: jnp.maximum(value, std_floor[name])
@@ -3788,7 +3806,8 @@ def train(
 
     def update_normaliser(normaliser, observation):
         """Brax's one shared count, except that the actor's statistics
-        count ``actor_count_offset`` samples more (ADR-753)."""
+        count ``actor_count_offset`` samples more (ADR-753) -- on the
+        inputs a base remap carried, when it marked some fresh (ADR-760)."""
 
         updated = running_statistics.update(normaliser, observation)
         if not actor_count_offset:
@@ -3796,11 +3815,14 @@ def train(
         actor = running_statistics.update(
             normaliser.replace(count=normaliser.count + actor_count_offset),
             observation)
+        pick = ((lambda carried, fresh: carried) if actor_carried is None else
+                (lambda carried, fresh: jnp.where(carried_mask, carried, fresh)))
         return updated.replace(
-            mean={**updated.mean, "state": actor.mean["state"]},
+            mean={**updated.mean, "state": pick(actor.mean["state"], updated.mean["state"])},
             summed_variance={**updated.summed_variance,
-                             "state": actor.summed_variance["state"]},
-            std={**updated.std, "state": actor.std["state"]})
+                             "state": pick(actor.summed_variance["state"],
+                                           updated.summed_variance["state"])},
+            std={**updated.std, "state": pick(actor.std["state"], updated.std["state"])})
 
     @jax.jit
     def iterate(optimizer_state, params, normaliser, env_state, key, train_actor):

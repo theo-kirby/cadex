@@ -129,6 +129,10 @@ def test_a_remap_onto_its_own_robot_is_the_identity_and_a_permuted_one_plays_the
         check_base_fits(header, {"task": target}, options(critic_warmup=0))
     mapped = remap_from_base(np, header, weights, layout)
     assert mapped["counts"]["inputs_zero"] == 2 and mapped["counts"]["outputs_zero"] == 1
+    # ADR-760: only the matched inputs keep the source's statistics' weight.
+    assert [name for (name, _g, _c), kept in zip(layout["inputs"], mapped["carried"])
+            if not kept] == ["obs.position.tail.0", "obs.velocity.tail.0"]
+    assert all(same["carried"])
 
     rng = np.random.default_rng(7)
     for _ in range(20):

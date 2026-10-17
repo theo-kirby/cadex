@@ -44488,3 +44488,47 @@ inputs copied and 13 folded, and wrote a witness-checked policy with v0's
 - *Feeding the morph only to the critic*: the hip box mirrors with the knee
   direction, so the actor has to know which way its knees bend.
 
+
+## ADR-760 — A base remap keeps the base's normaliser weight on the inputs it shares (2026-10-17, orun9)
+
+**Context.** ADR-755 restarted a remapped base's actor statistics at a
+count of one, because carrying the source's count (ADR-753) on every input
+would pin a target input the base never read at mean 0 and std 1 for the
+run. That swaps one defect for another: the first batch then replaces the
+statistics of every input the base *did* read, so the frozen actor reads
+its shared inputs on a new scale. B3's zero-shot proof never saw it (0
+training iterations); a fine-tune with iterations would.
+
+Measured on CPU, b3-base1's final policy (count 49,152,000) onto held-out
+v0 for 3 iterations at 64 environments, `--critic-warmup 1`
+(`~/orun9-progress/adr760/`): on the pre-fix trainer the carried means moved
+up to 1.33 of their std and the stds by up to ×2.0 (|log ratio| 0.71); the
+episode fell from 1,280 to 85 steps, reward per step from +12.79 to −7.34,
+and the exploration width rose from 0.078 to 1.64.
+
+**Decision.** `remap_from_base` returns `carried`, per target input, true
+where the input matched a source input. The warm start keeps the source's
+count (`source_normaliser_count` of the base) and, when some input is not
+carried, makes ADR-753's actor offset per input: the initial summed
+variance is std² × count on a carried input and std² × 1 on a new one, and
+`update_normaliser` takes a carried input's statistics from the offset
+update and a new one's from Brax's own count, so the target's first batch
+sets the new inputs and barely moves the shared ones. With every input
+carried the path is ADR-753's unchanged. The header still records one
+count, the carried inputs' (Brax keeps one): a later warm start from the
+fine-tune credits its once-new inputs with that count too, which is the
+same weight their own run's samples would carry within a factor of the
+base's count. Superseded: ADR-755's "statistics restart at a count of one".
+
+Measured, same setup on the fixed trainer: carried means moved at most
+6.3e-5 of their std and stds by |log ratio| 3.5e-5, the episode stayed at
+1,280 steps and reward per step at +12.79–13.30; with v0's privileged
+centre of mass given to the actor as three new inputs, the carried inputs
+moved at most 7.1e-5 / 4.1e-5 and the new ones took their own statistics
+from the first batches (com_z mean 274.4 mm, std 7.8, from 0 and 1).
+`test_canonical_body.py` asserts the mask (the remap's new tail inputs are
+the uncarried ones, the identity remap carries all).
+
+**Rejected.** *Recording a per-input count in the header*: the container's
+normaliser is one count, and the engine never reads it; the overstatement
+above is bounded and the next warm start's own batches correct it.
