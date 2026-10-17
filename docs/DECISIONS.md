@@ -44464,8 +44464,12 @@ per variant** with the unchanged `build_environment` and joins them
   registered and followed on the dashboard like any other.
 
 **Cost.** The step is traced once per variant, so the graph and the compile
-grow about K-fold; the steps themselves are each `count/K` wide. The GPU
-iteration time is the base run's to measure. Measured on CPU at 32 environments: a three-variant family (v1, v3, v7) compiled and
+grow about K-fold; the steps themselves are each `count/K` wide. On the
+5090 the first base run (`b3-base1`, six variants, 8,192 environments)
+compiled in about 230 s and then took **8.7 s an iteration**, against about
+4.4 s for one variant at the same batch (b3-v7cold, 885 s for 200
+iterations including its compile): the blocks run one after another, not
+fused, so a family iteration costs about twice a single robot's. Measured on CPU at 32 environments: a three-variant family (v1, v3, v7) compiled and
 ran two iterations in 97 s.
 
 **A family policy is a base, not a controller the engine plays.** Its
