@@ -299,3 +299,63 @@ at 74.
   any checkpoint ≤ 75 from either base 150 (b3-ftlr, 9/10) or base 250
   (b3-ft250, 9/10). For a target the base already walks, judge the
   zero-shot file first and keep it if it passes (recipe §4.4).
+
+## The cat on the base's body (iteration 19)
+
+B3's proof needs a second quadruped of a different shape, and the cat
+counts. `~/cadex-projects/orun9-cat` is a copy of `orun8-cat` (same
+`0f036864` geometry, same model `f321f89c`). Its script adds one task,
+`b3_walk`, accepted at revision `99a778da`:
+- **a body block** (ADR-755). Per leg, `abd` is the girdle's abduction
+  (`fhaa`, `hhaa`), `hip` the shoulder or hip, `knee` the elbow or stifle,
+  `ankle` the wrist or hock. `scap`, `spine`, `spine_yaw` and the tail are
+  not slots.
+- **morphology** measured on the exported model at the build pose. The fore
+  knee is behind the hip–foot line (−1) and the hind knee ahead of it (+1).
+  Thigh is 161 mm fore and 174 mm hind, shank (knee axis to paw centre)
+  213 and 232 mm, and hip height 0.386 m (the mean of the shoulder axis at
+  372 mm and the hip axis at 400 mm). The family spans hip heights of
+  0.292–0.357 m and masses of 7.5–11.0 kg. The cat weighs 31.6 kg.
+- **a walk like the family's** (fam_walk, the B1 recipe): one speed,
+  270 mm/s (the family's 250 at a 322 mm hip, scaled by dynamic
+  similarity), a trot generated at that speed, and the same eight-predicate
+  walk spec with shoves sized by the same capture-point rule (18.6–46.5 N in
+  the spec, up to 74 N in training). The tail-clearance term is the cat's
+  own addition. The over-rated price is split fore and hind, because one
+  term over 21 drives is 734 nodes and the cap is 512.
+
+The engine resolved every slot's sign from the axes. The left elbow and
+stifle turn about −y, so `knee` is +1 on the left and −1 on the right,
+where the family's knee is −1 on both sides. All offsets are 0.
+
+`fit_check.py` (in `~/orun9-progress/b3cat/`, output `fit_check.txt`) runs
+`check_base_fits` and `remap_from_base` on `b3-base1` at iteration 250.
+**The base is accepted for the cat**:
+
+| inputs copied | inputs folded | inputs zero | outputs copied | outputs zero |
+|---|---|---|---|---|
+| 33 (24 slot q/dq, 7 IMU, 2 clock) | 13 (morph, at the cat's own values) | 39 (8 ankle q/dq, 16 scap/spine/tail q/dq, 15 scan) | 12 | 12 (4 ankles, 2 scap, spine, spine_yaw, 4 tail) |
+
+The network is 72 → 512 → 256 → 128 → 24. This measures ADR-755's
+statement of the cat (32 of 48 joint inputs and 16 of 24 actions on slots),
+which was until now only the decision's text.
+
+**Zero-shot** (`zs.sh`: a 0-iteration `--init-from-base`, then the engine's
+evaluation on the 10 frozen seeds, CPU) gives **0/10**:
+- every seed tips: tilt median 46° (26–50°);
+- lateral speed is −520 mm/s (−475 to −566), so the cat goes over to its
+  right;
+- forward speed is 457 mm/s, inside the speed bound on 1 seed;
+- the worst drive is at 2.18× rated (1.88–2.53).
+
+A 9 kg base's actions do not carry a 31.6 kg cat. That is outside the
+family's mass and hip-height ranges, and the base's ankle, scapula and
+spine outputs all start at their box centres. A CPU smoke (2 iterations,
+64 envs, 3e-5) confirms the trainer's path: reward +5.85 a step at
+iteration 0 with 1,280-step episodes, then 41-step episodes at iteration 1,
+the cat falling in under a second. The witness agrees to 2.2e-7.
+
+**Next.** The cat's half of the proof needs two runs, each a B GPU slot:
+- the fine-tune, `launch_cat_ft.py b3-cat-ft 000250 100` (3e-5, checkpoints
+  every 25);
+- a cold run of `b3_walk` by the recipe, the curve the fine-tune must halve.
