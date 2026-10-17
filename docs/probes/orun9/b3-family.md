@@ -359,3 +359,51 @@ the cat falling in under a second. The witness agrees to 2.2e-7.
 - the fine-tune, `launch_cat_ft.py b3-cat-ft 000250 100` (3e-5, checkpoints
   every 25);
 - a cold run of `b3_walk` by the recipe, the curve the fine-tune must halve.
+
+## b3-cat-ft: the fine-tune onto the cat, judged (iteration 21)
+
+`b3-cat-ft` fine-tuned `b3-base1` @250 onto the cat's `b3_walk` (revision
+`99a778da`) at 3e-5 for 150 iterations, checkpoints every 25, 8,192 envs,
+in 2,419 s (scope `orun9-b3-cat-ft2`). It ran every iteration and its
+witness agreed to 1.1e-7. `judge_ft.sh` judged every checkpoint on the
+cat's walk spec over the 10 frozen seeds, CPU only (evaluations
+`b3-cat-ft-000025` … `-000150` in `orun9-cat`; `summ.py` prints the table).
+
+| it | pass | survives | eval episode (median s) | tilt ≤ 25° | speed 189–351 | lateral ±54 | steps ≥ 4 | clearance ≥ 0.02 | within rated | train reward/step | train episode | σ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 (zero-shot) | 0/10 | 0/10 | | 0/10 (46°) | 1/10 (457) | 0/10 (−520) | 0/10 | 0/10 | 0/10 (2.18) | | | 0.205 |
+| 25 | 0/10 | 0/10 | 0.91 | 3/10 (31.6°) | 0/10 (459) | 0/10 (−367) | 0/10 (0) | 0/10 | | 9.50 | 48 | 0.205 |
+| 50 | 0/10 | 5/10 | 6.47 | 7/10 (15.2°) | 1/10 (120) | 7/10 (23) | 0/10 (0) | 0/10 | 4/10 (1.24) | 10.79 | 187 | 0.224 |
+| 75 | 0/10 | **7/10** | 10.0 | 7/10 (10.5°) | 3/10 (130) | **9/10** (25) | 0/10 (1) | 0/10 (0.0063) | 1/10 (1.24) | 12.02 | 467 | 0.255 |
+| 100 | 0/10 | 3/10 | 2.15 | 3/10 (26.8°) | 5/10 (201) | 4/10 (68) | 0/10 (0) | 0/10 (0.0117) | 3/10 (1.11) | 13.13 | 491 | 0.264 |
+| 125 | 0/10 | 0/10 | 1.78 | 4/10 (25.2°) | 8/10 (315) | 4/10 (58) | 0/10 (0) | 0/10 (0.0060) | **10/10** (0.88) | 13.81 | 498 | 0.275 |
+| 150 | 0/10 | 0/10 | 1.60 | 7/10 (24.5°) | 3/10 (420) | 4/10 (66) | 0/10 (0) | 0/10 (0.0068) | **10/10** (0.88) | 14.19 | 501 | 0.286 |
+
+Each cell is the pass count, then the median in brackets. Heading passed
+10/10 at every checkpoint.
+
+**The fine-tune does not reach the cat's walk spec in 150 iterations.**
+- No checkpoint passes a seed. `steps` is 0/10 throughout: the cat
+  shuffles, its feet clearing 2–5 mm against the 7.7 mm the spec asks
+  (0.02 of a 386 mm hip height).
+- Survival in the engine's evaluation peaks at 75 (7/10, median episode
+  10 s) and then falls to 0/10 at 125 and 150. Every seed ends `collapsed`
+  (COM below 250 mm) inside 2.5 s, before the first shove at 3 s.
+- The trainer's numbers keep climbing all the while: reward 12.0 → 14.2 a
+  step and mean episode 467 → 501 steps from 75 to 150. Its own
+  deterministic witness rollouts collapse as well (110 steps at 125).
+  The sampled policy (σ rising 0.205 → 0.286) survives in training, and its
+  mean action does not. **The trainer's curve is not a proxy for the spec
+  on the cat.** Judge the checkpoints, as O6 says.
+- Drives came within rated (10/10 at 125 and 150, worst 0.88) from 2.18×
+  zero-shot.
+
+**The proof is not met yet on the cat.** Its other half, a cold `b3_walk`
+run on the cat by the B1 recipe (300 iterations), has not run. If the cold
+run passes by 300, the fine-tune has already failed the "half the
+iterations" bar (no pass by 150). If it does not pass by 300, the bar is
+not decidable on this pair. On v0, the zero-shot base passed and fine-tuning
+made it worse (b3-ft250, above). On the cat, the base walks no seed
+zero-shot and 150 fine-tune iterations reach none either. The cat is 3×
+the family's heaviest member and 8% above its tallest hip, so it lies
+outside the base's range.

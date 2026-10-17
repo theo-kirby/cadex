@@ -153,3 +153,41 @@ The extra pay bought closing speed with wrist torque. It also cost turn2's
 Under the ladder rule, the next rung is 16. A run at 16 should be expected
 to cross rated on `j_wrist_r` on points. Judge it on `within_rated` before
 reading `reaches`.
+
+## c1-c11: the ladder's last rung (iteration 21)
+
+**c1-c11**:
+- the change: `waypoint_w` goes 12 → 16 and nothing else. The retained
+  bundle differs from c1-c10's in `reward[3].weight` (12.0 → 16.0) and no
+  other field;
+- the warm start: from c1-c10 @100 (ADR-753, critic warm-up 10);
+- the budget: 100 iterations, 8,192 envs, checkpoints at 50 and 100;
+- the revision: accepted `c0a39e63` (a 6 min 18 s rebuild). The script,
+  launcher and waiter are in `~/orun9-progress/c1c11/`. b3-cat-ft held the
+  machine's training slot, so a waiter ran as the transient user *service*
+  `orun9-c1-c11`. It polled the slot every minute, and when b3-cat-ft
+  ended at 18:50:25 it registered and launched `c1-c11`. The launcher
+  returned, the service's main process exited, and systemd stopped the
+  service and killed its control group. That took the detached supervisor's
+  trainer with it, at 0.5 s (exit −15, 0 iterations). A waiter must
+  launch through `systemd-run --scope` or run with `KillMode=process`.
+  The waiter is deleted. The run went out again at once as **`c1-c11b`**
+  (a run's name is used once), in scope `orun9-c1-c11b`, on the same
+  bundle (`task_sha256` `c592c388…`).
+
+`navcheck.py` on the retained bundle, with the target 5 m ahead in nav mode:
+
+| v (mm/s) | 0 | 600 | 1500 | 2000 | 2500 |
+|---|---|---|---|---|---|
+| c1-c10 (waypoint ×12) | +9.41 | +12.16 | +16.20 | +18.30 | +20.20 |
+| c1-c11 (waypoint ×16) | +11.41 | +15.12 | +20.60 | +23.50 | +26.20 |
+
+Going at 2.5 m/s pays 2.30× standing at the target (2.15× at 12). The gap
+from 0.6 to 2.5 m/s is +11.1 a step (+8.0 at 12). Standing with the target
+5 m behind pays −4.59 a step. At 1.2× rated on every drive, the over-rated
+price is −0.35 a step against +24.0 of waypoint pay. So nothing in the
+reward stops the wrist going over rated while it closes.
+
+**Judging order.** Read `within_rated` on points first, then turn2's
+`tail_clear`, then `reaches`. If `j_wrist_r` crosses rated on points, it is
+O8's binding drive for points, and the waypoint weight is not raised again.
