@@ -117,7 +117,9 @@ EXTRA_SETTINGS: dict[str, tuple[str, type]] = {
 #: ``hidden`` is the one list: the layer widths, ``--hidden 64 64``.
 BASE_SETTINGS = ("iterations", "envs", "seed", "label", "init_from",
                  "init_from_parent_task", "init_from_task_change")
-SETTING_NAMES = (*BASE_SETTINGS, "hidden", *EXTRA_SETTINGS)
+#: ``init_from_base`` is ADR-755's reason for a warm start across robots;
+#: ``family`` is ADR-759's other variants' task bundles, copied into the run.
+SETTING_NAMES = (*BASE_SETTINGS, "hidden", "init_from_base", "family", *EXTRA_SETTINGS)
 
 STOP_RULE = (
     "stops at the last iteration, at the wall-clock budget, when the mean "
@@ -307,6 +309,16 @@ def _settings(raw: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
         raise LoopError("a warm start across a task change needs init_from, "
                         "init_from_parent_task and init_from_task_change together.")
     extra: list[str] = []
+    if raw.get("init_from_base"):
+        if "init_from" not in settings:
+            raise LoopError("init_from_base is the reason for a warm start across robots; "
+                            "it needs init_from.")
+        settings["init_from_base"] = " ".join(str(raw["init_from_base"]).split())
+        extra += ["--init-from-base", settings["init_from_base"]]
+    if raw.get("family"):
+        if isinstance(raw["family"], (str, bytes)):
+            raise LoopError("family must be a list of the other variants' task bundles.")
+        settings["family"] = [str(path) for path in raw["family"]]
     if raw.get("hidden") is not None:
         hidden = [int(width) for width in raw["hidden"]]
         if not hidden or min(hidden) < 1:
@@ -404,6 +416,31 @@ def register(root: Path, *, run: str, budget_s: float, reason: str,
     shutil.copyfile(task["task"], bundle)
     shutil.copyfile(task["model"], train_dir / task["model"].name)
     policy = train_dir / f"{task['task_output']}.cxpolicy"
+    if "family" in chosen:
+        # ADR-759: each variant's bundle and model, beside each other, so the
+        # trainer finds the model by name as it does for any moved bundle.
+        copied = []
+        for index, source in enumerate(chosen["family"], start=1):
+            source_path = Path(source).expanduser()
+            source_path = source_path if source_path.is_absolute() else root / source_path
+            if not source_path.is_file():
+                shutil.rmtree(run_dir)
+                raise LoopError(f"family: no such file: {source}.")
+            variant = json.loads(source_path.read_text(encoding="utf-8"))
+            relative = Path(str((variant.get("model") or {}).get("path") or ""))
+            model = next((candidate for candidate in
+                          (source_path.parent.parent / relative,
+                           source_path.parent / relative.name) if candidate.is_file()), None)
+            if model is None:
+                shutil.rmtree(run_dir)
+                raise LoopError(f"family: {source} names a model that is not beside it.")
+            place = train_dir / "family" / str(index)
+            place.mkdir(parents=True)
+            shutil.copyfile(source_path, place / source_path.name)
+            shutil.copyfile(model, place / relative.name)
+            copied.append(str(place / source_path.name))
+        chosen["family"] = copied
+        extra += ["--family", *copied]
     command = trainer_command(
         python, bundle, policy, stop_on_collapse=True,
         **{key: chosen[key] for key in BASE_SETTINGS if key in chosen}) + extra

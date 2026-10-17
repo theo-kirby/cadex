@@ -44383,7 +44383,7 @@ randomisation, as before.
   The actor's channels, actions, reward terms and network shapes are the
   same.
 
-**The trainer's half (B3's next unit, not implemented).** `--family DIR…`
+**The trainer's half (implemented as ADR-759, which departs from this plan in how).** `--family DIR…`
 takes the variants' bundles; environment *e* is variant *e* mod *K*, held
 for the run. The batched model is each variant's fields gathered by
 environment, the same move a mass draw already makes. Reward and termination
@@ -44416,3 +44416,71 @@ behind and the hind knee ahead) used the widened 22-entry task and took 915
 s. It went 0/10 at 50, 0/10 at 100 (standing still), and **10/10 at 150 and
 200**. So the recipe's cold curve is 150 iterations on all three knee
 arrangements tried. Evidence: `docs/probes/orun9/b3-family.md`.
+
+## ADR-759 — A family trains as one batch of its variants' own environments (2026-10-17, orun9)
+
+**Context.** ADR-758 built B3's family as seven variants of one robot and
+planned the trainer's half: `--family`, one batched model with each
+variant's fields gathered per environment, reward and termination compiled
+per variant and selected by index, clips padded to the longest, per-variant
+action boxes, and the morph constants as actor inputs. Each of those is a
+second, index-selected copy of something `build_environment` already does
+correctly for one bundle, and the per-variant facts ADR-758 measured (clip
+length and reset states, the height constant, shove newtons, reset lift,
+mirrored hip boxes) reach a dozen places in it.
+
+**Decision.** `cadex_train.py --family BUNDLE…` builds **one environment
+per variant** with the unchanged `build_environment` and joins them
+(`family_environment`):
+
+- The bundle is variant 0 and names the run (its digests are the header's
+  `task` and `model`); `--family` lists the others. `check_family` refuses
+  a variant whose channels, actor channels, joints, reward-term count,
+  episode (steps, solver steps) or body (family, version, morph names)
+  differ, or a duplicate. The models are compiled and their sizes
+  (`FAMILY_SIZES`) compared before anything is batched.
+- The environments are split into **contiguous blocks**, as evenly as they
+  go, not `e mod K`: a block is a slice, so each variant's environment is
+  built and stepped whole. Block *k*'s host draws are seeded at `seed` plus
+  the environments before it, so environment *e* draws
+  `random.Random(seed + e)` whatever its variant. A step splits the state by
+  block, steps each variant, and concatenates; the PRNG key, the one leaf
+  with no environment axis, is stacked per block. PPO's minibatches are a
+  permutation of environments, so each mixes the variants.
+- The morph constants (`morph_inputs`: `morph.<leg>.<key>` sorted, then
+  `morph.<key>`) are appended to the actor's and the critic's observation.
+  The header lists them in `observations` and in `body.inputs` (gain 1,
+  centre 0; `family_body`), and the variants under `training.family`
+  (task and model digests, label, morph).
+- `remap_from_base` folds a source `morph.*` input the target lacks into
+  the first layer's bias **at the target's own morph value**, so a base
+  remapped onto a robot plays what the base plays reading that robot's
+  constants (`test_canonical_body.py`, the contract). `--init-from-base`
+  onto a `--family` run is refused; a family continues from a family policy
+  by `--init-from`, whose channel check now expects the morph inputs.
+- `cadex_cli.loop` takes `family` (the other variants' bundles, copied with
+  their models into `train/family/<k>/`) and `init_from_base` (the reason,
+  which needs `init_from`) as settings, so a base run and its fine-tunes are
+  registered and followed on the dashboard like any other.
+
+**Cost.** The step is traced once per variant, so the graph and the compile
+grow about K-fold; the steps themselves are each `count/K` wide. The GPU
+iteration time is the base run's to measure. Measured on CPU at 32 environments: a three-variant family (v1, v3, v7) compiled and
+ran two iterations in 97 s.
+
+**A family policy is a base, not a controller the engine plays.** Its
+actor reads `morph.*` inputs no bundle provides, so `assembly.policy`
+refuses it, and the dashboard's checkpoint rollouts cannot replay it. It is
+judged through a fine-tune: `--init-from-base` onto a variant (0 or more
+iterations) writes an ordinary policy for that robot. Checked: a 2-iteration
+CPU fine-tune from the smoke base onto the held-out v0 was accepted, 33
+inputs copied and 13 folded, and wrote a witness-checked policy with v0's
+33 channels.
+
+**Rejected.**
+- *ADR-758's gathered model with index-selected reward, clips and boxes*:
+  more code, and every per-variant constant would be a second copy that can
+  drift from the one-bundle path the cold runs proved.
+- *Feeding the morph only to the critic*: the hip box mirrors with the knee
+  direction, so the actor has to know which way its knees bend.
+

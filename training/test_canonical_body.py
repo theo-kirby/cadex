@@ -21,8 +21,11 @@ import pytest
 from cadex_train import (
     body_layout,
     check_base_fits,
+    check_family,
+    family_body,
     flat_parameters,
     forward,
+    morph_inputs,
     remap_from_base,
     unflatten_parameters,
 )
@@ -71,8 +74,8 @@ SOURCE_SLOTS = {"lh": ("l", "hip", 1, 5.0), "lk": ("l", "knee", -1, -40.0),
 SOURCE = task_of(["lh", "lk", "rh", "rk"], SOURCE_SLOTS)
 
 
-def policy_on(task: dict, seed: int = 0) -> tuple[dict, list[float]]:
-    layout = body_layout(task)
+def policy_on(task: dict, seed: int = 0, layout: dict | None = None) -> tuple[dict, list[float]]:
+    layout = layout or body_layout(task)
     inputs, actions = len(layout["inputs"]), len(layout["outputs"])
     rng = np.random.default_rng(seed)
     widths = [inputs] + HIDDEN + [actions]
@@ -156,3 +159,41 @@ def test_a_remap_onto_its_own_robot_is_the_identity_and_a_permuted_one_plays_the
                 continue
             flip = SOURCE_SLOTS[joint][2] * target_slots[joint][2]
             assert u_t[j] == pytest.approx(flip * u_s[order[joint]], abs=2e-5)
+
+
+def test_a_family_base_folds_its_morph_inputs_at_the_targets_values():
+    """ADR-759: a --family policy reads each variant's morph constants after
+    its channels; remapped onto one robot of the family it plays what the
+    base plays reading that robot's constants."""
+
+    morph = {"l": {"knee_dir": -1, "thigh_m": 0.2}, "r": {"knee_dir": -1, "thigh_m": 0.2},
+             "hip_h_m": 0.32}
+    variant = {"l": {"knee_dir": 1, "thigh_m": 0.185}, "r": {"knee_dir": 1, "thigh_m": 0.185},
+               "hip_h_m": 0.33}
+
+    def bundle(values, sha):
+        task = {**SOURCE, "body": {**SOURCE["body"], "morph": values}, "reward": [{}],
+                "episode": {"max_steps": 500, "solver_steps_per_action": 4}}
+        return {"task": task, "task_sha256": sha}
+
+    family = [bundle(morph, "a"), bundle(variant, "b")]
+    check_family(family)
+    with pytest.raises(SystemExit, match="morph names"):
+        check_family([family[0], bundle({"hip_h_m": 0.3}, "c")])
+    layout = family_body({**family[0], "family": family})
+    names = [name for name, _ in morph_inputs(morph)]
+    assert [row[0] for row in layout["inputs"][-len(names):]] == names
+    header, weights = policy_on(SOURCE, layout=layout)
+    source_layers = unflatten_parameters(
+        np, weights, [tuple(shape) for shape in header["network"]["layers"]])
+
+    target = family[1]["task"]
+    mapped = remap_from_base(np, header, weights, body_layout(target))
+    assert mapped["counts"]["inputs_folded"] == len(names)
+    rng = np.random.default_rng(11)
+    for _ in range(10):
+        x = list(rng.normal(size=len(layout["inputs"]) - len(names)) * 5.0)
+        u_s = play(source_layers, header["normaliser"]["mean"], header["normaliser"]["std"],
+                   x + [value for _, value in morph_inputs(variant)])
+        u_t = play(mapped["layers"], mapped["mean"], mapped["std"], x)
+        np.testing.assert_allclose(u_t, u_s, atol=2e-5)
