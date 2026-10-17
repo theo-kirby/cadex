@@ -115,3 +115,41 @@ rows are unchanged.
 
 The ladder rule stays: if points moves, the next rung is 16; if it does not,
 the waypoint pay is not what holds points back.
+
+## c1-c10 judged (iteration 20)
+
+Each checkpoint was judged on all six specs over the 10 frozen seeds
+(`judge_c10.sh`; summaries in `~/orun9-progress/c1c10/judge50.out` and
+`judge100.out`). Pass counts, then each failing predicate's median:
+
+| spec | c1-c9 @100 | c1-c10 @50 | c1-c10 @100 |
+|---|---|---|---|
+| run | 0/10; tracks_speed 937 mm/s | 0/10; tracks_speed 962, tail_clear 8/10 | 0/10; tracks_speed 975 |
+| stand | 0/10; still 272 mm | 1/10; still 245 | 1/10; still 241 |
+| shove | 10/10 | 10/10 | 9/10; one seed tips |
+| turn2 | 9/10; tail_clear | 5/10; tail_clear 0.00083 | 3/10; tail_clear 0.00166 |
+| reverse | 0/10; reverses 51.8° | 0/10; reverses 51.8°, tail_clear 4/10 | 0/10; reverses 44.6°, tail_clear 2/10 |
+| points | 0/10; reaches 0, close 2870 mm | 0/10; reaches 0, close 3393, one seed tips | 0/10; reaches 0.5, close 3164, within_rated 6/10 (0.979) |
+
+Points moved at weight 12, though not to a pass. `closing.py` gives:
+
+- **Targets reached:** 6 over the 10 seeds at @100, five seeds reaching at
+  least one. c1-c8 reached 0 and c1-c9 reached 1.
+- **First leg:** the closing speed rose to 1.26 m/s, from 1.10 on c1-c8.
+- **Overall:** the median closing speed held at 1.05 m/s, with closest
+  approach per leg at a median of 1,971 mm, against 2,383 mm on c1-c8.
+
+The drives now bind:
+
+- **Rated torque:** `within_rated` on points fell from 10/10 (c1-c8, worst
+  drive 0.82–0.94 of rated) to 6/10 (0.82–1.08).
+- **Which drive:** per drive (`o8_rms.py`, `binding-points.txt`), the right
+  wrist `j_wrist_r` is the worst drive on 8 of 10 seeds, at a median of
+  0.979 of its 9 N·m rating, up from 0.845 on c1-c8.
+
+The extra pay bought closing speed with wrist torque. It also cost turn2's
+`tail_clear` (9/10 to 3/10) and one shove seed.
+
+Under the ladder rule, the next rung is 16. A run at 16 should be expected
+to cross rated on `j_wrist_r` on points. Judge it on `within_rated` before
+reading `reaches`.
