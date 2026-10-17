@@ -250,3 +250,76 @@ symmetric gait. Under the owner's note to prefer more reference over
 another penalty, the next C lever is the reference's weight in nav mode. A
 left/right symmetry term is the alternative. Another waypoint or effort
 weight is not the lever.
+
+## c1-c11b judged (iteration 23)
+
+Each checkpoint was judged on all six specs over the 10 frozen seeds
+(`~/orun9-progress/c1c11/judge_c11.sh`; summaries in `judge50.summ` and
+`judge100.summ`). It was warm-started from c1-c10 @100. Pass counts, then
+each failing predicate's median, in the judging order set above:
+
+| spec | c1-c10 @100 | c1-c11b @50 | c1-c11b @100 |
+|---|---|---|---|
+| points | 0/10; within_rated 6/10 (0.979), reaches 0.5, close 3164 mm | 0/10; within_rated 8/10 (0.947), reaches 0, close 2899 | 0/10; within_rated 7/10 (0.970), reaches 0, close 2733 |
+| turn2 | 3/10; tail_clear | 7/10; tail_clear 7/10 | **9/10**; tracks_yaw 9/10 (one seed at 20.1 °/s of 20), tail_clear 10/10 |
+| reverse | 0/10; reverses 44.6° | 0/10; reverses 36.0° | 0/10; reverses 48.9° |
+| run | 0/10; tracks_speed 975 mm/s | 0/10; tracks_speed 1066 | 0/10; tracks_speed 1132 |
+| stand | 1/10; still 241 mm | 0/10; still 248 | 1/10; still 288 |
+| shove | 9/10 | 9/10; one seed tips | 10/10 |
+
+- **Targets reached** over the 10 seeds: 6 at c1-c10 @100, 0 at c1-c11b @50
+  and 4 at @100. Weight 16 bought no reach.
+- **The binding drive** (`o8_rms.py`, `binding-points.txt`): at @100
+  `j_wrist_r` is the worst drive on 6 seeds and `j_wrist_l` on 4, at
+  medians of 0.954 and 0.916 of rated (c1-c10: 0.979 and about 0.75).
+  The wrists are more even at 16, and both run near rated.
+- **The ladder ends.** The right wrist crosses rated on points on 3 of 10
+  seeds, and `reaches` did not move. So by the rule above the waypoint
+  weight is not raised again. c1-c11b @100 holds turn2 at 9/10, as c1-c9
+  did, with every drive within rated on turn2, reverse and run.
+- **O1.** c1-c10 and c1-c11b are two consecutive judged cat runs that pass
+  no clause the run before did not. So the next GPU slot is B's: the cat's
+  cold `b3_walk` run, `b3-cat-cold`, below.
+
+## c1-c12: the nav-mode reference weight, priced (iteration 23)
+
+The note in the previous section said the reference pays at most 4 a step
+in nav mode. That is its value at the target. The nav half of the gate is
+`exp(-(V_WANT / 2500)^2)`, which is 0.37 when the target is 1.25 m or more
+away. So at a far target the reference pays at most 1.47 a step.
+
+`~/orun9-progress/c1c12/c12-script.py` is c1-c10's script with one new
+parameter, `nav_ref_w`, which scales that nav half (1 is c1-c10's task).
+It is built at 4 as revision `396afbb7` on orun8-cat (6 min 7 s). The
+retained bundle's `track_reference` equals the priced variant at every
+state checked. Every other term and weight equals c1-c10's, so a warm start
+from c1-c10 is a reward-only change. The expression is 494 AST nodes of
+the cap of 512 (491 at 1).
+
+`navref_price.py` prices it on c1-c10's bundle per step in nav mode, with
+cmd 1500 as in the points spec. "Perfect" means pose, paw lift and contacts
+all on the reference; "none" means all off it. The other terms are from
+`navcheck.py` (standing 9.41, 2.5 m/s 20.20 a step, with the target 5 m
+ahead).
+
+| nav_ref_w | reference at 5 m, perfect / none | at 0.3 m, perfect | go/stand at 5 m, tracked | tracking worth / step |
+|---|---|---|---|---|
+| 1 (c1-c10) | 1.47 / 0.37 | 3.78 | 1.99× | 1.10 |
+| 4 | 5.89 / 1.47 | 15.10 | 1.71× | 4.42 |
+| 8 | 11.77 / 2.94 | 30.21 | 1.51× | 8.83 |
+| 12 | 17.66 / 4.41 | 45.31 | 1.40× | 13.25 |
+
+The reference pays whether the cat goes or trots on the spot. So each step
+up in its weight makes standing at a far target pay more relative to
+running at it. Weight 8 brings going against standing down to 1.51×. That
+is c1-c7's ratio, at which the cat closed at about 0.6 m/s. Weight 12 goes
+below it. At 8 the tracking is worth 8.8 a step, close to the 12.0 that
+running at 2.5 m/s gains on the waypoint. At 12 it is worth more than that
+gain.
+
+**The screen** for the next C slot, as consecutive 100-iteration screens
+warm from c1-c10 @100: **4 first, then 8**. Weight 12 is priced, but it
+pays standing too well to screen before 4 and 8 have been read. To screen
+it, set the weight with `./cadex params --set nav_ref_w=W`, then run
+`launch_c12.py RUN W`. If the reference does not even the wrists at 8, the
+fallback is a left/right symmetry term.

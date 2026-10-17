@@ -407,3 +407,20 @@ made it worse (b3-ft250, above). On the cat, the base walks no seed
 zero-shot and 150 fine-tune iterations reach none either. The cat is 3×
 the family's heaviest member and 8% above its tallest hip, so it lies
 outside the base's range.
+
+## The cat's cold `b3_walk` run launched (iteration 23)
+
+**b3-cat-cold** is the cold half of the proof on the cat:
+- the task: orun9-cat's `b3_walk` (accepted revision `99a778da`), trained
+  from nothing by the B1 recipe exactly as b1-q1 ran (8,192 envs,
+  unroll 20, seed 0, the default learning rate);
+- the budget: 300 iterations, checkpoints every 50, every one to be judged
+  on the walk spec over the 10 frozen seeds
+  (`~/orun9-progress/b3cat/launch_cat_cold.py` and `judge_run.sh`);
+- the scope: `orun9-b3-cat-cold`, on the GPU slot O1 gives B after two cat
+  runs that passed no new clause (c1-c10, c1-c11b; `points-screen.md`).
+
+Iteration 0 logged −29.4 reward per step and σ 44.8, then σ 0.90 at
+iteration 1. That is the same first-iteration pattern as b3-v1cold and the
+cat's c1-t1. By iteration 33 it was at +7.1 a step, with mean episodes of
+70 steps and a trainer ETA of 77 min.
