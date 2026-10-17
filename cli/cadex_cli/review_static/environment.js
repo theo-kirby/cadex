@@ -45,6 +45,8 @@ export const STAGE_LOOK = {
   footprintFogMul: 4, farFloorMul: 1.5,
   keyDir: KEY_DIR, exposure: 0.95,
 };
+// Metres of floor kept beyond the design when setCentre grows the mat to reach it (ADR-742).
+const COVER_MARGIN = 6;
 
 // A vertical sky gradient as an equirectangular background. It is unconditional now: with the
 // walled room gone, EVERY scene has a horizon, and a flat fill above it reads as "the render ran
@@ -85,7 +87,8 @@ export const PALETTE = {
 };
 
 export function createEnvironment(view, { labels = true } = {}) {
-  let size = { footprint: 10, floorZ: 0 };
+  let size = { footprint: 10, floorZ: 0, centre: [0, 0] };
+  let staged = 10;                        // the footprint setStage derived; setCentre never shrinks under it
   let fogOverride = null;                 // {near, far} set by setFog; survives restaging
   let room = null;
   let lighting = null;                    // a setup's light levels over the palette's (setLighting)
@@ -109,7 +112,7 @@ export function createEnvironment(view, { labels = true } = {}) {
   function rebuildRoom() {
     disposeObj(room);
     room = buildStageFloor(view.world, {
-      size: size.footprint, floorZ: size.floorZ,
+      size: size.footprint, floorZ: size.floorZ, centre: size.centre,
       palette: PALETTE.tile, labels,
     });
     liftFloor();
@@ -154,11 +157,25 @@ export function createEnvironment(view, { labels = true } = {}) {
   }
 
   function setSize(sz = {}) {
-    size = { footprint: sz.footprint ?? size.footprint, floorZ: sz.floorZ ?? size.floorZ };
+    size = { footprint: sz.footprint ?? size.footprint, floorZ: sz.floorZ ?? size.floorZ,
+             centre: sz.centre ?? size.centre };
     // A zoom changes the floor's size on nearly every frame; the texture is painted once, and the
     // grid stays anchored to the world origin whatever the size (floor.js).
     if (!room) rebuildRoom();
-    else resizeStageFloor(room, { size: size.footprint, floorZ: size.floorZ });
+    else resizeStageFloor(room, { size: size.footprint, floorZ: size.floorZ, centre: size.centre });
+  }
+
+  // The ground never ends (ADR-742). The floor is centred on `centre` ([x, y], metres, sim frame:
+  // the camera's target) and grown, past the size setStage derived from the fade, until it also
+  // covers a point `cover` metres from that centre (the design, which a camera that does not
+  // follow lets run away from its target) with COVER_MARGIN to spare. A rollout that runs 50 m is
+  // over drawn ground at every frame, followed or not, and the plane's edge stays as far past the
+  // fade as setStage put it. Cheap: it moves and scales one plane, and repaints nothing. Returns
+  // the floor's size and the far plane the camera must use for it.
+  function setCentre(centre, cover = 0) {
+    const footprint = Math.max(staged, 2 * (Math.max(0, cover) + COVER_MARGIN));
+    setSize({ footprint, centre: [centre[0], centre[1]] });
+    return { roomSize: footprint, far: STAGE_LOOK.farFloorMul * footprint, centre: size.centre.slice() };
   }
 
   // Override the palette's fog distances (metres). The palette defaults are sized for a whole arena;
@@ -188,12 +205,14 @@ export function createEnvironment(view, { labels = true } = {}) {
   //   fog / roomSize   explicit overrides for either derived value.
   // The caller sets its camera's far plane to the returned `far`.
   function setStage({ camDist, camReach = null, frameSpan = null, fog = null,
-                      roomSize = null, floorZ = 0 } = {}) {
+                      roomSize = null, floorZ = 0, centre = size.centre } = {}) {
     const d = Math.max(1e-3, Number(camDist) || 0);
     const L = STAGE_LOOK;
 
     const span = frameSpan ?? (2 * Math.tan(THREE.MathUtils.degToRad(view.camera.fov) / 2) * d);
-    const reach = camReach ?? 2 * (Math.hypot(view.camera.position.x, view.camera.position.z) + 0.6);
+    // The camera's horizontal distance from the floor's centre (three's x, -z are sim x, y).
+    const reach = camReach ?? 2 * (Math.hypot(view.camera.position.x - centre[0],
+                                              view.camera.position.z + centre[1]) + 0.6);
 
     const [fogNear, fogFar] = fog
       ?? [Math.max(L.fogNearMin, L.fogNearMul * d), Math.max(L.fogFarMin, L.fogFarMul * d)];
@@ -203,9 +222,10 @@ export function createEnvironment(view, { labels = true } = {}) {
     const far = L.farFloorMul * footprint;
 
     setFog({ near: fogNear, far: fogFar });
-    setSize({ footprint, floorZ });
+    staged = footprint;
+    setSize({ footprint, floorZ, centre });
     return { roomSize: footprint, fog: { near: fogNear, far: fogFar }, far, pitch: GRID_PITCH,
-             floorZ, frameSpan: span };
+             floorZ, frameSpan: span, centre: centre.slice() };
   }
 
   function dispose() {
@@ -223,5 +243,5 @@ export function createEnvironment(view, { labels = true } = {}) {
   // orbit, the capturer once per clip); this only has to be right enough that the floor outruns
   // its own fade.
   setStage({ camDist: Math.max(1, view.camera.position.length()) });
-  return { setStage, setSize, setFog, setLighting, dispose };
+  return { setStage, setCentre, setSize, setFog, setLighting, dispose };
 }

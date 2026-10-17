@@ -910,7 +910,10 @@ def policy_view(train: Path, path: Path, run: str, root: Path) -> dict[str, Any]
         "normaliser": header.get("normaliser"), "observations": header.get("observations"),
         "actions": actions, "weights": base64.b64encode(blob).decode("ascii"),
         "inputs": _policy_inputs(bundle, [str(n) for n in header.get("observations") or []]),
-        "clock": {"period_s": float(period)} if isinstance(period, (int, float)) and period > 0 else None,
+        # ADR-752: a clock that follows the command is not the trace's time
+        # over a period, so the page does not rebuild it.
+        "clock": ({"period_s": float(period)} if isinstance(period, (int, float)) and period > 0
+                  and not ((bundle or {}).get("tracking") or {}).get("cadence") else None),
         "parts": _mjcf_parts(mjcf if mjcf is not None and mjcf.is_file() and not mjcf.is_symlink() else None,
                              [str(a.get("joint")) for a in actions])})
     return reply
@@ -1034,7 +1037,7 @@ def terrain_block(raw: Any) -> dict[str, Any] | None:
     The engine writes the drawing (``CadexDynamics.terrain_drawing``) into a
     rollout or evaluation trace; :func:`mjcf_terrain` reads the same shape
     from an export. Boxes are a centre, an ``xyzw`` rotation and half-extents
-    in mm; a heightfield is a row-major grid of heights over its extent, row
+    in mm, domes (ADR-744) a sphere's centre and radius in mm; a heightfield is a row-major grid of heights over its extent, row
     0 at -Y. ``plane_z_mm`` is the plane a box course stands on, which goes
     on beyond the extent, and is ``None`` for a heightfield."""
 
@@ -1074,6 +1077,17 @@ def terrain_block(raw: Any) -> dict[str, Any] | None:
                 return None
             block["boxes"].append({"shape": str(box.get("shape") or "block"), "centre_mm": centre,
                                    "rotation_xyzw": turn, "half_mm": half})
+        domes = raw.get("domes") or []
+        if not isinstance(domes, list) or len(domes) > TERRAIN_MAXIMUM_BOXES:
+            return None
+        block["domes"] = []
+        for dome in domes:
+            if not isinstance(dome, Mapping):
+                return None
+            centre, radius = numbers(dome.get("centre_mm"), 3), numbers([dome.get("radius_mm")], 1)
+            if centre is None or radius is None or radius[0] <= 0:
+                return None
+            block["domes"].append({"centre_mm": centre, "radius_mm": radius[0]})
         return block
     grid = raw.get("grid") if isinstance(raw.get("grid"), Mapping) else {}
     rows, columns = grid.get("rows"), grid.get("columns")
@@ -1106,8 +1120,14 @@ def mjcf_terrain(root: ElementTree.Element) -> dict[str, Any] | None:
     pos = _floats(ground.get("pos"), 3, [0.0, 0.0, 0.0]) or [0.0, 0.0, 0.0]
     if (ground.get("type") or "sphere") == "plane":
         plane = pos[2] * 1000.0
-        boxes = []
+        boxes, domes = [], []
         for geom in geoms:
+            if geom is not ground and geom.get("type") == "sphere":
+                centre = [v * 1000.0 for v in (_floats(geom.get("pos"), 3, [0.0, 0.0, 0.0]) or [])]
+                radius = (_floats(geom.get("size"), 1, []) or [0.0])[0] * 1000.0
+                if len(centre) == 3 and centre[2] + radius > plane:
+                    domes.append({"centre_mm": centre, "radius_mm": radius})
+                continue
             if geom is ground or geom.get("type") != "box":
                 continue
             centre = [v * 1000.0 for v in (_floats(geom.get("pos"), 3, [0.0, 0.0, 0.0]) or [])]
@@ -1117,14 +1137,16 @@ def mjcf_terrain(root: ElementTree.Element) -> dict[str, Any] | None:
                 continue  # a parked slot, a metre under the plane
             boxes.append({"shape": "block" if (x, y, z) == (0.0, 0.0, 0.0) else "ramp",
                           "centre_mm": centre, "rotation_xyzw": [x, y, z, w], "half_mm": half})
-        if not boxes:
+        if not boxes and not domes:
             return None
-        lo = [min(b["centre_mm"][k] - b["half_mm"][k] for b in boxes) for k in range(2)]
-        hi = [max(b["centre_mm"][k] + b["half_mm"][k] for b in boxes) for k in range(2)]
+        spans = ([(b["centre_mm"], b["half_mm"]) for b in boxes]
+                 + [(d["centre_mm"], [d["radius_mm"]] * 3) for d in domes])
+        lo = [min(c[k] - h[k] for c, h in spans) for k in range(2)]
+        hi = [max(c[k] + h[k] for c, h in spans) for k in range(2)]
         return terrain_block({
             "kind": "boxes", "x_range_mm": [lo[0], hi[0]], "y_range_mm": [lo[1], hi[1]],
-            "lowest_mm": plane, "highest_mm": max(b["centre_mm"][2] + b["half_mm"][2] for b in boxes),
-            "plane_z_mm": plane, "boxes": boxes})
+            "lowest_mm": plane, "highest_mm": max(c[2] + h[2] for c, h in spans),
+            "plane_z_mm": plane, "boxes": boxes, "domes": domes})
     if ground.get("type") != "hfield":
         return None
     asset = next((h for h in root.iter("hfield") if h.get("name") == ground.get("hfield")), None)

@@ -370,8 +370,9 @@ CURRICULUM_EPISODE_KEYS = frozenset({"episode_seconds", "max_steps"})
 #: only together with the conditions :func:`check_curriculum_change` holds:
 #: the robot is the same (:func:`robot_xml`), and what the actor reads is
 #: unchanged (checked in :func:`check_policy_fits`). ``observations`` may
-#: gain or lose only privileged rows -- a height scan -- which the critic
-#: reads and the actor never does; the critic is not carried by a warm
+#: gain or lose only privileged rows -- a privileged height scan -- which the
+#: critic reads and the actor does not (a ``role: policy`` scan, ADR-748,
+#: moves the actor's inputs and is refused there); the critic is not carried by a warm
 #: start, so a wider critic input costs nothing.
 CURRICULUM_COURSE_KEYS = frozenset({"model", "terrain", "scans", "observations"})
 
@@ -471,7 +472,18 @@ def check_curriculum_change(
             "key, so the difference is formatting. Re-emit the child through "
             "the same serialiser rather than warm-starting across it."
         )
-    disallowed = sorted(set(changed) - CURRICULUM_TASK_KEYS - CURRICULUM_COURSE_KEYS)
+    if "tracking" in changed:
+        # ADR-752: a step onto (or off) a speed cadence moves only how fast
+        # the clock turns; the actor reads the same two channels of it.
+        def clip(task: dict[str, Any]) -> dict[str, Any]:
+            return {key: value for key, value in (task.get("tracking") or {}).items()
+                    if key != "cadence"}
+
+        if clip(parent) == clip(child):
+            changed = [key for key in changed if key != "tracking"] + ["tracking.cadence"]
+            changed.sort()
+    disallowed = sorted(set(changed) - CURRICULUM_TASK_KEYS - CURRICULUM_COURSE_KEYS
+                        - {"tracking.cadence"})
     if disallowed:
         refuse(
             f"these keys moved and may not: {disallowed}. A curriculum may "
@@ -574,6 +586,27 @@ def starting_log_std(
         raise SystemExit("--init-from: the policy's exploration.log_std is "
                          "not finite. Pass --initial-std to choose one.")
     return values, "init_from"
+
+
+def source_normaliser_count(header: dict[str, Any]) -> int:
+    """How many observations a policy's normaliser statistics rest on.
+
+    A policy written since ADR-753 records it. An older one is credited
+    with the samples its own run collected, ``iterations x envs x unroll``:
+    a lower bound, since what its own warm start carried is not recorded.
+    """
+
+    recorded = (header.get("normaliser") or {}).get("count")
+    if recorded is not None:
+        return max(int(recorded), 1)
+    training = header.get("training") or {}
+    hyper = training.get("hyperparameters") or {}
+    try:
+        samples = (int(training.get("iterations") or hyper.get("iterations") or 0)
+                   * int(hyper.get("envs") or 0) * int(hyper.get("unroll") or 0))
+    except (TypeError, ValueError):
+        samples = 0
+    return max(samples, 1)
 
 
 def check_policy_fits(
@@ -778,15 +811,54 @@ def acceleration_vector(xp: Any, task: dict[str, Any], qacc: Any) -> Any:
     return qacc[..., dofs] * scale
 
 
-def scan_channels(task: dict[str, Any]) -> list[str]:
+def scan_channels(task: dict[str, Any], *, policy_only: bool = False) -> list[str]:
     """Every height-scan channel the task declares (ADR-715).
 
-    ``CadexDynamics.scan_channels``: last in every vector. Every one is
-    privileged, so none reaches the actor.
+    ``CadexDynamics.scan_channels``: last in every vector. With
+    ``policy_only`` the ones marked ``role: policy``, which the actor reads
+    (ADR-748).
     """
 
     return [str(channel) for record in task.get("scans") or ()
+            if not policy_only or str(record.get("role") or "privileged") == "policy"
             for channel in record["channels"]]
+
+
+def waypoint_vector(xp: Any, task: dict[str, Any], told: Any, xipos: Any,
+                    xmat: Any) -> Any:
+    """The goal channels with each waypoint read from the base (ADR-751).
+
+    ``CadexDynamics.waypoint_values`` in ``xp``: ``told`` is the goal vector,
+    ``(..., G)`` in ``goal_channels`` order, holding a waypoint's world point
+    in mm; a waypoint's two channels become that point ahead of and to the
+    left of the base's centre of mass, along its x axis on the ground (the
+    world's x when that is vertical). ``xipos`` is ``(..., nbody, 3)`` and
+    ``xmat`` ``(..., nbody, 9)`` or ``(..., nbody, 3, 3)``, the leading axes
+    ``told``'s. Every other goal channel is returned as it came.
+    """
+
+    parts, cursor = [], 0
+    for entry in task.get("goal") or ():
+        width = len(entry["channels"])
+        held = told[..., cursor:cursor + width]
+        if entry["kind"] == "waypoint":
+            body = int(entry["body_id"])
+            scale = float(entry["scale"])
+            where = xipos[..., body, :] * scale
+            flat = xp.reshape(xmat, xmat.shape[:-2] + (9,)) if xmat.shape[-1] == 3 else xmat
+            frame = flat[..., body, :]
+            ahead_x, ahead_y = frame[..., 0], frame[..., 3]
+            norm = xp.sqrt(ahead_x * ahead_x + ahead_y * ahead_y)
+            turned = norm > 1e-9
+            safe = xp.where(turned, norm, 1.0)
+            cos = xp.where(turned, ahead_x / safe, 1.0)
+            sin = xp.where(turned, ahead_y / safe, 0.0)
+            dx = held[..., 0] - where[..., 0]
+            dy = held[..., 1] - where[..., 1]
+            held = xp.stack([cos * dx + sin * dy, -sin * dx + cos * dy], axis=-1)
+        parts.append(held)
+        cursor += width
+    return xp.concatenate(parts, axis=-1)
 
 
 def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
@@ -800,9 +872,10 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
     ``(..., nbody, 9)`` or ``(..., nbody, 3, 3)``. ``elevation`` is the
     course's ``hfield_data``, read bilinearly and held at the edge, or
     ``None`` for the plane at z = 0; a box course (ADR-716) reads its boxes.
-    ``course`` is a re-drawn course's ``(scan, lowest)`` from
-    :func:`terrain_pool`, ``(..., S, 6)`` and ``(...)`` with the leading axes
-    ``xpos``'s, read in place of the bundle's boxes (ADR-717).
+    ``course`` is a re-drawn course's ``(scan, lowest, domes)`` from
+    :func:`terrain_pool`, ``(..., S, 6)``, ``(...)`` and ``(..., D, 4)`` with
+    the leading axes ``xpos``'s, read in place of the bundle's boxes and
+    domes (ADR-717, ADR-744).
     """
 
     terrain = task.get("terrain")
@@ -825,21 +898,30 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
             # ADR-716: the highest box top over the point, or the plane.
             if course is not None:
                 # ADR-717: this environment's course, one row per slot.
-                rows, lowest = course
-                xa, xb, ya, yb, za, zb = (rows[..., None, :, column] for column in range(6))
+                rows, lowest, domes = course
                 lowest = xp.asarray(lowest, dtype=where.dtype)
                 floor, under = lowest[..., None], lowest[..., None, None]
+                dx, dy, dz, dr = (domes[..., None, :, column] for column in range(4))
             else:
                 boxes = terrain["boxes"]
-                xa, xb, ya, yb, za, zb = (
-                    xp.asarray([float(record[key][end]) for record in boxes], dtype=where.dtype)
-                    for key, end in (("x_range_mm", 0), ("x_range_mm", 1), ("y_range_mm", 0),
-                                     ("y_range_mm", 1), ("top_mm", 0), ("top_mm", 1)))
+                rows = xp.asarray(box_scan_rows(course_geoms(
+                    boxes, float(terrain["lowest_mm"]), len(boxes), 1.0)),
+                    dtype=where.dtype).reshape(len(boxes), 15)
                 floor = under = float(terrain["lowest_mm"])
+                dx, dy, dz, dr = (
+                    xp.asarray([float(dome[key]) - (float(dome["radius_mm"]) if key == "top_mm" else 0.0)
+                                for dome in terrain.get("domes") or ()], dtype=where.dtype)
+                    for key in ("x_mm", "y_mm", "top_mm", "radius_mm"))
             bx, by = px[..., None], py[..., None]
-            inside = (bx >= xa) & (bx <= xb) & (by >= ya) & (by <= yb)
-            top = za + (zb - za) * (bx - xa) / (xb - xa)
-            ground = xp.maximum(xp.max(xp.where(inside, top, under), axis=-1), floor)
+            # ADR-745: each box read through its own rotation, so a ramp's
+            # top, a platform's and a rock's turned stone are all exact.
+            ground = xp.maximum(xp.max(box_tops(xp, rows, bx, by, under), axis=-1), floor) \
+                if rows.shape[-2] else xp.maximum(px * 0.0, floor)
+            if dr.shape[-1]:
+                # ADR-744: a dome's sphere over the point, about its centre.
+                reach = dr * dr - (bx - dx) ** 2 - (by - dy) ** 2
+                cap = dz + xp.sqrt(xp.maximum(reach, 0.0))
+                ground = xp.maximum(ground, xp.max(xp.where(reach >= 0.0, cap, under), axis=-1))
         elif terrain is None or elevation is None:
             ground = xp.zeros_like(px)
         else:
@@ -889,6 +971,25 @@ TERRAIN_FLAT_MM = 0.1
 TERRAIN_RAMP_HALF_THICKNESS_MM = 10.0
 TERRAIN_PARKED_DEPTH_MM = 1000.0
 TERRAIN_PARKED_HALF_MM = 1.0
+TERRAIN_RUNOUT_MM = 50000.0
+TERRAIN_ROCK_CELLS = 3
+TERRAIN_ROCK_TILT_DEG = (10.0, 25.0)
+TERRAIN_ROCK_EMPTY = 0.3
+
+
+def course_domes(features: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A validated course's dome records (``CadexDynamics.terrain_boxes``'
+    ``domes``, ADR-744): each bump a sphere whose cap is the bump."""
+
+    domes = []
+    for feature in features:
+        if feature["kind"] != "bump":
+            continue
+        foot, rise = feature["radius_mm"], feature["height_mm"]
+        domes.append({"x_mm": float(feature["x_mm"]), "y_mm": float(feature["y_mm"]),
+                      "top_mm": _course_profile_mm(features, feature["x_mm"]) + rise,
+                      "radius_mm": (foot * foot + rise * rise) / (2.0 * rise)})
+    return domes
 
 
 def _course_profile_mm(features: Sequence[dict[str, Any]], x_mm: float) -> float:
@@ -906,14 +1007,17 @@ def _course_profile_mm(features: Sequence[dict[str, Any]], x_mm: float) -> float
 def course_boxes(features: Sequence[dict[str, Any]], x_range_mm: Sequence[float],
                  y_range_mm: Sequence[float]) -> list[dict[str, Any]]:
     """A validated course's box records (``CadexDynamics.terrain_boxes``,
-    without its refusals: the engine made them when it drew the pool)."""
+    without its refusals: the engine made them when it drew the pool); its
+    bumps are :func:`course_domes`."""
 
     x0, x1 = (float(value) for value in x_range_mm)
     y0, y1 = (float(value) for value in y_range_mm)
     cuts = {x0, x1}
     for feature in features:
+        if feature["kind"] not in ("step", "slope"):
+            continue
         for key in ("x_mm",) if feature["kind"] == "step" else ("from_x_mm", "to_x_mm"):
-            if feature["kind"] != "bump" and x0 < feature[key] < x1:
+            if x0 < feature[key] < x1:
                 cuts.add(float(feature[key]))
     edges = sorted(cuts)
     segments = []
@@ -934,20 +1038,71 @@ def course_boxes(features: Sequence[dict[str, Any]], x_range_mm: Sequence[float]
                       "y_range_mm": [float(v) for v in ys],
                       "top_mm": [float(v) for v in tops]})
 
+    # ADR-745: the first and last level run on past the extent, and every
+    # segment across it, so the ground has no edge an episode reaches.
+    a, b, za, zb = segments[0]
+    if abs(zb - za) <= TERRAIN_FLAT_MM:
+        segments[0] = (x0 - TERRAIN_RUNOUT_MM, b, za, zb)
+    else:
+        segments.insert(0, (x0 - TERRAIN_RUNOUT_MM, x0, za, za))
+    a, b, za, zb = segments[-1]
+    if abs(zb - za) <= TERRAIN_FLAT_MM:
+        segments[-1] = (a, x1 + TERRAIN_RUNOUT_MM, za, zb)
+    else:
+        segments.append((x1, x1 + TERRAIN_RUNOUT_MM, zb, zb))
+    across = (y0 - TERRAIN_RUNOUT_MM, y1 + TERRAIN_RUNOUT_MM)
     for a, b, za, zb in segments:
         low = min(za, zb)
         if low > lowest + TERRAIN_FLAT_MM:
-            box("block", (a, b), (y0, y1), (low, low))
+            box("block", (a, b), across, (low, low))
         if abs(zb - za) > TERRAIN_FLAT_MM:
-            box("ramp", (a, b), (y0, y1), (za, zb))
+            box("ramp", (a, b), across, (za, zb))
     for feature in features:
-        if feature["kind"] != "bump":
-            continue
-        half = feature["radius_mm"] / 2.0
-        top = _course_profile_mm(features, feature["x_mm"]) + feature["height_mm"]
-        box("block", (feature["x_mm"] - half, feature["x_mm"] + half),
-            (feature["y_mm"] - half, feature["y_mm"] + half), (top, top))
+        if feature["kind"] == "platform":
+            top = _course_profile_mm(features, feature["x_mm"]) + feature["height_mm"]
+            box("block", (feature["x_mm"] - feature["length_mm"] / 2.0,
+                          feature["x_mm"] + feature["length_mm"] / 2.0),
+                (feature["y_mm"] - feature["width_mm"] / 2.0,
+                 feature["y_mm"] + feature["width_mm"] / 2.0), (top, top))
+        elif feature["kind"] == "rock":
+            boxes.extend(course_rock_stones(feature, _course_profile_mm(features, feature["x_mm"])))
     return boxes
+
+
+def course_rock_stones(rock: dict[str, Any], ground_mm: float) -> list[dict[str, Any]]:
+    """A rock patch's stones (``CadexDynamics.terrain_rock_stones``, ADR-745)."""
+
+    import random
+
+    x, y, radius, height = (float(rock[key]) for key in ("x_mm", "y_mm", "radius_mm", "height_mm"))
+    rng = random.Random(f"cadex-rock:{x!r}:{y!r}:{radius!r}:{height!r}")
+    cell = 2.0 * radius / TERRAIN_ROCK_CELLS
+    room = cell / 2.0
+    stones = []
+    for i in range(TERRAIN_ROCK_CELLS):
+        for j in range(TERRAIN_ROCK_CELLS):
+            centre_cell = (i, j) == (TERRAIN_ROCK_CELLS // 2, TERRAIN_ROCK_CELLS // 2)
+            if not centre_cell and rng.random() < TERRAIN_ROCK_EMPTY:
+                continue
+            about = rng.choice(("x", "y"))
+            tilt = math.radians(rng.uniform(*TERRAIN_ROCK_TILT_DEG)) * rng.choice((-1.0, 1.0))
+            sine, cosine = abs(math.sin(tilt)), math.cos(tilt)
+            turned = (rng.uniform(0.55, 0.95) * room - height * sine) / cosine
+            across = rng.uniform(0.55, 0.95) * room
+            reach = turned * cosine + height * sine
+            rise = turned * sine + height * cosine
+            if about == "y":
+                half, plan = [turned, across, height], (reach, across)
+                quat = [math.cos(tilt / 2.0), 0.0, math.sin(tilt / 2.0), 0.0]
+            else:
+                half, plan = [across, turned, height], (across, reach)
+                quat = [math.cos(tilt / 2.0), math.sin(tilt / 2.0), 0.0, 0.0]
+            cx = x - radius + (i + 0.5) * cell + rng.uniform(-1.0, 1.0) * (room - plan[0])
+            cy = y - radius + (j + 0.5) * cell + rng.uniform(-1.0, 1.0) * (room - plan[1])
+            peak = float(ground_mm) + rng.uniform(0.4, 1.0) * height
+            stones.append({"shape": "stone", "centre_mm": [cx, cy, peak - rise],
+                           "quat": quat, "half_mm": half, "top_mm": peak})
+    return stones
 
 
 def course_geoms(boxes: Sequence[dict[str, Any]], lowest_mm: float, slots: int,
@@ -960,6 +1115,11 @@ def course_geoms(boxes: Sequence[dict[str, Any]], lowest_mm: float, slots: int,
     lowest = float(lowest_mm)
     pos, quat, size = [], [], []
     for record in boxes:
+        if record["shape"] == "stone":
+            pos.append([value * scale for value in record["centre_mm"]])
+            quat.append([float(value) for value in record["quat"]])
+            size.append([value * scale for value in record["half_mm"]])
+            continue
         (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
         za, zb = record["top_mm"]
         if record["shape"] == "block":
@@ -985,19 +1145,66 @@ def course_geoms(boxes: Sequence[dict[str, Any]], lowest_mm: float, slots: int,
     return {"plane_z_m": lowest * scale, "pos_m": pos, "quat": quat, "size_m": size}
 
 
+def box_scan_rows(placed: dict[str, Any]) -> list[list[float]]:
+    """Each box of :func:`course_geoms` (at ``scale`` 1, so in mm) as the row
+    a height scan reads (ADR-745): its centre, its three axes in the world
+    (its rotation's columns) and its half-extents, 15 numbers."""
+
+    rows = []
+    for centre, (w, x, y, z), half in zip(placed["pos_m"], placed["quat"], placed["size_m"]):
+        axes = [1 - 2 * (y * y + z * z), 2 * (x * y + w * z), 2 * (x * z - w * y),
+                2 * (x * y - w * z), 1 - 2 * (x * x + z * z), 2 * (y * z + w * x),
+                2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)]
+        rows.append([*centre, *axes, *half])
+    return rows
+
+
+def box_tops(xp: Any, rows: Any, px: Any, py: Any, under: Any) -> Any:
+    """The highest point of each box on the vertical line at each point
+    (``CadexDynamics.terrain_turned_box_top_mm``), or ``under`` off it:
+    ``rows`` ``(..., S, 15)`` from :func:`box_scan_rows`, ``px`` and ``py``
+    ``(..., N, 1)``; returns ``(..., N, S)``."""
+
+    rows = rows[..., None, :, :]
+    dx, dy, cz = px - rows[..., 0], py - rows[..., 1], rows[..., 2]
+    low = high = None
+    inside = None
+    for axis in range(3):
+        ax, ay, az = (rows[..., 3 + 3 * axis + k] for k in range(3))
+        half = rows[..., 12 + axis]
+        offset = ax * dx + ay * dy - az * cz
+        level = xp.abs(az) < 1e-9
+        safe = xp.where(level, 1.0, az)
+        a, b = (-half - offset) / safe, (half - offset) / safe
+        lo = xp.where(level, -1e12, xp.minimum(a, b))
+        hi = xp.where(level, 1e12, xp.maximum(a, b))
+        within = ~level | (xp.abs(offset) <= half)
+        low = lo if low is None else xp.maximum(low, lo)
+        high = hi if high is None else xp.minimum(high, hi)
+        inside = within if inside is None else inside & within
+    return xp.where(inside & (low <= high), high, under)
+
+
 def terrain_pool(np: Any, terrain: dict[str, Any]) -> dict[str, Any]:
     """The bundle's terrain pool as arrays, course first (ADR-717).
 
     ``plane_z`` ``(P,)``; ``pos``, ``size`` ``(P, S, 3)``; ``quat``
     ``(P, S, 4)``; ``rbound`` ``(P, S)`` and ``aabb`` ``(P, S, 6)``, which
-    MuJoCo derives from a box's size at compile time; ``scan`` ``(P, S, 6)``,
-    each slot's ``x0 x1 y0 y1 top0 top1`` in mm, a parked slot an empty
-    range; and ``lowest`` ``(P,)`` in mm.
+    MuJoCo derives from a box's size at compile time; ``scan`` ``(P, S, 15)``,
+    each slot's :func:`box_scan_rows` row in mm (ADR-745), a parked slot its
+    cube under the plane; and ``lowest`` ``(P,)`` in mm. Domes (ADR-744): ``dome_pos``
+    ``(P, D, 3)`` and ``dome_size`` ``(P, D, 3)`` (the radius, then zeros),
+    ``dome_rbound`` ``(P, D)``, ``dome_aabb`` ``(P, D, 6)`` and
+    ``dome_scan`` ``(P, D, 4)``, each dome's centre and radius in mm, a
+    parked slot's radius 0.
     """
 
     slots = int(terrain["slots"])
+    dome_slots = int(terrain.get("dome_slots") or 0)
+    scale = float(terrain["scale"])
     columns: dict[str, list[Any]] = {key: [] for key in (
-        "plane_z", "pos", "quat", "size", "scan", "lowest")}
+        "plane_z", "pos", "quat", "size", "scan", "lowest", "dome_pos", "dome_size",
+        "dome_scan")}
     for course in terrain["pool"]:
         boxes = course_boxes(course["features"], terrain["x_range_mm"], terrain["y_range_mm"])
         if len(boxes) != int(course["boxes"]):
@@ -1012,29 +1219,55 @@ def terrain_pool(np: Any, terrain: dict[str, Any]) -> dict[str, Any]:
         columns["quat"].append(placed["quat"])
         columns["size"].append(placed["size_m"])
         columns["lowest"].append(lowest)
-        columns["scan"].append(
-            [[*record["x_range_mm"], *record["y_range_mm"], *record["top_mm"]]
-             for record in boxes]
-            + [[0.0, -1.0, 0.0, -1.0, lowest, lowest]] * (slots - len(boxes)))
+        columns["scan"].append(box_scan_rows(course_geoms(boxes, lowest, slots, 1.0)))
+        domes = course_domes(course["features"])
+        if len(domes) != int(course.get("domes", 0)):
+            raise SystemExit(
+                f"a pooled course builds {len(domes)} domes here and "
+                f"{course.get('domes', 0)} in the engine, so this trainer's dome "
+                "builder is not the engine's")
+        parked = lowest - TERRAIN_BASE_MM - TERRAIN_PARKED_DEPTH_MM
+        rows = ([[d["x_mm"], d["y_mm"], d["top_mm"] - d["radius_mm"], d["radius_mm"]] for d in domes]
+                + [[0.0, 0.0, parked, 0.0]] * (dome_slots - len(domes)))
+        columns["dome_scan"].append(rows)
+        columns["dome_pos"].append([[row[0] * scale, row[1] * scale, row[2] * scale] for row in rows])
+        columns["dome_size"].append(
+            [[(row[3] or TERRAIN_PARKED_HALF_MM) * scale, 0.0, 0.0] for row in rows])
     arrays = {key: np.asarray(value, dtype=np.float64) for key, value in columns.items()}
+    # A course of domes alone has no box slots: keep the slot axis (ADR-747).
+    for key, count, width in (("pos", slots, 3), ("quat", slots, 4), ("size", slots, 3),
+                              ("scan", slots, 15), ("dome_pos", dome_slots, 3),
+                              ("dome_size", dome_slots, 3), ("dome_scan", dome_slots, 4)):
+        arrays[key] = arrays[key].reshape(len(terrain["pool"]), count, width)
     arrays["rbound"] = np.linalg.norm(arrays["size"], axis=-1)
     arrays["aabb"] = np.concatenate([np.zeros_like(arrays["size"]), arrays["size"]], axis=-1)
+    arrays["dome_rbound"] = arrays["dome_size"][..., 0]
+    arrays["dome_aabb"] = np.concatenate(
+        [np.zeros_like(arrays["dome_size"]), np.repeat(arrays["dome_size"][..., :1], 3, axis=-1)],
+        axis=-1)
     return arrays
 
 
-def place_course(model: Any, pool: dict[str, Any], slots: Any, plane: int, course: Any) -> Any:
+def place_course(model: Any, pool: dict[str, Any], slots: Any, plane: int, course: Any,
+                 dome_slots: Any) -> Any:
     """An MJX model with one pooled course in its terrain geoms (ADR-717):
     the plane at the course's lowest point, and each slot's box, or a parked
-    cube, where :func:`terrain_pool` stands it. ``pool`` holds its arrays on
-    the device; ``slots`` are the ``environment/terrain/<i>`` geom ids."""
+    cube, where :func:`terrain_pool` stands it, and each dome slot's sphere
+    (ADR-744). ``pool`` holds its arrays on the device; ``slots`` are the
+    ``environment/terrain/<i>`` geom ids, ``dome_slots`` the
+    ``environment/terrain/dome/<j>`` ones."""
 
     return model.replace(
         geom_pos=model.geom_pos.at[slots].set(pool["pos"][course])
+        .at[dome_slots].set(pool["dome_pos"][course])
         .at[plane, 2].set(pool["plane_z"][course]),
         geom_quat=model.geom_quat.at[slots].set(pool["quat"][course]),
-        geom_size=model.geom_size.at[slots].set(pool["size"][course]),
-        geom_rbound=model.geom_rbound.at[slots].set(pool["rbound"][course]),
-        geom_aabb=model.geom_aabb.at[slots].set(pool["aabb"][course]))
+        geom_size=model.geom_size.at[slots].set(pool["size"][course])
+        .at[dome_slots].set(pool["dome_size"][course]),
+        geom_rbound=model.geom_rbound.at[slots].set(pool["rbound"][course])
+        .at[dome_slots].set(pool["dome_rbound"][course]),
+        geom_aabb=model.geom_aabb.at[slots].set(pool["aabb"][course])
+        .at[dome_slots].set(pool["dome_aabb"][course]))
 
 
 def tracking_channels(task: dict[str, Any], *, policy_only: bool = False) -> list[str]:
@@ -1048,20 +1281,35 @@ def tracking_channels(task: dict[str, Any], *, policy_only: bool = False) -> lis
             tracking["policy_channels" if policy_only else "channels"]]
 
 
-def tracking_vector(xp: Any, task: dict[str, Any], steps: Any, origin: Any = None) -> Any:
+def tracking_turn(xp: Any, task: dict[str, Any], told: Any) -> Any:
+    """Cycles the gait clock turns over one control step taken under the
+    goal channels ``told`` (``(..., G)`` in ``goal_channels`` order), on a
+    speed cadence (ADR-752). ``CadexDynamics.tracking_turn`` in ``xp``."""
+
+    tracking = task["tracking"]
+    cadence = tracking["cadence"]
+    speed = xp.abs(told[..., goal_channels(task).index(str(cadence["channel"]))])
+    return float(tracking["turn_per_step"]) * (
+        speed / float(cadence["reference_speed_mm_s"])) ** float(cadence["exponent"])
+
+
+def tracking_vector(xp: Any, task: dict[str, Any], steps: Any, origin: Any = None,
+                    turned: Any = None) -> Any:
     """The tracking channels after ``steps`` control steps (ADR-706) of an
-    episode that started at clip sample ``origin`` (ADR-709).
+    episode that started at clip sample ``origin`` (ADR-709), or, on a
+    speed cadence, after the clock has turned ``turned`` cycles (ADR-752).
 
     ``CadexDynamics.tracking_values`` in ``xp``, along a new last axis:
-    the clock's phase is ``steps * turn_per_step + origin / samples`` less
-    its whole turns; a
+    the clock's phase is ``steps * turn_per_step`` (or ``turned``) plus
+    ``origin / samples``, less its whole turns; a
     phase between two rows of the clip's table is read linearly between
     them, round the end, and a ``held`` column reads 1 from one half up.
     """
 
     tracking = task["tracking"]
     rows = int(tracking["samples"])
-    turned = xp.asarray(steps) * float(tracking["turn_per_step"])
+    turned = (xp.asarray(steps) * float(tracking["turn_per_step"]) if turned is None
+              else xp.asarray(turned))
     if origin is not None:
         turned = turned + xp.asarray(origin) / float(rows)
     phase = turned - xp.floor(turned)
@@ -1109,7 +1357,8 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
 
     Every goal channel follows (ADR-462): a goal is what the robot is told
     to do, so the policy always reads it. Then the policy's command channels
-    (ADR-696), then a gait reference's clock (ADR-706).
+    (ADR-696), then a gait reference's clock (ADR-706), then a height scan
+    marked ``role: policy`` (ADR-748).
     """
 
     return [
@@ -1118,7 +1367,8 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
         if str(record.get("role") or "policy") == "policy"
         for channel in record["channels"]
     ] + (goal_channels(task) + command_channels(task, policy_only=True)
-         + tracking_channels(task, policy_only=True))
+         + tracking_channels(task, policy_only=True)
+         + scan_channels(task, policy_only=True))
 
 
 def tracker_reading(xp: Any, true_mm: Any, tracker: dict[str, Any],
@@ -1437,6 +1687,19 @@ def draw_goals(mujoco: Any, model: Any, task: dict[str, Any], rng: Any) -> list[
     data = None
     for entry in task.get("goal") or ():
         segments: list[list[float]] = []
+        if str(entry["kind"]) == "waypoint":
+            # ADR-751: a chain of legs from where the base starts.
+            x, y = (float(value) for value in entry["start_mm"])
+            direction = float(entry["heading_rad"])
+            bearing = float(entry["bearing_deg"])
+            for _ in range(int(entry["segments"])):
+                leg = rng.uniform(float(entry["low"]), float(entry["high"]))
+                direction += math.radians(rng.uniform(-bearing, bearing))
+                x += leg * math.cos(direction)
+                y += leg * math.sin(direction)
+                segments.append([x, y])
+            drawn.append({"label": str(entry["label"]), "segments": segments})
+            continue
         if str(entry["kind"]) != "point":
             scripted = list(entry.get("sequence") or ())
             for index in range(int(entry["segments"])):
@@ -1940,6 +2203,9 @@ def build_environment(
     # ADR-709: a PYTHON bool on the same terms; each episode starts at its
     # own clip sample, carried beside the step counter it offsets.
     starting = tracking and task["tracking"].get("start") == "random"
+    # ADR-752: a PYTHON bool on the same terms; a speed cadence's clock is
+    # the cycles turned so far, carried beside the step counter.
+    cadenced = tracking and bool(task["tracking"].get("cadence"))
     # ADR-715: a PYTHON bool on the same terms; a scan is read from the
     # state's xpos and xmat, never carried.
     scanning = bool(task.get("scans"))
@@ -2010,20 +2276,25 @@ def build_environment(
         slot_geoms = np.asarray([
             mujoco.mj_name2id(host, mujoco.mjtObj.mjOBJ_GEOM, f"environment/terrain/{index}")
             for index in range(int(task["terrain"]["slots"]))], dtype=np.int32)
-        if plane_geom < 0 or (slot_geoms < 0).any():
+        dome_geoms = np.asarray([
+            mujoco.mj_name2id(host, mujoco.mjtObj.mjOBJ_GEOM, f"environment/terrain/dome/{index}")
+            for index in range(int(task["terrain"].get("dome_slots") or 0))], dtype=np.int32)
+        if plane_geom < 0 or (slot_geoms < 0).any() or (dome_geoms < 0).any():
             raise SystemExit(
                 "the bundle's terrain pool names geoms the model does not carry: "
-                f"environment/terrain and {len(slot_geoms)} environment/terrain/<i>")
+                f"environment/terrain, {len(slot_geoms)} environment/terrain/<i> and "
+                f"{len(dome_geoms)} environment/terrain/dome/<j>")
         pool_device = {key: jnp.asarray(value, dtype=jnp.float32)
                        for key, value in pool.items()}
 
     def placed(m, course):
-        return place_course(m, pool_device, slot_geoms, plane_geom, course)
+        return place_course(m, pool_device, slot_geoms, plane_geom, course, dome_geoms)
 
     def scanned_course(course):
         """``height_scan_vector``'s ``course`` for these course indices."""
 
-        return (pool_device["scan"][course], pool_device["lowest"][course]) if redrawing else None
+        return ((pool_device["scan"][course], pool_device["lowest"][course],
+                 pool_device["dome_scan"][course]) if redrawing else None)
 
     single = mjx.put_model(host)
     model = single
@@ -2077,6 +2348,8 @@ def build_environment(
         for entry in goal_entries
     ]
     goal_pool_size = int(goal_tables[0].shape[0]) if goaled else 0
+    # ADR-751: a PYTHON bool, so a task with no waypoint traces as before.
+    waypointed = any(entry["kind"] == "waypoint" for entry in goal_entries)
 
     def goals_at(picks, steps):
         """Each environment's goal channels at its own episode step.
@@ -2400,6 +2673,9 @@ def build_environment(
         data, _ = jax.lax.scan(one, data, None, length=per_action)
         vector = observe(data)
         if goaled:
+            if waypointed:
+                # ADR-751: read from where the step landed.
+                told = waypoint_vector(jnp, task, told, data.xipos, data.xmat)
             vector = jnp.concatenate([vector, told])
         if commanding:
             # The command just issued replaces `previous`; on an episode's
@@ -2466,7 +2742,7 @@ def build_environment(
     scale_out = jnp.asarray(output_scale, dtype=jnp.float32)
     bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
 
-    def sensed(key, data, picks, steps, origin, carry, course=None):
+    def sensed(key, data, picks, steps, origin, carry, course=None, turned=None):
         """The observation the policy acts on, in the state ``data`` holds.
 
         What the policy acts on carries its sensors' noise; the reward and
@@ -2484,7 +2760,11 @@ def build_environment(
         else:
             vector = jax.vmap(observe)(data)
         if goaled:
-            vector = jnp.concatenate([vector, goals_at(picks, steps)], axis=-1)
+            told = goals_at(picks, steps)
+            if waypointed:
+                # ADR-751: the point read from where the base is.
+                told = waypoint_vector(jnp, task, told, data.xipos, data.xmat)
+            vector = jnp.concatenate([vector, told], axis=-1)
         if commanding:
             # ADR-696: the command in force and the one it replaced.
             vector = jnp.concatenate(
@@ -2496,9 +2776,9 @@ def build_environment(
         if tracking:
             # ADR-706: the clock the policy acts on.
             vector = jnp.concatenate(
-                [vector, tracking_vector(jnp, task, steps, origin)], axis=-1)
+                [vector, tracking_vector(jnp, task, steps, origin, turned)], axis=-1)
         if scanning:
-            # ADR-715: the critic's; the actor never reads it.
+            # ADR-715: the critic's, and the actor's when role: policy (ADR-748).
             vector = jnp.concatenate([vector, height_scan_vector(
                 jnp, task, data.xpos, data.xmat, scan_elevation,
                 scanned_course(course) if redrawing else None)], axis=-1)
@@ -2549,6 +2829,9 @@ def build_environment(
             info["origin"] = origin
         if redrawing:
             info["course"] = course
+        turned = jnp.zeros((envs,), dtype=jnp.float32) if cadenced else None
+        if cadenced:
+            info["turned"] = turned
         carry = ()
         if carrying:
             # The previous ISSUED command, per environment and episode-local
@@ -2558,7 +2841,7 @@ def build_environment(
             # ADR-696: both carried commands start at the reset's.
             carry = (jnp.tile(reset_command, (envs, 1)),) * 2
         info["carry"] = carry
-        key, vector = sensed(key, data, picks, steps, origin, carry, course)
+        key, vector = sensed(key, data, picks, steps, origin, carry, course, turned)
         info["key"] = key
         return State(pipeline_state=data, obs=observation(vector),
                      reward=jnp.zeros((envs,), dtype=jnp.float32),
@@ -2589,11 +2872,16 @@ def build_environment(
         course = info.get("course")
         carry = info["carry"]
         surface = action * scale_out + bias_out
-        goal_args = ((course,) if redrawing else ()) + (
-            (goals_at(picks, steps),) if goaled else ())
+        told = goals_at(picks, steps) if goaled else None
+        goal_args = ((course,) if redrawing else ()) + ((told,) if goaled else ())
+        turned = None
+        if cadenced:
+            # ADR-752: the clock turns at the cadence of the command in force.
+            turned = info["turned"] + tracking_turn(jnp, task, told)
+            turned = turned - jnp.floor(turned)
         if tracking:
             # ADR-706: the reference one step on, where the step will land.
-            goal_args = goal_args + (tracking_vector(jnp, task, steps + 1, origin),)
+            goal_args = goal_args + (tracking_vector(jnp, task, steps + 1, origin, turned),)
         if push_entries:
             data = data.replace(xfrc_applied=applied_forces(forces, starts, elapsed))
         if commanding:
@@ -2674,6 +2962,9 @@ def build_environment(
             info["origin"] = origin
         if redrawing:
             info["course"] = course
+        if cadenced:
+            turned = jnp.where(done, 0.0, turned)
+            info["turned"] = turned
         if carrying:
             carry = (jnp.where(done[:, None], 0.0, issued),)
         if commanding:
@@ -2681,7 +2972,7 @@ def build_environment(
             # because unlike the filter's memory these are observed.
             carry = (jnp.where(done[:, None], reset_command[None, :], issued),
                      jnp.where(done[:, None], reset_command[None, :], replaced))
-        key, vector = sensed(key, data, picks, steps, origin, carry, course)
+        key, vector = sensed(key, data, picks, steps, origin, carry, course, turned)
         info.update(key=key, forces=forces, starts=starts, elapsed=elapsed,
                     steps=steps, carry=carry,
                     truncation=truncation.astype(jnp.float32),
@@ -2895,6 +3186,9 @@ def train(
 
     init_from_provenance: dict[str, Any] | None = None
     source_header: dict[str, Any] | None = None
+    # ADR-753: how many more samples the actor's statistics rest on than the
+    # critic's. Zero on a cold run; on a warm start, the source's count.
+    actor_count_offset = 0
     if not getattr(options, "init_from", "") and (
             str(getattr(options, "init_from_task_change", "") or "").strip()
             or str(getattr(options, "init_from_parent_task", "") or "").strip()
@@ -2939,20 +3233,28 @@ def train(
         params = params.replace(policy={**params.policy, "params": layers})
 
         # Without this the transfer is mostly wasted: the actor was trained
-        # to read normalised observations. The count restarts at one, so the
-        # first batch re-estimates the statistics rather than being held to
-        # them.
+        # to read normalised observations. The actor's statistics keep the
+        # weight of every sample the source saw (ADR-753): with a count of
+        # one the first batch replaced them, and the frozen actor read its
+        # inputs on a different scale for the iterations it took the
+        # running mean to drift back. The critic's privileged statistics
+        # are not in the header, so they start at a count of one as before.
         stats = source_header.get("normaliser") or {}
         if stats.get("mean") is not None and stats.get("std") is not None:
             mean = jnp.asarray(stats["mean"], dtype=jnp.float32)
             std = jnp.asarray(stats["std"], dtype=jnp.float32)
+            actor_count = source_normaliser_count(source_header)
+            actor_count_offset = actor_count - 1
             normaliser = normaliser.replace(
                 count=brax_types.UInt64(hi=0, lo=1),
                 mean={**normaliser.mean, "state": mean},
                 summed_variance={**normaliser.summed_variance,
-                                 "state": jnp.square(std)},
+                                 "state": jnp.square(std) * float(actor_count)},
                 std={**normaliser.std, "state": std},
             )
+            if not options.quiet:
+                print(f"normaliser  the actor's statistics carry the source's "
+                      f"{actor_count} samples", flush=True)
 
         source_training = source_header.get("training") or {}
         init_from_provenance = {
@@ -3041,6 +3343,22 @@ def train(
             name: jnp.maximum(value, std_floor[name])
             for name, value in normaliser.std.items()})
 
+    def update_normaliser(normaliser, observation):
+        """Brax's one shared count, except that the actor's statistics
+        count ``actor_count_offset`` samples more (ADR-753)."""
+
+        updated = running_statistics.update(normaliser, observation)
+        if not actor_count_offset:
+            return updated
+        actor = running_statistics.update(
+            normaliser.replace(count=normaliser.count + actor_count_offset),
+            observation)
+        return updated.replace(
+            mean={**updated.mean, "state": actor.mean["state"]},
+            summed_variance={**updated.summed_variance,
+                             "state": actor.summed_variance["state"]},
+            std={**updated.std, "state": actor.std["state"]})
+
     @jax.jit
     def iterate(optimizer_state, params, normaliser, env_state, key, train_actor):
         sgd_key, unroll_key, key = jax.random.split(key, 3)
@@ -3050,7 +3368,7 @@ def train(
             extra_fields=("truncation", "terminated"))
         # [unroll, envs] -> [envs, unroll]: a minibatch is whole unrolls.
         data = jax.tree.map(lambda x: jnp.swapaxes(x, 0, 1), data)
-        normaliser = floored(running_statistics.update(normaliser, data.observation))
+        normaliser = floored(update_normaliser(normaliser, data.observation))
         (optimizer_state, params, _), metrics = jax.lax.scan(
             functools.partial(sgd_step, data=data, normaliser=normaliser, train_actor=train_actor),
             (optimizer_state, params, sgd_key), (), length=epochs)
@@ -3137,6 +3455,9 @@ def train(
             "normaliser": {
                 "mean": [float(v) for v in stored_mean],
                 "std": [float(v) for v in stored_std],
+                # ADR-753: the samples behind the actor's statistics, so a
+                # warm start from this policy keeps their weight.
+                "count": int(normaliser.count) + actor_count_offset,
             },
             "output_scale": env.output_scale,
             "output_bias": env.output_bias,

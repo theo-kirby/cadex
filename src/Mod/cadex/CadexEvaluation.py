@@ -113,9 +113,15 @@ TRACKING_SETTLE_S = 0.5
 #: through this much; it is judged at the moment the command has done so.
 REVERSAL_DEG = 180.0
 
+#: How close a base must come to a ground point to have reached it
+#: (ADR-751): 0.3 m, the bar orun8's charter sets for its cat (C2).
+WAYPOINT_REACH_MM = 300.0
+
 #: The foot whose touch-downs are a reference's clock: the left hind, the
 #: foot every phase offset is stated after (Hildebrand's convention).
 REFERENCE_ANCHOR = "LH"
+#: A biped reference's clock: its left foot (ADR-754).
+BIPED_REFERENCE_ANCHOR = "L"
 
 #: A fall (ADR-718): the base tilted this far from its reference pose, or its
 #: centre of mass came down to this share of its starting height above the
@@ -167,6 +173,8 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "speed_error_rms_mm_s": ("tracking", ("base", "command")),
     "yaw_rate_error_rms_deg_s": ("tracking", ("base", "turn")),
     "reversal_heading_error_deg_max": ("tracking", ("base", "turn")),
+    "waypoint_miss_mm_max": ("waypoint", ("base", "waypoint")),
+    "waypoints_reached": ("waypoint", ("base", "waypoint")),
     "speed_ratio": ("gait", ("feet", "command")),
     "lateral_ratio": ("gait", ("feet", "command")),
     "final_error_mm_max": ("reach", ("tip", "target")),
@@ -199,6 +207,8 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "slopes_crossed": ("terrain", ("base", "terrain")),
     "largest_step_crossed_mm": ("terrain", ("base", "terrain")),
     "steepest_slope_crossed_deg": ("terrain", ("base", "terrain")),
+    "platforms_crossed": ("terrain", ("base", "terrain")),
+    "highest_platform_crossed_mm": ("terrain", ("base", "terrain")),
 }
 
 _EPS = 1.0e-9
@@ -629,6 +639,48 @@ def settled_command(commands, *, settle_s: float = SETTLE_S) -> float | None:
     if not held:
         return None
     return held[0] if min(held) == max(held) else sum(held) / len(held)
+
+
+def waypoint_metrics(samples, rig: Mapping[str, Any],
+                     waypoints: Sequence[Mapping[str, Any]], *,
+                     reach_mm: float = WAYPOINT_REACH_MM) -> dict[str, Any]:
+    """How close a floating base came to each ground point it was sent to (ADR-751).
+
+    ``waypoints`` is ``[{"start_s", "end_s", "point_mm": [x, y]}]``: the
+    world point in force over each stretch of the episode. A frame on a
+    boundary belongs to the stretch that starts there; a stretch the episode
+    ended before is not read. The base is its centre of mass in plan.
+
+    * ``waypoint_miss_mm_max``: for each stretch read, the closest the base
+      came to its point while it was up; the worst one. ``None`` when no
+      stretch was read.
+    * ``waypoints_reached``: how many stretches came within ``reach_mm``.
+    """
+
+    base = base_series(samples, rig)
+    times, points = base["time"], base["point"]
+    end = times[-1] if times else 0.0
+    rows: list[dict[str, Any]] = []
+    for index, row in enumerate(waypoints):
+        start, stop = float(row["start_s"]), float(row["end_s"])
+        if start > end + _EPS:
+            continue
+        x, y = (float(value) for value in row["point_mm"])
+        last = index == len(waypoints) - 1
+        held = [i for i, moment in enumerate(times)
+                if start - _EPS <= moment and (last or moment < stop - _EPS)]
+        if not held:
+            continue
+        closest = min(held, key=lambda i: math.hypot(points[i][0] - x, points[i][1] - y))
+        miss = math.hypot(points[closest][0] - x, points[closest][1] - y)
+        rows.append({"start_s": start, "end_s": stop, "point_mm": [x, y],
+                     "miss_mm": miss, "closest_s": times[closest],
+                     "reached": miss <= reach_mm})
+    return {
+        "waypoint_miss_mm_max": max(row["miss_mm"] for row in rows) if rows else None,
+        "waypoints_reached": float(sum(1 for row in rows if row["reached"])),
+        "waypoints": rows,
+    }
 
 
 def tracking_metrics(samples, rig: Mapping[str, Any],
@@ -1443,10 +1495,11 @@ def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[
                 "command_rate_reference_ratio": None,
                 "joint_acceleration_reference_ratio": None,
                 "reference": {"gait": reference.get("gait"), "missing_feet": missing}}
-    anchor = [t for t in feet[names[REFERENCE_ANCHOR]]["touchdowns_s"] if t >= settle_s - _EPS]
+    anchor_label = REFERENCE_ANCHOR if REFERENCE_ANCHOR in names else BIPED_REFERENCE_ANCHOR
+    anchor = [t for t in feet[names[anchor_label]]["touchdowns_s"] if t >= settle_s - _EPS]
     strides = [(a, b - a) for a, b in zip(anchor, anchor[1:]) if b - a > _EPS]
     detail: dict[str, Any] = {
-        "gait": reference.get("gait"), "anchor": names[REFERENCE_ANCHOR],
+        "gait": reference.get("gait"), "anchor": names[anchor_label],
         "strides": len(strides),
         "reference_stride_hz": float(parameters["stride_frequency_hz"]),
         "stride_hz": None, "feet": {}, "joints": [],
@@ -1463,7 +1516,7 @@ def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[
     # ADR-719: landings lie on the frame grid, so timing is counted in whole
     # frames and only the division by the stride's frames is inexact; a
     # 2-frame offset in a 20-frame stride reads 0.1, not 0.1 + 3e-17.
-    frame_s = float(feet[names[REFERENCE_ANCHOR]]["frame_s"])
+    frame_s = float(feet[names[anchor_label]]["frame_s"])
 
     def on_grid(moment: float) -> int:
         return round(moment / frame_s)
@@ -1471,7 +1524,7 @@ def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[
     grid = [(on_grid(start), on_grid(start + length) - on_grid(start)) for start, length in strides]
     phase_errors, duty_errors = [], []
     for label, name in names.items():
-        expected = (offsets[label] - offsets[REFERENCE_ANCHOR]) % 1.0
+        expected = (offsets[label] - offsets[anchor_label]) % 1.0
         landings = [on_grid(t) for t in feet[name]["touchdowns_s"]]
         errors = []
         for start, length in grid:
@@ -1494,7 +1547,7 @@ def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[
     if drives is not None:
         columns = {str(name): i for i, name in enumerate(reference["joints"])}
         angles = reference["joint_angles_rad"]
-        start_phase = offsets[REFERENCE_ANCHOR]
+        start_phase = offsets[anchor_label]
         pooled: list[float] = []
         for c, channel in enumerate(drives["channels"]):
             column = columns.get(str(channel.get("joint", "")))
@@ -1633,6 +1686,10 @@ def terrain_metrics(samples, rig: Mapping[str, Any], *,
       and stayed across. Courses run along +x (ADR-714).
     * ``largest_step_crossed_mm`` and ``steepest_slope_crossed_deg``: the
       largest magnitude among them, up or down; 0.0 when none was crossed.
+    * ``platforms_crossed`` and ``highest_platform_crossed_mm`` (ADR-749):
+      the platforms whose footprint the centre of mass was over at some
+      frame and whose far end (along +x) it ended beyond: up, across and
+      down. Bumps and rock patches are not counted.
 
     Without ``terrain`` only ``falls`` is read.
     """
@@ -1660,9 +1717,17 @@ def terrain_metrics(samples, rig: Mapping[str, Any], *,
                               "lowest_height_share": lowest_share}
     if terrain is not None and points:
         x_start, x_end = points[0][0], points[-1][0]
-        crossed = []
+        crossed, platforms = [], []
         for feature in terrain.get("features") or ():
-            if feature["kind"] == "bump":
+            if feature["kind"] == "platform":
+                half_x, half_y = feature["length_mm"] / 2.0, feature["width_mm"] / 2.0
+                far = float(feature["x_mm"]) + half_x
+                over = any(abs(p[0] - feature["x_mm"]) <= half_x
+                           and abs(p[1] - feature["y_mm"]) <= half_y for p in points)
+                if over and x_end > far:
+                    platforms.append(dict(feature))
+                continue
+            if feature["kind"] not in ("step", "slope"):
                 continue
             edge = float(feature["x_mm"] if feature["kind"] == "step" else feature["to_x_mm"])
             if x_start < edge <= x_end:
@@ -1674,10 +1739,13 @@ def terrain_metrics(samples, rig: Mapping[str, Any], *,
             "slopes_crossed": float(len(slopes)),
             "largest_step_crossed_mm": max(steps, default=0.0),
             "steepest_slope_crossed_deg": max(slopes, default=0.0),
+            "platforms_crossed": float(len(platforms)),
+            "highest_platform_crossed_mm": max(
+                (float(f["height_mm"]) for f in platforms), default=0.0),
         })
-        detail.update(crossed=crossed, course=terrain.get("course"),
+        detail.update(crossed=crossed + platforms, course=terrain.get("course"),
                       features=sum(1 for f in terrain.get("features") or ()
-                                   if f["kind"] != "bump"))
+                                   if f["kind"] in ("step", "slope", "platform")))
     read["terrain"] = detail
     return read
 
@@ -1697,7 +1765,8 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
             reference: Mapping[str, Any] | None = None,
             terrain: Mapping[str, Any] | None = None,
             ground: Any = None,
-            commands: Mapping[str, Sequence[float]] | None = None) -> dict[str, Any]:
+            commands: Mapping[str, Sequence[float]] | None = None,
+            waypoints: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
     """Every behaviour metric one rollout can be read for, as one flat table.
 
     Which families are read is decided by what the rig and the episode
@@ -1725,7 +1794,9 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     :func:`tracking_metrics` takes; with a floating base it is read for the
     tracking family (ADR-721). A rig with an ``appendage`` on a floating
     base is read for the appendage family (ADR-722), against the yaw-rate
-    command when ``commands`` carries one.
+    command when ``commands`` carries one. ``waypoints`` are the ground
+    points the episode sent the base to, as :func:`waypoint_metrics` takes;
+    with a floating base they are read for the waypoint family (ADR-751).
     """
 
     read: dict[str, Any] = dict(episode_metrics(episode))
@@ -1740,6 +1811,8 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
         read.update(terrain_metrics(samples, rig, terrain=terrain, ground=ground))
         if commands:
             read.update(tracking_metrics(samples, rig, commands))
+        if waypoints:
+            read.update(waypoint_metrics(samples, rig, waypoints))
         if rig.get("appendage"):
             read.update(appendage_metrics(
                 samples, rig, ground=ground,
@@ -1765,7 +1838,7 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     if reference is not None and read.get("feet"):
         read.update(reference_metrics(read["feet"], reference, drives=drives))
     for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives", "reference",
-                "terrain", "tracking", "appendage"):
+                "terrain", "tracking", "appendage", "waypoints"):
         if key in read:
             detail[key] = read[key]
     return {"metrics": {name: read[name] for name in METRICS if name in read},

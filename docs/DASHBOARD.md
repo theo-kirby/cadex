@@ -1,6 +1,6 @@
 # DASHBOARD.md — The dashboard, Cadex's only UI
 
-Verified against source: 2026-10-16. [Cadex-new]
+Verified against source: 2026-10-17. [Cadex-new]
 
 This is the design specification for the dashboard: the pages `cadex app`
 and `cadex review` serve (`cli/cadex_cli/review_server.py` and
@@ -585,19 +585,54 @@ above the design's lowest point (2 mm or 2 % of its height), under the
 design. The mat is pushed back in depth (polygon offset) rather than
 lowered, so a part resting on it never z-fights. A model that is nothing but
 world geometry is drawn as it is. `stats().floor` reports `z_mm`, `source`
-(`world` or `design`) and `pitch_mm`; `stats().hidden_world` names the parts
-not drawn.
+(`world` or `design`), `pitch_mm`, and the mat's `centre_mm` and `size_mm`;
+`stats().hidden_world` names the parts not drawn.
 
-**The course is drawn (ADR-734).** A model that stands on a declared course
-(ADR-714, ADR-716) is drawn on it. A box course is its boxes, over a slab
-whose top is its plane across the extent (the course's lowest stretches are
-the plane and have no box of their own), and a heightfield is its surface.
-Both are drawn in the mat's own prototype material (`floor.js`,
-`prototypeMaterial`), one texture for the whole course, its grid anchored to
-the world's whole metres on every face. Their edges are drawn a step lighter
-(`TERRAIN`), so a step or a ramp's lip reads at any distance. The
-course is the stage, not the design: it sizes, picks and outlines nothing,
-but Fit takes in 300 mm of it behind the design and 1.5 m ahead along +x,
+**The ground never ends (ADR-742).** The mat is centred on the camera's
+target, not on the origin, and moves with it on every draw: a followed
+rollout carries the mat along under it, its grid still on the world's whole
+metres. It is as large as the fade asks (four times the fog's far distance)
+and, when the design has run away from a camera that does not follow, large
+enough to reach the design with 6 m to spare; the far plane grows with it.
+So a playback or a film that runs 50 m, in any direction, followed or not,
+is over drawn ground at every frame, and the mat's edge stays past the fade
+(`cli/tests/test_dashboard_ground.py`). Moving it repaints nothing: one
+plane is moved and scaled and its texture re-offset.
+
+**The course is drawn as one ground (ADR-734, ADR-743).** A model that
+stands on a declared course (ADR-714, ADR-716) is drawn on it, as a single
+surface sampled from the served course: at each sample the highest box top
+or dome over that point, or the plane where neither is. A dome (a mogul,
+ADR-744) is a sphere's centre and radius, and its top is the sphere's. A box's top is read exactly
+along the vertical through its own rotation and extents, so a ramp turned
+to its grade and a turned rock are drawn where their tops are. The samples
+run every 25 mm (coarser over a large course, at most `TERRAIN.samples`),
+and on both sides of every box corner's x and y, 0.5 mm apart, so a step's
+face is a wall and not a ramp; a box turned about x or y (a ramp, a rock's
+stone, ADR-745) adds the lines where its faces meet the ground under it, so
+its crease is drawn where it is. There are no box objects, no slab and no
+edge lines: one mesh, in the mat's own prototype material and palette
+(`floor.js`, `prototypeMaterial`), its grid anchored to the world's whole
+metres on every facet, with crease normals so a wall's edge stays crisp and
+a gentle rise reads smooth. A box course's surface runs 500 mm past its
+extent and ends at its plane, where the mat lies, so the course and the
+mat meet without a seam and the mat carries the ground on to the horizon
+(ADR-742). An engine course runs out 50 m past its extent (ADR-745): the
+surface is sampled finely over the extent and whatever stands within 10 m
+of it (`TERRAIN.reach_mm`), every 2.5 m (`TERRAIN.far_mm`) over the flat
+run-out beyond, which is exact there since it is planar between its walls,
+and is eased to the plane over 1.5 m past the run-out's end; where a course
+ends at its plane the surface ends and the mat is the ground. A heightfield is drawn on its own vertices and eased down to the
+mat over 1.5 m. `groundAt(x_mm, y_mm)` reads the drawn height off the
+surface's own triangles, and `stats().terrain.surface` gives the mesh
+count, sample columns and rows, triangles and extent
+(`cli/tests/test_dashboard_ground.py` holds a step, a ramp, a rock and a
+mogul to the highest box or dome top within 5 mm at 1,000 points, and, on
+10 held-out engine courses with every kind, the drawn height to MuJoCo's
+own ray onto the placed course within 5 mm at 1,000 points, past the extent
+included, ADR-745). The ground is the stage, not
+the design: it sizes, picks and outlines nothing, and casts no shadow,
+since a self-shadowed course would not match the mat it meets. Fit takes in 300 mm of it behind the design and 1.5 m ahead along +x,
 where courses run, and a course appearing where there was none is fitted. `setTerrain(block)` draws it. The block is a model's
 `collision.terrain`, which the server reads from the export's world body (course 0
 of a pool), until a playback carries a `terrain` of its own. A rollout,
@@ -605,9 +640,19 @@ checkpoint or evaluation trace names the course its episode stood on, so an
 evaluation seed is shown on its held-out course. With a course the mat lies
 at a box course's plane, the ground beyond its extent, or 50 mm under a
 heightfield's lowest point (`stats().floor.source` is `terrain`), and
-`stats().terrain` names the kind, the box count and the course. An
-evaluation's film draws the same course under the solids (`film.py`,
-`terrain_triangles`), and its seed row's `terrain` names it.
+`stats().terrain` names the kind, the box and dome counts and the course. An
+evaluation's film draws the same one ground under the solids (ADR-746):
+`film.terrain_surface` is a port of `sampleSurface` (`SURFACE` is
+`TERRAIN`'s sampling), held to `groundAt` at every point the held-out test
+compares, and `film.Ground` draws it in tiles of 48 cells, prepared on
+demand with a ring so normals are smoothed across tile edges, choosing per
+shot the tiles under the window and inside the mat's fade at a stride
+that keeps a cell about a pixel tall. The renderer paints it with the mat
+itself (`CadexStudio.GROUND`): each point the checker and line the mat
+has there, faded as the mat fades, lit relative to level ground, so level
+ground at the plane is the mat and a wall or slope reads by its light
+(`docs/probes/orun8/g1-film-frame.png`, `g1-film-every-kind.png`). Its
+seed row's `terrain` names it.
 
 **The clip planes follow the shot (ADR-600).** The camera's near plane is
 0.002 of its distance to the target and its far plane is 1.5× the floor's
@@ -1181,7 +1226,8 @@ of `docs/CLI.md`), run in the page. Its inputs are rebuilt from the trace by
 each one's kind in the task bundle: joint positions, velocities and efforts
 as recorded; an IMU's orientation from its part's pose and its rate from the
 poses a frame either side; the gait clock from the time and the bundle's
-period. An input of another kind is held at the normaliser's mean and named
+period, unless the clock follows the command (ADR-752, `clock` null), when
+it is held like an input of another kind. An input of another kind is held at the normaliser's mean and named
 in the status line. A trace is kept at 25 fps while the policy runs faster
 behind a slew limit, so the status line gives how well frame *k*'s rebuilt
 command matches the command frame *k + 1* recorded (Pearson r over the

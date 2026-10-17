@@ -1247,7 +1247,7 @@ _SUCCESS_SCALE_KEYS = (
 
 #: What a goal may be (ADR-462). ``CadexDynamics.GOAL_KINDS`` is the same
 #: tuple, and ``test_goal_api`` holds the two equal.
-_GOAL_KINDS = ("value", "speed", "point", "phase", "yaw_rate")
+_GOAL_KINDS = ("value", "speed", "point", "phase", "yaw_rate", "waypoint")
 
 #: An observation's name, which becomes a name a reward formula writes. The
 #: same shape as a Python identifier because that is what it turns into,
@@ -1292,6 +1292,8 @@ _CHANNEL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,47}$")
 #: (ADR-703).
 _GAIT_NAMES = ("walk", "trot", "pace", "canter", "transverse_gallop",
                "rotary_gallop", "half_bound", "bound")
+#: A biped's named gaits, ``CadexGait.BIPED_GAITS``'s keys (ADR-754).
+_BIPED_GAIT_NAMES = ("walk", "run")
 
 #: What a control formula may name. ``initialValue`` is deliberately absent
 #: and refused by name below.
@@ -3553,9 +3555,9 @@ class AssemblyDomainAPI:
           read from the declared course (``terrain=`` on ``api.mjcf``) or
           the plane. ``name="scan"`` gives ``scan_0`` .. ``scan_14``;
           ``scan_4`` is the point under the body. ``target`` is an
-          ``api.component``. It must be ``role="privileged"``: nothing on
-          the robot maps the terrain, so the critic reads it and the policy
-          does not.
+          ``api.component``. ``role="privileged"`` keeps it to the critic,
+          the reward and the terminations; ``role="policy"`` gives the
+          actor the ground ahead as well, as a depth sensor would (ADR-748).
 
         **A vector channel expands to suffixed names.** ``name="hand"`` on a
         ``component_position`` gives ``hand_x``, ``hand_y`` and ``hand_z``;
@@ -4214,6 +4216,7 @@ class AssemblyDomainAPI:
         period_seconds: float | None = None,
         resample_seconds: float | None = None,
         sequence: Sequence[float] | None = None,
+        bearing_deg: float | None = None,
         label: str = "",
     ) -> DomainValue:
         """Tell the policy where to go: a number or a place drawn per episode.
@@ -4278,8 +4281,25 @@ class AssemblyDomainAPI:
           ``yaw_rate_error_rms_deg_s`` and ``reversal_heading_error_deg_max``
           against it. The reward still has to pay for it.
 
-        A task states at most one ``speed``, one ``yaw_rate`` and one
-        ``point``; ``value`` and ``phase`` goals are free.
+        * ``"waypoint"`` -- a **place on the ground** the floating base is
+          sent to (ADR-751). Each segment is a leg from the last point (the
+          base's centre of mass at the reset pose, before the first): its
+          length is drawn between ``between=[low, high]`` millimetres and
+          its direction turns from the leg before by up to ``bearing_deg``
+          (default 180, any way; the base's heading at the reset pose
+          before the first leg). Its channels are ``name_x`` and
+          ``name_y``: the point read from the base at every step, in mm,
+          ahead and to the left along the base's heading -- what a robot
+          told a target by a phone or a beacon would know. A success spec
+          reads ``waypoint_miss_mm_max`` (the worst of the closest approach
+          to each point while it was up) and ``waypoints_reached`` (within
+          300 mm) against it. The model needs exactly one floating base.
+          Give it ``resample_seconds`` to send the base on from point to
+          point; a trace records each point in the world.
+
+        A task states at most one ``speed``, one ``yaw_rate``, one
+        ``point`` and one ``waypoint``; ``value`` and ``phase`` goals are
+        free.
 
         ``resample_seconds`` draws the goal again that often during the
         episode, which is what makes a policy learn to *change* what it is
@@ -4379,6 +4399,16 @@ class AssemblyDomainAPI:
                         "describes how a point goal is drawn, and this is "
                         f"a {clean_kind}", source,
                     )
+        if bearing_deg is not None:
+            if clean_kind != "waypoint":
+                raise _error(
+                    operation, "bearing_deg",
+                    "is how far a waypoint's leg may turn from the one "
+                    f"before it, and this is a {clean_kind}", bearing_deg,
+                )
+            properties["bearing_deg"] = _number(
+                operation, "bearing_deg", bearing_deg, minimum=0.0, maximum=180.0
+            )
         if clean_kind == "phase":
             if between is not None:
                 raise _error(
@@ -4406,6 +4436,12 @@ class AssemblyDomainAPI:
             if high < low:
                 raise _error(
                     operation, "between", "must be ordered [low, high]", between
+                )
+            if clean_kind == "waypoint" and low <= 0.0:
+                raise _error(
+                    operation, "between",
+                    "is the shortest and longest leg in millimetres, so "
+                    "both are positive", between,
                 )
             properties["low"] = low
             properties["high"] = high
@@ -4464,7 +4500,9 @@ class AssemblyDomainAPI:
         """Declare a procedural gait reference for a legged task (ADR-702, ADR-703).
 
         ``feet`` is four foot components in the order left fore, right fore,
-        left hind, right hind. ``gait`` names a footfall -- walk, trot, pace,
+        left hind, right hind -- or, for a biped, two: left, right (ADR-754),
+        whose gaits are walk and run and whose offsets are keyed ``L``, ``R``
+        after the left foot's. ``gait`` names a footfall -- walk, trot, pace,
         canter, transverse_gallop, rotary_gallop, half_bound, bound -- or
         ``offsets`` (each foot's touch-down as a fraction of the stride after
         the left hind's, keyed ``LF``, ``RF``, ``LH``, ``RH``) and ``duty``
@@ -4487,12 +4525,16 @@ class AssemblyDomainAPI:
         foot_values = _values(
             operation, "feet", feet, output_type="component_link", minimum=1
         )
-        if len(foot_values) != 4:
+        if len(foot_values) not in (2, 4):
             raise _error(
                 operation, "feet",
                 "takes exactly four foot components: left fore, right fore, "
-                "left hind, right hind", len(foot_values),
+                "left hind, right hind; or two for a biped: left, right",
+                len(foot_values),
             )
+        biped = len(foot_values) == 2
+        names = _BIPED_GAIT_NAMES if biped else _GAIT_NAMES
+        labels = ("L", "R") if biped else ("LF", "RF", "LH", "RH")
         properties: dict[str, Any] = {
             "feet": foot_values,
             "speed_mm_s": _number(
@@ -4502,8 +4544,8 @@ class AssemblyDomainAPI:
         }
         if gait is not None:
             clean = str(gait).strip().lower()
-            if offsets is None and clean not in _GAIT_NAMES:
-                raise _error(operation, "gait", f"must be one of {list(_GAIT_NAMES)}", gait)
+            if offsets is None and clean not in names:
+                raise _error(operation, "gait", f"must be one of {list(names)}", gait)
             if not _CHANNEL_NAME.fullmatch(clean):
                 raise _error(operation, "gait", "must be a short name for the footfall", gait)
             properties["gait"] = clean
@@ -4513,16 +4555,16 @@ class AssemblyDomainAPI:
                 "an explicit footfall needs both offsets and duty",
             )
         if offsets is not None:
-            if not isinstance(offsets, Mapping) or sorted(offsets) != ["LF", "LH", "RF", "RH"]:
+            if not isinstance(offsets, Mapping) or sorted(offsets) != sorted(labels):
                 raise _error(
                     operation, "offsets",
-                    "expected {'LF': f, 'RF': f, 'LH': f, 'RH': f}, each a "
-                    "fraction of the stride", offsets,
+                    "expected {" + ", ".join(f"'{foot}': f" for foot in labels)
+                    + "}, each a fraction of the stride", offsets,
                 )
             properties["offsets"] = {
                 foot: _number(operation, f"offsets[{foot!r}]", offsets[foot],
                               minimum=0.0, maximum=1.0)
-                for foot in ("LF", "RF", "LH", "RH")
+                for foot in labels
             }
             properties["duty"] = _number(
                 operation, "duty", duty, minimum=0.0, maximum=1.0, strict_minimum=True
@@ -4660,8 +4702,9 @@ class AssemblyDomainAPI:
           the ground under it; and on a declared ``terrain``,
           ``steps_crossed``, ``slopes_crossed``,
           ``largest_step_crossed_mm`` and ``steepest_slope_crossed_deg``,
-          the course's steps and slopes the centre of mass ended beyond.
-          A drawn box course is re-drawn for each evaluation seed from a
+          the course's steps and slopes the centre of mass ended beyond,
+          and ``platforms_crossed`` and ``highest_platform_crossed_mm``,
+          the platforms it was over and ended beyond (ADR-749). A drawn box course is re-drawn for each evaluation seed from a
           stream the training pool never uses, so every seed is judged on
           a course the policy did not train on.
         * with a floating base and commands that change (ADR-721):
@@ -5146,6 +5189,8 @@ class AssemblyDomainAPI:
         success: DomainValue | None = None,
         reference: DomainValue | None = None,
         reference_start: str = "phase0",
+        reference_cadence: str = "fixed",
+        reference_cadence_exponent: float | None = None,
         label: str = "",
     ) -> DomainValue:
         """Turn one exported model into a trainable task.
@@ -5229,7 +5274,13 @@ class AssemblyDomainAPI:
         scored against the reference where it lands, one step on the clock.
         ``reference_start="random"`` starts each seeded episode at a random
         sample of the stride instead (ADR-709): the clip's pose and velocity
-        there, the clock at that phase.
+        there, the clock at that phase. ``reference_cadence="speed"`` turns
+        the clock with the task's one ``speed`` goal instead of at the clip's
+        own rate (ADR-752): each step it turns ``(|command| / clip speed) **
+        reference_cadence_exponent`` of the clip's turn, the exponent 0.4 by
+        default (dynamic similarity, stride frequency ~ v ** 0.4 at a free
+        stride length), so a faster command is a quicker gait and a zero
+        command stops the clock.
 
         Like ``api.mjcf`` and for the same reason, ``api.task`` is not under
         the "exactly one simulation" rule: a script may declare several,
@@ -5398,6 +5449,31 @@ class AssemblyDomainAPI:
                              "this task declares none", reference_start)
             # ADR-709: absent at phase 0, so the task is the value it was.
             judged["reference_start"] = "random"
+        if reference_cadence not in ("fixed", "speed"):
+            raise _error(operation, "reference_cadence",
+                         "must be 'fixed' or 'speed'", reference_cadence)
+        if reference_cadence == "fixed":
+            if reference_cadence_exponent is not None:
+                raise _error(operation, "reference_cadence_exponent",
+                             "scales a cadence that follows the commanded speed; "
+                             "set reference_cadence='speed'", reference_cadence_exponent)
+        else:
+            if reference is None:
+                raise _error(operation, "reference_cadence",
+                             "turns a gait reference's clock, and this task "
+                             "declares none", reference_cadence)
+            speeds = [entry for entry in goal_values
+                      if entry.properties.get("kind") == "speed"]
+            if len(speeds) != 1:
+                raise _error(operation, "reference_cadence",
+                             "follows the task's one speed goal, and this task "
+                             f"declares {len(speeds)}", reference_cadence)
+            # ADR-752: absent on a fixed clock, so the task is the value it was.
+            judged["reference_cadence"] = {
+                "exponent": 0.4 if reference_cadence_exponent is None else _number(
+                    operation, "reference_cadence_exponent", reference_cadence_exponent,
+                    minimum=0.0, maximum=1.0, strict_minimum=True),
+            }
         seconds = _number(
             operation, "episode_seconds", episode_seconds,
             minimum=0.0, maximum=3600.0, strict_minimum=True,

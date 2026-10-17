@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-16. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-17. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -90,6 +90,10 @@ them: (a) one machine with a GPU, (b) CPU only, (c) a separate GPU box, and
 (d) driving (c) with `training/remote_train.sh` (ADR-089). This file stays
 *what the trainer is*; that one is *how to run it*. Duplicating the commands
 here is how the two drift.
+
+**`training/RECIPE.md` is how to write a legged task that trains cold**:
+the reference gait, the start inside it, the speed and stand terms, the
+warm-start rules and the budgets, each with the run that showed it.
 
 The short form: any machine with a CUDA GPU and Python 3.12+ (the pinned
 `numpy==2.5.1` has no wheels below cp312), a venv built from
@@ -218,7 +222,7 @@ against the actuator rather than deriving it — ADR-162 carries the numbers.
 
 | Flag | What it is |
 |---|---|
-| `--init-from POLICY` | start the actor from an existing `.cxpolicy`. It must match this bundle's task and model digests, its observation channels in order, its action table, the `--hidden` shape and the `--activation` it was trained with. The actor's location half, its exploration width (unless `--initial-std` is given, ADR-471) and the observation normaliser are carried. The critic and the optimiser start fresh: the container holds neither. |
+| `--init-from POLICY` | start the actor from an existing `.cxpolicy`. It must match this bundle's task and model digests, its observation channels in order, its action table, the `--hidden` shape and the `--activation` it was trained with. The actor's location half, its exploration width (unless `--initial-std` is given, ADR-471) and the observation normaliser are carried, the normaliser with the weight of the samples it rests on (ADR-753). The critic and the optimiser start fresh: the container holds neither. |
 | `--init-from-task-change REASON` | let `--init-from` cross a task change, as a **curriculum**, with a one-line reason written into the policy header. It skips the whole-file task digest and nothing else. Requires `--init-from-parent-task`. |
 | `--init-from-parent-task BUNDLE` | the bundle the source policy was trained on. Its digest must equal the one in that policy's header, so the change can be named key by key. |
 
@@ -424,9 +428,10 @@ window is tested against an **episode-local** clock rather than `data.time`,
 which this trainer's reset does not rewind. So each environment's state
 carries, beside the MJX data, its pushes (`forces`, `starts`), the
 episode's `elapsed` time and `steps`, and, when the task has them, its
-goal pick, its reference start sample (ADR-709) and its course (ADR-717).
-A task without a goal, a reference start or a course carries no member for
-it and draws no key for it, so it trains as it did.
+goal pick, its reference start sample (ADR-709), its course (ADR-717) and,
+on a speed cadence, the gait clock's turned cycles (`turned`, ADR-752).
+A task without a goal, a reference start, a course or a cadence carries no
+member for it and draws no key for it, so it trains as it did.
 
 ## The episode is the bundle's, not the trainer's (ADR-101)
 

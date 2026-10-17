@@ -1,0 +1,174 @@
+{
+ "date": "2026-10-17",
+ "model": "0f036864 (orun8-cat c1-t7 bundle, actor height scan, ADR-748)",
+ "actor": "orun8-cat runs/c1-t7/train/run.cxpolicy (trained on flat)",
+ "courses": "compose.py on the c1-t7 bundle, same seeds and pools as results.json",
+ "stock": "probe.py stock --episodes 128 (seeds 1000-1127), 200 steps",
+ "mjx": "probe.py mjx, 256 envs, 200 steps, under the machine lock",
+ "z": "(MJX rate - stock rate) / stock-side binomial SE",
+ "kinds": {
+  "flat": {
+   "mjx": {
+    "envs": 256,
+    "steps": 200,
+    "compile_s": 91.1,
+    "env_steps_per_s": 3785,
+    "nonfinite_events": 0,
+    "first_episode_tipped": 4,
+    "first_episode_tip_rate": 0.016,
+    "final_state_finite": true
+   },
+   "stock128": {
+    "episodes": 128,
+    "horizon": 200,
+    "tipped": 5,
+    "tip_rate": 0.039,
+    "reasons": [
+     "tipped"
+    ]
+   },
+   "stock32_tipped": 4,
+   "z_stock_se": -1.34
+  },
+  "mild": {
+   "mjx": {
+    "envs": 256,
+    "steps": 200,
+    "compile_s": 94.4,
+    "env_steps_per_s": 2381,
+    "nonfinite_events": 0,
+    "first_episode_tipped": 50,
+    "first_episode_tip_rate": 0.195,
+    "final_state_finite": true
+   },
+   "stock128": {
+    "episodes": 128,
+    "horizon": 200,
+    "tipped": 29,
+    "tip_rate": 0.227,
+    "reasons": [
+     "tipped"
+    ]
+   },
+   "stock32_tipped": 8,
+   "z_stock_se": -0.86
+  },
+  "moguls": {
+   "mjx": {
+    "envs": 256,
+    "steps": 200,
+    "compile_s": 90.4,
+    "env_steps_per_s": 2885,
+    "nonfinite_events": 0,
+    "first_episode_tipped": 8,
+    "first_episode_tip_rate": 0.031,
+    "final_state_finite": true
+   },
+   "stock128": {
+    "episodes": 128,
+    "horizon": 200,
+    "tipped": 7,
+    "tip_rate": 0.055,
+    "reasons": [
+     "tipped"
+    ]
+   },
+   "stock32_tipped": 4,
+   "z_stock_se": -1.19
+  },
+  "rock": {
+   "mjx": {
+    "envs": 256,
+    "steps": 200,
+    "compile_s": 93.8,
+    "env_steps_per_s": 2445,
+    "nonfinite_events": 0,
+    "first_episode_tipped": 9,
+    "first_episode_tip_rate": 0.035,
+    "final_state_finite": true
+   },
+   "stock128": {
+    "episodes": 128,
+    "horizon": 200,
+    "tipped": 7,
+    "tip_rate": 0.055,
+    "reasons": [
+     "tipped"
+    ]
+   },
+   "stock32_tipped": 4,
+   "z_stock_se": -0.99
+  },
+  "platform50": {
+   "mjx": {
+    "envs": 256,
+    "steps": 200,
+    "compile_s": 92.3,
+    "env_steps_per_s": 3231,
+    "nonfinite_events": 0,
+    "first_episode_tipped": 32,
+    "first_episode_tip_rate": 0.125,
+    "final_state_finite": true
+   },
+   "stock128": {
+    "episodes": 128,
+    "horizon": 200,
+    "tipped": 15,
+    "tip_rate": 0.117,
+    "reasons": [
+     "tipped"
+    ]
+   },
+   "stock32_tipped": 8,
+   "z_stock_se": 0.28
+  },
+  "mixed": {
+   "mjx": {
+    "envs": 256,
+    "steps": 200,
+    "compile_s": 94.0,
+    "env_steps_per_s": 2327,
+    "nonfinite_events": 0,
+    "first_episode_tipped": 106,
+    "first_episode_tip_rate": 0.414,
+    "final_state_finite": true
+   },
+   "stock128": {
+    "episodes": 128,
+    "horizon": 200,
+    "tipped": 54,
+    "tip_rate": 0.422,
+    "reasons": [
+     "collapsed",
+     "tipped"
+    ]
+   },
+   "stock32_tipped": 16,
+   "z_stock_se": -0.18
+  },
+  "runout": {
+   "mjx": {
+    "envs": 256,
+    "steps": 200,
+    "compile_s": 93.7,
+    "env_steps_per_s": 2934,
+    "nonfinite_events": 0,
+    "first_episode_tipped": 139,
+    "first_episode_tip_rate": 0.543,
+    "final_state_finite": true
+   },
+   "stock128": {
+    "episodes": 128,
+    "horizon": 200,
+    "tipped": 64,
+    "tip_rate": 0.5,
+    "reasons": [
+     "collapsed",
+     "tipped"
+    ]
+   },
+   "stock32_tipped": 21,
+   "z_stock_se": 0.97
+  }
+ }
+}

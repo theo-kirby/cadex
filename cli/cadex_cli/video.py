@@ -497,7 +497,7 @@ def _hann(track, half):
 
 
 def _studio_frames(looks, materials, names, meshes, frames, times, count, sample, work, started,
-                   floor=None, held=None, overlay=None, ground=()):
+                   floor=None, held=None, overlay=None, ground=None):
     """The design's studio look (CadexStudio.studio) drawn on the CPU at every sampled pose.
 
     The hero view, followed: each component is prepared once in its own frame
@@ -513,8 +513,9 @@ def _studio_frames(looks, materials, names, meshes, frames, times, count, sample
     the solids, and ``overlay(index, pixels, size, bounds)`` draws over the
     frame rendered from ``frames[index]`` before its clock: how an
     evaluation's film marks where the episode was asked to go. ``ground`` is
-    prepared triangles drawn in every frame and framing none: the course an
-    evaluation seed stood on (ADR-734).
+    drawn in every frame and frames none: the course an evaluation seed stood
+    on (ADR-734), one ground whose ``visible(basis, bounds, size)`` gives the
+    prepared triangles a frame can show (``film.Ground``, ADR-746).
     """
     given = floor
     environment = [name for name in names if name not in looks]
@@ -570,7 +571,9 @@ def _studio_frames(looks, materials, names, meshes, frames, times, count, sample
         posed = [t for name in names for t in _posed(local[name], frames[k]['component_placements'][name])]
         shadow = studio_render._contact_shadow(posed, floor=floor)
         cx, cy = track[i]
-        pixels, _ = studio_render.studio(posed + list(ground), studio_render.HERO, bounds=([cx-reach, cy-reach], [cx+reach, cy+reach]),
+        window = ([cx-reach, cy-reach], [cx+reach, cy+reach])
+        drawn = ground.visible(studio_render.HERO, window, size) if ground is not None else []
+        pixels, _ = studio_render.studio(posed + drawn, studio_render.HERO, bounds=window,
                                          size=size, shadow=shadow)
         canvas = studio_render.Canvas(size, size, (0, 0, 0))
         canvas.pixels = pixels

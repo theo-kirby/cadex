@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-16
+Verified against source: 2026-10-17
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -300,13 +300,24 @@ descriptor's `boxes` list, `environment/terrain/<i>`, all on the plane's
 contact parameters. Steps and slopes cut the extent along x into segments;
 a flat one is a block from below the plane up to its height, a graded one a
 20 mm ramp turned to its grade on a block that fills under it. A bump is a
-square block `radius_mm` across (where its cosine is at half height) with a
-flat top `height_mm` above the steps and slopes at its centre; a dip is
+**dome** (ADR-744): a sphere, `environment/terrain/dome/<j>`, buried so its
+cap stands `height_mm` above the steps and slopes at its centre and meets
+them `radius_mm` from it, so a mogul is round; one taller than its radius
+(more than a hemisphere) is refused (`terrain_bump_too_tall`). A
+`platform` is a block of its own footprint, its top `height_mm` over the
+steps and slopes at its centre, and a `rock` patch a 3 × 3 grid of cells
+each holding a stone (or, but the centre, left empty), a box tilted about x
+or y by 10–25° and buried so its peak stands up to `height_mm` proud, in
+the box slots as `shape: "stone"` (ADR-745). Every level of a course runs
+out 50 m past its extent (`TERRAIN_RUNOUT_MM`), so there is no cliff an
+episode reaches. A dip is
 refused (`terrain_dip_needs_heightfield`), as is a step down off a slope's
 high end, where the ramp's leaning end face would stand proud
-(`terrain_step_off_slope`). The ground is the highest box top over a point,
-or the plane (`terrain_box_ground_mm`), which is what MuJoCo's ray meets
-(to 0.001 mm on 165 points), and what the height scan reads in the
+(`terrain_step_off_slope`). The ground is the highest box top or dome cap
+over a point, or the plane (`terrain_box_ground_mm`), which is what MuJoCo's
+ray meets (to 4e-12 mm at 1,000 points over 10 held-out drawn courses with
+every kind, run-outs included, ADR-745), and what the height scan reads, each
+box through its own rotation, in the
 engine and the trainer. Measured on the cat's own
 rig (the f1-g1 model, 27 actuators, random position targets across each
 action's range, 24 starts on bumps, step edges and ramps at up to 3 m/s,
@@ -370,6 +381,21 @@ window, frames past 1 s and not within 0.5 s after any command change) and
 commanded heading 180°, judged when it has). The trainer's host draw
 follows the same `GOAL_SEQUENCE_ALGORITHM`.
 
+**Waypoints on the ground (ADR-751, 2026-10-17).** A goal of kind
+`waypoint` sends the one floating base to a place on the ground. Each
+segment is a leg from the last point (the base's centre of mass at the
+reset pose, before the first): its length uniform in `between=[low, high]`
+mm, its direction turned from the leg before by uniform ±`bearing_deg`
+(default 180; the base's reset heading before the first). The policy reads
+it as `name_x` (ahead) and `name_y` (left) in mm from the base's centre of
+mass along its heading, as a height scan turns, re-read every step; the
+trace and the episode's goal schedule hold the world point. The waypoint
+family reads `waypoint_miss_mm_max` (for each point the episode reached,
+the closest approach while it was up; the worst) and `waypoints_reached`
+(within 300 mm). Points change on the resample clock, not on arrival, so a
+spec of three points in 12 s gives each 4 s. The trainer's host draw and
+its channel transform are copies (`draw_goals`, `waypoint_vector`).
+
 **Appendage predicates (ADR-722, 2026-10-16).** `assembly.success(...,
 appendage=[root, ..., last])` names a chain that hangs from the base and is
 not a leg -- a tail, a trunk -- each component below the one before, at
@@ -387,7 +413,11 @@ A success spec may bound `distance_made_good_mm` (net plan travel along the
 starting heading) and `falls` (the base tilted 60°, or its centre of mass
 fell to half its starting height above the ground under it) on any floating
 base, and, on a declared course, `steps_crossed`, `slopes_crossed`,
-`largest_step_crossed_mm` and `steepest_slope_crossed_deg`. On a drawn box
+`largest_step_crossed_mm` and `steepest_slope_crossed_deg`, and
+`platforms_crossed` and `highest_platform_crossed_mm`: a platform whose
+footprint the centre of mass was over and whose far end it ended beyond
+(ADR-749; before it, any course with a platform or rock patch failed these
+predicates with a `KeyError`). On a drawn box
 course `evaluate_success` plays each seed on its own course,
 `terrain_evaluation_course`: the pool's algorithm under the key
 `eval:<seed>:<n>`, the first draw whose boxes fit the model's slots, so no
@@ -422,9 +452,11 @@ the bundle's `scans` section names the body by its index and states the
 grid, and the channels come last in every vector, after a reference's
 tracking channels. The engine (`height_scan_values`) and the trainer
 (`height_scan_vector`, on MJX's `xpos`/`xmat` and the course's own ground)
-each compute it. It
-must be privileged (orun7 O5): nothing on the robot maps terrain, so the
-critic reads it and the actor never does.
+each compute it. `role="privileged"` keeps it to the critic, the reward and
+the terminations (orun7 O5). `role="policy"` gives the actor the same 15
+channels, after its reference clock, as a depth sensor's map of the ground
+would (orun8 O2, ADR-748); a warm start across that change is refused,
+because the actor's inputs move.
 
 ---
 
@@ -1641,6 +1673,10 @@ schedule, and body height and pitch. No motion capture is involved.
 - **Refusal.** A foot that cannot be reached raises `GaitUnreachable`,
   naming the leg, the moment in the stride, the miss and the joints at a
   stop. It never clamps silently.
+- **Two feet (ADR-754).** `legs` keyed `L`, `R` builds a biped's stride:
+  `walk` (duty 0.6) and `run` (duty 0.35), the feet half a stride apart and
+  the left foot the phase reference (Alexander 1984). In a task,
+  `assembly.gait([foot_l, foot_r], gait="walk", speed_mm_s=...)`.
 
 Measured on panel-cat-3's legs (hip height 427 mm), against Alexander's
 stride:
@@ -1732,6 +1768,30 @@ own rollout, starts at the keyframe and phase 0. A success spec's seeds are
 seeded episodes, so they start mid-stride too: the spec judges the gait,
 not the launch from a standstill.
 
+**A cadence that follows the command (ADR-752).** One clip is one speed:
+the cat's 580 mm trot turns at 1.72 Hz however fast it is told to run, and
+at a 3 m/s command a fixed clock asks for a 1 m/s stride. With
+`api.task(reference_cadence="speed")` the clock turns with the task's one
+`speed` goal instead: each step it turns `turn_per_step * (|g| /
+clip speed) ** reference_cadence_exponent` of a cycle, `g` the command in
+force for that step, summed from the reset and kept in [0, 1). The
+exponent defaults to 0.4: at a free stride length, Alexander's dynamic
+similarity gives stride frequency ~ v^0.4 (`CadexGait.stride`); 1.0 holds
+the stride's length and scales only its rate. On the cat's clip the clock
+turns at 1.31, 2.03 and 2.68 Hz at 0.5, 1.5 and 3 m/s, so the clip's poses
+ask for 0.76, 1.18 and 1.55 m/s; a zero command stops it, and a reverse
+command turns it at its magnitude. The joint table is still the one
+stride, so a cadence quickens the gait and does not lengthen it. The
+bundle's `tracking.cadence` names the goal, its channel, the clip speed,
+the exponent and the rule. The trainer carries the turned cycles per
+environment beside the step counter (`tracking_turn`, `tracking_vector`).
+A warm start may move onto or off a cadence as a curriculum step
+(`tracking.cadence`, ADR-161): the actor reads the same two channels. The
+dashboard's Activations editor does not rebuild a cadenced clock from a
+trace's time, so it shows those two inputs at the normaliser's mean. The
+reference family's `stride_frequency_ratio` is still against the clip's
+own frequency.
+
 **Screening drives against it (ADR-710).** Before a design change is
 rebuilt or trained, `training/cadex_proxy.py` swaps datasheet drives, moves
 and scales mass in the exported model, and replays the task's reference
@@ -1773,7 +1833,7 @@ start (`--init-from`, with `--init-from-task-change` and
 onto a course when the robot is unchanged (ADR-736). Give it
 `--critic-warmup 10` (ADR-740). A course that touches only the feet
 (`terrain={"collides_with": [feet group], ...}`, ADR-739) keeps MJX off
-box–box and capsule–box pairs. terrain-cat's warm start from the flat
+box–box and capsule–box pairs. What remains costs by the slot: on the cat (8 paw spheres, 8192 environments) an iteration takes about 14 s plus 2.5 s for each box slot, so keep a course to about 11 box slots, and a rock patch's stones count (ADR-747). Such a course also lets the body pass through a platform's wall. terrain-cat's warm start from the flat
 turning policy (r1-t3) ran a full 12 s episode on the course by
 iteration 50 (`training/README.md`).
 

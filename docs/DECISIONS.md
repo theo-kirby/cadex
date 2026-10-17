@@ -43447,3 +43447,661 @@ after is kept down by ADR-739 instead: a course that touches only the feet
 has only sphere–box pairs, the cheap ones. Box–box and capsule–box were the
 costly pairs. A robot whose feet are not spheres may still be slow on a
 course. That is a trade made in the open, not a cull that is silently wrong.
+
+## ADR-742 — The mat follows the camera, so the ground never ends (2026-10-16)
+
+**Context.** orun8's G2 asks that a playback or film is over drawn ground at
+every frame, for a 12 s episode at 4 m/s in any direction. The stage floor
+(ADR-600) was a square centred on the origin, sized from the fade: four
+times the fog's far distance, at least 24 m. It was restaged only when the
+camera's distance or aspect changed, so a followed rollout carried the
+camera off the mat. A cat 25 m out ran on the sky.
+
+**Decision.** `environment.js` gains `setCentre(centre, cover)`, and
+`review_scene.js` calls it on every draw with the camera's target and the
+design's distance from it. The mat is centred on the target and is never
+smaller than the fade asks. When a camera that does not follow is left
+behind, the mat grows to reach the design with 6 m to spare
+(`COVER_MARGIN`), and the far plane grows with it. `resizeStageFloor`
+takes a `centre` and re-offsets the texture, so the grid stays on the
+world's whole metres (ADR-343) wherever the mat lies. The film shares
+`draw()`, so the hero and rollout captures get the same ground.
+`stats().floor` reports `centre_mm` and `size_mm`.
+
+**Evidence.** `cli/tests/test_dashboard_ground.py` carries the design
+50 m in a synthetic trace, once followed and once not. At each of 21
+frames it checks two things: the design is over the mat with at least 1 m
+to spare, and the mat's edge is at least the fog's far distance from the
+camera and inside its far plane. The test fails on the old code. It takes
+4.4 s; occlusion and detail are off, as their shading says nothing about
+where the mat lies.
+
+**Not done here.** The course itself (ADR-734's boxes and slab) still ends at
+its extent. G1 replaces it with one surface, and the engine's run-out to
+the base plane is G1's feature work.
+
+## ADR-743 — A course is drawn as one ground (2026-10-16)
+
+**Context.** orun8's G1 asks that a course read as one landscape, not as
+objects on a floor. ADR-734 drew a box course as its boxes, each a mesh with
+light edge lines, over a 10 mm slab at the plane across the extent, in a
+material a step lighter than the mat. The slab and the boxes ended at the
+extent, a seam against the mat, and every step was an outlined object.
+
+**Decision.** `review_scene.js`'s `setTerrain` samples the served course
+into one surface. A sample's height is the highest box top on the vertical
+through it, read by clipping the line to each box's three slabs in its own
+frame (so a ramp turned to its grade and a turned rock are exact), or the
+plane. Samples run every 25 mm, coarser over a course larger than
+`TERRAIN.samples` allows, plus a pair 0.5 mm either side of every box
+corner's x and y, so a step's face is a wall. The surface runs 500 mm past
+the extent and ends at the plane, where the mat lies (ADR-742), in the
+mat's own palette and world-anchored grid, so the two meet without a seam.
+No box objects, no slab, no edge lines; crease normals keep a wall's edge
+crisp. It casts no shadow, so where it lies at the plane it is
+indistinguishable from the mat. A heightfield is drawn on its own vertices
+and eased down to the mat over 1.5 m. `groundAt(x_mm, y_mm)` reads the
+drawn height off the surface's own triangles, for G1's later check against
+the physics' ground, and `stats().terrain.surface` reports the mesh.
+
+**Evidence.** `cli/tests/test_dashboard_ground.py` serves a course with a
+100 mm step, a 15° ramp built as `CadexDynamics.terrain_box_geoms` builds
+one, and a turned rock, through `terrain_block`. It checks one mesh, the
+mat at the plane, the drawn height against an independent Python slab
+clip within 5 mm at 1,000 random points (wall and rock edges excluded), a
+wall 2 mm either side of the step's face, and the rim at the plane. Its
+reference matches the ramp's analytic profile. The test takes about 5 s.
+`docs/probes/orun8/g1-one-ground.png` shows orun8-cat on a course with a
+step, a ramp, a 200 mm platform and rocks.
+
+**Not done here.** The film (`film.py`, `terrain_triangles`) still draws a
+course as its boxes. Moguls (buried spheres or ellipsoids) are not a box,
+so the sampler gains a sphere top when the engine gains the kind. The
+5 mm agreement with the physics over 10 held-out courses is G1's own check,
+written when the engine's new kinds land.
+
+
+## ADR-744 — A box course's bump is a dome; a re-placed slot reads its own rotation (2026-10-16)
+
+**Context.** orun8's G1 asks for smooth bumps and moguls, with the drawn
+height agreeing with the physics' within 5 mm, and O5 says to build them
+from large, mostly buried spheres. ADR-716 built a bump on a box course as a
+square block `radius_mm` across with a flat top: a 25 mm bump was a 25 mm
+step up and down, not a mogul.
+
+**Decision.** On a box course a `bump` is a **dome**: a sphere buried so
+its cap stands `height_mm` above the steps and slopes under its centre and
+meets them `radius_mm` from it, of radius `(r² + h²) / 2h`. No new feature
+kind: the heightfield's raised cosine and the dome now share a footprint
+and a height. A bump taller than its radius would be more than a
+hemisphere and overhang its own foot, so it is refused
+(`terrain_bump_too_tall`), in a listed course and in a random spec whose
+`bump_mm` top exceeds its `bump_radius_mm` bottom. `terrain_boxes` returns
+`domes` (`x_mm`, `y_mm`, `top_mm`, `radius_mm`), the descriptor carries
+them, a drawn pool's courses count them and the descriptor gives
+`dome_slots`. The MJCF writes one sphere per slot,
+`environment/terrain/dome/<j>`, on the boxes' contact terms (so
+`collides_with` holds), parking the slots a course leaves empty as the box
+slots are parked. `terrain_box_ground_mm` takes the highest dome cap too.
+`place_terrain_course`, the trainer's `terrain_pool`, `place_course` and
+height scan, the drawing (`domes`: centre and radius), the server's
+`terrain_block` and `mjcf_terrain`, the dashboard's sampler and the film's
+`terrain_triangles` each read domes.
+
+**A bug found on the way.** MuJoCo marks a geom compiled unturned as
+sharing its body's frame (`geom_sameframe`) and then copies the body's
+rotation instead of reading `geom_quat`. A drawn course's slot that was a
+block in course 0 and became a ramp in a re-placed course stood **flat** in
+stock MuJoCo: on one held-out course 66 of 309 ray probes missed the engine's
+ground by up to 60 mm. MJX always reads `geom_quat`, so training was right
+and stock-MuJoCo evaluation on drawn courses (ADR-718) was not. That
+includes ADR-741's stock-side tip rate. `place_terrain_course` now clears
+`geom_sameframe` on every slot it places.
+
+**Evidence.** On a drawn course (steps 20–100 mm, slopes 3–15°, bumps
+20–80 mm on 100–250 mm radii), at 1,000 random points over 10 held-out
+evaluation courses, MuJoCo's ray and `terrain_box_ground_mm` agree within
+2e-12 mm (before the `sameframe` fix: 63 misses over 5 mm on one course).
+The trainer's scan matches the engine's ground exactly at 300 points of a
+pooled course. MJX's `place_course` puts the domes where stock MuJoCo puts
+them (1.8e-7 m), and a ball dropped on a dome in MJX stays finite for 1,000
+steps. `cli/tests/test_dashboard_ground.py` adds a 60 mm mogul on a 250 mm
+foot and holds its peak and side to the sphere within 1 mm.
+
+**Not done here.** Rock (turned boxes), jump platforms and the run-out at
+the course's extent are still to come, and so is G3's MJX probe of the cat
+on domes. A bundle written before this ADR, with block bumps, is refused
+by the trainer's dome-count check rather than trained on different ground.
+
+
+## ADR-745 — Platforms, rock patches and a run-out: a box course has every ground kind and no edge (2026-10-16)
+
+**Context.** orun8's G1 asks a course to mix flat ground, moguls, steps,
+slopes, boxes to jump onto and rock-like rough patches, with the drawn
+height and the physics' agreeing within 5 mm at 1,000 points over 10
+held-out courses. G2 asks for no physics edge: running off a course is flat
+ground, not a fall. O4 sets jump boxes at 10–50 cm. After ADR-744 a box
+course had steps, slopes and domes; a "rock" was only a shape the drawing
+test made up, and a raised level ended in a cliff at the course's sides and
+at its far end.
+
+**Decision.** Two feature kinds, box course only (a heightfield refuses
+them, `terrain_kind_needs_boxes`):
+
+- **`platform`** (`x_mm`, `y_mm`, `length_mm`, `width_mm`, `height_mm`): a
+  `block` record of its own footprint, its top `height_mm` over the steps
+  and slopes at its centre, with a wall on every side.
+- **`rock`** (`x_mm`, `y_mm`, `radius_mm`, `height_mm` ≤ `radius_mm / 4`,
+  else `terrain_rock_too_tall`): a patch of `stone` records
+  (`terrain_rock_stones`), seeded by the patch's own numbers. Its `2 r`
+  square is a 3 × 3 grid of cells; each cell but the centre is empty with
+  probability 0.3, and a stone is a box tilted about x **or** y by 10–25°,
+  sized to its cell and buried so its peak stands 0.4–1.0 × `height_mm`
+  proud. Tilting about one horizontal axis keeps every wall and crease
+  along x or y, which is what lets the drawing be exact. A patch lies on
+  flat ground (`terrain_rock_off_flat`). Stones go in the box slots, so
+  they need no geom kind of their own; `terrain_box_geoms`, the MJCF, the
+  drawing and the trainer's `course_geoms` stand them as given.
+
+And a **run-out**: `terrain_boxes` runs every segment's box 50 m
+(`TERRAIN_RUNOUT_MM`) past the extent across y, and the first and last
+levels 50 m past it along x (stretched when flat, a block of their own when
+the course ends on a ramp). A 12 s episode at 4 m/s in any direction stays
+on ground at the level it left.
+
+A drawn pool (ADR-717) gains `platform_mm` (with `platform_size_mm`,
+default 600–1200 mm, and `platforms`, default 1) and `rock_mm` (with
+`rock_radius_mm`, default 250–400 mm, and `rocks`, default 1). After the
+bumps it tries up to 8 centres for each, keeping 100 mm clear of every
+bump, platform and patch, and a patch on flat ground; one that finds no
+place is left out. A spec without them draws exactly as before.
+
+The trainer reads every box slot through its own rotation (`box_scan_rows`,
+`box_tops`: the vertical line clipped to the box's three slabs), in place
+of the axis-aligned top it read, so a stone's top, a platform's and a
+ramp's are exact in the height scan; `course_boxes` and
+`course_rock_stones` copy the engine's builder. The dashboard's sampler
+samples finely over the extent and what stands within 10 m of it and
+coarsely over the flat run-out, adds the lines where a turned box's faces
+meet the ground under it as breaks, and eases to the plane past the
+run-out's end.
+
+**Evidence.** `cli/tests/test_dashboard_ground.py` builds the engine's own
+course from source with a pool of every kind (steps 50–100 mm, slopes
+5–15°, moguls 30–80 mm on 250–400 mm, platforms 100–500 mm, rock patches
+30–60 mm), compiles it in MuJoCo, and on 10 held-out evaluation courses
+compares the dashboard's drawn height with MuJoCo's ray onto the placed
+course at 1,000 points, half anywhere (3 m past the extent included), half
+on a mogul, platform or patch. The worst is 1.5 mm; without the crease
+breaks it is 8.8 mm, which fails. The same test holds the physics ground
+3–40 m off each side and past each end to the course's level there, to
+1e-6 mm. Outside the test: MuJoCo's ray and `terrain_box_ground_mm` agree
+to 4e-12 mm at 1,000 points over the same courses, the trainer's
+`course_boxes` equals the engine's on all 8 pooled courses, and its jitted
+float32 scan matches the engine's ground to 0.0007 mm at 768 points on
+features. Screenshot: `docs/probes/orun8/g1-every-kind.png`.
+
+**Not done here.** MJX stepping the cat on stones, platforms and run-outs,
+and an iteration's cost on such a course, are G3's probe. A stone adds a
+box slot, up to nine a patch, so a pool with rock costs more collision
+pairs than one without. A heightfield course still ends at its extent: it
+is not trained on (O5) and gains no run-out. The film still draws a course
+as its boxes, now including 100 m run-out blocks (since ADR-746, the one
+ground). A bundle written before
+this ADR whose last segment is a ramp is refused by the trainer's box-count
+check, since the trainer now adds that segment's run-out block.
+
+## ADR-746 — The film draws a course as the dashboard's one ground (2026-10-16)
+
+orun8 G1's last part. An evaluation's film drew a seed's course as its
+boxes and domes' caps, solids in a colour a step lighter than the mat
+(`film.terrain_triangles`, `TERRAIN_LOOK`): objects on a floor, and since
+ADR-745 100 m run-out blocks among them. It now draws the dashboard's one
+ground.
+
+`film.terrain_surface` ports `review_scene.js`'s `sampleSurface` line for
+line (its `TERRAIN` sampling is `film.SURFACE`; halves round up, as
+JavaScript's `Math.round`), and `film.Ground.at` ports `groundAt`.
+`film.Ground` draws the surface in tiles of 48 sample cells, prepared on
+demand with a one-cell ring that is dropped after normals are smoothed, so
+a dome shades smoothly across a tile edge; at most 512 tiles are kept. A
+shot draws the tiles under its window, between the course's lowest and
+highest points, and inside the mat's fade, at a power-of-two stride that
+keeps a cell about a pixel tall where the view foreshortens the ground
+(1 in the video and detail sheets, 4 on a 12.7 m overview). The ground is
+the stage: it frames nothing, and the video's `_studio_frames` takes it as
+`ground` and asks it per frame.
+
+The engine's renderer gains a ground material, `CadexStudio.GROUND`: a
+subsample on it is painted with the mat at its world point (`_floor` now
+returns the mat by pixel and by world point), with the mat's fade and
+contact shadow, and lit by its diffuse light over level ground's, so level
+ground at the plane is the mat pixel for pixel, with no seam where the
+surface's tiles end, and a wall or slope reads by its light alone. Any
+other material renders exactly as before.
+
+**Evidence.** `test_dashboard_ground.py`'s held-out test now also builds
+`film.Ground` from each of the 10 courses and holds its height to the
+dashboard's `groundAt` within 1e-6 mm at all 1,000 points, off-surface
+points agreeing too; with the port's pitch changed from 25 to 26 mm it
+fails. On terrain-cat's rough-c4 iteration-50 trace (the cat on its
+course), a 512 px video frame takes 8.8 s with the ground (73,728 ground
+triangles) against 7.0 s without; the overview and detail sheets take 98 s
+and 109 s, inside the 300 s bound. A 12.7 m overview window of ground
+against bare mat is the same image. Frames:
+`docs/probes/orun8/g1-film-frame.png` (the cat on a step's crease) and
+`g1-film-every-kind.png` (a held-out course with a rock patch, a platform,
+a mogul, a step and slopes, drawn by the film's renderer).
+
+**Not done here.** The cat's ~100-part mesh already costs 7 s a 512 px
+video frame without a ground, so its 12 s, 121-frame video exceeds
+`video.RENDER_SECONDS` (300 s) with or without one; that bound is the
+film's, not the ground's, and is unchanged. G3's MJX probe of the new kinds
+is next.
+
+## ADR-747 — A course of moguls alone trains; G3's probe of the new ground (2026-10-16)
+
+**Context.** orun8's G3 asks that MJX steps every ADR-744/745 kind on the cat
+without going non-finite, that stock MuJoCo and MJX agree on one frozen
+policy's zero-shot tip rate (ADR-741's comparison, whose stock side
+ADR-744 showed was taken on ramps stood flat), and that a course
+iteration's cost is measured against flat.
+
+**The probe** (`docs/probes/orun8/g3/`) composes courses onto existing
+exports with the engine's own builder (`terrain_grid`,
+`_environment_box_course`), one pool of 16 per kind: mild (terrain-cat's
+spec), moguls 40–80 mm, rock patches 30–60 mm, two platforms 450–500 mm,
+mixed (steps, slopes to 15°, moguls, platforms to 500 mm, rock) and a
+course 600 mm wide, so the cat leaves it onto the 50 m run-out within
+seconds.
+
+**A bug found on the way.** A pool drawn with moguls alone has no box
+slots. `terrain_pool` then built its box arrays as `(P, 0)` instead of
+`(P, 0, 15)`, and the trainer's height scan indexed past them on the first
+reset. The pool now keeps the slot axis for every box and dome array, and
+`training/test_terrain_pool.py` holds the shapes and the scan over a dome
+(it fails on the old code).
+
+**Evidence.** Finite: the 0f036864 cat under random and zero actions
+(256 environments, 500 steps, about 2,100–2,700 falls and resets a leg) and
+terrain-cat rough-c4's iteration-50 actor (256 × 200) have **zero
+non-finite events on every kind**, flat included. Frozen-policy tips in
+the first 200 steps, MJX against stock MuJoCo (`rollout_policy` on the same
+pooled courses, the ADR-744 rotation fix in place):
+
+| course | MJX (of 256) | stock (of 32) |
+| --- | --- | --- |
+| flat | 0.0% | — |
+| mild | 4.3% | 0.0% |
+| moguls | 0.0% | 0.0% |
+| rock | 0.4% | 0.0% |
+| platform 50 cm | 8.6% | 6.2% |
+| mixed | 44.1% | 50.0% |
+| run-out | 83.6% | 68.8% |
+
+Every pair agrees within two binomial standard errors of the 32-episode
+stock side (the widest, the run-out, by 1.8). ADR-741's 27% against 1 of 4
+is superseded: MJX is not seeing a different ground.
+
+**Cost.** The 0f036864 cat at 8192 environments, mean of iterations 1–4:
+flat 13.9 s, two platform slots 20.2 s (1.5×), seven dome slots 26.6 s
+(1.9×), 24 rock box slots 73.7 s (5.3×), mixed (21 box + 4 dome slots)
+76.3 s (5.5×). Cost is linear in pairs: 8 paw spheres × each slot, about
+0.31 s a pair, or 2.5 s a box slot. **The reason over 3×:** MJX has no
+broad phase for static geoms, so every slot costs every step whether a paw
+is near it or not, and ADR-741's cap cannot cull them because a strip's
+bounding sphere spans the course. A course stays under 3× flat with at most
+about 11 box slots, and a rock patch's up to nine stones is most of that
+budget. A per-environment window of the nearest slots is the fix if a
+course needs more.
+
+**A finding for C4.** On a feet-only course (ADR-739) the body meets the
+plane, not the boxes: in 3 of 16 stock episodes on the platform pool a
+tail link sat 480 mm and a shin 380 mm inside a 50 cm platform. A jump
+course has to let the legs and body meet a platform's walls.
+
+## ADR-748 — A height scan may be the actor's: `role="policy"` (2026-10-16, orun8)
+
+**Context.** orun8's owner decision O2: the cat's policy may read the
+ground, as a depth sensor on a real robot does, because jumps and
+obstacles need it. ADR-715 refused any height scan that was not
+`role="privileged"` (`height_scan_not_privileged`), so no task could give
+the actor the ground.
+
+**Decision.** A `height_scan` observation takes `role="policy"` (the
+surface's default, as for every observation) or `role="privileged"`.
+- A policy scan's 15 channels join `policy_channels` **last**, after the
+  reference's clock, so a task that gains one keeps every earlier actor
+  input's address. The bundle's `scans` row carries the role.
+- The trainer's `actor_channels` is the same rule (its hand copy), so the
+  actor reads the scan it already computed for the critic. The engine's
+  `evaluate_episode` already put the scan in the observation the policy
+  acts on, and `policy_inputs` reads the header's channels by name, so
+  stock evaluation needed no change.
+- A privileged scan behaves as before. A warm start across a scan that
+  becomes the actor's is refused by `check_policy_fits`, since the actor's
+  inputs move; ADR-736's course step still carries only privileged rows.
+- Any other role is refused (`height_scan_role`).
+
+**Consequences.** orun8-cat's C1 task declares its chest scan
+`role="policy"` and measures height and collapse over the ground
+(`scan_4`). orun7's blind policies cannot warm-start it (O2 says so).
+The scan is noise-free and names no onboard sensor; `ungrounded_channels`
+does not count it, because a scan is not a sensor row. The dashboard's
+Activations editor cannot rebuild a scan from a trace, so it lists the 15
+inputs as not rebuilt and feeds the normaliser's mean, as it does a goal's.
+
+## ADR-749 — A platform is crossed or not; terrain predicates read every kind (2026-10-17, orun8)
+
+**Context.** orun8's C4 asks the cat to jump onto a box, cross it and jump
+down, and C3 asks it over a rock patch. ADR-745 gave a box course
+`platform` and `rock` features, but `terrain_metrics` (ADR-718) took the
+edge of every feature that was not a bump from `to_x_mm`, which only a
+slope has, and a step's from `x_mm`. Measured: a drawn pool with two
+200 mm platforms and a rock patch raised `KeyError: 'to_x_mm'`, so any
+success spec on a course holding either kind — `falls` alone included —
+could not be judged. No predicate said whether a platform was crossed.
+
+**Decision.** `terrain_metrics` counts steps and slopes only, as before,
+and skips every other kind, and reads two new metrics on a declared
+`terrain`:
+- `platforms_crossed`: the platforms whose footprint (`x_mm` ± `length_mm`/2,
+  `y_mm` ± `width_mm`/2) the centre of mass was over at some frame and whose
+  far end along +x it ended beyond: up, across and down. A base that runs
+  beside a platform, or stops on it, has not crossed it.
+- `highest_platform_crossed_mm`: the tallest of those, 0 when none.
+The row's `detail.terrain.crossed` lists them with the steps and slopes.
+
+**Evidence.** On the pool above, a straight synthetic trace through both
+platforms reads 2 crossed at 200 mm, one 3 m to the side reads 0, and one
+that stops at 1 m reads 0. Verified by running, per ADR-725; the suites
+hold no evaluation metric.
+
+**Consequences.** C4's ladder spec can bound `platforms_crossed` and report
+the highest. On a feet-only course (ADR-739) the body still passes through
+a wall (ADR-747's finding), and the cat's legs carry no collision shape
+but the paws, so a platform crossed through its wall reads as crossed;
+`falls` (the centre of mass at half its height over the ground under it)
+is what catches a body sunk inside one.
+
+## ADR-750 — A success spec's scripted goal sequence reaches the engine (2026-10-17, orun8)
+
+**Context.** ADR-721 let `assembly.goal(..., sequence=[...])` script a
+goal's opening segments, so that a success spec asks every seed the same
+commands, for example a 180° reversal. The API stores the sequence and
+`CadexDynamics._goal_records` honours it. But the worker's `_goal_input`
+(`cadex_assembly_worker.py`), which turns an API goal into the record the
+engine resolves, copied only `low`, `high` and `resample_seconds`. **No
+xscript sequence ever reached a bundle.** Measured on orun8-cat: the
+retained `run`, `turn2` and `reverse` bundles carry no `sequence` in any
+success goal. ADR-721's own evidence called the engine directly, past the
+worker.
+
+**What it meant.** Every spec that scripted its commands was judged on the
+uniform draws instead:
+- orun8 c1-t1's `c1_spec` (500/3000/1500/500/3000 mm/s) was judged on
+  draws in [300, 3500] mm/s. It still judged speed tracking, so its failure
+  stands, but not on the commands written.
+- `stand_spec` and `shove_spec` held cmd at −400 mm/s. Their draws in
+  [−800, −100] all mean stand under the C1 reward, so those verdicts hold.
+- orun7's `turn_spec` and orun8's reversal spec script 60°/s held 3 s. A
+  draw inside ±60°/s never turns 180° in its 3 s, so
+  `reversal_heading_error_deg_max` was `None` on every seed: a failure
+  that measured nothing.
+
+**Decision.** `_goal_input` passes a value, speed or yaw-rate goal's
+`sequence` through as floats. Task goals that script nothing are unchanged,
+and so are their bundles and digests (`goal_algorithm` gains ADR-721's
+suffix only when a task goal scripts one). Only success specs that script
+a sequence change what they judge.
+
+**Evidence.** After `pixi run build-engine`, orun8-cat's retained `run`,
+`turn2` and `reverse` success goals carry their sequences, and the `run`
+task's semantic digest is unchanged (`5609a4bd…`, the one c1-t2 trained
+on). Verified by running, per ADR-725.
+
+## ADR-751 — A waypoint goal: a place on the ground the base is sent to (2026-10-17, orun8)
+
+**Context.** orun8's C2 asks the cat to reach three target points 3–8 m
+apart, each within 0.3 m, in under 12 s. The only place goal was `point`
+(ADR-462): a pose an arm's tip can reach, drawn from joint ranges and
+told in world (or a body's) coordinates. A legged base has no such range,
+and a world coordinate is a poor thing for a policy to be told: the same
+target reads differently wherever the robot stands.
+
+**Decision.** A sixth goal kind, `waypoint`, for a model with exactly one
+floating base.
+- **The draw.** Each segment is a leg from the last point, the first from
+  the base's centre of mass in plan at the reset keyframe: a length
+  uniform in `between=[low, high]` mm, then a turn uniform in
+  ±`bearing_deg` (new keyword, default 180, refused on other kinds) from
+  the previous leg's direction (the base's reset heading before the first
+  leg). Two draws per segment, in that order, in the goal stream.
+  `GOAL_WAYPOINT_ALGORITHM` is appended to `goal_algorithm` only when a
+  bundle states a waypoint, so no earlier bundle or digest moves.
+- **What the policy reads.** Channels `name_x` and `name_y`: the point
+  ahead of and to the left of the base's centre of mass (`xipos`), along
+  its x axis projected on the ground, as a height scan turns (ADR-715). It
+  is re-read from the state at every step and from where each step lands.
+  Like the actor's height scan (ADR-748), it is a sensor someone sells: a
+  bearing and range to a beacon, or a GPS fix and a compass.
+- **What is recorded.** The episode's goal schedule and the trace hold the
+  world point (the schedule row names the base `body`). Only the observation
+  turns it into the base's frame.
+- **How it is judged.** A new waypoint family on a floating base:
+  - `waypoint_miss_mm_max`: for each segment the episode reached, the
+    closest the base's centre of mass came to that point while it was up,
+    and the worst of those;
+  - `waypoints_reached`: how many came within 300 mm
+    (`WAYPOINT_REACH_MM`, the charter's bar).
+
+  A spec without a waypoint goal that bounds them is refused with the
+  need `waypoint`.
+- **The trainer's copy.** `draw_goals` gains the same chain, and
+  `waypoint_vector` turns the pooled world point into the base's frame in
+  `sensed` and `step_env`. A task with no waypoint traces the graph it
+  always did.
+
+**Not done, and why.** Points change on the resample clock, not on
+arrival. That keeps a goal a function of the step alone, which is what
+`goal_schedule`, the trace and the trainer's pooled goals all assume.
+Arrival-triggered points would need a per-environment carry and a
+schedule that depends on the state. So a spec of three points in 12 s
+gives each one 4 s, and a policy that arrives early holds its place.
+Waypoints may lie off a course's drawn extent; the 50 m run-out (ADR-745)
+is flat.
+
+**Evidence.** Verified by running, per ADR-725:
+- On orun8-cat's model, the engine's and the trainer's draws are equal for
+  seeds 1–3, with legs of 3283–7780 mm, inside [3000, 8000].
+- The engine's `waypoint_values` and the trainer's `waypoint_vector`
+  (NumPy; JAX jit and vmap within 8e-5 mm in float32) agree with a hand
+  rotation (4125.7, −62.0 mm at a 45.8° heading).
+- `waypoint_metrics` on a synthetic 2 m/s trace reads 107.7, 250 and
+  6000 mm, with 2 reached.
+- A copy of orun8-cat (outside the project) built a `points` task through
+  the CLI: the C1 task plus `assembly.goal("go", kind="waypoint",
+  between=[3000, 8000], resample_seconds=4)`, with a spec bounding
+  `waypoints_reached` ≥ 3 and `waypoint_miss_mm_max` ≤ 300. The bundle
+  carries the waypoint text in `goal_algorithm`. Its actor reads `go_x` and
+  `go_y`, and the trainer's draw equals the engine's on seed 1001.
+- Played in the engine on seed 1001, the actor's channels turn back into
+  the scheduled world point within 1e-12 mm at all 71 steps, while the cat
+  tips.
+- The engine's evaluation child judged that spec on c1-t3's policy, given
+  zero weights for `go_x` and `go_y` so that it is blind to the waypoint.
+  It completes 10/10 and reaches 0 of 3 points on nine seeds and 1 on one
+  (worst miss 6.6–22.9 m). This is a check of the plumbing, not a C2
+  result.
+- A finding for the next cold run: the C1 task already holds 16 reward
+  terms, the engine's cap, so a waypoint reward has to replace a term
+  rather than add one.
+
+## ADR-752 — A gait reference's clock may follow the commanded speed (2026-10-17, orun8)
+
+**Context.** A gait reference is one stride at one speed (ADR-702), and
+its clock turned `control_interval / period_s` of a cycle every step
+(ADR-706), whatever the episode asked for. orun8's cat trots a 580 mm,
+1.0 m/s clip at 1.72 Hz, and C1 asks it to run at 3 m/s. c1-t4b reached
+1.85–2.04 m/s at a 3 m/s command with its rated headroom nearly spent
+(0.89–0.92×), and the reward that tracks the reference had been faded to
+0.24 at 3 m/s so it would stop holding the cat to a 1 m/s stride
+(`zesty-cliff-9219`). A fixed clock asks for the wrong gait at every speed
+but one.
+
+**Decision.** `api.task(reference_cadence="speed",
+reference_cadence_exponent=0.4)` turns the clock with the task's one
+`speed` goal.
+- **The rule.** Each control step the clock turns `turn_per_step *
+  (|g| / reference_speed_mm_s) ** exponent` cycles, `g` the speed goal's
+  channel in force for that step. The turns are summed from 0 at the reset
+  and kept in [0, 1); the phase is that sum plus `origin / samples`
+  (ADR-709). The landed reference is one step's turn on, as before.
+- **The exponent.** In (0, 1], 0.4 by default: at a free stride length,
+  Alexander's `lambda / h = 2.3 Fr^0.3` gives stride frequency ~ v^0.4,
+  which is how `CadexGait.stride` already sizes a stride. 1.0 holds the
+  stride's length and scales only its rate.
+- **Edges.** A zero command stops the clock; a reverse command turns it at
+  its magnitude. The default, `"fixed"`, writes nothing, so no earlier
+  bundle or digest moves. `reference_cadence_exponent` without `"speed"`,
+  `"speed"` without a reference, and `"speed"` without exactly one speed
+  goal are refused at `api.task`; the engine refuses the last again
+  (`cadence_needs_one_speed_goal`).
+- **The bundle.** `tracking.cadence` names the goal, its channel, the clip
+  speed in mm/s, the exponent and the rule (`CADENCE_RULE`).
+- **The engine.** `CadexDynamics.tracking_turn` gives one step's turn.
+  `tracking_phase` and `tracking_values` take the turned cycles, and
+  `evaluate_episode` sums them only on a cadenced task. A fixed clock is
+  computed as it was, `step * turn_per_step`.
+- **The trainer.** `tracking_turn` and `tracking_vector` are the same
+  arithmetic in `xp`. The turned cycles are carried in the environment's
+  `info` beside the step counter and zeroed on reset, only when the task
+  is cadenced. A task without a cadence traces the graph it always did.
+- **A warm start.** A warm start may move onto or off a cadence as a
+  curriculum step (`--init-from-task-change`): `check_curriculum_change`
+  accepts a `tracking` change confined to its `cadence` key and records it
+  as `tracking.cadence`. The actor reads the same two clock channels; only
+  how fast they turn has moved, as a reward change moves what they are
+  paid for.
+- **The dashboard.** The Activations editor rebuilt the clock from a
+  trace's time and the period. A cadenced clock is not a function of time,
+  so `api/policy/...` serves `clock: null` for it, and the page holds those
+  two inputs at the normaliser's mean, as it does any input it cannot
+  rebuild.
+
+**Not done, and why.** The joint table is still the one stride, so a
+cadence quickens the gait and does not lengthen it. At 3 m/s the clip's
+poses ask for 1.55 m/s, not 3. A stride that also lengthens with speed
+needs more than one clip (a family over speed, blended by command). That
+is a larger change to the reference and the bundle, and it waits on what
+this one measures. The reference family's `stride_frequency_ratio` is still
+judged against the clip's own frequency. The drive proxy (ADR-710) replays
+the clip on its own clock, because a screen has no command.
+
+**Evidence.** Verified by running, per ADR-725. On c1-t5's bundle
+(orun8-cat `7d4577dd`, trot 580 mm at 1.0 m/s, 50 Hz control), the
+engine's `evaluate_episode` and the trainer's carry were run over 600
+steps at each command:
+
+| command | cadence | the clip's pose speed |
+| --- | --- | --- |
+| 0.5 m/s | 1.31 Hz | 0.76 m/s |
+| 1.5 m/s | 2.03 Hz | 1.18 m/s |
+| 3.0 m/s | 2.68 Hz | 1.55 m/s |
+| 0 | 0 (clock stopped) | 0 |
+| −0.8 m/s | 1.58 Hz | 0.91 m/s |
+
+The fixed clock is 1.72 Hz at every command.
+- **Engine against trainer.** The engine's observed tracking channels and
+  the trainer's NumPy `tracking_vector` agree within 4e-12. JAX float32
+  under `jit` and `scan` keeps the clock within 3e-5 cycles of float64.
+- **The API.** Two declarations are accepted, and the five misuses above
+  are refused with their reasons.
+- **Gates.** `pixi run test-engine`: 157 passed, 3 skipped.
+  `CUDA_VISIBLE_DEVICES= pixi run python -m pytest cli/tests`: 53 passed,
+  after `pixi run build-engine`. `training/`'s tests from
+  `~/cadex-train-venv`: 42 passed.
+- **Not yet run.** No policy has trained on a cadenced task; c1-t5 was
+  training on the GPU. No test was added (ADR-725). The engine–trainer
+  agreement joins the hand copies `shy-sky-8568` lists.
+
+## ADR-753 — A warm start keeps the weight of the source's normaliser (2026-10-17, orun8)
+
+**Context.** A warm start carries the source's observation normaliser
+(mean and std per actor channel) but set Brax's running count to one
+(`cadex_train.py`, the `--init-from` block). Welford's update weights a
+batch by `batch / count`, so the first post-reset batch (8192 envs × 20
+steps) carried 163,840 times the weight of everything the source had seen,
+and the actor's statistics became the first batch's. The frozen actor then
+read its inputs on another scale. c1-t7, warm from c1-t6 on a reward-only
+change, ended 7,695 episodes in its first 14 iterations; c1-t6, warm from
+c1-t5 the same way, ended 1,776 (`keen-harbor-0874`).
+
+**Decision.**
+- **The header records the count.** `normaliser.count` is the number of
+  observations the actor's statistics rest on. The engine reads only
+  `mean` and `std`, so no earlier policy and no protocol moves.
+- **A warm start keeps it.** The actor's (`state`) statistics restart with
+  the source's count: `summed_variance = std² × count`, so Welford's
+  update moves them by `batch / count` as it would have in the source's
+  own run. A policy written before this credits `iterations × envs ×
+  unroll` from its own run (`source_normaliser_count`), a lower bound.
+- **The critic's statistics do not.** The privileged channels are not in
+  the header and start at a count of one, as before, so the critic's
+  inputs are measured from the first batch. Brax keeps one count for both;
+  the trainer runs the update twice, once at the shared count and once at
+  the actor's (`update_normaliser`), and takes the actor's nest from the
+  second. A cold run's offset is zero and runs the update once.
+
+**Trade-off.** A warm start onto a task whose observations really move
+(a course, a new command range) now adapts the actor's statistics as
+slowly as a continuing run would, not in one batch. That is Brax's own
+behaviour within a run, and the actor's weights were fitted to the
+source's statistics, so holding them is the point of a warm start.
+
+**Measured.** c1-t7's first 14 iterations re-run with this change (same
+task, seed, source, `--critic-warmup 10`; 14 iterations, 293 s): the
+actor started on c1-t6's 24,576,000 samples, and episodes ending in those
+iterations fell from **7,695 to 1,012** (c1-t6's own warm start: 1,776).
+Reward/step held at 6.59–7.01 from iteration 1, where c1-t7 sank from 6.19
+to 4.97–5.29. Iteration 0 was 5.45 in both, the same draw. The probe's
+header records 26,869,760 (24,576,000 + 14 × 8192 × 20), and its witness
+agrees with the engine to 1.5e-7.
+
+## ADR-754 — A gait reference for two feet (2026-10-17, orun8)
+
+**Context.** `CadexGait.generate` (ADR-702) and `api.gait` (ADR-703) took
+exactly four feet, `LF RF LH RH`, and refused any other set. B1's recipe
+(`training/RECIPE.md`) starts every cold legged run from a reference, so a
+biped could not follow it, and neither B1's biped proof nor B4 could start.
+
+**Decision.**
+- **Two foot labels, `L` and `R`.** `legs` keyed `L`, `R` (and `api.gait`
+  given two foot components, left then right) builds a biped's stride.
+  The left foot is the phase reference, as the left hind is a quadruped's;
+  `CadexEvaluation`'s reference judge anchors on it when the clip has no
+  `LH` (`BIPED_REFERENCE_ANCHOR`).
+- **Two named gaits, `walk` and `run`** (`CadexGait.BIPED_GAITS`): the feet
+  half a stride apart, duty 0.6 (double support) and 0.35 (an aerial
+  phase), natural below and above Fr 0.5 (Alexander 1984, Int. J. Robotics
+  Research 3:49). Explicit `offsets` (`{'L', 'R'}`) and `duty` work as for
+  four feet. The stride scale (`2.3 h Fr^0.3`, Alexander 1976, fitted across
+  bipeds and quadrupeds) and the IK are the same code.
+- **The clip's shape is unchanged.** Its per-foot maps are keyed `L`, `R`;
+  its `sources` are `BIPED_SOURCES`. Every reader (the tracking channels,
+  `ref_l_lift` … `ref_r_down`, the judge, the trainer) was already keyed by
+  whatever feet the clip names.
+- **The four-foot path is byte-identical.** Three quadruped clips (walk,
+  trot, bound) generated before and after the change hash the same.
+
+**Measured.** On a synthetic biped (3-joint legs, 351 mm hip), walk at 0.5
+m/s and run at 1.4 m/s solve to < 1 µm with knees bending forward and
+with knees inverted; the run has 6 of 24 samples with both feet up, the
+walk none. On a Cadex project (`orun8-biped`, a copy of orun4-biped-sts,
+roll-pitch-knee legs, 258 mm hip), `api.gait([foot_l, foot_r],
+gait="walk", speed_mm_s=160)` builds into the task bundle: 47 samples,
+stride 150 mm, IK miss < 1 µm, and the six `ref_*` channels.
+
+**Not done.** A biped's legs are still scaled from one mean hip height
+and given one stride, as a quadruped's are; no biped has trained on the
+reference yet (B1's biped proof).

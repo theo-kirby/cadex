@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-16
+Verified against source: 2026-10-17
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -96,14 +96,26 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   lowest point instead, and is **the form to train on**: MJX steps it as
   stably as the plane, where the heightfield throws a driven rig to
   non-finite. Steps and slopes become flat blocks and turned ramps, a bump a
-  square block `radius_mm` across with a flat top (no dips), there is no
-  `cell_mm`, beyond the extent the plane goes on, and a step down off a
-  slope's high end is refused (`terrain_step_off_slope`). A box course may be
+  buried sphere whose cap is the bump (ADR-744; no dips, and no taller than
+  its radius), there is no `cell_mm`, and a step down off a slope's high
+  end is refused (`terrain_step_off_slope`). Two kinds only a box course
+  builds (ADR-745; a heightfield refuses them, `terrain_kind_needs_boxes`):
+  `platform` (`x_mm`, `y_mm`, `length_mm` along x, `width_mm`, `height_mm`),
+  a block with a wall on every side standing `height_mm` over the steps and
+  slopes at its centre, the box to jump onto; and `rock` (`x_mm`, `y_mm`,
+  `radius_mm`, `height_mm` at most a quarter of the radius), a patch of up
+  to nine tilted stones on flat ground, seeded by the patch itself. Past the
+  extent the ground **runs out** (ADR-745): every level runs 50 m on across
+  y, and the first and last 50 m on along x, so leaving a course is flat
+  ground, not a fall to the plane. A box course may be
   **drawn instead of listed** (ADR-717): `"random": {"seed", "courses",
   "step_mm", "grade_deg", "bump_mm", ...}` in place of `features` draws
   steps, slopes and bumps from magnitude ranges, past a flat `clear_mm`
   (default 500) with a flat `run_mm` before each, each signed back towards
-  z = 0. Course 0 is the one the model carries; the bundle's `terrain.pool`
+  z = 0; `platform_mm` (with `platform_size_mm`, `platforms`) and `rock_mm`
+  (with `rock_radius_mm`, `rocks`) add platforms and rock patches, each
+  kept 100 mm clear of the bumps and of each other, a patch only on flat
+  ground (ADR-745). Course 0 is the one the model carries; the bundle's `terrain.pool`
   holds all `courses` (default 32, at most 64) as features, the model has a
   box geom per box of the fullest, and the trainer gives each episode a
   pooled course of its own. `"collides_with": [group, ...]` (ADR-739) makes
@@ -521,8 +533,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `point` | `name_x`, `name_y`, `name_z`, mm, world (or `frame=`'s) | a pose `tip` can reach | the reach metrics |
   | `phase` | `name_sin`, `name_cos` | a start phase over one turn; then it turns once every `period_seconds` | nothing |
   | `yaw_rate` | `name`, deg/s | `between=[low, high]`: the commanded turning rate of the floating base about world +Z, anticlockwise (left) positive (ADR-721) | `yaw_rate_error_rms_deg_s`, `reversal_heading_error_deg_max` |
+  | `waypoint` | `name_x`, `name_y`, mm, ahead of and left of the floating base along its heading, re-read every step | a chain of legs from the base's reset position: each `between=[low, high]` mm long, turned up to `bearing_deg` (default 180) from the one before (ADR-751) | `waypoint_miss_mm_max`, `waypoints_reached` |
 
-  A task states at most one `speed`, one `yaw_rate` and one `point`.
+  A task states at most one `speed`, one `yaw_rate`, one `point` and one
+  `waypoint`.
   `sequence=[v0, v1, ...]` scripts the opening segments of a `value`,
   `speed` or `yaw_rate` goal (ADR-721): segment *k* holds `sequence[k]`, and
   the segments past it are drawn. The draw is still taken for a scripted
@@ -609,6 +623,12 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   each seeded episode at a random sample of the stride (ADR-709): the clip's pose and
   velocity there, over the keyframe's ground point, with the clock at that
   phase. A reset variation composes on top, its velocities added.
+  `reference_cadence="speed"` (default `"fixed"`) turns the clock with the
+  task's one `speed` goal (ADR-752): each step it turns `(|command| / clip
+  speed) ** reference_cadence_exponent` of the clip's own turn, the
+  exponent in (0, 1], 0.4 by default (dynamic similarity). A zero command
+  stops the clock. It is refused on a task with no reference or without
+  exactly one speed goal.
   **`assembly.success(predicates, seeds=...)` says what the behaviour must
   measurably be, apart from the reward** (ADR-456), and goes to
   `assembly.task(..., success=spec)`. A reward is what a policy is paid for;
@@ -650,6 +670,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `speed_error_rms_mm_s` | the RMS of the base's forward speed (along its heading, over a centred 0.5 s window) less the `speed` goal in force, over the frames past 1 s and not within 0.5 s after any command changed (ADR-721) | a floating base and a `speed` goal |
   | `yaw_rate_error_rms_deg_s` | the same for the base's yaw rate about world +Z against the `yaw_rate` goal (ADR-721) | a floating base and a `yaw_rate` goal |
   | `reversal_heading_error_deg_max` | for every held yaw-rate command that turns the commanded heading through 180° before it changes, the base's heading error at the moment it has (180°/\|rate\| after it was issued: 3 s at 60°/s); the worst one. Unmeasured, so failed, when the episode commanded none or ended first (ADR-721) | a floating base and a `yaw_rate` goal |
+  | `waypoint_miss_mm_max`, `waypoints_reached` | for each `waypoint` point the episode reached, the closest the base's centre of mass came to it in plan while it was up: the worst one, and how many came within 300 mm (ADR-751) | a floating base and a `waypoint` goal |
   | `appendage_ground_contact_share` | the share of frames in which any collision shape of the spec's `appendage` (a chain hanging from the base that is not a leg: a tail, a trunk; named root first) is within 1 mm of the ground under it (ADR-722) | a floating base and `appendage` |
   | `appendage_pitch_parent_correlation` | Pearson r, after 1 s, between the appendage root's pitch and the pitch of the body it hangs from, both read as the elevation of the base's starting forward direction as each body carries it: near 1 is a chain carried rigidly by its parent (ADR-722) | a floating base and `appendage` |
   | `appendage_yaw_turn_correlation` | \|r\|, after 1 s, between the `yaw_rate` goal and the appendage's yaw relative to the base (the plan bearing from its root to the centre of its last shape); the sign and the slope in deg per deg/s are in the detail. Unmeasured when the command never changed (ADR-722) | a floating base, `appendage` and a `yaw_rate` goal |
@@ -666,6 +687,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `command_rate_reference_ratio`, `joint_acceleration_reference_ratio` | the settled command-rate and joint-acceleration RMS over the reference clip's own, on the angular drives the clip poses: "as smooth as the motion asked for", which a raw RMS cannot say because it grows with stride and speed (ADR-708) | `feet` and a task `reference` |
   | `distance_made_good_mm`, `falls` | net plan travel along the heading the episode started on; 1 if the base ever tilted 60° or its centre of mass came down to half its starting height above the ground under it, else 0 — read from poses, whatever the task terminates on (ADR-718) | a floating base |
   | `steps_crossed`, `slopes_crossed`, `largest_step_crossed_mm`, `steepest_slope_crossed_deg` | the course's steps (at `x_mm`) and slopes (by their far end) that the centre of mass started before and ended beyond; the largest magnitude of each, up or down, 0 when none. A drawn box course is re-drawn per evaluation seed from a held-out stream, `eval:<seed>:<n>`, never a pooled course (ADR-718) | a floating base and a `terrain` |
+  | `platforms_crossed`, `highest_platform_crossed_mm` | the course's platforms whose footprint the centre of mass was over at some frame and whose far end (along +x) it ended beyond, up, across and down; the highest such platform's height, 0 when none. Bumps and rock patches are not counted (ADR-749) | a floating base and a `terrain` |
 
   "Every foot" is the worst foot, which is what the `_min` and `_max`
   suffixes say. **That table is the whole vocabulary.** A predicate that

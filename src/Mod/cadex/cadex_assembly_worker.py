@@ -4208,6 +4208,9 @@ def _execute_task_bundle(
         )
         if properties.get("reference_start") == "random":
             declaration["reference"]["start"] = "random"
+        if properties.get("reference_cadence") is not None:
+            # ADR-752: the clock follows the task's one speed goal.
+            declaration["reference"]["cadence"] = dict(properties["reference_cadence"])
 
     try:
         reloaded = CadexDynamics.load_model(xml)
@@ -5059,8 +5062,8 @@ def _gait_input(
 ) -> dict[str, Any]:
     """One ``api.gait`` value, by output name and in the API's units (ADR-703).
 
-    The feet become a map from ``LF``/``RF``/``LH``/``RH`` to each foot's
-    component; CadexDynamics generates the stride, at bundle-build time, on
+    The feet become a map from ``LF``/``RF``/``LH``/``RH`` (or a biped's
+    ``L``/``R``, ADR-754) to each foot's component; CadexDynamics generates the stride, at bundle-build time, on
     the exported model.
     """
 
@@ -5071,7 +5074,8 @@ def _gait_input(
         "gait": properties.get("gait"),
         "speed_mm_s": float(properties.get("speed_mm_s")),
         "feet": {foot: component_outputs[id(value)]
-                 for foot, value in zip(("LF", "RF", "LH", "RH"), feet)},
+                 for foot, value in zip(("L", "R") if len(feet) == 2 else ("LF", "RF", "LH", "RH"),
+                                        feet)},
     }
     if properties.get("offsets") is not None:
         resolved["offsets"] = {k: float(v) for k, v in dict(properties["offsets"]).items()}
@@ -5121,6 +5125,13 @@ def _goal_input(
         resolved.update(
             low=float(properties.get("low")), high=float(properties.get("high"))
         )
+        # ADR-721's scripted opening; ADR-750: it was dropped here, so no
+        # script's sequence reached the engine.
+        if properties.get("sequence") is not None:
+            resolved["sequence"] = [float(v) for v in properties["sequence"]]
+        # ADR-751: how far a waypoint's leg may turn; absent, any way.
+        if properties.get("bearing_deg") is not None:
+            resolved["bearing_deg"] = float(properties["bearing_deg"])
     return resolved
 
 
