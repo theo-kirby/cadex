@@ -196,3 +196,9 @@ Limits of this result:
   first batch (the issue ADR-753 fixed for same-robot warm starts). A zero
   -iteration fine-tune does not update them, so it does not touch this
   result.
+
+  *Fixed since by ADR-760 (`c6c5510b`):* the remap keeps the base's count
+  on the inputs it shares and starts only the target's new inputs fresh.
+  On the pre-fix trainer a 3-iteration CPU fine-tune of the final base
+  onto v0 fell from 1,280-step episodes to 85; on the fixed one it held
+  1,280 with the carried statistics moved < 1e-4 of their std.
