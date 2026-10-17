@@ -27,3 +27,61 @@ alone (ADR-752), carrying the source's normaliser (49,152,000 samples) and
 step (4.22 → 5.77 against 4.43 → 5.81). It is registered with the dashboard
 view retained, in the scope `orun9-c1-c6`. Not judged yet: judge 50 and 100
 on all six specs with `~/orun9-progress/c1c6/judge_c6.sh`.
+
+## Judged (iteration 11)
+
+c1-c6 finished 100 iterations (exit 0; wall time 1,599 s, 16.0 s an
+iteration; the witness agrees to 2.0e-7). Both checkpoints were judged on
+the six specs on the 10 frozen seeds (`judge_c6.sh`, `judge2.py
+--reward-may-differ`, CPU only, 51 s a checkpoint). The source column is
+c1-sp2 at iteration 50, the checkpoint c1-c6 warm-started from.
+
+| spec | source (sp2 @50) | it 50 | it 100 | failing predicate, median (it 100) |
+|---|---|---|---|---|
+| run | 0/10, 713 mm/s | 0/10, 690 mm/s | 0/10 | tracks_speed 597 mm/s RMS (575–643); within_rated passes, worst drive 0.82–0.88 |
+| stand | 0/10, 532 mm | 1/10, 284 mm | 0/10 | still 389 mm (261–510) |
+| shove | 10/10 | 10/10 | 9/10 | one seed tipped (upright 32° max) |
+| turn2 | 10/10 | 7/10 | 6/10 | tail_clear 6/10; tracks_yaw passes |
+| reverse | 0/10, 64° | 0/10, 73° | 0/10 | reverses 68°; tail_clear 6/10 |
+| points | 0/10 | 0/10 | 0/10 | reaches 0, close 6337 mm |
+
+**Speed per command segment** on `run` (commands 0.5, 3.0, 1.5, 0.5 and
+3.0 m/s, 2.4 s each; `segspeed.py`, mm/s across the 10 seeds):
+
+| checkpoint | 0.5 | 3.0 | 1.5 | 0.5 | 3.0 |
+|---|---|---|---|---|---|
+| c1-sp2 @100 (cadence 0.4) | 540–630 | 2200–2350 | 2040–2170 | 650–760 | 1660–2160 |
+| c1-c6 @50 | 483–573 | 2204–2311 | 2012–2154 | 575–721 | 1982–2246 |
+| c1-c6 @100 | 467–581 | 2364–2445 | 1813–1990 | 573–706 | 2079–2394 |
+
+**Finding.** A faster gait clock bought speed within rated. The 3 m/s
+segments rose by about 0.1–0.2 m/s, and run RMS fell to 597 mm/s, the best
+any orun8 or orun9 cat has judged (c1-t8 806, c1-sp2 781). Every drive stayed
+within rated (worst 0.88). The clock reads the command, so at a 3 m/s command
+it turns at 3.33 Hz, and the cat's 2.36–2.45 m/s is 0.71–0.73 m a cycle,
+short of the 0.90 m the clock asks. At cadence 0.4 (2.68 Hz) c1-sp2's
+2.20–2.35 m/s was 0.82–0.88 m a cycle. The stride the cat takes shrank less
+than the clock's frequency rose, so the speed gain came from the frequency.
+At a stride of about 0.72 m, 4.15 Hz would be 3.0 m/s. The cost
+is elsewhere: stand drift went back up by iteration 100, shove lost a seed,
+and the tail touches in turn2 and reverse on 4 seeds of 10. Under the
+critic's rule (speed rose within rated), the next screen is cadence 0.8.
+At 3 m/s that clock turns at 4.15 Hz and asks 0.72 m a cycle. c1-c6
+passes no clause c1-sp2 did not, but it is the first run since c1-h2 to move
+a binding number (run RMS) by more than 10%.
+
+## c1-c7 launched (cadence 0.8)
+
+`~/orun9-progress/c1c7/c7-script.py` is c6's script with `cadence_exp`
+0.8. The project accepts it at revision `aa8003ea` (project commit
+`0d86bf9`) in 6.5 min, keeping revision 96's model (no new tessellation).
+c1-c7 is a 100-iteration warm start from c1-c6 at iteration 100, with the
+same settings as c1-c6 (8192 envs, seed 0, unroll 20, slew 15°, checkpoints
+every 50, `--critic-warmup 10`). The trainer accepted it as a curriculum
+step that changes `tracking.cadence` alone, carrying the normaliser
+(65,536,000 samples) and σ 0.570. It is registered with the dashboard view
+retained, in the scope `orun9-c1-c7` (MemoryMax 30G). The GPU sat idle for
+about 8 min between c1-c6's end and this launch: the judge and the rebuild
+had to run first, because `judge2.py` judges against the accepted revision,
+which must keep c1-c6's cadence. Judge it with
+`~/orun9-progress/c1c7/judge_c7.sh`.
