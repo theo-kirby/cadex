@@ -9234,9 +9234,10 @@ HEIGHT_SCAN_OFFSETS_MM: tuple[tuple[float, float], ...] = tuple(
 #: course's heightfield (ADR-714) -- the elevation the simulator collides
 #: with -- or the plane at z = 0. It is no sensor: its rows travel in the
 #: bundle's ``scans`` section, after every other channel, and do not count
-#: against ``MAXIMUM_OBSERVATION_CHANNELS``. It is ``role: privileged``
-#: (orun7 O5): no sensor this API declares maps the terrain, so the critic
-#: reads it and the policy does not.
+#: against ``MAXIMUM_OBSERVATION_CHANNELS``. ``role: privileged`` keeps it
+#: to the critic, the reward and the terminations (orun7 O5); ``role:
+#: policy`` gives it to the actor too, as a depth sensor's map of the ground
+#: ahead (orun8 O2, ADR-748).
 SCAN_OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
     "height_scan": {
         "target": "component",
@@ -9466,7 +9467,8 @@ def policy_channels(task: Mapping[str, Any]) -> list[str]:
     the robot is told to do, so the policy always reads it, and it sits
     after the sensor channels so a task that gains a goal keeps the address
     of every channel it already had. Then the policy's command channels
-    (ADR-696), on the same terms, then a gait reference's clock (ADR-706).
+    (ADR-696), on the same terms, then a gait reference's clock (ADR-706),
+    then a height scan marked ``role: policy`` (ADR-748).
     """
 
     return [
@@ -9475,7 +9477,8 @@ def policy_channels(task: Mapping[str, Any]) -> list[str]:
         if str(record.get("role") or "policy") == "policy"
         for channel in record["channels"]
     ] + (goal_channels(task) + command_channels(task, policy_only=True)
-         + tracking_channels(task, policy_only=True))
+         + tracking_channels(task, policy_only=True)
+         + scan_channels(task, policy_only=True))
 
 
 def goal_channels(task: Mapping[str, Any]) -> list[str]:
@@ -9914,16 +9917,17 @@ def _scan_observation(
     name = str(entry.get("name") or "")
     what = f"observation {name!r}"
     kind = str(entry["kind"])
+    # ADR-748: ``policy`` (the surface's default, as for every observation)
+    # gives the actor the scan too (orun8 O2), as a depth sensor's map of the
+    # ground would; ``privileged`` keeps it to the critic (ADR-715).
     role = str(entry.get("role") or "policy")
-    if role != "privileged":
+    if role not in ("privileged", "policy"):
         raise DynamicsError(
-            f"{what} gives the policy a height scan of the ground, and no "
-            "sensor on the robot maps the terrain.",
-            reason="height_scan_not_privileged",
+            f"{what} has role {role!r}; a height scan is 'privileged' or 'policy'.",
+            reason="height_scan_role",
             correction=(
-                "Declare it role=\"privileged\": the critic, the reward and the "
-                "terminations read it, the policy does not. A policy that has "
-                "to see the ground needs a real sensor that measures it."
+                "Declare role=\"privileged\" for the critic, the reward and the "
+                "terminations alone, or role=\"policy\" for the actor as well."
             ),
             observed={"observation": name, "role": role},
         )
@@ -9964,7 +9968,7 @@ def _scan_observation(
         "channels": channels,
         "unit": "mm",
         "scale": 1.0,
-        "role": "privileged",
+        "role": role,
     }
 
 
@@ -12374,19 +12378,20 @@ def _scan_records(
             # The world position's metres to the channel's mm, so the trainer
             # multiplies rather than converts.
             "scale": float(length_mm(1.0)),
-            "role": "privileged",
+            "role": str(record.get("role") or "privileged"),
         })
     return rows
 
 
-def scan_channels(task: Mapping[str, Any]) -> list[str]:
+def scan_channels(task: Mapping[str, Any], *, policy_only: bool = False) -> list[str]:
     """Every height-scan channel a task declares, in bundle order (ADR-715).
 
-    Last in every vector, after a reference's tracking channels. None is a
-    policy channel.
+    Last in every vector, after a reference's tracking channels. With
+    ``policy_only`` the ones marked ``role: policy`` (ADR-748).
     """
 
     return [str(channel) for record in task.get("scans") or ()
+            if not policy_only or str(record.get("role") or "privileged") == "policy"
             for channel in record["channels"]]
 
 

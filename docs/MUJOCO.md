@@ -433,9 +433,11 @@ the bundle's `scans` section names the body by its index and states the
 grid, and the channels come last in every vector, after a reference's
 tracking channels. The engine (`height_scan_values`) and the trainer
 (`height_scan_vector`, on MJX's `xpos`/`xmat` and the course's own ground)
-each compute it. It
-must be privileged (orun7 O5): nothing on the robot maps terrain, so the
-critic reads it and the actor never does.
+each compute it. `role="privileged"` keeps it to the critic, the reward and
+the terminations (orun7 O5). `role="policy"` gives the actor the same 15
+channels, after its reference clock, as a depth sensor's map of the ground
+would (orun8 O2, ADR-748); a warm start across that change is refused,
+because the actor's inputs move.
 
 ---
 

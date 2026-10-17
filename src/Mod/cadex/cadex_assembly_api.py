@@ -3553,9 +3553,9 @@ class AssemblyDomainAPI:
           read from the declared course (``terrain=`` on ``api.mjcf``) or
           the plane. ``name="scan"`` gives ``scan_0`` .. ``scan_14``;
           ``scan_4`` is the point under the body. ``target`` is an
-          ``api.component``. It must be ``role="privileged"``: nothing on
-          the robot maps the terrain, so the critic reads it and the policy
-          does not.
+          ``api.component``. ``role="privileged"`` keeps it to the critic,
+          the reward and the terminations; ``role="policy"`` gives the
+          actor the ground ahead as well, as a depth sensor would (ADR-748).
 
         **A vector channel expands to suffixed names.** ``name="hand"`` on a
         ``component_position`` gives ``hand_x``, ``hand_y`` and ``hand_z``;

@@ -43759,3 +43759,34 @@ course needs more.
 plane, not the boxes: in 3 of 16 stock episodes on the platform pool a
 tail link sat 480 mm and a shin 380 mm inside a 50 cm platform. A jump
 course has to let the legs and body meet a platform's walls.
+
+## ADR-748 — A height scan may be the actor's: `role="policy"` (2026-10-16, orun8)
+
+**Context.** orun8's owner decision O2: the cat's policy may read the
+ground, as a depth sensor on a real robot does, because jumps and
+obstacles need it. ADR-715 refused any height scan that was not
+`role="privileged"` (`height_scan_not_privileged`), so no task could give
+the actor the ground.
+
+**Decision.** A `height_scan` observation takes `role="policy"` (the
+surface's default, as for every observation) or `role="privileged"`.
+- A policy scan's 15 channels join `policy_channels` **last**, after the
+  reference's clock, so a task that gains one keeps every earlier actor
+  input's address. The bundle's `scans` row carries the role.
+- The trainer's `actor_channels` is the same rule (its hand copy), so the
+  actor reads the scan it already computed for the critic. The engine's
+  `evaluate_episode` already put the scan in the observation the policy
+  acts on, and `policy_inputs` reads the header's channels by name, so
+  stock evaluation needed no change.
+- A privileged scan behaves as before. A warm start across a scan that
+  becomes the actor's is refused by `check_policy_fits`, since the actor's
+  inputs move; ADR-736's course step still carries only privileged rows.
+- Any other role is refused (`height_scan_role`).
+
+**Consequences.** orun8-cat's C1 task declares its chest scan
+`role="policy"` and measures height and collapse over the ground
+(`scan_4`). orun7's blind policies cannot warm-start it (O2 says so).
+The scan is noise-free and names no onboard sensor; `ungrounded_channels`
+does not count it, because a scan is not a sensor row. The dashboard's
+Activations editor cannot rebuild a scan from a trace, so it lists the 15
+inputs as not rebuilt and feeds the normaliser's mean, as it does a goal's.

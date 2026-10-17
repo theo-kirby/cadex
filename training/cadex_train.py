@@ -370,8 +370,9 @@ CURRICULUM_EPISODE_KEYS = frozenset({"episode_seconds", "max_steps"})
 #: only together with the conditions :func:`check_curriculum_change` holds:
 #: the robot is the same (:func:`robot_xml`), and what the actor reads is
 #: unchanged (checked in :func:`check_policy_fits`). ``observations`` may
-#: gain or lose only privileged rows -- a height scan -- which the critic
-#: reads and the actor never does; the critic is not carried by a warm
+#: gain or lose only privileged rows -- a privileged height scan -- which the
+#: critic reads and the actor does not (a ``role: policy`` scan, ADR-748,
+#: moves the actor's inputs and is refused there); the critic is not carried by a warm
 #: start, so a wider critic input costs nothing.
 CURRICULUM_COURSE_KEYS = frozenset({"model", "terrain", "scans", "observations"})
 
@@ -778,14 +779,16 @@ def acceleration_vector(xp: Any, task: dict[str, Any], qacc: Any) -> Any:
     return qacc[..., dofs] * scale
 
 
-def scan_channels(task: dict[str, Any]) -> list[str]:
+def scan_channels(task: dict[str, Any], *, policy_only: bool = False) -> list[str]:
     """Every height-scan channel the task declares (ADR-715).
 
-    ``CadexDynamics.scan_channels``: last in every vector. Every one is
-    privileged, so none reaches the actor.
+    ``CadexDynamics.scan_channels``: last in every vector. With
+    ``policy_only`` the ones marked ``role: policy``, which the actor reads
+    (ADR-748).
     """
 
     return [str(channel) for record in task.get("scans") or ()
+            if not policy_only or str(record.get("role") or "privileged") == "policy"
             for channel in record["channels"]]
 
 
@@ -1270,7 +1273,8 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
 
     Every goal channel follows (ADR-462): a goal is what the robot is told
     to do, so the policy always reads it. Then the policy's command channels
-    (ADR-696), then a gait reference's clock (ADR-706).
+    (ADR-696), then a gait reference's clock (ADR-706), then a height scan
+    marked ``role: policy`` (ADR-748).
     """
 
     return [
@@ -1279,7 +1283,8 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
         if str(record.get("role") or "policy") == "policy"
         for channel in record["channels"]
     ] + (goal_channels(task) + command_channels(task, policy_only=True)
-         + tracking_channels(task, policy_only=True))
+         + tracking_channels(task, policy_only=True)
+         + scan_channels(task, policy_only=True))
 
 
 def tracker_reading(xp: Any, true_mm: Any, tracker: dict[str, Any],
@@ -2664,7 +2669,7 @@ def build_environment(
             vector = jnp.concatenate(
                 [vector, tracking_vector(jnp, task, steps, origin)], axis=-1)
         if scanning:
-            # ADR-715: the critic's; the actor never reads it.
+            # ADR-715: the critic's, and the actor's when role: policy (ADR-748).
             vector = jnp.concatenate([vector, height_scan_vector(
                 jnp, task, data.xpos, data.xmat, scan_elevation,
                 scanned_course(course) if redrawing else None)], axis=-1)
