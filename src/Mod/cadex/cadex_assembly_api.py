@@ -1178,6 +1178,98 @@ _RANDOMISATION_TARGETS: dict[str, str] = {
 }
 
 
+#: ADR-755: the canonical body's families, legs and per-leg joint slots.
+BODY_FAMILIES = {"quadruped": ("fl", "fr", "hl", "hr"), "biped": ("l", "r")}
+BODY_SLOTS = ("abd", "hip", "knee", "ankle")
+BODY_MORPH_KEYS = ("hip_h_m", "mass_kg")
+BODY_LEG_MORPH_KEYS = ("knee_dir", "thigh_m", "shank_m")
+
+
+def _task_body(operation: str, body: Any, joint_ids: set[int]) -> dict[str, Any]:
+    """``api.task(body=...)``, checked: a family, its legs' slots, morph (ADR-755)."""
+
+    where = "body"
+    if not isinstance(body, Mapping):
+        raise _error(operation, where, "expected an object with 'family' and 'legs'", body)
+    unknown = sorted(set(body) - {"family", "legs", "morph"})
+    if unknown:
+        raise _error(operation, where, f"has keys this block does not take: {unknown}")
+    family = body.get("family")
+    if family not in BODY_FAMILIES:
+        raise _error(operation, f"{where}.family",
+                     f"must be one of {sorted(BODY_FAMILIES)}", family)
+    legs = body.get("legs")
+    if not isinstance(legs, Mapping) or not legs:
+        raise _error(operation, f"{where}.legs", "expected an object of legs")
+    stray = sorted(set(legs) - set(BODY_FAMILIES[family]))
+    if stray:
+        raise _error(operation, f"{where}.legs",
+                     f"names legs a {family} does not have: {stray}; its legs are "
+                     f"{list(BODY_FAMILIES[family])}")
+    resolved: dict[str, Any] = {"family": family, "legs": {}}
+    seen: set[int] = set()
+    for leg in BODY_FAMILIES[family]:
+        slots = legs.get(leg)
+        if slots is None:
+            continue
+        if not isinstance(slots, Mapping) or not slots:
+            raise _error(operation, f"{where}.legs.{leg}", "expected an object of slots")
+        stray = sorted(set(slots) - set(BODY_SLOTS))
+        if stray:
+            raise _error(operation, f"{where}.legs.{leg}",
+                         f"names slots that are not the family's: {stray}; the slots "
+                         f"are {list(BODY_SLOTS)}")
+        mapped: dict[str, Any] = {}
+        for slot in BODY_SLOTS:
+            if slot not in slots:
+                continue
+            joint = _domain_value(operation, f"{where}.legs.{leg}.{slot}",
+                                  slots[slot], output_type="joint")
+            if id(joint) not in joint_ids:
+                raise _error(operation, f"{where}.legs.{leg}.{slot}",
+                             "names a joint that is not listed in this assembly")
+            if id(joint) in seen:
+                raise _error(operation, f"{where}.legs.{leg}.{slot}",
+                             "maps a joint another slot already maps")
+            seen.add(id(joint))
+            mapped[slot] = joint
+        resolved["legs"][leg] = mapped
+    morph = body.get("morph")
+    if morph is not None:
+        if not isinstance(morph, Mapping):
+            raise _error(operation, f"{where}.morph", "expected an object", morph)
+        allowed = set(BODY_MORPH_KEYS) | set(BODY_FAMILIES[family])
+        stray = sorted(set(morph) - allowed)
+        if stray:
+            raise _error(operation, f"{where}.morph", f"has keys it does not take: {stray}")
+        out: dict[str, Any] = {}
+        for key in BODY_MORPH_KEYS:
+            if key in morph:
+                out[key] = _number(operation, f"{where}.morph.{key}", morph[key],
+                                   minimum=0.0, maximum=1.0e4, strict_minimum=True)
+        for leg in BODY_FAMILIES[family]:
+            if leg not in morph:
+                continue
+            values = morph[leg]
+            if not isinstance(values, Mapping) or set(values) - set(BODY_LEG_MORPH_KEYS):
+                raise _error(operation, f"{where}.morph.{leg}",
+                             f"expected an object of {list(BODY_LEG_MORPH_KEYS)}", values)
+            entry: dict[str, Any] = {}
+            if "knee_dir" in values:
+                if values["knee_dir"] not in (1, -1) or isinstance(values["knee_dir"], bool):
+                    raise _error(operation, f"{where}.morph.{leg}.knee_dir",
+                                 "must be +1 (bends forward) or -1 (bends back)",
+                                 values["knee_dir"])
+                entry["knee_dir"] = int(values["knee_dir"])
+            for key in ("thigh_m", "shank_m"):
+                if key in values:
+                    entry[key] = _number(operation, f"{where}.morph.{leg}.{key}", values[key],
+                                         minimum=0.0, maximum=100.0, strict_minimum=True)
+            out[leg] = entry
+        resolved["morph"] = out
+    return resolved
+
+
 def _check_randomisation(
     operation: str,
     parameter: str,
@@ -5191,6 +5283,7 @@ class AssemblyDomainAPI:
         reference_start: str = "phase0",
         reference_cadence: str = "fixed",
         reference_cadence_exponent: float | None = None,
+        body: Mapping[str, Any] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Turn one exported model into a trainable task.
@@ -5474,6 +5567,8 @@ class AssemblyDomainAPI:
                     operation, "reference_cadence_exponent", reference_cadence_exponent,
                     minimum=0.0, maximum=1.0, strict_minimum=True),
             }
+        if body is not None:
+            judged["body"] = _task_body(operation, body, joint_ids)
         seconds = _number(
             operation, "episode_seconds", episode_seconds,
             minimum=0.0, maximum=3600.0, strict_minimum=True,

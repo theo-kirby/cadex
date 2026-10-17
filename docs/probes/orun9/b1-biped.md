@@ -109,3 +109,33 @@ At launch it ran at about 6.3 s an iteration on the GPU, an ETA of about
 30 min for 300. The reward per step went from −11.6 at iteration 0 to
 +0.41 at 9 and +2.87 at 12, much as b1-q1 did (−6.3 at 0, +0.49 at 6).
 Not judged yet.
+
+## Judged (iteration 10)
+
+b1-b1 finished 300 iterations (exit 0; the last witness agrees to 3.3e-7).
+Every checkpoint was judged on the walk spec's 10 frozen seeds (9101–9110,
+`judge_b1b.sh`, CPU only). It was a cold start, warm from nothing.
+
+| it | walk | failing predicates (seeds passing, median) | reward/step | episode steps |
+|---|---|---|---|---|
+| 50 | 0/10 | survives 1/10; tilt 1/10 (47.2°); steps 0/10 (1); clearance 4/10 (0.019) | 8.91 | 88 |
+| **100** | **10/10** | — | 11.26 | 475 |
+| 150 | 1/10 | clearance 1/10 (0.0186 hip heights, min 0.02) | 10.44 | 1490 |
+| 200 | 0/10 | clearance 0/10 (0.0081) | 12.01 | 823 |
+| 250 | 0/10 | clearance 0/10 (0.0119) | 12.25 | 663 |
+| 300 | 0/10 | survives 0/10; tilt 0/10 (48°); lateral 0/10 (79 mm/s); clearance 0/10 (0.017); within_rated 7/10 (0.975) | 6.48 | 49 |
+
+At iteration 200, every predicate but clearance passes on all 10 seeds:
+speed 167 mm/s (80–240), heading 7.0°, steps 10, and the worst drive at
+0.68 of rated.
+
+- **The biped half of B1's proof passes:** a cold walk to the walk spec on
+  10/10 seeds by iteration 100, inside 300, by the recipe (steps 0.1–4.1
+  with no step invented, plus the two engine fixes ADR-756/757 that made
+  step 1.1 followable).
+- **Finding: past iteration 100 the reward pays a shuffle.** The reward
+  per step rose from 11.26 at 100 to its best, 12.25 at 264. Over the same
+  span the step clearance fell from a pass to 0.008–0.012 hip heights,
+  against a minimum of 0.02. The lift term does not hold the foot as high
+  as the spec does. The run then collapsed in its last ~35 iterations (6.48
+  a step, 49-step episodes at 299). The policy to keep is iteration 100's.

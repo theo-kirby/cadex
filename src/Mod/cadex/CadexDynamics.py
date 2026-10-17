@@ -12668,6 +12668,179 @@ def _flat(values: Any) -> list[Any]:
     return out
 
 
+#: ADR-755: the canonical body. A family is its legs; each leg has four joint
+#: slots. A slot's positive direction is geometric, in the frame of the
+#: task's orientation observation (x forward, z up): ``abd`` swings the foot
+#: outward (left legs about +x, right about -x); ``hip``, ``knee`` and
+#: ``ankle`` swing the distal segment forward (about -y, both sides).
+BODY_VERSION = 1
+BODY_FAMILIES = {"quadruped": ("fl", "fr", "hl", "hr"), "biped": ("l", "r")}
+BODY_SLOTS = ("abd", "hip", "knee", "ankle")
+#: A mapped joint's axis must lie this close to its slot's axis, |cos|.
+BODY_AXIS_ALIGNMENT = 0.9
+
+
+def _body_records(
+    mujoco: Any,
+    reloaded: Any,
+    body: Mapping[str, Any],
+    observation_rows: Sequence[Mapping[str, Any]],
+    action_rows: Sequence[Mapping[str, Any]],
+    joint_records: Sequence[Mapping[str, Any]],
+    schedule: Mapping[str, Any],
+    *,
+    context: str,
+) -> dict[str, Any]:
+    """A task's ``body`` block, resolved against the exported model (ADR-755).
+
+    Per slot: the joint, its action's index in the action list, its
+    position and velocity channels, ``sign`` (+1 or -1, from the joint's
+    axis at the reset pose against the slot's axis) and ``offset`` (the
+    joint's angle at the reset pose, in the position channel's unit), so a
+    canonical angle is ``sign * (q - offset)``. ``body`` names the
+    orientation and rate channels the policy reads. The trainer reads this
+    block and never re-derives it."""
+
+    family = str(body["family"])
+    if family not in BODY_FAMILIES:
+        raise DynamicsError(
+            f"{context} declares a body of family {family!r}.",
+            reason="body_family_unknown",
+            observed={"family": family, "families": sorted(BODY_FAMILIES)})
+
+    def policy_rows(kind: str) -> list[Mapping[str, Any]]:
+        return [row for row in observation_rows if row["kind"] == kind
+                and str(row.get("role") or "policy") == "policy"]
+
+    orientation = policy_rows("component_orientation")
+    rates = policy_rows("component_angular_velocity")
+    if len(orientation) > 1 or len(rates) > 1:
+        raise DynamicsError(
+            f"{context} declares a body, and the policy reads "
+            f"{len(orientation)} orientations and {len(rates)} angular rates; "
+            "the canonical body has one of each.",
+            reason="body_imu_ambiguous",
+            correction="Give the policy one IMU: one component_orientation and "
+                       "one component_angular_velocity observation, or make the "
+                       "others privileged.",
+            observed={"orientation": [row["name"] for row in orientation],
+                      "rates": [row["name"] for row in rates]})
+
+    data = mujoco.MjData(reloaded)
+    key = int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_KEY,
+                                str(schedule["reset_keyframe"])))
+    if key >= 0:
+        mujoco.mj_resetDataKeyframe(reloaded, data, key)
+    mujoco.mj_forward(reloaded, data)
+    # Row-major 3x3, body to world; the identity is the world frame.
+    frame = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    if orientation:
+        target = str(orientation[0]["target"])
+        body_id = int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY, target))
+        if body_id >= 0:
+            frame = [float(v) for v in data.xmat[body_id]]
+
+    mujoco_joint = {str(record["joint"]): str(record["mujoco_joint"])
+                    for record in joint_records if record.get("joint")}
+    action_index = {str(row["joint"]): index for index, row in enumerate(action_rows)}
+
+    def channel(kind: str, joint: str) -> Mapping[str, Any] | None:
+        rows = [row for row in policy_rows(kind) if str(row["target"]) == joint]
+        return rows[0] if len(rows) == 1 and int(rows[0]["dim"]) == 1 else None
+
+    legs: dict[str, Any] = {}
+    seen: set[str] = set()
+    stray = sorted(set(body.get("legs") or {}) - set(BODY_FAMILIES[family]))
+    if stray:
+        raise DynamicsError(
+            f"{context}'s body names legs a {family} does not have: {stray}.",
+            reason="body_slot_unknown", observed={"legs": stray})
+    for leg in BODY_FAMILIES[family]:
+        slots = dict((body.get("legs") or {}).get(leg) or {})
+        stray = sorted(set(slots) - set(BODY_SLOTS))
+        if stray:
+            raise DynamicsError(
+                f"{context}'s body leg {leg!r} names slots that are not the "
+                f"family's: {stray}.",
+                reason="body_slot_unknown", observed={"slots": stray})
+        left = leg.startswith("l") or leg in ("fl", "hl")
+        resolved: dict[str, Any] = {}
+        for slot in BODY_SLOTS:
+            if slot not in slots:
+                continue
+            joint = str(slots[slot])
+            where = f"{context}'s body slot {leg}.{slot} ({joint!r})"
+            if joint in seen:
+                raise DynamicsError(f"{where} maps a joint another slot maps.",
+                                    reason="body_joint_twice", observed={"joint": joint})
+            seen.add(joint)
+            position, velocity = channel("position", joint), channel("velocity", joint)
+            name = mujoco_joint.get(joint, joint)
+            index = int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_JOINT, name))
+            if (joint not in action_index or position is None or velocity is None
+                    or index < 0):
+                raise DynamicsError(
+                    f"{where} needs an action, a policy position channel and a "
+                    "policy velocity channel on that joint.",
+                    reason="body_slot_unobserved",
+                    correction="A slot is something the policy reads and drives: "
+                               "give the joint an action and both encoder channels.",
+                    observed={"joint": joint, "action": joint in action_index,
+                              "position": position is not None,
+                              "velocity": velocity is not None})
+            if int(reloaded.jnt_type[index]) != int(mujoco.mjtJoint.mjJNT_HINGE):
+                raise DynamicsError(f"{where} is not a hinge.",
+                                    reason="body_slot_not_hinge", observed={"joint": joint})
+            if slot == "abd":
+                axis = [1.0 if left else -1.0, 0.0, 0.0]
+            else:
+                axis = [0.0, -1.0, 0.0]
+            world = [float(v) for v in data.xaxis[index]]
+            # The world axis in the IMU's frame: frame transposed, times it.
+            joint_axis = [sum(frame[3 * row + column] * world[row] for row in range(3))
+                          for column in range(3)]
+            alignment = (sum(a * b for a, b in zip(joint_axis, axis))
+                         / max(math.sqrt(sum(a * a for a in joint_axis)), 1e-12))
+            if abs(alignment) < BODY_AXIS_ALIGNMENT:
+                raise DynamicsError(
+                    f"{where} turns about {[round(float(v), 3) for v in joint_axis]} "
+                    f"in the IMU's frame, not about its slot's axis "
+                    f"{axis} (|cos| {abs(alignment):.3f} < "
+                    f"{BODY_AXIS_ALIGNMENT}).",
+                    reason="body_slot_misaligned",
+                    correction="Map the joint to the slot it turns as, or leave the "
+                               "slot empty.",
+                    observed={"joint": joint, "alignment": alignment})
+            angle = float(data.qpos[int(reloaded.jnt_qposadr[index])])
+            resolved[slot] = {
+                "joint": joint,
+                "action": int(action_index[joint]),
+                "q": str(position["channels"][0]),
+                "dq": str(velocity["channels"][0]),
+                "sign": 1 if alignment > 0 else -1,
+                "offset": angle * float(position["scale"]),
+            }
+        if resolved:
+            legs[leg] = resolved
+    if not legs:
+        raise DynamicsError(f"{context}'s body maps no joint.",
+                            reason="body_slot_unobserved")
+    record: dict[str, Any] = {
+        "family": family,
+        "version": BODY_VERSION,
+        "legs": legs,
+        "body": {
+            **({"quat": [str(name) for name in orientation[0]["channels"]]}
+               if orientation else {}),
+            **({"gyro": [str(name) for name in rates[0]["channels"]]}
+               if rates else {}),
+        },
+    }
+    if body.get("morph") is not None:
+        record["morph"] = json.loads(json.dumps(body["morph"]))
+    return record
+
+
 def task_records(
     built: Mapping[str, Any],
     reloaded: Any,
@@ -13010,6 +13183,11 @@ def task_records(
     # byte for byte the bundle it always was -- and a policy trained on one
     # still names its digest.
     judged: dict[str, Any] = {}
+    if task.get("body") is not None:
+        # ADR-755: absent when the task maps no canonical body.
+        judged["body"] = _body_records(
+            mujoco, reloaded, task["body"], observation_rows, action_rows,
+            joint_records, schedule, context=context)
     if task.get("success") is not None:
         judged["success"] = _success_records(
             mujoco,

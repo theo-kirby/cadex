@@ -44217,6 +44217,45 @@ own robot under a `body` block is the identity, and that a remap onto the
 same robot with its actions and legs permuted produces the same actions
 on the matching inputs. Status: **decided, not implemented.**
 
+**Implemented (orun9, B2).** `api.task(body=...)` (`_task_body`) checks the
+family, legs, slots and `morph`; the worker passes each slot's joint by
+name; `CadexDynamics._body_records` resolves it on the exported model at the
+reset keyframe into the bundle's `body` (`family`, `version` 1, per slot
+`joint action q dq sign offset`, and `body.quat`/`body.gyro`, the one policy
+orientation and rate observation, refused as `body_imu_ambiguous` if there
+are more). `body` is not a semantic task field, and it may move across a
+curriculum step (`CURRICULUM_TASK_KEYS`): it moves neither input nor output.
+The trainer's `body_layout` names every input and action, a policy trained
+on a body records it as the header's `body`, `check_policy_fits` takes the
+`--init-from-base REASON` path (`check_base_fits`), and `remap_from_base`
+rewrites the first and last layers, the statistics and the exploration
+width; the run's header records `init_from.base` (reason, family, the
+source's model and task digests, the counts). Four choices the decision
+left open or that changed in the doing:
+
+- **An input or action outside the slots is named by what it is**, not
+  dropped: `obs.<kind>.<target>.<i>` for any other policy channel,
+  `goal.`/`clock.`/`command.<channel>`, and `joint.<name>` for an unslotted
+  action. So a robot is a base for itself (the cat's spine and tail carry),
+  and two robots share such an input only where kind and target agree. A
+  height scan is `scan.<grid digest>.<i>`.
+- **Morphology constants are recorded, not yet read.** `morph` goes into
+  the bundle and the header; it becomes actor channels with B3's randomised
+  family, which is what needs them.
+- **Exploration width:** a matched action carries the source's, a new one
+  starts at the warm default, 0.3 (`DEFAULT_INITIAL_STD`), rather than at
+  Brax's cold 0.69: a cold width on a warm actor is ADR-471's failure.
+- **Statistics restart at a count of one.** The mapped mean and std are what
+  the first unroll reads; the target's own first batch then sets every
+  channel's. Carrying the source's count (ADR-753) would pin a new input at
+  mean 0 and std 1 for the run.
+
+Measured: `training/test_canonical_body.py` (identity onto its own robot;
+the same biped listed right leg first, knee before hip, its right knee's
+encoder reversed and a tail added plays the same actions, the tail at 0; it
+fails if the sign rule is removed). On the exported models, see the B2
+probe `docs/probes/orun9/b2-body.md`.
+
 ## ADR-756 — A biped reward may name its reference's foot channels (2026-10-17, orun9)
 
 **Context.** ADR-706 compiles a task's reward and termination twice: first

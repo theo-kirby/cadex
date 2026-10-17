@@ -353,6 +353,9 @@ CURRICULUM_TASK_KEYS = frozenset({
     "reward",
     "success",
     "termination",
+    # ADR-755: the canonical body names what the network reads and drives;
+    # it moves neither.
+    "body",
 })
 
 #: The ``episode`` sub-keys a curriculum may move.
@@ -609,6 +612,211 @@ def source_normaliser_count(header: dict[str, Any]) -> int:
     return max(samples, 1)
 
 
+# ---------------------------------------------------------------------------
+# The canonical body (ADR-755): a warm start across robots of one family.
+# ---------------------------------------------------------------------------
+
+#: The families a bundle's ``body`` block may name, and its version.
+BODY_FAMILIES = {"quadruped": ("fl", "fr", "hl", "hr"), "biped": ("l", "r")}
+BODY_VERSION = 1
+
+
+def body_layout(task: dict[str, Any]) -> dict[str, Any] | None:
+    """What a policy on ``task`` reads and drives, by canonical name.
+
+    ``inputs`` has one ``[name, gain, centre]`` per actor channel, in
+    order, so the canonical value of channel ``x`` is ``gain * (x -
+    centre)``: a joint slot's angle and rate in radians from the bundle's
+    ``sign``, ``offset`` and the channel's scale; the IMU's quaternion and
+    rates; a goal, clock or command channel by its own name; a height-scan
+    channel by its index on a grid named by its offsets; any other channel
+    by its kind, its target and its place in the row. ``outputs`` has one
+    ``[name, sign]`` per action: ``<leg>.<slot>`` for a mapped joint,
+    ``joint.<name>`` otherwise. A name absent on one side is an input that
+    side lacks. ``None`` when the bundle maps no body. The engine resolves
+    the block (``CadexDynamics._body_records``); this only reads it.
+    """
+
+    body = task.get("body")
+    if not body:
+        return None
+    rows = {str(channel): (row, index)
+            for row in task["observations"]
+            if str(row.get("role") or "policy") == "policy"
+            for index, channel in enumerate(row["channels"])}
+    named: dict[str, tuple[str, float, float]] = {}
+    sign_of: dict[int, tuple[str, int]] = {}
+    for leg, slots in sorted((body.get("legs") or {}).items()):
+        for slot, record in sorted(slots.items()):
+            q_scale = float(rows[str(record["q"])][0]["scale"])
+            dq_scale = float(rows[str(record["dq"])][0]["scale"])
+            sign = 1.0 if int(record["sign"]) > 0 else -1.0
+            named[str(record["q"])] = (f"{leg}.{slot}.q", sign / q_scale,
+                                       float(record["offset"]))
+            named[str(record["dq"])] = (f"{leg}.{slot}.dq", sign / dq_scale, 0.0)
+            sign_of[int(record["action"])] = (f"{leg}.{slot}", int(sign))
+    imu = body.get("body") or {}
+    for part, axes in (("quat", "wxyz"), ("gyro", "xyz")):
+        for axis, channel in zip(axes, imu.get(part) or ()):
+            named[str(channel)] = (f"body.{part}.{axis}",
+                                   1.0 / float(rows[str(channel)][0]["scale"]), 0.0)
+    inputs: list[list[Any]] = []
+    for channel in actor_channels(task):
+        if channel in named:
+            name, gain, centre = named[channel]
+        elif channel in rows:
+            row, index = rows[channel]
+            name, gain, centre = (f"obs.{row['kind']}.{row['target']}.{index}",
+                                  1.0 / float(row["scale"]), 0.0)
+        elif channel in goal_channels(task):
+            name, gain, centre = f"goal.{channel}", 1.0, 0.0
+        elif channel in tracking_channels(task, policy_only=True):
+            name, gain, centre = f"clock.{channel}", 1.0, 0.0
+        elif channel in command_channels(task, policy_only=True):
+            name, gain, centre = f"command.{channel}", 1.0, 0.0
+        else:
+            grid = name = None
+            for record in task.get("scans") or ():
+                if channel in record["channels"]:
+                    grid = hashlib.sha256(json.dumps(
+                        record["offsets_mm"]).encode("ascii")).hexdigest()[:12]
+                    name = f"scan.{grid}.{record['channels'].index(channel)}"
+                    gain, centre = 1.0 / float(record["scale"]), 0.0
+            if name is None:
+                raise SystemExit(f"the canonical body cannot name channel {channel!r}.")
+        inputs.append([name, gain, centre])
+    outputs = [list(sign_of.get(index, (f"joint.{action['joint']}", 1)))
+               for index, action in enumerate(task["actions"])]
+    return {"family": str(body["family"]), "version": int(body.get("version", 0)),
+            "legs": sorted(body.get("legs") or {}),
+            "inputs": inputs, "outputs": outputs,
+            **({"morph": body["morph"]} if body.get("morph") else {})}
+
+
+def check_base_fits(header: dict[str, Any], bundle: dict[str, Any],
+                    options: argparse.Namespace) -> dict[str, Any]:
+    """``--init-from-base``: the third path of :func:`check_policy_fits`.
+
+    The model and task digests are not compared: another robot is expected.
+    Both sides must map a body of one family and version, the network must
+    have the hidden layers ``--hidden`` asks for, every leg the target maps
+    must share at least one joint slot with the source, and the critic must
+    warm up (ADR-740), because it starts on another robot's returns."""
+
+    def refuse(message: str) -> None:
+        raise SystemExit(f"--init-from-base: {message}\nA warm start across robots "
+                         "matches them on the family's canonical body (ADR-755).")
+
+    source = header.get("body")
+    target = body_layout(bundle["task"])
+    if not source:
+        refuse("the policy records no body; it was trained on a task without one.")
+    if target is None:
+        refuse("this bundle maps no body (api.task(body=...)).")
+    if (source.get("family"), source.get("version")) != (target["family"], target["version"]):
+        refuse(f"the policy's body is {source.get('family')} v{source.get('version')} "
+               f"and this bundle's is {target['family']} v{target['version']}.")
+    if str(getattr(options, "init_from_task_change", "") or "").strip():
+        refuse("it is not a curriculum step; drop --init-from-task-change.")
+    if int(getattr(options, "critic_warmup", 0) or 0) <= 0:
+        refuse("the critic starts on another robot's returns; give --critic-warmup N.")
+    layers = [list(shape) for shape in (header.get("network") or {}).get("layers") or ()]
+    hidden = [int(width) for width in options.hidden]
+    if [shape[1] for shape in layers[:-1]] != hidden:
+        refuse(f"the policy's hidden layers are {[shape[1] for shape in layers[:-1]]} "
+               f"and --hidden asks for {hidden}.")
+    source_slots = {str(name) for name, _sign in source["outputs"]}
+    for leg in target["legs"]:
+        if not any(str(name) in source_slots and str(name).startswith(f"{leg}.")
+                   for name, _sign in target["outputs"]):
+            refuse(f"leg {leg!r} shares no joint slot with the policy.")
+    return target
+
+
+def remap_from_base(np: Any, header: dict[str, Any], weights: Sequence[float],
+                    target: dict[str, Any]) -> dict[str, Any]:
+    """A policy's actor and statistics in another robot's layout (ADR-755).
+
+    Inputs match by canonical name. A matched input copies its first-layer
+    row, negated where the two gains' signs differ, and its statistics are
+    mapped through the affine map between the two channels, so the source
+    network sees the value it would have seen. A source input the target
+    lacks is folded into the first layer's bias at its rest value (a joint
+    slot at its reset angle, a goal, clock or command at 0, anything else at
+    its mean) and dropped. A target input the source lacks gets a zero row,
+    mean 0 and std 1. Outputs match by slot: a matched action copies its
+    last-layer column and bias, negated where the signs differ; a target
+    action the source lacks is a zero column and bias, its box centre; its
+    exploration width is the default's. Hidden layers are copied."""
+
+    source = header["body"]
+    network = header["network"]
+    shapes = [tuple(int(v) for v in shape) for shape in network["layers"]]
+    layers = [(np.asarray(w, dtype=np.float64), np.asarray(b, dtype=np.float64))
+              for w, b in unflatten_parameters(np, weights, shapes)]
+    stats = header.get("normaliser") or {}
+    mean_s = np.asarray(stats.get("mean") or [0.0] * shapes[0][0], dtype=np.float64)
+    std_s = np.asarray(stats.get("std") or [1.0] * shapes[0][0], dtype=np.float64)
+    log_std_s = list((header.get("exploration") or {}).get("log_std") or ())
+
+    first_w, first_b = layers[0]
+    width = first_w.shape[1]
+    s_index = {str(row[0]): i for i, row in enumerate(source["inputs"])}
+    t_index = {str(row[0]): i for i, row in enumerate(target["inputs"])}
+    new_w = np.zeros((len(target["inputs"]), width))
+    new_b = first_b.copy()
+    mean_t = np.zeros(len(target["inputs"]))
+    std_t = np.ones(len(target["inputs"]))
+    counts = {"inputs_copied": 0, "inputs_folded": 0, "inputs_zero": 0,
+              "outputs_copied": 0, "outputs_dropped": 0, "outputs_zero": 0}
+    for j, (name, gain_t, centre_t) in enumerate(target["inputs"]):
+        i = s_index.get(str(name))
+        if i is None:
+            counts["inputs_zero"] += 1
+            continue
+        _name, gain_s, centre_s = source["inputs"][i]
+        # x_s = a * x_t + b carries the same canonical value.
+        a = float(gain_t) / float(gain_s)
+        b = float(centre_s) - a * float(centre_t)
+        new_w[j] = math.copysign(1.0, a) * first_w[i]
+        mean_t[j] = (mean_s[i] - b) / a
+        std_t[j] = std_s[i] / abs(a)
+        counts["inputs_copied"] += 1
+    for i, (name, _gain, centre) in enumerate(source["inputs"]):
+        if str(name) in t_index:
+            continue
+        rest = (float(centre) if str(name).split(".")[0] in BODY_FAMILIES[source["family"]]
+                else 0.0 if str(name).split(".")[0] in ("goal", "clock", "command")
+                else float(mean_s[i]))
+        new_b = new_b + ((rest - mean_s[i]) / std_s[i]) * first_w[i]
+        counts["inputs_folded"] += 1
+
+    last_w, last_b = layers[-1]
+    s_out = {str(name): (i, int(sign)) for i, (name, sign) in enumerate(source["outputs"])}
+    out_w = np.zeros((last_w.shape[0], len(target["outputs"])))
+    out_b = np.zeros(len(target["outputs"]))
+    log_std = [math.log(DEFAULT_INITIAL_STD)] * len(target["outputs"])
+    for j, (name, sign_t) in enumerate(target["outputs"]):
+        if str(name) not in s_out:
+            counts["outputs_zero"] += 1
+            continue
+        i, sign_s = s_out[str(name)]
+        flip = float(sign_s * int(sign_t))
+        out_w[:, j] = flip * last_w[:, i]
+        out_b[j] = flip * last_b[i]
+        if i < len(log_std_s):
+            log_std[j] = float(log_std_s[i])
+        counts["outputs_copied"] += 1
+    counts["outputs_dropped"] = len(source["outputs"]) - counts["outputs_copied"]
+    if len(layers) == 1:
+        raise SystemExit("--init-from-base: a network with no hidden layer cannot be remapped.")
+    mapped = [(new_w, new_b)] + layers[1:-1] + [(out_w, out_b)]
+    return {"layers": [(np.asarray(w, dtype=np.float32), np.asarray(b, dtype=np.float32))
+                       for w, b in mapped],
+            "mean": [float(v) for v in mean_t], "std": [float(v) for v in std_t],
+            "log_std": log_std, "counts": counts}
+
+
 def check_policy_fits(
     header: dict[str, Any],
     bundle: dict[str, Any],
@@ -637,6 +845,10 @@ def check_policy_fits(
             "otherwise the weights mean something else."
         )
 
+    if str(getattr(options, "init_from_base", "") or "").strip():
+        # ADR-755: another robot of the family; check_base_fits holds it.
+        check_base_fits(header, bundle, options)
+        return None
     task = header.get("task") or {}
     reason = str(getattr(options, "init_from_task_change", "") or "").strip()
     curriculum: list[str] | None = None
@@ -3192,9 +3404,10 @@ def train(
     if not getattr(options, "init_from", "") and (
             str(getattr(options, "init_from_task_change", "") or "").strip()
             or str(getattr(options, "init_from_parent_task", "") or "").strip()
+            or str(getattr(options, "init_from_base", "") or "").strip()
     ):
         raise SystemExit(
-            "--init-from-task-change / --init-from-parent-task only mean "
+            "--init-from-task-change / --init-from-parent-task / --init-from-base only mean "
             "anything beside --init-from. Without it this is a cold run and "
             "there is no parent task to change from."
         )
@@ -3207,6 +3420,22 @@ def train(
         decoded = decode_policy(blob, context=str(source))
         curriculum_keys = check_policy_fits(decoded["header"], bundle, options)
         source_header = decoded["header"]
+        base_reason = str(getattr(options, "init_from_base", "") or "").strip()
+        base_counts: dict[str, int] | None = None
+        if base_reason:
+            # ADR-755: the source in this robot's layout, then warmed as usual.
+            mapped = remap_from_base(np, source_header, decoded["weights"],
+                                     body_layout(bundle["task"]))
+            base_counts = mapped["counts"]
+            decoded = {"weights": flat_parameters(np, mapped["layers"])}
+            source_header = {
+                **source_header,
+                "normaliser": {"mean": mapped["mean"], "std": mapped["std"], "count": 1},
+                "exploration": {**(source_header.get("exploration") or {}),
+                                "log_std": mapped["log_std"]},
+            }
+            if not options.quiet:
+                print(f"init-from-base  {base_counts}", flush=True)
         trained_with = str((source_header.get("network") or {}).get("activation") or "")
         if trained_with != activation_name:
             raise SystemExit(
@@ -3263,6 +3492,14 @@ def train(
             "iterations": source_training.get("iterations"),
             "trainer_sha256": source_training.get("trainer_sha256"),
         }
+        if base_counts is not None:
+            init_from_provenance["base"] = {
+                "reason": base_reason,
+                "family": str(source_header["body"]["family"]),
+                "model_sha256": str((source_header.get("model") or {}).get("sha256") or ""),
+                "task_sha256": str((source_header.get("task") or {}).get("sha256") or ""),
+                **base_counts,
+            }
         if curriculum_keys is not None:
             init_from_provenance["task_change"] = {
                 "reason": str(options.init_from_task_change).strip(),
@@ -3681,6 +3918,9 @@ def policy_header(
         "model": {"sha256": bundle["model_sha256"], "path": bundle["model_path"]},
         "observations": actor_channels(task),
         "actions": list(task["actions"]),
+        # ADR-755: what each input and action is on the family's canonical
+        # body, so this policy can be a base. Absent without a body block.
+        **({"body": body_layout(task)} if task.get("body") else {}),
         "network": {
             "kind": "mlp",
             "layers": trained["layers"],
@@ -3746,7 +3986,7 @@ def policy_header(
                 for key, value in sorted(vars(options).items())
                 if key not in ("bundle", "out", "quiet", "label", "init_from",
                                "init_from_task_change",
-                               "init_from_parent_task")
+                               "init_from_parent_task", "init_from_base")
                 # The goal pool's size means nothing to a task that states
                 # no goal, and leaving it out there keeps such a policy's
                 # header the one it always was (ADR-462).
@@ -4023,6 +4263,18 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
             "--init-from-parent-task. Only keys that change what the network "
             "is trained AGAINST may move; keys that change what it reads or "
             "emits are refused, and every other --init-from check still runs"
+        ),
+    )
+    parser.add_argument(
+        "--init-from-base",
+        default="",
+        metavar="REASON",
+        help=(
+            "ADR-755: warm-start --init-from's policy onto ANOTHER robot of its "
+            "family, matched slot by slot on the canonical body both bundles "
+            "map (api.task(body=...)), and say why in one line. The digests are "
+            "not compared; the family, the hidden layers and one shared joint "
+            "slot per leg are, and --critic-warmup is required"
         ),
     )
     parser.add_argument(

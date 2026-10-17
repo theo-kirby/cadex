@@ -225,6 +225,7 @@ against the actuator rather than deriving it — ADR-162 carries the numbers.
 | `--init-from POLICY` | start the actor from an existing `.cxpolicy`. It must match this bundle's task and model digests, its observation channels in order, its action table, the `--hidden` shape and the `--activation` it was trained with. The actor's location half, its exploration width (unless `--initial-std` is given, ADR-471) and the observation normaliser are carried, the normaliser with the weight of the samples it rests on (ADR-753). The critic and the optimiser start fresh: the container holds neither. |
 | `--init-from-task-change REASON` | let `--init-from` cross a task change, as a **curriculum**, with a one-line reason written into the policy header. It skips the whole-file task digest and nothing else. Requires `--init-from-parent-task`. |
 | `--init-from-parent-task BUNDLE` | the bundle the source policy was trained on. Its digest must equal the one in that policy's header, so the change can be named key by key. |
+| `--init-from-base REASON` | let `--init-from` cross onto **another robot of the family** (ADR-755). Both bundles map a canonical body (`api.task(body=...)`); the digests are not compared, but the family and version, the hidden layers and at least one shared joint slot per leg are, and `--critic-warmup` is required. The actor is remapped by canonical name: matched inputs and actions copy, sign-corrected, with the statistics mapped through each channel's sign, offset and scale; a source input the target lacks folds into the first layer's bias at its rest value; a target input or action the source lacks starts at zero (its box centre) with the default exploration width. The actor's statistics restart at a count of one, so the target's own first batch sets them. |
 
 The keys that may differ are `CURRICULUM_TASK_KEYS`: `disturbance`,
 `episode` (`episode_seconds` and `max_steps` only, never the control rate),
@@ -241,6 +242,9 @@ fresh critic's noise and knocked the carried actor over.
 
 Every policy before ADR-712 is `tanh`; continue one with `--activation tanh`.
 `training/test_curriculum_warm_start.py` (training venv) holds these rules.
+`training/test_canonical_body.py` holds the base remap: onto its own robot
+it is the identity, and onto the same robot listed in another order with a
+joint mounted the other way round it plays the same actions.
 
 ## Checkpoints, and the file a run publishes while it runs (ADR-098)
 

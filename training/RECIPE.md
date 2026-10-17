@@ -142,6 +142,12 @@ the engine's (`docs/MUJOCO.md`, `docs/XSCRIPT.md`).
 3. **A speed curriculum at a fixed tempo does not buy speed** (f1-s1, a dead
    end slower than its source) [rec: warm-hill-9213]; change the reference's
    tempo (step 1.4) instead.
+4. **Keep the first checkpoint that passes, and judge every one.** The
+   cold biped b1-b1 passed its walk spec 10/10 at iteration 100. Its reward
+   per step went on climbing to 264, and by 200 it had traded the stride for
+   a shuffle that fails step clearance; at 300 it fell. The reward curve
+   alone would have kept the worst file (orun9 iteration 10,
+   `docs/probes/orun9/b1-biped.md`).
 
 ## What is not proven
 
@@ -149,14 +155,6 @@ These are the parts of B1's criterion no run has shown yet. The recipe's
 proof (a cold walk on one new quadruped and one biped, 10 seeds, ≤ 300
 iterations) is what settles them.
 
-- **A biped's reference has not trained.** Since ADR-754 `CadexGait` builds
-  a two-foot `walk` or `run` (`assembly.gait([foot_l, foot_r], ...)`), and
-  it builds into `orun8-biped`'s task bundle; no biped has trained on one
-  yet. The two engine refusals that blocked step 1.1 on a biped are fixed:
-  a reward may name `ref_l_lift` and `ref_l_down` (ADR-756), and a foot
-  `contact` channel on flat capsule feet passes the export check (ADR-757).
-  The servo biped's task by the recipe builds
-  (`docs/probes/orun9/b1-biped.md`).
 - **Inverted knees.** The generator's IK pulls toward the home pose, so a
   leg keeps the knee direction its build pose has; no run has tried a
   backward-bending knee.
@@ -166,7 +164,11 @@ iterations) is what settles them.
   tried legs of different length.
 - **A stand-first stage.** Only stand-and-move in one task (step 1.7) has a
   run behind it.
-- **A robot but the cat: the quadruped is proven, the biped is not.**
+- **A robot but the cat: the quadruped and the biped are proven.** orun9's
+  `b1-b1` followed the same steps cold on `orun9-biped` (the servo biped,
+  STS3215 position servos, a 160 mm/s two-foot walk from ADR-754's
+  generator, step 1.1 by ADR-756/757): the walk spec passed 10/10 at
+  iteration 100, then failed step clearance from 150 on (4.4).
   orun9's `b1-q1` followed steps 0.1–4.1 cold on `orun9-quad` (9.27 kg,
   twelve AK80-9 position servos, a 250 mm/s trot generated on its legs): the
   walk spec passed 10/10 at iterations 150, 200, 250 and 300, 0/10 at 50
