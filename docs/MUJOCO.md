@@ -381,6 +381,21 @@ window, frames past 1 s and not within 0.5 s after any command change) and
 commanded heading 180°, judged when it has). The trainer's host draw
 follows the same `GOAL_SEQUENCE_ALGORITHM`.
 
+**Waypoints on the ground (ADR-751, 2026-10-17).** A goal of kind
+`waypoint` sends the one floating base to a place on the ground. Each
+segment is a leg from the last point (the base's centre of mass at the
+reset pose, before the first): its length uniform in `between=[low, high]`
+mm, its direction turned from the leg before by uniform ±`bearing_deg`
+(default 180; the base's reset heading before the first). The policy reads
+it as `name_x` (ahead) and `name_y` (left) in mm from the base's centre of
+mass along its heading, as a height scan turns, re-read every step; the
+trace and the episode's goal schedule hold the world point. The waypoint
+family reads `waypoint_miss_mm_max` (for each point the episode reached,
+the closest approach while it was up; the worst) and `waypoints_reached`
+(within 300 mm). Points change on the resample clock, not on arrival, so a
+spec of three points in 12 s gives each 4 s. The trainer's host draw and
+its channel transform are copies (`draw_goals`, `waypoint_vector`).
+
 **Appendage predicates (ADR-722, 2026-10-16).** `assembly.success(...,
 appendage=[root, ..., last])` names a chain that hangs from the base and is
 not a leg -- a tail, a trunk -- each component below the one before, at

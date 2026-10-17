@@ -533,8 +533,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `point` | `name_x`, `name_y`, `name_z`, mm, world (or `frame=`'s) | a pose `tip` can reach | the reach metrics |
   | `phase` | `name_sin`, `name_cos` | a start phase over one turn; then it turns once every `period_seconds` | nothing |
   | `yaw_rate` | `name`, deg/s | `between=[low, high]`: the commanded turning rate of the floating base about world +Z, anticlockwise (left) positive (ADR-721) | `yaw_rate_error_rms_deg_s`, `reversal_heading_error_deg_max` |
+  | `waypoint` | `name_x`, `name_y`, mm, ahead of and left of the floating base along its heading, re-read every step | a chain of legs from the base's reset position: each `between=[low, high]` mm long, turned up to `bearing_deg` (default 180) from the one before (ADR-751) | `waypoint_miss_mm_max`, `waypoints_reached` |
 
-  A task states at most one `speed`, one `yaw_rate` and one `point`.
+  A task states at most one `speed`, one `yaw_rate`, one `point` and one
+  `waypoint`.
   `sequence=[v0, v1, ...]` scripts the opening segments of a `value`,
   `speed` or `yaw_rate` goal (ADR-721): segment *k* holds `sequence[k]`, and
   the segments past it are drawn. The draw is still taken for a scripted
@@ -662,6 +664,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `speed_error_rms_mm_s` | the RMS of the base's forward speed (along its heading, over a centred 0.5 s window) less the `speed` goal in force, over the frames past 1 s and not within 0.5 s after any command changed (ADR-721) | a floating base and a `speed` goal |
   | `yaw_rate_error_rms_deg_s` | the same for the base's yaw rate about world +Z against the `yaw_rate` goal (ADR-721) | a floating base and a `yaw_rate` goal |
   | `reversal_heading_error_deg_max` | for every held yaw-rate command that turns the commanded heading through 180° before it changes, the base's heading error at the moment it has (180°/\|rate\| after it was issued: 3 s at 60°/s); the worst one. Unmeasured, so failed, when the episode commanded none or ended first (ADR-721) | a floating base and a `yaw_rate` goal |
+  | `waypoint_miss_mm_max`, `waypoints_reached` | for each `waypoint` point the episode reached, the closest the base's centre of mass came to it in plan while it was up: the worst one, and how many came within 300 mm (ADR-751) | a floating base and a `waypoint` goal |
   | `appendage_ground_contact_share` | the share of frames in which any collision shape of the spec's `appendage` (a chain hanging from the base that is not a leg: a tail, a trunk; named root first) is within 1 mm of the ground under it (ADR-722) | a floating base and `appendage` |
   | `appendage_pitch_parent_correlation` | Pearson r, after 1 s, between the appendage root's pitch and the pitch of the body it hangs from, both read as the elevation of the base's starting forward direction as each body carries it: near 1 is a chain carried rigidly by its parent (ADR-722) | a floating base and `appendage` |
   | `appendage_yaw_turn_correlation` | \|r\|, after 1 s, between the `yaw_rate` goal and the appendage's yaw relative to the base (the plan bearing from its root to the centre of its last shape); the sign and the slope in deg per deg/s are in the detail. Unmeasured when the command never changed (ADR-722) | a floating base, `appendage` and a `yaw_rate` goal |

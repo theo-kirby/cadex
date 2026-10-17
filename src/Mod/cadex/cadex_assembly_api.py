@@ -1247,7 +1247,7 @@ _SUCCESS_SCALE_KEYS = (
 
 #: What a goal may be (ADR-462). ``CadexDynamics.GOAL_KINDS`` is the same
 #: tuple, and ``test_goal_api`` holds the two equal.
-_GOAL_KINDS = ("value", "speed", "point", "phase", "yaw_rate")
+_GOAL_KINDS = ("value", "speed", "point", "phase", "yaw_rate", "waypoint")
 
 #: An observation's name, which becomes a name a reward formula writes. The
 #: same shape as a Python identifier because that is what it turns into,
@@ -4214,6 +4214,7 @@ class AssemblyDomainAPI:
         period_seconds: float | None = None,
         resample_seconds: float | None = None,
         sequence: Sequence[float] | None = None,
+        bearing_deg: float | None = None,
         label: str = "",
     ) -> DomainValue:
         """Tell the policy where to go: a number or a place drawn per episode.
@@ -4278,8 +4279,25 @@ class AssemblyDomainAPI:
           ``yaw_rate_error_rms_deg_s`` and ``reversal_heading_error_deg_max``
           against it. The reward still has to pay for it.
 
-        A task states at most one ``speed``, one ``yaw_rate`` and one
-        ``point``; ``value`` and ``phase`` goals are free.
+        * ``"waypoint"`` -- a **place on the ground** the floating base is
+          sent to (ADR-751). Each segment is a leg from the last point (the
+          base's centre of mass at the reset pose, before the first): its
+          length is drawn between ``between=[low, high]`` millimetres and
+          its direction turns from the leg before by up to ``bearing_deg``
+          (default 180, any way; the base's heading at the reset pose
+          before the first leg). Its channels are ``name_x`` and
+          ``name_y``: the point read from the base at every step, in mm,
+          ahead and to the left along the base's heading -- what a robot
+          told a target by a phone or a beacon would know. A success spec
+          reads ``waypoint_miss_mm_max`` (the worst of the closest approach
+          to each point while it was up) and ``waypoints_reached`` (within
+          300 mm) against it. The model needs exactly one floating base.
+          Give it ``resample_seconds`` to send the base on from point to
+          point; a trace records each point in the world.
+
+        A task states at most one ``speed``, one ``yaw_rate``, one
+        ``point`` and one ``waypoint``; ``value`` and ``phase`` goals are
+        free.
 
         ``resample_seconds`` draws the goal again that often during the
         episode, which is what makes a policy learn to *change* what it is
@@ -4379,6 +4397,16 @@ class AssemblyDomainAPI:
                         "describes how a point goal is drawn, and this is "
                         f"a {clean_kind}", source,
                     )
+        if bearing_deg is not None:
+            if clean_kind != "waypoint":
+                raise _error(
+                    operation, "bearing_deg",
+                    "is how far a waypoint's leg may turn from the one "
+                    f"before it, and this is a {clean_kind}", bearing_deg,
+                )
+            properties["bearing_deg"] = _number(
+                operation, "bearing_deg", bearing_deg, minimum=0.0, maximum=180.0
+            )
         if clean_kind == "phase":
             if between is not None:
                 raise _error(
@@ -4406,6 +4434,12 @@ class AssemblyDomainAPI:
             if high < low:
                 raise _error(
                     operation, "between", "must be ordered [low, high]", between
+                )
+            if clean_kind == "waypoint" and low <= 0.0:
+                raise _error(
+                    operation, "between",
+                    "is the shortest and longest leg in millimetres, so "
+                    "both are positive", between,
                 )
             properties["low"] = low
             properties["high"] = high

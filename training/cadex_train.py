@@ -792,6 +792,43 @@ def scan_channels(task: dict[str, Any], *, policy_only: bool = False) -> list[st
             for channel in record["channels"]]
 
 
+def waypoint_vector(xp: Any, task: dict[str, Any], told: Any, xipos: Any,
+                    xmat: Any) -> Any:
+    """The goal channels with each waypoint read from the base (ADR-751).
+
+    ``CadexDynamics.waypoint_values`` in ``xp``: ``told`` is the goal vector,
+    ``(..., G)`` in ``goal_channels`` order, holding a waypoint's world point
+    in mm; a waypoint's two channels become that point ahead of and to the
+    left of the base's centre of mass, along its x axis on the ground (the
+    world's x when that is vertical). ``xipos`` is ``(..., nbody, 3)`` and
+    ``xmat`` ``(..., nbody, 9)`` or ``(..., nbody, 3, 3)``, the leading axes
+    ``told``'s. Every other goal channel is returned as it came.
+    """
+
+    parts, cursor = [], 0
+    for entry in task.get("goal") or ():
+        width = len(entry["channels"])
+        held = told[..., cursor:cursor + width]
+        if entry["kind"] == "waypoint":
+            body = int(entry["body_id"])
+            scale = float(entry["scale"])
+            where = xipos[..., body, :] * scale
+            flat = xp.reshape(xmat, xmat.shape[:-2] + (9,)) if xmat.shape[-1] == 3 else xmat
+            frame = flat[..., body, :]
+            ahead_x, ahead_y = frame[..., 0], frame[..., 3]
+            norm = xp.sqrt(ahead_x * ahead_x + ahead_y * ahead_y)
+            turned = norm > 1e-9
+            safe = xp.where(turned, norm, 1.0)
+            cos = xp.where(turned, ahead_x / safe, 1.0)
+            sin = xp.where(turned, ahead_y / safe, 0.0)
+            dx = held[..., 0] - where[..., 0]
+            dy = held[..., 1] - where[..., 1]
+            held = xp.stack([cos * dx + sin * dy, -sin * dx + cos * dy], axis=-1)
+        parts.append(held)
+        cursor += width
+    return xp.concatenate(parts, axis=-1)
+
+
 def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
                        elevation: Any = None, course: Any = None) -> Any:
     """The height-scan channels (ADR-715), along a new last axis.
@@ -1603,6 +1640,19 @@ def draw_goals(mujoco: Any, model: Any, task: dict[str, Any], rng: Any) -> list[
     data = None
     for entry in task.get("goal") or ():
         segments: list[list[float]] = []
+        if str(entry["kind"]) == "waypoint":
+            # ADR-751: a chain of legs from where the base starts.
+            x, y = (float(value) for value in entry["start_mm"])
+            direction = float(entry["heading_rad"])
+            bearing = float(entry["bearing_deg"])
+            for _ in range(int(entry["segments"])):
+                leg = rng.uniform(float(entry["low"]), float(entry["high"]))
+                direction += math.radians(rng.uniform(-bearing, bearing))
+                x += leg * math.cos(direction)
+                y += leg * math.sin(direction)
+                segments.append([x, y])
+            drawn.append({"label": str(entry["label"]), "segments": segments})
+            continue
         if str(entry["kind"]) != "point":
             scripted = list(entry.get("sequence") or ())
             for index in range(int(entry["segments"])):
@@ -2248,6 +2298,8 @@ def build_environment(
         for entry in goal_entries
     ]
     goal_pool_size = int(goal_tables[0].shape[0]) if goaled else 0
+    # ADR-751: a PYTHON bool, so a task with no waypoint traces as before.
+    waypointed = any(entry["kind"] == "waypoint" for entry in goal_entries)
 
     def goals_at(picks, steps):
         """Each environment's goal channels at its own episode step.
@@ -2571,6 +2623,9 @@ def build_environment(
         data, _ = jax.lax.scan(one, data, None, length=per_action)
         vector = observe(data)
         if goaled:
+            if waypointed:
+                # ADR-751: read from where the step landed.
+                told = waypoint_vector(jnp, task, told, data.xipos, data.xmat)
             vector = jnp.concatenate([vector, told])
         if commanding:
             # The command just issued replaces `previous`; on an episode's
@@ -2655,7 +2710,11 @@ def build_environment(
         else:
             vector = jax.vmap(observe)(data)
         if goaled:
-            vector = jnp.concatenate([vector, goals_at(picks, steps)], axis=-1)
+            told = goals_at(picks, steps)
+            if waypointed:
+                # ADR-751: the point read from where the base is.
+                told = waypoint_vector(jnp, task, told, data.xipos, data.xmat)
+            vector = jnp.concatenate([vector, told], axis=-1)
         if commanding:
             # ADR-696: the command in force and the one it replaced.
             vector = jnp.concatenate(

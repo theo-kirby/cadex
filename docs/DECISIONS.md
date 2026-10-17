@@ -43859,3 +43859,80 @@ a sequence change what they judge.
 `turn2` and `reverse` success goals carry their sequences, and the `run`
 task's semantic digest is unchanged (`5609a4bd…`, the one c1-t2 trained
 on). Verified by running, per ADR-725.
+
+## ADR-751 — A waypoint goal: a place on the ground the base is sent to (2026-10-17, orun8)
+
+**Context.** orun8's C2 asks the cat to reach three target points 3–8 m
+apart, each within 0.3 m, in under 12 s. The only place goal was `point`
+(ADR-462): a pose an arm's tip can reach, drawn from joint ranges and
+told in world (or a body's) coordinates. A legged base has no such range,
+and a world coordinate is a poor thing for a policy to be told: the same
+target reads differently wherever the robot stands.
+
+**Decision.** A sixth goal kind, `waypoint`, for a model with exactly one
+floating base.
+- **The draw.** Each segment is a leg from the last point, the first from
+  the base's centre of mass in plan at the reset keyframe: a length
+  uniform in `between=[low, high]` mm, then a turn uniform in
+  ±`bearing_deg` (new keyword, default 180, refused on other kinds) from
+  the previous leg's direction (the base's reset heading before the first
+  leg). Two draws per segment, in that order, in the goal stream.
+  `GOAL_WAYPOINT_ALGORITHM` is appended to `goal_algorithm` only when a
+  bundle states a waypoint, so no earlier bundle or digest moves.
+- **What the policy reads.** Channels `name_x` and `name_y`: the point
+  ahead of and to the left of the base's centre of mass (`xipos`), along
+  its x axis projected on the ground, as a height scan turns (ADR-715). It
+  is re-read from the state at every step and from where each step lands.
+  Like the actor's height scan (ADR-748), it is a sensor someone sells: a
+  bearing and range to a beacon, or a GPS fix and a compass.
+- **What is recorded.** The episode's goal schedule and the trace hold the
+  world point (the schedule row names the base `body`). Only the observation
+  turns it into the base's frame.
+- **How it is judged.** A new waypoint family on a floating base:
+  - `waypoint_miss_mm_max`: for each segment the episode reached, the
+    closest the base's centre of mass came to that point while it was up,
+    and the worst of those;
+  - `waypoints_reached`: how many came within 300 mm
+    (`WAYPOINT_REACH_MM`, the charter's bar).
+
+  A spec without a waypoint goal that bounds them is refused with the
+  need `waypoint`.
+- **The trainer's copy.** `draw_goals` gains the same chain, and
+  `waypoint_vector` turns the pooled world point into the base's frame in
+  `sensed` and `step_env`. A task with no waypoint traces the graph it
+  always did.
+
+**Not done, and why.** Points change on the resample clock, not on
+arrival. That keeps a goal a function of the step alone, which is what
+`goal_schedule`, the trace and the trainer's pooled goals all assume.
+Arrival-triggered points would need a per-environment carry and a
+schedule that depends on the state. So a spec of three points in 12 s
+gives each one 4 s, and a policy that arrives early holds its place.
+Waypoints may lie off a course's drawn extent; the 50 m run-out (ADR-745)
+is flat.
+
+**Evidence.** Verified by running, per ADR-725:
+- On orun8-cat's model, the engine's and the trainer's draws are equal for
+  seeds 1–3, with legs of 3283–7780 mm, inside [3000, 8000].
+- The engine's `waypoint_values` and the trainer's `waypoint_vector`
+  (NumPy; JAX jit and vmap within 8e-5 mm in float32) agree with a hand
+  rotation (4125.7, −62.0 mm at a 45.8° heading).
+- `waypoint_metrics` on a synthetic 2 m/s trace reads 107.7, 250 and
+  6000 mm, with 2 reached.
+- A copy of orun8-cat (outside the project) built a `points` task through
+  the CLI: the C1 task plus `assembly.goal("go", kind="waypoint",
+  between=[3000, 8000], resample_seconds=4)`, with a spec bounding
+  `waypoints_reached` ≥ 3 and `waypoint_miss_mm_max` ≤ 300. The bundle
+  carries the waypoint text in `goal_algorithm`. Its actor reads `go_x` and
+  `go_y`, and the trainer's draw equals the engine's on seed 1001.
+- Played in the engine on seed 1001, the actor's channels turn back into
+  the scheduled world point within 1e-12 mm at all 71 steps, while the cat
+  tips.
+- The engine's evaluation child judged that spec on c1-t3's policy, given
+  zero weights for `go_x` and `go_y` so that it is blind to the waypoint.
+  It completes 10/10 and reaches 0 of 3 points on nine seeds and 1 on one
+  (worst miss 6.6–22.9 m). This is a check of the plumbing, not a C2
+  result.
+- A finding for the next cold run: the C1 task already holds 16 reward
+  terms, the engine's cap, so a waypoint reward has to replace a term
+  rather than add one.

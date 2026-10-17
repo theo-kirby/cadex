@@ -8435,8 +8435,11 @@ MAXIMUM_GOALS = 4
 #: or a policy can know how far an episode has run; ``yaw_rate`` is one
 #: number that *is* the commanded turning rate of the base about world +Z,
 #: in degrees per second, anticlockwise positive (ADR-721), which is what
-#: lets a success spec read how well a turn was followed.
-GOAL_KINDS = ("value", "speed", "point", "phase", "yaw_rate")
+#: lets a success spec read how well a turn was followed; ``waypoint`` is a
+#: place on the ground the floating base is sent to, drawn as a chain of
+#: legs from where it starts and told in its own heading frame (ADR-751),
+#: which is what lets a success spec read how close it came to each.
+GOAL_KINDS = ("value", "speed", "point", "phase", "yaw_rate", "waypoint")
 
 #: How many joint configurations a ``point`` goal may draw before the draw
 #: is refused, and how many whole episodes are drawn when the task is built
@@ -8557,6 +8560,12 @@ _SUCCESS_NEED_CORRECTIONS = {
         "It is measured against a target point, and this task states none. "
         "Give the task one: assembly.goal('target', kind='point', "
         "tip=component) in api.task(goals=[...])."
+    ),
+    "waypoint": (
+        "It is measured against waypoints on the ground, and this task "
+        "states none. Give the task one -- assembly.goal('go', "
+        "kind='waypoint', between=[3000, 8000], resample_seconds=4) in "
+        "api.task(goals=[...])."
     ),
     "reference": (
         "It is measured against the task's gait reference, and this task "
@@ -9397,6 +9406,23 @@ GOAL_PHASE_ALGORITHM = (
 GOAL_SEQUENCE_ALGORITHM = (
     "; on a goal with a sequence, segment k < len(sequence) still takes its "
     "uniform(low, high) draw and holds sequence[k] in its place"
+)
+
+#: What a waypoint goal adds to :data:`GOAL_ALGORITHM` (ADR-751), appended
+#: only to bundles that state one, so every earlier bundle keeps its
+#: algorithm and its digest. Two draws per segment, in this order.
+GOAL_WAYPOINT_ALGORITHM = (
+    "; on a waypoint goal, each segment in order draws a leg length "
+    "uniform(low, high) in mm, then a turn uniform(-bearing_deg, "
+    "bearing_deg) in degrees; the leg's direction is the previous leg's "
+    "plus the turn (heading_rad, the base's x axis on the ground at the "
+    "reset keyframe, before the first), and the segment's world point is "
+    "the previous point (start_mm, the base's centre of mass in plan at "
+    "the reset keyframe, before the first) plus the leg length along that "
+    "direction. Its channels are not the world point: at every step they "
+    "read it in the base's heading frame -- name_x ahead and name_y to the "
+    "left of xipos[body_id] along xmat[body_id]'s x axis projected on the "
+    "ground (the world's x when that is vertical), in mm"
 )
 
 #: Everything a reward or termination expression may name beyond the
@@ -11176,6 +11202,7 @@ def _goal_records(
         channels = (
             [f"{name}_x", f"{name}_y", f"{name}_z"] if kind == "point"
             else [f"{name}_sin", f"{name}_cos"] if kind == "phase"
+            else [f"{name}_x", f"{name}_y"] if kind == "waypoint"
             else [name]
         )
         for channel in channels:
@@ -11247,6 +11274,90 @@ def _goal_records(
                 nominal=[0.0],
                 period_s=period,
                 radians_per_step=2.0 * math.pi * interval / period,
+            )
+            records.append(record)
+            continue
+        if kind == "waypoint":
+            # ADR-751: a place on the ground for the one floating base,
+            # drawn as a chain of legs from where the base starts.
+            low = float(entry.get("low", math.nan))
+            high = float(entry.get("high", math.nan))
+            bearing = float(entry.get("bearing_deg", 180.0))
+            if not (math.isfinite(low) and math.isfinite(high)) or not 0.0 < low <= high:
+                raise DynamicsError(
+                    f"{what} draws legs between {low!r} and {high!r} mm.",
+                    reason="malformed_goal",
+                    correction=(
+                        "Give between=[low, high], the shortest and longest "
+                        "leg in mm, positive and in order."
+                    ),
+                    observed={"goal": name, "low": repr(low), "high": repr(high)},
+                )
+            if not (math.isfinite(bearing) and 0.0 <= bearing <= 180.0):
+                raise DynamicsError(
+                    f"{what} turns each leg by up to {bearing!r} degrees.",
+                    reason="malformed_goal",
+                    correction=(
+                        "bearing_deg is how far a leg may turn from the one "
+                        "before it: between 0 (straight on) and 180 (any way)."
+                    ),
+                    observed={"goal": name, "bearing_deg": repr(bearing)},
+                )
+            free = [
+                joint for joint in range(int(reloaded.njnt))
+                if int(reloaded.jnt_type[joint]) == int(mujoco.mjtJoint.mjJNT_FREE)
+            ]
+            if len(free) != 1:
+                raise DynamicsError(
+                    f"{what} sends a floating base somewhere, and this model "
+                    f"has {len(free)} floating bodies.",
+                    reason="goal_waypoint_base",
+                    correction=(
+                        "A waypoint is a place on the ground for a mechanism "
+                        "that moves about on it: exactly one component free "
+                        "of the world. A fixed mechanism reaches with "
+                        "kind='point' instead."
+                    ),
+                    observed={"goal": name, "floating_bases": len(free)},
+                )
+            body_id = int(reloaded.jnt_bodyid[free[0]])
+            key = int(
+                mujoco.mj_name2id(
+                    reloaded, mujoco.mjtObj.mjOBJ_KEY, str(schedule["reset_keyframe"])
+                )
+            )
+            if key < 0:
+                raise DynamicsError(
+                    f"The model {what} reads carries no "
+                    f"{schedule['reset_keyframe']!r} keyframe, so a waypoint "
+                    "has no start to be drawn from.",
+                    reason="task_keyframe_missing",
+                    observed={"keyframe": str(schedule["reset_keyframe"])},
+                )
+            data = mujoco.MjData(reloaded)
+            mujoco.mj_resetDataKeyframe(reloaded, data, key)
+            mujoco.mj_forward(reloaded, data)
+            start = [length_mm(float(value)) for value in data.xipos[body_id][:2]]
+            axes = [float(value) for value in _flat(data.xmat[body_id])]
+            heading = (
+                math.atan2(axes[3], axes[0])
+                if math.hypot(axes[0], axes[3]) > 1e-9 else 0.0
+            )
+            middle = 0.5 * (low + high)
+            record.update(
+                unit="mm",
+                body=str(mujoco.mj_id2name(reloaded, mujoco.mjtObj.mjOBJ_BODY, body_id)),
+                body_id=body_id,
+                scale=length_mm(1.0),
+                low=low,
+                high=high,
+                bearing_deg=bearing,
+                start_mm=start,
+                heading_rad=heading,
+                # An unseeded episode holds one leg of the middle length
+                # straight ahead, as a value holds the middle of its range.
+                nominal=[start[0] + middle * math.cos(heading),
+                         start[1] + middle * math.sin(heading)],
             )
             records.append(record)
             continue
@@ -11641,6 +11752,8 @@ def _success_records(
         "target": "point" in goal_kinds,
         # ADR-721: the turning family reads the task's one yaw-rate goal.
         "turn": "yaw_rate" in goal_kinds,
+        # ADR-751: the waypoint family reads the task's one waypoint goal.
+        "waypoint": "waypoint" in goal_kinds,
         # ADR-705: the reference family reads the task's gait reference.
         "reference": bool(task.get("reference")),
         # ADR-718: the terrain family reads the course the task stands on.
@@ -12878,6 +12991,9 @@ def task_records(
         ) + (
             GOAL_SEQUENCE_ALGORITHM
             if any(entry.get("sequence") for entry in goal) else ""
+        ) + (
+            GOAL_WAYPOINT_ALGORITHM
+            if any(entry["kind"] == "waypoint" for entry in goal) else ""
         )} if goal else {}),
         # ADR-696: absent when the task observes no command, so its bundle
         # and digest are the ones it always had.
@@ -13580,6 +13696,19 @@ def draw_episode_goals(
     data = None
     for entry in task.get("goal") or ():
         segments: list[list[float]] = []
+        if str(entry["kind"]) == "waypoint":
+            # ADR-751: a chain of legs from where the base starts.
+            x, y = (float(value) for value in entry["start_mm"])
+            direction = float(entry["heading_rad"])
+            bearing = float(entry["bearing_deg"])
+            for _ in range(int(entry["segments"])):
+                leg = rng.uniform(float(entry["low"]), float(entry["high"]))
+                direction += math.radians(rng.uniform(-bearing, bearing))
+                x += leg * math.cos(direction)
+                y += leg * math.sin(direction)
+                segments.append([x, y])
+            drawn.append({"label": str(entry["label"]), "segments": segments})
+            continue
         if str(entry["kind"]) != "point":
             scripted = list(entry.get("sequence") or ())
             for index in range(int(entry["segments"])):
@@ -13699,6 +13828,9 @@ def goal_schedule(
                 # ADR-592: the body a held-in-frame point is fixed to, so a
                 # reader of the episode knows its values are in that frame.
                 **({"frame": str(entry["frame"])} if entry.get("frame") else {}),
+                # ADR-751: a waypoint's values are its world point, in mm;
+                # its channels read that point from this body at each step.
+                **({"body": str(entry["body"])} if entry["kind"] == "waypoint" else {}),
                 # ADR-598: how far a phase turns per step, so a reader of
                 # the episode can say what it read at any frame. Its
                 # segments' values are their start phases.
@@ -13750,6 +13882,36 @@ def goal_values(
             told = [math.sin(angle), math.cos(angle)]
         for channel, value in zip(entry["channels"], told, strict=True):
             values[str(channel)] = value
+    return values
+
+
+def waypoint_values(
+    task: Mapping[str, Any], told: Mapping[str, float], xipos: Any, xmat: Any
+) -> dict[str, float]:
+    """A waypoint goal's channels as the base reads them (ADR-751).
+
+    ``told`` is :func:`goal_values`' table, which holds a waypoint's world
+    point in mm; this returns its two channels in the base's heading frame:
+    ``x`` ahead and ``y`` to the left of the base's centre of mass, along its
+    x axis projected on the ground (the world's x when that is vertical), as
+    a height scan turns (ADR-715). ``xipos`` and ``xmat`` are ``MjData``'s.
+    Empty for a task with no waypoint.
+    """
+
+    values: dict[str, float] = {}
+    for entry in task.get("goal") or ():
+        if entry["kind"] != "waypoint":
+            continue
+        body = int(entry["body_id"])
+        scale = float(entry["scale"])
+        x, y = (float(value) * scale for value in xipos[body][:2])
+        axes = [float(value) for value in _flat(xmat[body])]
+        norm = math.hypot(axes[0], axes[3])
+        cos, sin = (axes[0] / norm, axes[3] / norm) if norm > 1e-9 else (1.0, 0.0)
+        ahead, left = entry["channels"]
+        dx, dy = told[ahead] - x, told[left] - y
+        values[str(ahead)] = cos * dx + sin * dy
+        values[str(left)] = -sin * dx + cos * dy
     return values
 
 
@@ -14028,6 +14190,8 @@ def evaluate_episode(
     tracking = bool(task.get("tracking"))
     # ADR-715: the ground the scans read is the elevation the model collides with.
     scanning = bool(task.get("scans"))
+    # ADR-751: a waypoint's channels are the goal read from the base.
+    waypointed = any(entry["kind"] == "waypoint" for entry in task.get("goal") or ())
     elevation = (list(model.hfield_data)
                  if scanning and task.get("terrain") else None)
     # Before the reset-pose sample below, because the first frame a rollout
@@ -14066,6 +14230,8 @@ def evaluate_episode(
         # changes is scored against the goal its policy saw.
         told = goal_values(goals, step) if goals else {}
         observation.update(told)
+        if waypointed:
+            observation.update(waypoint_values(task, told, data.xipos, data.xmat))
         if commanding:
             observation.update(command_values(task, issued_now, issued_before))
         if accelerating:
@@ -14100,6 +14266,9 @@ def evaluate_episode(
 
         landed = observation_values(task, data.sensordata)
         landed.update(told)
+        if waypointed:
+            # ADR-751: read from where the step landed, as a scan is.
+            landed.update(waypoint_values(task, told, data.xipos, data.xmat))
         if commanding:
             # The first command of an episode replaces the reset's, and
             # reports no rate: the filter lets it through on the same terms.
@@ -15737,6 +15906,7 @@ def evaluate_success(
         # evaluation from outside.
         command = None
         segments: list[dict[str, Any]] = []
+        waypoints: list[dict[str, Any]] = []
         # ADR-721: the speed and yaw rate in force at every frame, for the
         # tracking family.
         tracked: dict[str, list[float]] = {}
@@ -15763,6 +15933,14 @@ def evaluate_success(
                      **({"frame": str(entry["frame"])} if entry.get("frame") else {})}
                     for segment in entry["segments"]
                 ]
+            elif entry["kind"] == "waypoint":
+                # ADR-751: each world point and the stretch it was up for.
+                waypoints = [
+                    {"start_s": float(segment["start_s"]),
+                     "end_s": float(segment["end_s"]),
+                     "point_mm": list(segment["values"])}
+                    for segment in entry["segments"]
+                ]
         # ADR-704: the drives' own record -- commands, joint state, effort --
         # is read for smoothness, clamp load and cost of transport.
         measured = CadexEvaluation.measure(
@@ -15773,7 +15951,7 @@ def evaluate_success(
             reference=task.get("reference"),
             # ADR-718: the course this seed stood on, for the terrain family.
             terrain=course, ground=None if course is None else course_ground(course),
-            commands=tracked,
+            commands=tracked, waypoints=waypoints,
         )
         held = CadexEvaluation.check(spec["predicates"], measured["metrics"])
         steps = max(1, ended["steps"])

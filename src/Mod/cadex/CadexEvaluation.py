@@ -113,6 +113,10 @@ TRACKING_SETTLE_S = 0.5
 #: through this much; it is judged at the moment the command has done so.
 REVERSAL_DEG = 180.0
 
+#: How close a base must come to a ground point to have reached it
+#: (ADR-751): 0.3 m, the bar orun8's charter sets for its cat (C2).
+WAYPOINT_REACH_MM = 300.0
+
 #: The foot whose touch-downs are a reference's clock: the left hind, the
 #: foot every phase offset is stated after (Hildebrand's convention).
 REFERENCE_ANCHOR = "LH"
@@ -167,6 +171,8 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "speed_error_rms_mm_s": ("tracking", ("base", "command")),
     "yaw_rate_error_rms_deg_s": ("tracking", ("base", "turn")),
     "reversal_heading_error_deg_max": ("tracking", ("base", "turn")),
+    "waypoint_miss_mm_max": ("waypoint", ("base", "waypoint")),
+    "waypoints_reached": ("waypoint", ("base", "waypoint")),
     "speed_ratio": ("gait", ("feet", "command")),
     "lateral_ratio": ("gait", ("feet", "command")),
     "final_error_mm_max": ("reach", ("tip", "target")),
@@ -631,6 +637,48 @@ def settled_command(commands, *, settle_s: float = SETTLE_S) -> float | None:
     if not held:
         return None
     return held[0] if min(held) == max(held) else sum(held) / len(held)
+
+
+def waypoint_metrics(samples, rig: Mapping[str, Any],
+                     waypoints: Sequence[Mapping[str, Any]], *,
+                     reach_mm: float = WAYPOINT_REACH_MM) -> dict[str, Any]:
+    """How close a floating base came to each ground point it was sent to (ADR-751).
+
+    ``waypoints`` is ``[{"start_s", "end_s", "point_mm": [x, y]}]``: the
+    world point in force over each stretch of the episode. A frame on a
+    boundary belongs to the stretch that starts there; a stretch the episode
+    ended before is not read. The base is its centre of mass in plan.
+
+    * ``waypoint_miss_mm_max``: for each stretch read, the closest the base
+      came to its point while it was up; the worst one. ``None`` when no
+      stretch was read.
+    * ``waypoints_reached``: how many stretches came within ``reach_mm``.
+    """
+
+    base = base_series(samples, rig)
+    times, points = base["time"], base["point"]
+    end = times[-1] if times else 0.0
+    rows: list[dict[str, Any]] = []
+    for index, row in enumerate(waypoints):
+        start, stop = float(row["start_s"]), float(row["end_s"])
+        if start > end + _EPS:
+            continue
+        x, y = (float(value) for value in row["point_mm"])
+        last = index == len(waypoints) - 1
+        held = [i for i, moment in enumerate(times)
+                if start - _EPS <= moment and (last or moment < stop - _EPS)]
+        if not held:
+            continue
+        closest = min(held, key=lambda i: math.hypot(points[i][0] - x, points[i][1] - y))
+        miss = math.hypot(points[closest][0] - x, points[closest][1] - y)
+        rows.append({"start_s": start, "end_s": stop, "point_mm": [x, y],
+                     "miss_mm": miss, "closest_s": times[closest],
+                     "reached": miss <= reach_mm})
+    return {
+        "waypoint_miss_mm_max": max(row["miss_mm"] for row in rows) if rows else None,
+        "waypoints_reached": float(sum(1 for row in rows if row["reached"])),
+        "waypoints": rows,
+    }
 
 
 def tracking_metrics(samples, rig: Mapping[str, Any],
@@ -1714,7 +1762,8 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
             reference: Mapping[str, Any] | None = None,
             terrain: Mapping[str, Any] | None = None,
             ground: Any = None,
-            commands: Mapping[str, Sequence[float]] | None = None) -> dict[str, Any]:
+            commands: Mapping[str, Sequence[float]] | None = None,
+            waypoints: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
     """Every behaviour metric one rollout can be read for, as one flat table.
 
     Which families are read is decided by what the rig and the episode
@@ -1742,7 +1791,9 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     :func:`tracking_metrics` takes; with a floating base it is read for the
     tracking family (ADR-721). A rig with an ``appendage`` on a floating
     base is read for the appendage family (ADR-722), against the yaw-rate
-    command when ``commands`` carries one.
+    command when ``commands`` carries one. ``waypoints`` are the ground
+    points the episode sent the base to, as :func:`waypoint_metrics` takes;
+    with a floating base they are read for the waypoint family (ADR-751).
     """
 
     read: dict[str, Any] = dict(episode_metrics(episode))
@@ -1757,6 +1808,8 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
         read.update(terrain_metrics(samples, rig, terrain=terrain, ground=ground))
         if commands:
             read.update(tracking_metrics(samples, rig, commands))
+        if waypoints:
+            read.update(waypoint_metrics(samples, rig, waypoints))
         if rig.get("appendage"):
             read.update(appendage_metrics(
                 samples, rig, ground=ground,
@@ -1782,7 +1835,7 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     if reference is not None and read.get("feet"):
         read.update(reference_metrics(read["feet"], reference, drives=drives))
     for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives", "reference",
-                "terrain", "tracking", "appendage"):
+                "terrain", "tracking", "appendage", "waypoints"):
         if key in read:
             detail[key] = read[key]
     return {"metrics": {name: read[name] for name in METRICS if name in read},
