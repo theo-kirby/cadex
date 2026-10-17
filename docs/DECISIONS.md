@@ -44024,3 +44024,46 @@ The fixed clock is 1.72 Hz at every command.
 - **Not yet run.** No policy has trained on a cadenced task; c1-t5 was
   training on the GPU. No test was added (ADR-725). The engine–trainer
   agreement joins the hand copies `shy-sky-8568` lists.
+
+## ADR-753 — A warm start keeps the weight of the source's normaliser (2026-10-17, orun8)
+
+**Context.** A warm start carries the source's observation normaliser
+(mean and std per actor channel) but set Brax's running count to one
+(`cadex_train.py`, the `--init-from` block). Welford's update weights a
+batch by `batch / count`, so the first post-reset batch (8192 envs × 20
+steps) carried 163,840 times the weight of everything the source had seen,
+and the actor's statistics became the first batch's. The frozen actor then
+read its inputs on another scale. c1-t7, warm from c1-t6 on a reward-only
+change, ended 7,695 episodes in its first 14 iterations; c1-t6, warm from
+c1-t5 the same way, ended 1,776 (`keen-harbor-0874`).
+
+**Decision.**
+- **The header records the count.** `normaliser.count` is the number of
+  observations the actor's statistics rest on. The engine reads only
+  `mean` and `std`, so no earlier policy and no protocol moves.
+- **A warm start keeps it.** The actor's (`state`) statistics restart with
+  the source's count: `summed_variance = std² × count`, so Welford's
+  update moves them by `batch / count` as it would have in the source's
+  own run. A policy written before this credits `iterations × envs ×
+  unroll` from its own run (`source_normaliser_count`), a lower bound.
+- **The critic's statistics do not.** The privileged channels are not in
+  the header and start at a count of one, as before, so the critic's
+  inputs are measured from the first batch. Brax keeps one count for both;
+  the trainer runs the update twice, once at the shared count and once at
+  the actor's (`update_normaliser`), and takes the actor's nest from the
+  second. A cold run's offset is zero and runs the update once.
+
+**Trade-off.** A warm start onto a task whose observations really move
+(a course, a new command range) now adapts the actor's statistics as
+slowly as a continuing run would, not in one batch. That is Brax's own
+behaviour within a run, and the actor's weights were fitted to the
+source's statistics, so holding them is the point of a warm start.
+
+**Measured.** c1-t7's first 14 iterations re-run with this change (same
+task, seed, source, `--critic-warmup 10`; 14 iterations, 293 s): the
+actor started on c1-t6's 24,576,000 samples, and episodes ending in those
+iterations fell from **7,695 to 1,012** (c1-t6's own warm start: 1,776).
+Reward/step held at 6.59–7.01 from iteration 1, where c1-t7 sank from 6.19
+to 4.97–5.29. Iteration 0 was 5.45 in both, the same draw. The probe's
+header records 26,869,760 (24,576,000 + 14 × 8192 × 20), and its witness
+agrees with the engine to 1.5e-7.

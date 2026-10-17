@@ -588,6 +588,27 @@ def starting_log_std(
     return values, "init_from"
 
 
+def source_normaliser_count(header: dict[str, Any]) -> int:
+    """How many observations a policy's normaliser statistics rest on.
+
+    A policy written since ADR-753 records it. An older one is credited
+    with the samples its own run collected, ``iterations x envs x unroll``:
+    a lower bound, since what its own warm start carried is not recorded.
+    """
+
+    recorded = (header.get("normaliser") or {}).get("count")
+    if recorded is not None:
+        return max(int(recorded), 1)
+    training = header.get("training") or {}
+    hyper = training.get("hyperparameters") or {}
+    try:
+        samples = (int(training.get("iterations") or hyper.get("iterations") or 0)
+                   * int(hyper.get("envs") or 0) * int(hyper.get("unroll") or 0))
+    except (TypeError, ValueError):
+        samples = 0
+    return max(samples, 1)
+
+
 def check_policy_fits(
     header: dict[str, Any],
     bundle: dict[str, Any],
@@ -3165,6 +3186,9 @@ def train(
 
     init_from_provenance: dict[str, Any] | None = None
     source_header: dict[str, Any] | None = None
+    # ADR-753: how many more samples the actor's statistics rest on than the
+    # critic's. Zero on a cold run; on a warm start, the source's count.
+    actor_count_offset = 0
     if not getattr(options, "init_from", "") and (
             str(getattr(options, "init_from_task_change", "") or "").strip()
             or str(getattr(options, "init_from_parent_task", "") or "").strip()
@@ -3209,20 +3233,28 @@ def train(
         params = params.replace(policy={**params.policy, "params": layers})
 
         # Without this the transfer is mostly wasted: the actor was trained
-        # to read normalised observations. The count restarts at one, so the
-        # first batch re-estimates the statistics rather than being held to
-        # them.
+        # to read normalised observations. The actor's statistics keep the
+        # weight of every sample the source saw (ADR-753): with a count of
+        # one the first batch replaced them, and the frozen actor read its
+        # inputs on a different scale for the iterations it took the
+        # running mean to drift back. The critic's privileged statistics
+        # are not in the header, so they start at a count of one as before.
         stats = source_header.get("normaliser") or {}
         if stats.get("mean") is not None and stats.get("std") is not None:
             mean = jnp.asarray(stats["mean"], dtype=jnp.float32)
             std = jnp.asarray(stats["std"], dtype=jnp.float32)
+            actor_count = source_normaliser_count(source_header)
+            actor_count_offset = actor_count - 1
             normaliser = normaliser.replace(
                 count=brax_types.UInt64(hi=0, lo=1),
                 mean={**normaliser.mean, "state": mean},
                 summed_variance={**normaliser.summed_variance,
-                                 "state": jnp.square(std)},
+                                 "state": jnp.square(std) * float(actor_count)},
                 std={**normaliser.std, "state": std},
             )
+            if not options.quiet:
+                print(f"normaliser  the actor's statistics carry the source's "
+                      f"{actor_count} samples", flush=True)
 
         source_training = source_header.get("training") or {}
         init_from_provenance = {
@@ -3311,6 +3343,22 @@ def train(
             name: jnp.maximum(value, std_floor[name])
             for name, value in normaliser.std.items()})
 
+    def update_normaliser(normaliser, observation):
+        """Brax's one shared count, except that the actor's statistics
+        count ``actor_count_offset`` samples more (ADR-753)."""
+
+        updated = running_statistics.update(normaliser, observation)
+        if not actor_count_offset:
+            return updated
+        actor = running_statistics.update(
+            normaliser.replace(count=normaliser.count + actor_count_offset),
+            observation)
+        return updated.replace(
+            mean={**updated.mean, "state": actor.mean["state"]},
+            summed_variance={**updated.summed_variance,
+                             "state": actor.summed_variance["state"]},
+            std={**updated.std, "state": actor.std["state"]})
+
     @jax.jit
     def iterate(optimizer_state, params, normaliser, env_state, key, train_actor):
         sgd_key, unroll_key, key = jax.random.split(key, 3)
@@ -3320,7 +3368,7 @@ def train(
             extra_fields=("truncation", "terminated"))
         # [unroll, envs] -> [envs, unroll]: a minibatch is whole unrolls.
         data = jax.tree.map(lambda x: jnp.swapaxes(x, 0, 1), data)
-        normaliser = floored(running_statistics.update(normaliser, data.observation))
+        normaliser = floored(update_normaliser(normaliser, data.observation))
         (optimizer_state, params, _), metrics = jax.lax.scan(
             functools.partial(sgd_step, data=data, normaliser=normaliser, train_actor=train_actor),
             (optimizer_state, params, sgd_key), (), length=epochs)
@@ -3407,6 +3455,9 @@ def train(
             "normaliser": {
                 "mean": [float(v) for v in stored_mean],
                 "std": [float(v) for v in stored_std],
+                # ADR-753: the samples behind the actor's statistics, so a
+                # warm start from this policy keeps their weight.
+                "count": int(normaliser.count) + actor_count_offset,
             },
             "output_scale": env.output_scale,
             "output_bias": env.output_bias,
