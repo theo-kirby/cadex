@@ -151,8 +151,12 @@ iterations) is what settles them.
 
 - **A biped's reference has not trained.** Since ADR-754 `CadexGait` builds
   a two-foot `walk` or `run` (`assembly.gait([foot_l, foot_r], ...)`), and
-  it builds into `orun8-biped`'s task bundle, so steps 1.1–1.4 can be
-  followed on a biped; no biped has trained on one yet.
+  it builds into `orun8-biped`'s task bundle; no biped has trained on one
+  yet. Step 1.1 cannot be followed on a biped yet: a reward naming
+  `ref_l_lift` or `ref_l_down` is refused (the engine's candidate channels
+  name only the four quadruped feet), and a foot `contact` channel on the
+  servo biped's capsule feet fails the MJCF export check
+  (`docs/probes/orun9/b1-biped.md`).
 - **Inverted knees.** The generator's IK pulls toward the home pose, so a
   leg keeps the knee direction its build pose has; no run has tried a
   backward-bending knee.
