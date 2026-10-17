@@ -83,3 +83,29 @@ touch read 0.92 N in one and 0 N in the other. A touch at tangency is no
 longer compared on export. `b1b-script.py` now builds as written on a scratch
 copy of the project; the project's accepted revision is still unchanged,
 and no biped run has been launched.
+
+## Launched (iteration 9)
+
+The project now accepts `b1b-script.py` (revision `605e9bc8`, bundle
+`b1_walk`, task file `18080849…/b1_walk-task.json`).
+
+**Standing against moving** (orun8's `points` lesson, the same check as
+`b1-quad.md`). Over one stride of the bundle's tracking table (47 samples),
+a robot standing still at the build stance scores speed 0.135,
+track_pose 0.771, track_lift 0.935 and track_contact 0.606 of 1. That is
+6.86 a step from the positive terms, against 15.50 for tracking the
+reference at 160 mm/s. Moving pays 2.26× standing, about the quadruped's
+2.2×, so the weights are unchanged. The script is
+`~/orun9-progress/b1b/stand_vs_move.py`.
+
+**b1-b1.** Cold, 300 iterations, 8192 environments, unroll 20, seed 0, and
+checkpoints every 50, with the same trainer settings as b1-q1 (recipe 3.1).
+It was registered and launched through `cadex_cli.loop` with the dashboard
+view retained, in the scope `orun9-b1-b1` (MemoryMax=30G), with a budget of
+10,800 s. Each checkpoint is judged on the walk spec's 10 frozen seeds
+(9101–9110) with `~/orun9-progress/b1b/judge_b1b.sh`.
+
+At launch it ran at about 6.3 s an iteration on the GPU, an ETA of about
+30 min for 300. The reward per step went from −11.6 at iteration 0 to
++0.41 at 9 and +2.87 at 12, much as b1-q1 did (−6.3 at 0, +0.49 at 6).
+Not judged yet.
