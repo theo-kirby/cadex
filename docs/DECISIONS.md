@@ -43790,3 +43790,72 @@ The scan is noise-free and names no onboard sensor; `ungrounded_channels`
 does not count it, because a scan is not a sensor row. The dashboard's
 Activations editor cannot rebuild a scan from a trace, so it lists the 15
 inputs as not rebuilt and feeds the normaliser's mean, as it does a goal's.
+
+## ADR-749 — A platform is crossed or not; terrain predicates read every kind (2026-10-17, orun8)
+
+**Context.** orun8's C4 asks the cat to jump onto a box, cross it and jump
+down, and C3 asks it over a rock patch. ADR-745 gave a box course
+`platform` and `rock` features, but `terrain_metrics` (ADR-718) took the
+edge of every feature that was not a bump from `to_x_mm`, which only a
+slope has, and a step's from `x_mm`. Measured: a drawn pool with two
+200 mm platforms and a rock patch raised `KeyError: 'to_x_mm'`, so any
+success spec on a course holding either kind — `falls` alone included —
+could not be judged. No predicate said whether a platform was crossed.
+
+**Decision.** `terrain_metrics` counts steps and slopes only, as before,
+and skips every other kind, and reads two new metrics on a declared
+`terrain`:
+- `platforms_crossed`: the platforms whose footprint (`x_mm` ± `length_mm`/2,
+  `y_mm` ± `width_mm`/2) the centre of mass was over at some frame and whose
+  far end along +x it ended beyond: up, across and down. A base that runs
+  beside a platform, or stops on it, has not crossed it.
+- `highest_platform_crossed_mm`: the tallest of those, 0 when none.
+The row's `detail.terrain.crossed` lists them with the steps and slopes.
+
+**Evidence.** On the pool above, a straight synthetic trace through both
+platforms reads 2 crossed at 200 mm, one 3 m to the side reads 0, and one
+that stops at 1 m reads 0. Verified by running, per ADR-725; the suites
+hold no evaluation metric.
+
+**Consequences.** C4's ladder spec can bound `platforms_crossed` and report
+the highest. On a feet-only course (ADR-739) the body still passes through
+a wall (ADR-747's finding), and the cat's legs carry no collision shape
+but the paws, so a platform crossed through its wall reads as crossed;
+`falls` (the centre of mass at half its height over the ground under it)
+is what catches a body sunk inside one.
+
+## ADR-750 — A success spec's scripted goal sequence reaches the engine (2026-10-17, orun8)
+
+**Context.** ADR-721 let `assembly.goal(..., sequence=[...])` script a
+goal's opening segments, so that a success spec asks every seed the same
+commands, for example a 180° reversal. The API stores the sequence and
+`CadexDynamics._goal_records` honours it. But the worker's `_goal_input`
+(`cadex_assembly_worker.py`), which turns an API goal into the record the
+engine resolves, copied only `low`, `high` and `resample_seconds`. **No
+xscript sequence ever reached a bundle.** Measured on orun8-cat: the
+retained `run`, `turn2` and `reverse` bundles carry no `sequence` in any
+success goal. ADR-721's own evidence called the engine directly, past the
+worker.
+
+**What it meant.** Every spec that scripted its commands was judged on the
+uniform draws instead:
+- orun8 c1-t1's `c1_spec` (500/3000/1500/500/3000 mm/s) was judged on
+  draws in [300, 3500] mm/s. It still judged speed tracking, so its failure
+  stands, but not on the commands written.
+- `stand_spec` and `shove_spec` held cmd at −400 mm/s. Their draws in
+  [−800, −100] all mean stand under the C1 reward, so those verdicts hold.
+- orun7's `turn_spec` and orun8's reversal spec script 60°/s held 3 s. A
+  draw inside ±60°/s never turns 180° in its 3 s, so
+  `reversal_heading_error_deg_max` was `None` on every seed: a failure
+  that measured nothing.
+
+**Decision.** `_goal_input` passes a value, speed or yaw-rate goal's
+`sequence` through as floats. Task goals that script nothing are unchanged,
+and so are their bundles and digests (`goal_algorithm` gains ADR-721's
+suffix only when a task goal scripts one). Only success specs that script
+a sequence change what they judge.
+
+**Evidence.** After `pixi run build-engine`, orun8-cat's retained `run`,
+`turn2` and `reverse` success goals carry their sequences, and the `run`
+task's semantic digest is unchanged (`5609a4bd…`, the one c1-t2 trained
+on). Verified by running, per ADR-725.

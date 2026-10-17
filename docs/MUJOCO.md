@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-16
+Verified against source: 2026-10-17
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -398,7 +398,11 @@ A success spec may bound `distance_made_good_mm` (net plan travel along the
 starting heading) and `falls` (the base tilted 60°, or its centre of mass
 fell to half its starting height above the ground under it) on any floating
 base, and, on a declared course, `steps_crossed`, `slopes_crossed`,
-`largest_step_crossed_mm` and `steepest_slope_crossed_deg`. On a drawn box
+`largest_step_crossed_mm` and `steepest_slope_crossed_deg`, and
+`platforms_crossed` and `highest_platform_crossed_mm`: a platform whose
+footprint the centre of mass was over and whose far end it ended beyond
+(ADR-749; before it, any course with a platform or rock patch failed these
+predicates with a `KeyError`). On a drawn box
 course `evaluate_success` plays each seed on its own course,
 `terrain_evaluation_course`: the pool's algorithm under the key
 `eval:<seed>:<n>`, the first draw whose boxes fit the model's slots, so no

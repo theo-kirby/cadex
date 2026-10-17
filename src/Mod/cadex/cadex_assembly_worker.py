@@ -5121,6 +5121,10 @@ def _goal_input(
         resolved.update(
             low=float(properties.get("low")), high=float(properties.get("high"))
         )
+        # ADR-721's scripted opening; ADR-750: it was dropped here, so no
+        # script's sequence reached the engine.
+        if properties.get("sequence") is not None:
+            resolved["sequence"] = [float(v) for v in properties["sequence"]]
     return resolved
 
 

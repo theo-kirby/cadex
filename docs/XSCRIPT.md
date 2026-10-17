@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-16
+Verified against source: 2026-10-17
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -678,6 +678,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `command_rate_reference_ratio`, `joint_acceleration_reference_ratio` | the settled command-rate and joint-acceleration RMS over the reference clip's own, on the angular drives the clip poses: "as smooth as the motion asked for", which a raw RMS cannot say because it grows with stride and speed (ADR-708) | `feet` and a task `reference` |
   | `distance_made_good_mm`, `falls` | net plan travel along the heading the episode started on; 1 if the base ever tilted 60° or its centre of mass came down to half its starting height above the ground under it, else 0 — read from poses, whatever the task terminates on (ADR-718) | a floating base |
   | `steps_crossed`, `slopes_crossed`, `largest_step_crossed_mm`, `steepest_slope_crossed_deg` | the course's steps (at `x_mm`) and slopes (by their far end) that the centre of mass started before and ended beyond; the largest magnitude of each, up or down, 0 when none. A drawn box course is re-drawn per evaluation seed from a held-out stream, `eval:<seed>:<n>`, never a pooled course (ADR-718) | a floating base and a `terrain` |
+  | `platforms_crossed`, `highest_platform_crossed_mm` | the course's platforms whose footprint the centre of mass was over at some frame and whose far end (along +x) it ended beyond, up, across and down; the highest such platform's height, 0 when none. Bumps and rock patches are not counted (ADR-749) | a floating base and a `terrain` |
 
   "Every foot" is the worst foot, which is what the `_min` and `_max`
   suffixes say. **That table is the whole vocabulary.** A predicate that

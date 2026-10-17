@@ -4660,8 +4660,9 @@ class AssemblyDomainAPI:
           the ground under it; and on a declared ``terrain``,
           ``steps_crossed``, ``slopes_crossed``,
           ``largest_step_crossed_mm`` and ``steepest_slope_crossed_deg``,
-          the course's steps and slopes the centre of mass ended beyond.
-          A drawn box course is re-drawn for each evaluation seed from a
+          the course's steps and slopes the centre of mass ended beyond,
+          and ``platforms_crossed`` and ``highest_platform_crossed_mm``,
+          the platforms it was over and ended beyond (ADR-749). A drawn box course is re-drawn for each evaluation seed from a
           stream the training pool never uses, so every seed is judged on
           a course the policy did not train on.
         * with a floating base and commands that change (ADR-721):

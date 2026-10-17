@@ -199,6 +199,8 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "slopes_crossed": ("terrain", ("base", "terrain")),
     "largest_step_crossed_mm": ("terrain", ("base", "terrain")),
     "steepest_slope_crossed_deg": ("terrain", ("base", "terrain")),
+    "platforms_crossed": ("terrain", ("base", "terrain")),
+    "highest_platform_crossed_mm": ("terrain", ("base", "terrain")),
 }
 
 _EPS = 1.0e-9
@@ -1633,6 +1635,10 @@ def terrain_metrics(samples, rig: Mapping[str, Any], *,
       and stayed across. Courses run along +x (ADR-714).
     * ``largest_step_crossed_mm`` and ``steepest_slope_crossed_deg``: the
       largest magnitude among them, up or down; 0.0 when none was crossed.
+    * ``platforms_crossed`` and ``highest_platform_crossed_mm`` (ADR-749):
+      the platforms whose footprint the centre of mass was over at some
+      frame and whose far end (along +x) it ended beyond: up, across and
+      down. Bumps and rock patches are not counted.
 
     Without ``terrain`` only ``falls`` is read.
     """
@@ -1660,9 +1666,17 @@ def terrain_metrics(samples, rig: Mapping[str, Any], *,
                               "lowest_height_share": lowest_share}
     if terrain is not None and points:
         x_start, x_end = points[0][0], points[-1][0]
-        crossed = []
+        crossed, platforms = [], []
         for feature in terrain.get("features") or ():
-            if feature["kind"] == "bump":
+            if feature["kind"] == "platform":
+                half_x, half_y = feature["length_mm"] / 2.0, feature["width_mm"] / 2.0
+                far = float(feature["x_mm"]) + half_x
+                over = any(abs(p[0] - feature["x_mm"]) <= half_x
+                           and abs(p[1] - feature["y_mm"]) <= half_y for p in points)
+                if over and x_end > far:
+                    platforms.append(dict(feature))
+                continue
+            if feature["kind"] not in ("step", "slope"):
                 continue
             edge = float(feature["x_mm"] if feature["kind"] == "step" else feature["to_x_mm"])
             if x_start < edge <= x_end:
@@ -1674,10 +1688,13 @@ def terrain_metrics(samples, rig: Mapping[str, Any], *,
             "slopes_crossed": float(len(slopes)),
             "largest_step_crossed_mm": max(steps, default=0.0),
             "steepest_slope_crossed_deg": max(slopes, default=0.0),
+            "platforms_crossed": float(len(platforms)),
+            "highest_platform_crossed_mm": max(
+                (float(f["height_mm"]) for f in platforms), default=0.0),
         })
-        detail.update(crossed=crossed, course=terrain.get("course"),
+        detail.update(crossed=crossed + platforms, course=terrain.get("course"),
                       features=sum(1 for f in terrain.get("features") or ()
-                                   if f["kind"] != "bump"))
+                                   if f["kind"] in ("step", "slope", "platform")))
     read["terrain"] = detail
     return read
 
