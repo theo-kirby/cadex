@@ -12271,20 +12271,67 @@ def tracking_channels(task: Mapping[str, Any], *, policy_only: bool = False) -> 
     return [str(channel) for channel in tracking[key]]
 
 
-def tracking_phase(tracking: Mapping[str, Any], step: int, origin: int = 0) -> float:
+#: How a cadence that follows the commanded speed turns the clock (ADR-752).
+#: Stated in the bundle's ``tracking.cadence``, beside the numbers it uses.
+CADENCE_RULE = (
+    "each control step the clock turns turn_per_step * (|g| / "
+    "reference_speed_mm_s) ** exponent cycles, g the speed goal's channel in "
+    "force for that step (mm/s); the turns are summed from 0 at the reset and "
+    "kept in [0, 1), and the phase is that sum plus origin / samples"
+)
+
+
+def _cadence_record(reference: Mapping[str, Any], declared: Mapping[str, Any],
+                    goal: Sequence[Mapping[str, Any]], *, context: str) -> dict[str, Any]:
+    """A clock that follows the task's one speed goal (ADR-752)."""
+
+    speeds = [entry for entry in goal if str(entry.get("kind")) == "speed"]
+    if len(speeds) != 1:
+        raise DynamicsError(
+            f"{context}: its gait reference's cadence follows the commanded "
+            f"speed, and the task states {len(speeds)} speed goals.",
+            reason="cadence_needs_one_speed_goal",
+            correction="Declare exactly one api.goal(kind='speed'), or keep "
+                       "reference_cadence='fixed'.",
+            observed={"speed_goals": [str(entry.get("name")) for entry in speeds]},
+        )
+    return {"goal": str(speeds[0]["name"]), "channel": str(speeds[0]["channels"][0]),
+            "reference_speed_mm_s": 1000.0 * float(reference["parameters"]["speed_m_s"]),
+            "exponent": float(declared["exponent"]), "rule": CADENCE_RULE}
+
+
+def tracking_turn(tracking: Mapping[str, Any], told: Mapping[str, float]) -> float:
+    """Cycles the gait clock turns over one control step taken under the
+    goal values ``told`` (ADR-752): the clip's own turn, scaled by the
+    commanded speed when the cadence follows it."""
+
+    turn = float(tracking["turn_per_step"])
+    cadence = tracking.get("cadence")
+    if not cadence:
+        return turn
+    speed = abs(float(told[str(cadence["channel"])]))
+    return turn * (speed / float(cadence["reference_speed_mm_s"])) ** float(cadence["exponent"])
+
+
+def tracking_phase(tracking: Mapping[str, Any], step: int, origin: int = 0,
+                   turned: float | None = None) -> float:
     """The gait clock's phase, in cycles in ``[0, 1)``, after ``step`` control
     steps of an episode (ADR-706) that started at clip sample ``origin``
-    (ADR-709; 0 unless the task starts at a random phase)."""
+    (ADR-709; 0 unless the task starts at a random phase). ``turned`` is the
+    cycles a speed cadence has turned so far (ADR-752), which replaces
+    ``step`` times the clip's turn."""
 
-    turned = float(step) * float(tracking["turn_per_step"])
+    turned = float(step) * float(tracking["turn_per_step"]) if turned is None else float(turned)
     if origin:
         turned += float(origin) / float(tracking["samples"])
     return turned - math.floor(turned)
 
 
-def tracking_values(task: Mapping[str, Any], step: int, origin: int = 0) -> dict[str, float]:
+def tracking_values(task: Mapping[str, Any], step: int, origin: int = 0,
+                    turned: float | None = None) -> dict[str, float]:
     """The tracking channels after ``step`` control steps (ADR-706) of an
-    episode whose clock started at clip sample ``origin`` (ADR-709).
+    episode whose clock started at clip sample ``origin`` (ADR-709), or,
+    on a speed cadence, after it has turned ``turned`` cycles (ADR-752).
 
     The clip is periodic over its ``samples`` rows, and a phase between two
     rows is read linearly between them. A ``held`` column -- a foot down or
@@ -12296,7 +12343,7 @@ def tracking_values(task: Mapping[str, Any], step: int, origin: int = 0) -> dict
     tracking = task.get("tracking")
     if not tracking:
         return {}
-    phase = tracking_phase(tracking, step, origin)
+    phase = tracking_phase(tracking, step, origin, turned)
     samples = int(tracking["samples"])
     at = phase * samples
     first = int(math.floor(at))
@@ -12959,6 +13006,9 @@ def task_records(
         )
         if reference.get("start") == "random":
             tracking.update(_reference_start_records(mujoco, reloaded, reference))
+        if task["reference"].get("cadence"):
+            tracking["cadence"] = _cadence_record(
+                reference, task["reference"]["cadence"], goal, context=context)
         exact = taken + list(tracking["channels"])
         for row in reward_rows:
             compile_reward(row["expression"], names=exact, context=f"reward {row['label']!r}")
@@ -14186,8 +14236,11 @@ def evaluate_episode(
     issued_now = reset_command(model, task, key) if commanding else []
     issued_before = list(issued_now)
     accelerating = bool(task.get("accelerations"))
-    # ADR-706: the reference on the gait clock, a function of the step alone.
+    # ADR-706: the reference on the gait clock, a function of the step alone
+    # -- or, on a speed cadence (ADR-752), of the commands so far, summed.
     tracking = bool(task.get("tracking"))
+    cadenced = tracking and bool(task["tracking"].get("cadence"))
+    turned = 0.0 if cadenced else None
     # ADR-715: the ground the scans read is the elevation the model collides with.
     scanning = bool(task.get("scans"))
     # ADR-751: a waypoint's channels are the goal read from the base.
@@ -14237,7 +14290,7 @@ def evaluate_episode(
         if accelerating:
             observation.update(acceleration_values(task, data.qacc))
         if tracking:
-            observation.update(tracking_values(task, step, origin or 0))
+            observation.update(tracking_values(task, step, origin or 0, turned))
         if scanning:
             observation.update(height_scan_values(task, data.xpos, data.xmat, elevation))
         if actions is None:
@@ -14281,7 +14334,10 @@ def evaluate_episode(
         if tracking:
             # ADR-706: where the step landed is judged against where the
             # reference is when it lands, one step on the clock.
-            landed.update(tracking_values(task, step + 1, origin or 0))
+            if cadenced:
+                turned += tracking_turn(task["tracking"], told)
+                turned -= math.floor(turned)
+            landed.update(tracking_values(task, step + 1, origin or 0, turned))
         if scanning:
             # ADR-715: the ground under where the step landed.
             landed.update(height_scan_values(task, data.xpos, data.xmat, elevation))

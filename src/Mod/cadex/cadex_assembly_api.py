@@ -5181,6 +5181,8 @@ class AssemblyDomainAPI:
         success: DomainValue | None = None,
         reference: DomainValue | None = None,
         reference_start: str = "phase0",
+        reference_cadence: str = "fixed",
+        reference_cadence_exponent: float | None = None,
         label: str = "",
     ) -> DomainValue:
         """Turn one exported model into a trainable task.
@@ -5264,7 +5266,13 @@ class AssemblyDomainAPI:
         scored against the reference where it lands, one step on the clock.
         ``reference_start="random"`` starts each seeded episode at a random
         sample of the stride instead (ADR-709): the clip's pose and velocity
-        there, the clock at that phase.
+        there, the clock at that phase. ``reference_cadence="speed"`` turns
+        the clock with the task's one ``speed`` goal instead of at the clip's
+        own rate (ADR-752): each step it turns ``(|command| / clip speed) **
+        reference_cadence_exponent`` of the clip's turn, the exponent 0.4 by
+        default (dynamic similarity, stride frequency ~ v ** 0.4 at a free
+        stride length), so a faster command is a quicker gait and a zero
+        command stops the clock.
 
         Like ``api.mjcf`` and for the same reason, ``api.task`` is not under
         the "exactly one simulation" rule: a script may declare several,
@@ -5433,6 +5441,31 @@ class AssemblyDomainAPI:
                              "this task declares none", reference_start)
             # ADR-709: absent at phase 0, so the task is the value it was.
             judged["reference_start"] = "random"
+        if reference_cadence not in ("fixed", "speed"):
+            raise _error(operation, "reference_cadence",
+                         "must be 'fixed' or 'speed'", reference_cadence)
+        if reference_cadence == "fixed":
+            if reference_cadence_exponent is not None:
+                raise _error(operation, "reference_cadence_exponent",
+                             "scales a cadence that follows the commanded speed; "
+                             "set reference_cadence='speed'", reference_cadence_exponent)
+        else:
+            if reference is None:
+                raise _error(operation, "reference_cadence",
+                             "turns a gait reference's clock, and this task "
+                             "declares none", reference_cadence)
+            speeds = [entry for entry in goal_values
+                      if entry.properties.get("kind") == "speed"]
+            if len(speeds) != 1:
+                raise _error(operation, "reference_cadence",
+                             "follows the task's one speed goal, and this task "
+                             f"declares {len(speeds)}", reference_cadence)
+            # ADR-752: absent on a fixed clock, so the task is the value it was.
+            judged["reference_cadence"] = {
+                "exponent": 0.4 if reference_cadence_exponent is None else _number(
+                    operation, "reference_cadence_exponent", reference_cadence_exponent,
+                    minimum=0.0, maximum=1.0, strict_minimum=True),
+            }
         seconds = _number(
             operation, "episode_seconds", episode_seconds,
             minimum=0.0, maximum=3600.0, strict_minimum=True,

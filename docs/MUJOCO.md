@@ -1764,6 +1764,30 @@ own rollout, starts at the keyframe and phase 0. A success spec's seeds are
 seeded episodes, so they start mid-stride too: the spec judges the gait,
 not the launch from a standstill.
 
+**A cadence that follows the command (ADR-752).** One clip is one speed:
+the cat's 580 mm trot turns at 1.72 Hz however fast it is told to run, and
+at a 3 m/s command a fixed clock asks for a 1 m/s stride. With
+`api.task(reference_cadence="speed")` the clock turns with the task's one
+`speed` goal instead: each step it turns `turn_per_step * (|g| /
+clip speed) ** reference_cadence_exponent` of a cycle, `g` the command in
+force for that step, summed from the reset and kept in [0, 1). The
+exponent defaults to 0.4: at a free stride length, Alexander's dynamic
+similarity gives stride frequency ~ v^0.4 (`CadexGait.stride`); 1.0 holds
+the stride's length and scales only its rate. On the cat's clip the clock
+turns at 1.31, 2.03 and 2.68 Hz at 0.5, 1.5 and 3 m/s, so the clip's poses
+ask for 0.76, 1.18 and 1.55 m/s; a zero command stops it, and a reverse
+command turns it at its magnitude. The joint table is still the one
+stride, so a cadence quickens the gait and does not lengthen it. The
+bundle's `tracking.cadence` names the goal, its channel, the clip speed,
+the exponent and the rule. The trainer carries the turned cycles per
+environment beside the step counter (`tracking_turn`, `tracking_vector`).
+A warm start may move onto or off a cadence as a curriculum step
+(`tracking.cadence`, ADR-161): the actor reads the same two channels. The
+dashboard's Activations editor does not rebuild a cadenced clock from a
+trace's time, so it shows those two inputs at the normaliser's mean. The
+reference family's `stride_frequency_ratio` is still against the clip's
+own frequency.
+
 **Screening drives against it (ADR-710).** Before a design change is
 rebuilt or trained, `training/cadex_proxy.py` swaps datasheet drives, moves
 and scales mass in the exported model, and replays the task's reference

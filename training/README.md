@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-16. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-17. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -424,9 +424,10 @@ window is tested against an **episode-local** clock rather than `data.time`,
 which this trainer's reset does not rewind. So each environment's state
 carries, beside the MJX data, its pushes (`forces`, `starts`), the
 episode's `elapsed` time and `steps`, and, when the task has them, its
-goal pick, its reference start sample (ADR-709) and its course (ADR-717).
-A task without a goal, a reference start or a course carries no member for
-it and draws no key for it, so it trains as it did.
+goal pick, its reference start sample (ADR-709), its course (ADR-717) and,
+on a speed cadence, the gait clock's turned cycles (`turned`, ADR-752).
+A task without a goal, a reference start, a course or a cadence carries no
+member for it and draws no key for it, so it trains as it did.
 
 ## The episode is the bundle's, not the trainer's (ADR-101)
 

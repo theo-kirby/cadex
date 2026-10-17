@@ -623,6 +623,12 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   each seeded episode at a random sample of the stride (ADR-709): the clip's pose and
   velocity there, over the keyframe's ground point, with the clock at that
   phase. A reset variation composes on top, its velocities added.
+  `reference_cadence="speed"` (default `"fixed"`) turns the clock with the
+  task's one `speed` goal (ADR-752): each step it turns `(|command| / clip
+  speed) ** reference_cadence_exponent` of the clip's own turn, the
+  exponent in (0, 1], 0.4 by default (dynamic similarity). A zero command
+  stops the clock. It is refused on a task with no reference or without
+  exactly one speed goal.
   **`assembly.success(predicates, seeds=...)` says what the behaviour must
   measurably be, apart from the reward** (ADR-456), and goes to
   `assembly.task(..., success=spec)`. A reward is what a policy is paid for;

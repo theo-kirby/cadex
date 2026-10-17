@@ -4208,6 +4208,9 @@ def _execute_task_bundle(
         )
         if properties.get("reference_start") == "random":
             declaration["reference"]["start"] = "random"
+        if properties.get("reference_cadence") is not None:
+            # ADR-752: the clock follows the task's one speed goal.
+            declaration["reference"]["cadence"] = dict(properties["reference_cadence"])
 
     try:
         reloaded = CadexDynamics.load_model(xml)

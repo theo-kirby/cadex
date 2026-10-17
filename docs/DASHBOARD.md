@@ -1,6 +1,6 @@
 # DASHBOARD.md — The dashboard, Cadex's only UI
 
-Verified against source: 2026-10-16. [Cadex-new]
+Verified against source: 2026-10-17. [Cadex-new]
 
 This is the design specification for the dashboard: the pages `cadex app`
 and `cadex review` serve (`cli/cadex_cli/review_server.py` and
@@ -1226,7 +1226,8 @@ of `docs/CLI.md`), run in the page. Its inputs are rebuilt from the trace by
 each one's kind in the task bundle: joint positions, velocities and efforts
 as recorded; an IMU's orientation from its part's pose and its rate from the
 poses a frame either side; the gait clock from the time and the bundle's
-period. An input of another kind is held at the normaliser's mean and named
+period, unless the clock follows the command (ADR-752, `clock` null), when
+it is held like an input of another kind. An input of another kind is held at the normaliser's mean and named
 in the status line. A trace is kept at 25 fps while the policy runs faster
 behind a slew limit, so the status line gives how well frame *k*'s rebuilt
 command matches the command frame *k + 1* recorded (Pearson r over the

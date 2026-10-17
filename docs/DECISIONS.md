@@ -43936,3 +43936,91 @@ is flat.
 - A finding for the next cold run: the C1 task already holds 16 reward
   terms, the engine's cap, so a waypoint reward has to replace a term
   rather than add one.
+
+## ADR-752 — A gait reference's clock may follow the commanded speed (2026-10-17, orun8)
+
+**Context.** A gait reference is one stride at one speed (ADR-702), and
+its clock turned `control_interval / period_s` of a cycle every step
+(ADR-706), whatever the episode asked for. orun8's cat trots a 580 mm,
+1.0 m/s clip at 1.72 Hz, and C1 asks it to run at 3 m/s. c1-t4b reached
+1.85–2.04 m/s at a 3 m/s command with its rated headroom nearly spent
+(0.89–0.92×), and the reward that tracks the reference had been faded to
+0.24 at 3 m/s so it would stop holding the cat to a 1 m/s stride
+(`zesty-cliff-9219`). A fixed clock asks for the wrong gait at every speed
+but one.
+
+**Decision.** `api.task(reference_cadence="speed",
+reference_cadence_exponent=0.4)` turns the clock with the task's one
+`speed` goal.
+- **The rule.** Each control step the clock turns `turn_per_step *
+  (|g| / reference_speed_mm_s) ** exponent` cycles, `g` the speed goal's
+  channel in force for that step. The turns are summed from 0 at the reset
+  and kept in [0, 1); the phase is that sum plus `origin / samples`
+  (ADR-709). The landed reference is one step's turn on, as before.
+- **The exponent.** In (0, 1], 0.4 by default: at a free stride length,
+  Alexander's `lambda / h = 2.3 Fr^0.3` gives stride frequency ~ v^0.4,
+  which is how `CadexGait.stride` already sizes a stride. 1.0 holds the
+  stride's length and scales only its rate.
+- **Edges.** A zero command stops the clock; a reverse command turns it at
+  its magnitude. The default, `"fixed"`, writes nothing, so no earlier
+  bundle or digest moves. `reference_cadence_exponent` without `"speed"`,
+  `"speed"` without a reference, and `"speed"` without exactly one speed
+  goal are refused at `api.task`; the engine refuses the last again
+  (`cadence_needs_one_speed_goal`).
+- **The bundle.** `tracking.cadence` names the goal, its channel, the clip
+  speed in mm/s, the exponent and the rule (`CADENCE_RULE`).
+- **The engine.** `CadexDynamics.tracking_turn` gives one step's turn.
+  `tracking_phase` and `tracking_values` take the turned cycles, and
+  `evaluate_episode` sums them only on a cadenced task. A fixed clock is
+  computed as it was, `step * turn_per_step`.
+- **The trainer.** `tracking_turn` and `tracking_vector` are the same
+  arithmetic in `xp`. The turned cycles are carried in the environment's
+  `info` beside the step counter and zeroed on reset, only when the task
+  is cadenced. A task without a cadence traces the graph it always did.
+- **A warm start.** A warm start may move onto or off a cadence as a
+  curriculum step (`--init-from-task-change`): `check_curriculum_change`
+  accepts a `tracking` change confined to its `cadence` key and records it
+  as `tracking.cadence`. The actor reads the same two clock channels; only
+  how fast they turn has moved, as a reward change moves what they are
+  paid for.
+- **The dashboard.** The Activations editor rebuilt the clock from a
+  trace's time and the period. A cadenced clock is not a function of time,
+  so `api/policy/...` serves `clock: null` for it, and the page holds those
+  two inputs at the normaliser's mean, as it does any input it cannot
+  rebuild.
+
+**Not done, and why.** The joint table is still the one stride, so a
+cadence quickens the gait and does not lengthen it. At 3 m/s the clip's
+poses ask for 1.55 m/s, not 3. A stride that also lengthens with speed
+needs more than one clip (a family over speed, blended by command). That
+is a larger change to the reference and the bundle, and it waits on what
+this one measures. The reference family's `stride_frequency_ratio` is still
+judged against the clip's own frequency. The drive proxy (ADR-710) replays
+the clip on its own clock, because a screen has no command.
+
+**Evidence.** Verified by running, per ADR-725. On c1-t5's bundle
+(orun8-cat `7d4577dd`, trot 580 mm at 1.0 m/s, 50 Hz control), the
+engine's `evaluate_episode` and the trainer's carry were run over 600
+steps at each command:
+
+| command | cadence | the clip's pose speed |
+| --- | --- | --- |
+| 0.5 m/s | 1.31 Hz | 0.76 m/s |
+| 1.5 m/s | 2.03 Hz | 1.18 m/s |
+| 3.0 m/s | 2.68 Hz | 1.55 m/s |
+| 0 | 0 (clock stopped) | 0 |
+| −0.8 m/s | 1.58 Hz | 0.91 m/s |
+
+The fixed clock is 1.72 Hz at every command.
+- **Engine against trainer.** The engine's observed tracking channels and
+  the trainer's NumPy `tracking_vector` agree within 4e-12. JAX float32
+  under `jit` and `scan` keeps the clock within 3e-5 cycles of float64.
+- **The API.** Two declarations are accepted, and the five misuses above
+  are refused with their reasons.
+- **Gates.** `pixi run test-engine`: 157 passed, 3 skipped.
+  `CUDA_VISIBLE_DEVICES= pixi run python -m pytest cli/tests`: 53 passed,
+  after `pixi run build-engine`. `training/`'s tests from
+  `~/cadex-train-venv`: 42 passed.
+- **Not yet run.** No policy has trained on a cadenced task; c1-t5 was
+  training on the GPU. No test was added (ADR-725). The engine–trainer
+  agreement joins the hand copies `shy-sky-8568` lists.

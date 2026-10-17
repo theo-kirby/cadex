@@ -472,7 +472,18 @@ def check_curriculum_change(
             "key, so the difference is formatting. Re-emit the child through "
             "the same serialiser rather than warm-starting across it."
         )
-    disallowed = sorted(set(changed) - CURRICULUM_TASK_KEYS - CURRICULUM_COURSE_KEYS)
+    if "tracking" in changed:
+        # ADR-752: a step onto (or off) a speed cadence moves only how fast
+        # the clock turns; the actor reads the same two channels of it.
+        def clip(task: dict[str, Any]) -> dict[str, Any]:
+            return {key: value for key, value in (task.get("tracking") or {}).items()
+                    if key != "cadence"}
+
+        if clip(parent) == clip(child):
+            changed = [key for key in changed if key != "tracking"] + ["tracking.cadence"]
+            changed.sort()
+    disallowed = sorted(set(changed) - CURRICULUM_TASK_KEYS - CURRICULUM_COURSE_KEYS
+                        - {"tracking.cadence"})
     if disallowed:
         refuse(
             f"these keys moved and may not: {disallowed}. A curriculum may "
@@ -1249,20 +1260,35 @@ def tracking_channels(task: dict[str, Any], *, policy_only: bool = False) -> lis
             tracking["policy_channels" if policy_only else "channels"]]
 
 
-def tracking_vector(xp: Any, task: dict[str, Any], steps: Any, origin: Any = None) -> Any:
+def tracking_turn(xp: Any, task: dict[str, Any], told: Any) -> Any:
+    """Cycles the gait clock turns over one control step taken under the
+    goal channels ``told`` (``(..., G)`` in ``goal_channels`` order), on a
+    speed cadence (ADR-752). ``CadexDynamics.tracking_turn`` in ``xp``."""
+
+    tracking = task["tracking"]
+    cadence = tracking["cadence"]
+    speed = xp.abs(told[..., goal_channels(task).index(str(cadence["channel"]))])
+    return float(tracking["turn_per_step"]) * (
+        speed / float(cadence["reference_speed_mm_s"])) ** float(cadence["exponent"])
+
+
+def tracking_vector(xp: Any, task: dict[str, Any], steps: Any, origin: Any = None,
+                    turned: Any = None) -> Any:
     """The tracking channels after ``steps`` control steps (ADR-706) of an
-    episode that started at clip sample ``origin`` (ADR-709).
+    episode that started at clip sample ``origin`` (ADR-709), or, on a
+    speed cadence, after the clock has turned ``turned`` cycles (ADR-752).
 
     ``CadexDynamics.tracking_values`` in ``xp``, along a new last axis:
-    the clock's phase is ``steps * turn_per_step + origin / samples`` less
-    its whole turns; a
+    the clock's phase is ``steps * turn_per_step`` (or ``turned``) plus
+    ``origin / samples``, less its whole turns; a
     phase between two rows of the clip's table is read linearly between
     them, round the end, and a ``held`` column reads 1 from one half up.
     """
 
     tracking = task["tracking"]
     rows = int(tracking["samples"])
-    turned = xp.asarray(steps) * float(tracking["turn_per_step"])
+    turned = (xp.asarray(steps) * float(tracking["turn_per_step"]) if turned is None
+              else xp.asarray(turned))
     if origin is not None:
         turned = turned + xp.asarray(origin) / float(rows)
     phase = turned - xp.floor(turned)
@@ -2156,6 +2182,9 @@ def build_environment(
     # ADR-709: a PYTHON bool on the same terms; each episode starts at its
     # own clip sample, carried beside the step counter it offsets.
     starting = tracking and task["tracking"].get("start") == "random"
+    # ADR-752: a PYTHON bool on the same terms; a speed cadence's clock is
+    # the cycles turned so far, carried beside the step counter.
+    cadenced = tracking and bool(task["tracking"].get("cadence"))
     # ADR-715: a PYTHON bool on the same terms; a scan is read from the
     # state's xpos and xmat, never carried.
     scanning = bool(task.get("scans"))
@@ -2692,7 +2721,7 @@ def build_environment(
     scale_out = jnp.asarray(output_scale, dtype=jnp.float32)
     bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
 
-    def sensed(key, data, picks, steps, origin, carry, course=None):
+    def sensed(key, data, picks, steps, origin, carry, course=None, turned=None):
         """The observation the policy acts on, in the state ``data`` holds.
 
         What the policy acts on carries its sensors' noise; the reward and
@@ -2726,7 +2755,7 @@ def build_environment(
         if tracking:
             # ADR-706: the clock the policy acts on.
             vector = jnp.concatenate(
-                [vector, tracking_vector(jnp, task, steps, origin)], axis=-1)
+                [vector, tracking_vector(jnp, task, steps, origin, turned)], axis=-1)
         if scanning:
             # ADR-715: the critic's, and the actor's when role: policy (ADR-748).
             vector = jnp.concatenate([vector, height_scan_vector(
@@ -2779,6 +2808,9 @@ def build_environment(
             info["origin"] = origin
         if redrawing:
             info["course"] = course
+        turned = jnp.zeros((envs,), dtype=jnp.float32) if cadenced else None
+        if cadenced:
+            info["turned"] = turned
         carry = ()
         if carrying:
             # The previous ISSUED command, per environment and episode-local
@@ -2788,7 +2820,7 @@ def build_environment(
             # ADR-696: both carried commands start at the reset's.
             carry = (jnp.tile(reset_command, (envs, 1)),) * 2
         info["carry"] = carry
-        key, vector = sensed(key, data, picks, steps, origin, carry, course)
+        key, vector = sensed(key, data, picks, steps, origin, carry, course, turned)
         info["key"] = key
         return State(pipeline_state=data, obs=observation(vector),
                      reward=jnp.zeros((envs,), dtype=jnp.float32),
@@ -2819,11 +2851,16 @@ def build_environment(
         course = info.get("course")
         carry = info["carry"]
         surface = action * scale_out + bias_out
-        goal_args = ((course,) if redrawing else ()) + (
-            (goals_at(picks, steps),) if goaled else ())
+        told = goals_at(picks, steps) if goaled else None
+        goal_args = ((course,) if redrawing else ()) + ((told,) if goaled else ())
+        turned = None
+        if cadenced:
+            # ADR-752: the clock turns at the cadence of the command in force.
+            turned = info["turned"] + tracking_turn(jnp, task, told)
+            turned = turned - jnp.floor(turned)
         if tracking:
             # ADR-706: the reference one step on, where the step will land.
-            goal_args = goal_args + (tracking_vector(jnp, task, steps + 1, origin),)
+            goal_args = goal_args + (tracking_vector(jnp, task, steps + 1, origin, turned),)
         if push_entries:
             data = data.replace(xfrc_applied=applied_forces(forces, starts, elapsed))
         if commanding:
@@ -2904,6 +2941,9 @@ def build_environment(
             info["origin"] = origin
         if redrawing:
             info["course"] = course
+        if cadenced:
+            turned = jnp.where(done, 0.0, turned)
+            info["turned"] = turned
         if carrying:
             carry = (jnp.where(done[:, None], 0.0, issued),)
         if commanding:
@@ -2911,7 +2951,7 @@ def build_environment(
             # because unlike the filter's memory these are observed.
             carry = (jnp.where(done[:, None], reset_command[None, :], issued),
                      jnp.where(done[:, None], reset_command[None, :], replaced))
-        key, vector = sensed(key, data, picks, steps, origin, carry, course)
+        key, vector = sensed(key, data, picks, steps, origin, carry, course, turned)
         info.update(key=key, forces=forces, starts=starts, elapsed=elapsed,
                     steps=steps, carry=carry,
                     truncation=truncation.astype(jnp.float32),
