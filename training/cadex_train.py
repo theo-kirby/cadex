@@ -353,6 +353,9 @@ CURRICULUM_TASK_KEYS = frozenset({
     "reward",
     "success",
     "termination",
+    # ADR-755: the canonical body names what the network reads and drives;
+    # it moves neither.
+    "body",
 })
 
 #: The ``episode`` sub-keys a curriculum may move.
@@ -609,6 +612,413 @@ def source_normaliser_count(header: dict[str, Any]) -> int:
     return max(samples, 1)
 
 
+# ---------------------------------------------------------------------------
+# The canonical body (ADR-755): a warm start across robots of one family.
+# ---------------------------------------------------------------------------
+
+#: The families a bundle's ``body`` block may name, and its version.
+BODY_FAMILIES = {"quadruped": ("fl", "fr", "hl", "hr"), "biped": ("l", "r")}
+BODY_VERSION = 1
+
+
+def body_layout(task: dict[str, Any]) -> dict[str, Any] | None:
+    """What a policy on ``task`` reads and drives, by canonical name.
+
+    ``inputs`` has one ``[name, gain, centre]`` per actor channel, in
+    order, so the canonical value of channel ``x`` is ``gain * (x -
+    centre)``: a joint slot's angle and rate in radians from the bundle's
+    ``sign``, ``offset`` and the channel's scale; the IMU's quaternion and
+    rates; a goal, clock or command channel by its own name; a height-scan
+    channel by its index on a grid named by its offsets; any other channel
+    by its kind, its target and its place in the row. ``outputs`` has one
+    ``[name, sign]`` per action: ``<leg>.<slot>`` for a mapped joint,
+    ``joint.<name>`` otherwise. A name absent on one side is an input that
+    side lacks. ``None`` when the bundle maps no body. The engine resolves
+    the block (``CadexDynamics._body_records``); this only reads it.
+    """
+
+    body = task.get("body")
+    if not body:
+        return None
+    rows = {str(channel): (row, index)
+            for row in task["observations"]
+            if str(row.get("role") or "policy") == "policy"
+            for index, channel in enumerate(row["channels"])}
+    named: dict[str, tuple[str, float, float]] = {}
+    sign_of: dict[int, tuple[str, int]] = {}
+    for leg, slots in sorted((body.get("legs") or {}).items()):
+        for slot, record in sorted(slots.items()):
+            q_scale = float(rows[str(record["q"])][0]["scale"])
+            dq_scale = float(rows[str(record["dq"])][0]["scale"])
+            sign = 1.0 if int(record["sign"]) > 0 else -1.0
+            named[str(record["q"])] = (f"{leg}.{slot}.q", sign / q_scale,
+                                       float(record["offset"]))
+            named[str(record["dq"])] = (f"{leg}.{slot}.dq", sign / dq_scale, 0.0)
+            sign_of[int(record["action"])] = (f"{leg}.{slot}", int(sign))
+    imu = body.get("body") or {}
+    for part, axes in (("quat", "wxyz"), ("gyro", "xyz")):
+        for axis, channel in zip(axes, imu.get(part) or ()):
+            named[str(channel)] = (f"body.{part}.{axis}",
+                                   1.0 / float(rows[str(channel)][0]["scale"]), 0.0)
+    inputs: list[list[Any]] = []
+    for channel in actor_channels(task):
+        if channel in named:
+            name, gain, centre = named[channel]
+        elif channel in rows:
+            row, index = rows[channel]
+            name, gain, centre = (f"obs.{row['kind']}.{row['target']}.{index}",
+                                  1.0 / float(row["scale"]), 0.0)
+        elif channel in goal_channels(task):
+            name, gain, centre = f"goal.{channel}", 1.0, 0.0
+        elif channel in tracking_channels(task, policy_only=True):
+            name, gain, centre = f"clock.{channel}", 1.0, 0.0
+        elif channel in command_channels(task, policy_only=True):
+            name, gain, centre = f"command.{channel}", 1.0, 0.0
+        else:
+            grid = name = None
+            for record in task.get("scans") or ():
+                if channel in record["channels"]:
+                    grid = hashlib.sha256(json.dumps(
+                        record["offsets_mm"]).encode("ascii")).hexdigest()[:12]
+                    name = f"scan.{grid}.{record['channels'].index(channel)}"
+                    gain, centre = 1.0 / float(record["scale"]), 0.0
+            if name is None:
+                raise SystemExit(f"the canonical body cannot name channel {channel!r}.")
+        inputs.append([name, gain, centre])
+    outputs = [list(sign_of.get(index, (f"joint.{action['joint']}", 1)))
+               for index, action in enumerate(task["actions"])]
+    return {"family": str(body["family"]), "version": int(body.get("version", 0)),
+            "legs": sorted(body.get("legs") or {}),
+            "inputs": inputs, "outputs": outputs,
+            **({"morph": body["morph"]} if body.get("morph") else {})}
+
+
+def check_base_fits(header: dict[str, Any], bundle: dict[str, Any],
+                    options: argparse.Namespace) -> dict[str, Any]:
+    """``--init-from-base``: the third path of :func:`check_policy_fits`.
+
+    The model and task digests are not compared: another robot is expected.
+    Both sides must map a body of one family and version, the network must
+    have the hidden layers ``--hidden`` asks for, every leg the target maps
+    must share at least one joint slot with the source, and the critic must
+    warm up (ADR-740), because it starts on another robot's returns."""
+
+    def refuse(message: str) -> None:
+        raise SystemExit(f"--init-from-base: {message}\nA warm start across robots "
+                         "matches them on the family's canonical body (ADR-755).")
+
+    source = header.get("body")
+    target = body_layout(bundle["task"])
+    if not source:
+        refuse("the policy records no body; it was trained on a task without one.")
+    if target is None:
+        refuse("this bundle maps no body (api.task(body=...)).")
+    if (source.get("family"), source.get("version")) != (target["family"], target["version"]):
+        refuse(f"the policy's body is {source.get('family')} v{source.get('version')} "
+               f"and this bundle's is {target['family']} v{target['version']}.")
+    if str(getattr(options, "init_from_task_change", "") or "").strip():
+        refuse("it is not a curriculum step; drop --init-from-task-change.")
+    if int(getattr(options, "critic_warmup", 0) or 0) <= 0:
+        refuse("the critic starts on another robot's returns; give --critic-warmup N.")
+    layers = [list(shape) for shape in (header.get("network") or {}).get("layers") or ()]
+    hidden = [int(width) for width in options.hidden]
+    if [shape[1] for shape in layers[:-1]] != hidden:
+        refuse(f"the policy's hidden layers are {[shape[1] for shape in layers[:-1]]} "
+               f"and --hidden asks for {hidden}.")
+    source_slots = {str(name) for name, _sign in source["outputs"]}
+    for leg in target["legs"]:
+        if not any(str(name) in source_slots and str(name).startswith(f"{leg}.")
+                   for name, _sign in target["outputs"]):
+            refuse(f"leg {leg!r} shares no joint slot with the policy.")
+    return target
+
+
+def remap_from_base(np: Any, header: dict[str, Any], weights: Sequence[float],
+                    target: dict[str, Any]) -> dict[str, Any]:
+    """A policy's actor and statistics in another robot's layout (ADR-755).
+
+    Inputs match by canonical name. A matched input copies its first-layer
+    row, negated where the two gains' signs differ, and its statistics are
+    mapped through the affine map between the two channels, so the source
+    network sees the value it would have seen. A source input the target
+    lacks is folded into the first layer's bias at its rest value (a joint
+    slot at its reset angle, a goal, clock or command at 0, anything else at
+    its mean) and dropped. A target input the source lacks gets a zero row,
+    mean 0 and std 1. Outputs match by slot: a matched action copies its
+    last-layer column and bias, negated where the signs differ; a target
+    action the source lacks is a zero column and bias, its box centre; its
+    exploration width is the default's. Hidden layers are copied.
+    ``carried`` marks, per target input, whether its statistics are the
+    source's (a matched input) or fresh (mean 0, std 1), so a warm start
+    keeps the source's sample count on the former only (ADR-760)."""
+
+    source = header["body"]
+    network = header["network"]
+    shapes = [tuple(int(v) for v in shape) for shape in network["layers"]]
+    layers = [(np.asarray(w, dtype=np.float64), np.asarray(b, dtype=np.float64))
+              for w, b in unflatten_parameters(np, weights, shapes)]
+    stats = header.get("normaliser") or {}
+    mean_s = np.asarray(stats.get("mean") or [0.0] * shapes[0][0], dtype=np.float64)
+    std_s = np.asarray(stats.get("std") or [1.0] * shapes[0][0], dtype=np.float64)
+    log_std_s = list((header.get("exploration") or {}).get("log_std") or ())
+
+    first_w, first_b = layers[0]
+    width = first_w.shape[1]
+    s_index = {str(row[0]): i for i, row in enumerate(source["inputs"])}
+    t_index = {str(row[0]): i for i, row in enumerate(target["inputs"])}
+    new_w = np.zeros((len(target["inputs"]), width))
+    new_b = first_b.copy()
+    mean_t = np.zeros(len(target["inputs"]))
+    std_t = np.ones(len(target["inputs"]))
+    counts = {"inputs_copied": 0, "inputs_folded": 0, "inputs_zero": 0,
+              "outputs_copied": 0, "outputs_dropped": 0, "outputs_zero": 0}
+    for j, (name, gain_t, centre_t) in enumerate(target["inputs"]):
+        i = s_index.get(str(name))
+        if i is None:
+            counts["inputs_zero"] += 1
+            continue
+        _name, gain_s, centre_s = source["inputs"][i]
+        # x_s = a * x_t + b carries the same canonical value.
+        a = float(gain_t) / float(gain_s)
+        b = float(centre_s) - a * float(centre_t)
+        new_w[j] = math.copysign(1.0, a) * first_w[i]
+        mean_t[j] = (mean_s[i] - b) / a
+        std_t[j] = std_s[i] / abs(a)
+        counts["inputs_copied"] += 1
+    # ADR-759: a family base reads each variant's morph constants; on the
+    # target they are constants too, so they fold at the target's own values.
+    target_morph = dict(morph_inputs(target.get("morph")))
+    for i, (name, _gain, centre) in enumerate(source["inputs"]):
+        if str(name) in t_index:
+            continue
+        rest = (float(centre) if str(name).split(".")[0] in BODY_FAMILIES[source["family"]]
+                else 0.0 if str(name).split(".")[0] in ("goal", "clock", "command")
+                else target_morph[str(name)] if str(name) in target_morph
+                else float(mean_s[i]))
+        new_b = new_b + ((rest - mean_s[i]) / std_s[i]) * first_w[i]
+        counts["inputs_folded"] += 1
+
+    last_w, last_b = layers[-1]
+    s_out = {str(name): (i, int(sign)) for i, (name, sign) in enumerate(source["outputs"])}
+    out_w = np.zeros((last_w.shape[0], len(target["outputs"])))
+    out_b = np.zeros(len(target["outputs"]))
+    log_std = [math.log(DEFAULT_INITIAL_STD)] * len(target["outputs"])
+    for j, (name, sign_t) in enumerate(target["outputs"]):
+        if str(name) not in s_out:
+            counts["outputs_zero"] += 1
+            continue
+        i, sign_s = s_out[str(name)]
+        flip = float(sign_s * int(sign_t))
+        out_w[:, j] = flip * last_w[:, i]
+        out_b[j] = flip * last_b[i]
+        if i < len(log_std_s):
+            log_std[j] = float(log_std_s[i])
+        counts["outputs_copied"] += 1
+    counts["outputs_dropped"] = len(source["outputs"]) - counts["outputs_copied"]
+    if len(layers) == 1:
+        raise SystemExit("--init-from-base: a network with no hidden layer cannot be remapped.")
+    mapped = [(new_w, new_b)] + layers[1:-1] + [(out_w, out_b)]
+    return {"layers": [(np.asarray(w, dtype=np.float32), np.asarray(b, dtype=np.float32))
+                       for w, b in mapped],
+            "mean": [float(v) for v in mean_t], "std": [float(v) for v in std_t],
+            "log_std": log_std, "counts": counts,
+            "carried": [str(name) in s_index for name, _gain, _centre in target["inputs"]]}
+
+
+# ---------------------------------------------------------------------------
+# A family (ADR-759): one run over built variants of one robot (ADR-758).
+# ---------------------------------------------------------------------------
+
+#: The model sizes every variant of a family must share, so their batched
+#: MJX data concatenate environment by environment.
+FAMILY_SIZES = ("nq", "nv", "nu", "nbody", "njnt", "ngeom", "nsite", "nsensordata",
+                "nkey", "nmocap", "neq")
+
+
+def morph_inputs(morph: dict[str, Any] | None) -> list[tuple[str, float]]:
+    """A body's ``morph`` block as named constants, in sorted order:
+    ``morph.<leg>.<key>`` for a leg's entry, ``morph.<key>`` for the body's."""
+
+    rows: list[tuple[str, float]] = []
+    for key, value in sorted((morph or {}).items()):
+        if isinstance(value, dict):
+            rows += [(f"morph.{key}.{inner}", float(number))
+                     for inner, number in sorted(value.items())]
+        else:
+            rows.append((f"morph.{key}", float(value)))
+    return rows
+
+
+def family_morph_names(bundle: dict[str, Any]) -> list[str]:
+    """The morph inputs a ``--family`` run's actor reads after its channels;
+    empty for an ordinary run."""
+
+    if not bundle.get("family"):
+        return []
+    return [name for name, _value in morph_inputs(bundle["task"]["body"]["morph"])]
+
+
+def family_body(bundle: dict[str, Any]) -> dict[str, Any]:
+    """:func:`body_layout`, with a family run's morph inputs after the
+    channels' at gain 1 and centre 0."""
+
+    layout = body_layout(bundle["task"])
+    if bundle.get("family"):
+        layout["inputs"] = layout["inputs"] + [[name, 1.0, 0.0]
+                                               for name in family_morph_names(bundle)]
+    return layout
+
+
+def check_family(bundles: Sequence[dict[str, Any]]) -> None:
+    """``--family``: refuse variants that are not one robot's.
+
+    Each must map a body of one family with the same morph names, read and
+    drive the same channels and joints, and score the same number of reward
+    terms over the same episode. The model sizes are compared where the
+    models are compiled (:func:`family_environment`)."""
+
+    def refuse(message: str) -> None:
+        raise SystemExit(f"--family: {message}\nA family is built variants of one "
+                         "robot (ADR-758, ADR-759).")
+
+    if len(bundles) < 2:
+        refuse("name at least one variant beside the bundle.")
+
+    def facts(task: dict[str, Any]) -> dict[str, Any]:
+        body = task.get("body") or {}
+        return {
+            "the observation channels": channels(task),
+            "the actor channels": actor_channels(task),
+            "the actions' joints": [str(a["joint"]) for a in task["actions"]],
+            "the reward term count": len(task["reward"]),
+            "the episode": [int(task["episode"]["max_steps"]),
+                            int(task["episode"]["solver_steps_per_action"])],
+            "the body": [body.get("family"), body.get("version")],
+            "the morph names": [name for name, _ in morph_inputs(body.get("morph"))],
+        }
+
+    first = facts(bundles[0]["task"])
+    if not first["the morph names"]:
+        refuse("the bundle maps no body with a morph block (api.task(body=...)).")
+    seen = {bundles[0]["task_sha256"]}
+    for index, bundle in enumerate(bundles[1:], start=1):
+        if bundle["task_sha256"] in seen:
+            refuse(f"variant {index} is a bundle already in the family.")
+        seen.add(bundle["task_sha256"])
+        for what, value in facts(bundle["task"]).items():
+            if value != first[what]:
+                refuse(f"variant {index}'s {what} differ from the bundle's: "
+                       f"{value} vs {first[what]}.")
+
+
+def family_environment(
+    bundles: Sequence[dict[str, Any]],
+    options: argparse.Namespace,
+    *,
+    count: int,
+    seed: int,
+    jax: Any,
+    jnp: Any,
+    np: Any,
+    mujoco: Any,
+    mjx: Any,
+) -> Any:
+    """``count`` environments over the family, as one batched environment.
+
+    The environments are split in contiguous blocks, as evenly as they go,
+    and block ``k`` is variant ``k``'s own :func:`build_environment`: its
+    model, randomisation, reward, terminations, tracking clip, reset, pushes
+    and action box, untouched. The block's draws are seeded from ``seed``
+    plus the environments before it, so environment ``e`` draws
+    ``random.Random(seed + e)`` whichever variant it is. Every observation
+    gains the variant's morph constants at its end, the actor's and the
+    critic's alike. A step splits the state by block, steps each variant and
+    joins them; the one leaf with no environment axis, the PRNG key, is
+    stacked per block.
+    """
+
+    variants = len(bundles)
+    if int(count) < variants:
+        raise SystemExit(f"--family: {count} environments cannot hold "
+                         f"{variants} variants.")
+    reference = None
+    for index, bundle in enumerate(bundles):
+        host = mujoco.MjModel.from_xml_string(bundle["model_xml"].decode("utf-8"))
+        sizes = {name: int(getattr(host, name)) for name in FAMILY_SIZES}
+        if reference is None:
+            reference = sizes
+        elif sizes != reference:
+            raise SystemExit(
+                f"--family: variant {index}'s model is another topology: "
+                + ", ".join(f"{name} {sizes[name]} vs {reference[name]}"
+                            for name in FAMILY_SIZES if sizes[name] != reference[name]))
+    counts = [int(count) // variants + (1 if k < int(count) % variants else 0)
+              for k in range(variants)]
+    bounds = [0]
+    for size in counts:
+        bounds.append(bounds[-1] + size)
+    subs = [build_environment(bundle, options, count=size, seed=int(seed) + start,
+                              jax=jax, jnp=jnp, np=np, mujoco=mujoco, mjx=mjx)
+            for bundle, size, start in zip(bundles, counts, bounds)]
+    morphs = [jnp.asarray([value for _, value in
+                           morph_inputs(bundle["task"]["body"]["morph"])],
+                          dtype=jnp.float32)
+              for bundle in bundles]
+    morph_names = [name for name, _ in morph_inputs(bundles[0]["task"]["body"]["morph"])]
+    first = subs[0]
+
+    def dressed(state, k):
+        extra = jnp.broadcast_to(morphs[k], (counts[k], morphs[k].shape[0]))
+        return state.replace(obs={name: jnp.concatenate([value, extra], axis=-1)
+                                  for name, value in state.obs.items()})
+
+    def joined(states):
+        keys = jnp.stack([state.info["key"] for state in states])
+        bare = [state.replace(info={k: v for k, v in state.info.items() if k != "key"})
+                for state in states]
+        whole = jax.tree.map(lambda *parts: jnp.concatenate(parts, axis=0), *bare)
+        return whole.replace(info={**whole.info, "key": keys})
+
+    def part(state, k):
+        start, stop = bounds[k], bounds[k + 1]
+        bare = state.replace(info={key: value for key, value in state.info.items()
+                                   if key != "key"})
+        piece = jax.tree.map(lambda leaf: leaf[start:stop], bare)
+        return piece.replace(info={**piece.info, "key": state.info["key"][k]})
+
+    def reset(key):
+        keys = jax.random.split(key, variants)
+        return joined([dressed(sub.reset(keys[k]), k) for k, sub in enumerate(subs)])
+
+    def step(state, action):
+        return joined([
+            dressed(sub.step(part(state, k), action[bounds[k]:bounds[k + 1]]), k)
+            for k, sub in enumerate(subs)])
+
+    class Environment:
+        def __init__(self):
+            self.reset = reset
+            self.step = step
+            self.count = int(count)
+            self.counts = counts
+            self.names = list(first.names) + morph_names
+            self.actor_names = list(first.actor_names) + morph_names
+            self.actor_idx = np.concatenate([
+                np.asarray(first.actor_idx, dtype=np.int32),
+                np.arange(len(first.names), len(first.names) + len(morph_names),
+                          dtype=np.int32)])
+            self.actions = first.actions
+            # The header's box is the bundle's; each block plays its own.
+            self.output_scale = first.output_scale
+            self.output_bias = first.output_bias
+            self.horizon = first.horizon
+            self.action_size = first.action_size
+            self.observation_size = {"state": (len(self.actor_names),),
+                                     "privileged_state": (len(self.names),)}
+
+    return Environment()
+
+
 def check_policy_fits(
     header: dict[str, Any],
     bundle: dict[str, Any],
@@ -637,6 +1047,14 @@ def check_policy_fits(
             "otherwise the weights mean something else."
         )
 
+    if str(getattr(options, "init_from_base", "") or "").strip():
+        # ADR-755: another robot of the family; check_base_fits holds it.
+        if bundle.get("family"):
+            raise SystemExit("--init-from-base onto a --family run: the base's morph "
+                             "inputs would fold into one variant's. Warm a family "
+                             "from a family policy with --init-from alone.")
+        check_base_fits(header, bundle, options)
+        return None
     task = header.get("task") or {}
     reason = str(getattr(options, "init_from_task_change", "") or "").strip()
     curriculum: list[str] | None = None
@@ -660,7 +1078,8 @@ def check_policy_fits(
     # only its ground moved.
     if model.get("sha256") != bundle["model_sha256"] and "model" not in (curriculum or ()):
         refuse("the model digest", bundle["model_sha256"], model.get("sha256"))
-    wanted_channels = actor_channels(bundle["task"])
+    # ADR-759: a family run's actor reads its morph constants after them.
+    wanted_channels = actor_channels(bundle["task"]) + family_morph_names(bundle)
     if list(header.get("observations") or []) != wanted_channels:
         refuse(
             "the observation channels, in order",
@@ -3114,12 +3533,14 @@ def train(
     value_hidden = [int(width) for width in (options.value_hidden or hidden)]
 
     modules = dict(jax=jax, jnp=jnp, np=np, mujoco=mujoco, mjx=mjx)
-    env = build_environment(bundle, options, count=envs,
-                            seed=int(options.seed), **modules)
+    # ADR-759: a family is one batch over its variants' own environments.
+    environment = (functools.partial(family_environment, bundle["family"])
+                   if bundle.get("family") else functools.partial(build_environment, bundle))
+    env = environment(options, count=envs, seed=int(options.seed), **modules)
     # The witness batch is drawn from the run's own seed, so the goals it
     # shows the policy are rows of the pool the run trained on.
-    witness_env = build_environment(bundle, options, count=WITNESS_ENVS,
-                                    seed=int(options.seed), **modules)
+    witness_env = environment(options, count=WITNESS_ENVS,
+                              seed=int(options.seed), **modules)
     actions = env.actions
     action_count = len(actions)
     shapes = layer_shapes(len(env.actor_names), action_count, hidden)
@@ -3189,12 +3610,16 @@ def train(
     # ADR-753: how many more samples the actor's statistics rest on than the
     # critic's. Zero on a cold run; on a warm start, the source's count.
     actor_count_offset = 0
+    # ADR-760: per actor input, whether it keeps the source's sample count;
+    # None when every input does.
+    actor_carried: list[bool] | None = None
     if not getattr(options, "init_from", "") and (
             str(getattr(options, "init_from_task_change", "") or "").strip()
             or str(getattr(options, "init_from_parent_task", "") or "").strip()
+            or str(getattr(options, "init_from_base", "") or "").strip()
     ):
         raise SystemExit(
-            "--init-from-task-change / --init-from-parent-task only mean "
+            "--init-from-task-change / --init-from-parent-task / --init-from-base only mean "
             "anything beside --init-from. Without it this is a cold run and "
             "there is no parent task to change from."
         )
@@ -3207,6 +3632,27 @@ def train(
         decoded = decode_policy(blob, context=str(source))
         curriculum_keys = check_policy_fits(decoded["header"], bundle, options)
         source_header = decoded["header"]
+        base_reason = str(getattr(options, "init_from_base", "") or "").strip()
+        base_counts: dict[str, int] | None = None
+        if base_reason:
+            # ADR-755: the source in this robot's layout, then warmed as usual.
+            mapped = remap_from_base(np, source_header, decoded["weights"],
+                                     body_layout(bundle["task"]))
+            base_counts = mapped["counts"]
+            decoded = {"weights": flat_parameters(np, mapped["layers"])}
+            if not all(mapped["carried"]):
+                actor_carried = list(mapped["carried"]) + [True] * len(family_morph_names(bundle))
+            source_header = {
+                **source_header,
+                # ADR-760: the matched inputs keep the base's samples; the
+                # target's new inputs start fresh (see actor_carried).
+                "normaliser": {"mean": mapped["mean"], "std": mapped["std"],
+                               "count": source_normaliser_count(source_header)},
+                "exploration": {**(source_header.get("exploration") or {}),
+                                "log_std": mapped["log_std"]},
+            }
+            if not options.quiet:
+                print(f"init-from-base  {base_counts}", flush=True)
         trained_with = str((source_header.get("network") or {}).get("activation") or "")
         if trained_with != activation_name:
             raise SystemExit(
@@ -3245,16 +3691,20 @@ def train(
             std = jnp.asarray(stats["std"], dtype=jnp.float32)
             actor_count = source_normaliser_count(source_header)
             actor_count_offset = actor_count - 1
+            weight = (float(actor_count) if actor_carried is None else
+                      jnp.where(jnp.asarray(actor_carried), float(actor_count), 1.0))
             normaliser = normaliser.replace(
                 count=brax_types.UInt64(hi=0, lo=1),
                 mean={**normaliser.mean, "state": mean},
                 summed_variance={**normaliser.summed_variance,
-                                 "state": jnp.square(std) * float(actor_count)},
+                                 "state": jnp.square(std) * weight},
                 std={**normaliser.std, "state": std},
             )
             if not options.quiet:
+                fresh = ("" if actor_carried is None else
+                         f" ({actor_carried.count(False)} new inputs start fresh)")
                 print(f"normaliser  the actor's statistics carry the source's "
-                      f"{actor_count} samples", flush=True)
+                      f"{actor_count} samples{fresh}", flush=True)
 
         source_training = source_header.get("training") or {}
         init_from_provenance = {
@@ -3263,6 +3713,14 @@ def train(
             "iterations": source_training.get("iterations"),
             "trainer_sha256": source_training.get("trainer_sha256"),
         }
+        if base_counts is not None:
+            init_from_provenance["base"] = {
+                "reason": base_reason,
+                "family": str(source_header["body"]["family"]),
+                "model_sha256": str((source_header.get("model") or {}).get("sha256") or ""),
+                "task_sha256": str((source_header.get("task") or {}).get("sha256") or ""),
+                **base_counts,
+            }
         if curriculum_keys is not None:
             init_from_provenance["task_change"] = {
                 "reason": str(options.init_from_task_change).strip(),
@@ -3334,9 +3792,12 @@ def train(
     # can resolve, so one rounding step or one lost touch cannot reach the
     # policy as thousands of standard deviations. Zero (no floor) for every
     # channel no declared sensor reports.
-    floor = np.sqrt(np.asarray(sensor_variance_floor(bundle["task"]), dtype=np.float32))
+    floor = np.sqrt(np.asarray(sensor_variance_floor(bundle["task"])
+                               + [0.0] * len(family_morph_names(bundle)), dtype=np.float32))
     std_floor = {"state": jnp.asarray(floor[env.actor_idx]),
                  "privileged_state": jnp.asarray(floor)}
+
+    carried_mask = None if actor_carried is None else jnp.asarray(actor_carried)
 
     def floored(normaliser):
         return normaliser.replace(std={
@@ -3345,7 +3806,8 @@ def train(
 
     def update_normaliser(normaliser, observation):
         """Brax's one shared count, except that the actor's statistics
-        count ``actor_count_offset`` samples more (ADR-753)."""
+        count ``actor_count_offset`` samples more (ADR-753) -- on the
+        inputs a base remap carried, when it marked some fresh (ADR-760)."""
 
         updated = running_statistics.update(normaliser, observation)
         if not actor_count_offset:
@@ -3353,11 +3815,14 @@ def train(
         actor = running_statistics.update(
             normaliser.replace(count=normaliser.count + actor_count_offset),
             observation)
+        pick = ((lambda carried, fresh: carried) if actor_carried is None else
+                (lambda carried, fresh: jnp.where(carried_mask, carried, fresh)))
         return updated.replace(
-            mean={**updated.mean, "state": actor.mean["state"]},
+            mean={**updated.mean, "state": pick(actor.mean["state"], updated.mean["state"])},
             summed_variance={**updated.summed_variance,
-                             "state": actor.summed_variance["state"]},
-            std={**updated.std, "state": actor.std["state"]})
+                             "state": pick(actor.summed_variance["state"],
+                                           updated.summed_variance["state"])},
+            std={**updated.std, "state": pick(actor.std["state"], updated.std["state"])})
 
     @jax.jit
     def iterate(optimizer_state, params, normaliser, env_state, key, train_actor):
@@ -3461,6 +3926,7 @@ def train(
             },
             "output_scale": env.output_scale,
             "output_bias": env.output_bias,
+            "observations": list(env.actor_names),
             "witness_observations": [[float(v) for v in row] for row in witness_obs],
             "witness_actions": [[float(v) for v in row] for row in witness_actions],
             "reward_curve": list(curve),
@@ -3679,8 +4145,12 @@ def policy_header(
         "task": {"sha256": bundle["task_sha256"],
                  "label": str(task.get("label") or "")},
         "model": {"sha256": bundle["model_sha256"], "path": bundle["model_path"]},
-        "observations": actor_channels(task),
+        "observations": list(trained.get("observations") or actor_channels(task)),
         "actions": list(task["actions"]),
+        # ADR-755: what each input and action is on the family's canonical
+        # body, so this policy can be a base. Absent without a body block.
+        # ADR-759: a family run's morph inputs are named as themselves.
+        **({"body": family_body(bundle)} if task.get("body") else {}),
         "network": {
             "kind": "mlp",
             "layers": trained["layers"],
@@ -3746,7 +4216,8 @@ def policy_header(
                 for key, value in sorted(vars(options).items())
                 if key not in ("bundle", "out", "quiet", "label", "init_from",
                                "init_from_task_change",
-                               "init_from_parent_task")
+                               "init_from_parent_task", "init_from_base",
+                               "family")
                 # The goal pool's size means nothing to a task that states
                 # no goal, and leaving it out there keeps such a policy's
                 # header the one it always was (ADR-462).
@@ -3816,6 +4287,20 @@ def policy_header(
                     }
                 }
                 if (task.get("terrain") or {}).get("pool") else {}
+            ),
+            # ADR-759: the variants a --family run trained on, in block order.
+            # Absent otherwise, so such a policy's header is unchanged.
+            **(
+                {
+                    "family": [
+                        {"task_sha256": variant["task_sha256"],
+                         "model_sha256": variant["model_sha256"],
+                         "label": str(variant["task"].get("label") or ""),
+                         "morph": variant["task"]["body"]["morph"]}
+                        for variant in bundle["family"]
+                    ]
+                }
+                if bundle.get("family") else {}
             ),
             "cadex_importable": cadex_importable,
         },
@@ -4026,6 +4511,32 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--init-from-base",
+        default="",
+        metavar="REASON",
+        help=(
+            "ADR-755: warm-start --init-from's policy onto ANOTHER robot of its "
+            "family, matched slot by slot on the canonical body both bundles "
+            "map (api.task(body=...)), and say why in one line. The digests are "
+            "not compared; the family, the hidden layers and one shared joint "
+            "slot per leg are, and --critic-warmup is required"
+        ),
+    )
+    parser.add_argument(
+        "--family",
+        nargs="+",
+        default=[],
+        metavar="BUNDLE",
+        help=(
+            "ADR-759: train one policy on a family of built variants of one "
+            "robot -- the bundle plus each of these, every one mapping a body "
+            "with a morph block. Environment blocks are split evenly across "
+            "the variants, each with its own model, reward, clip and action "
+            "box, and the policy reads the variant's morph constants as "
+            "inputs, which --init-from-base folds into the bias on a target"
+        ),
+    )
+    parser.add_argument(
         "--init-from-parent-task",
         default="",
         metavar="BUNDLE",
@@ -4075,6 +4586,11 @@ def main(argv: Sequence[str]) -> int:
     import jax.numpy as jnp
 
     bundle = load_bundle(options.bundle, globals_for(jnp))
+    if options.family:
+        # ADR-759: the bundle is variant 0; its digests name the run.
+        bundle["family"] = [bundle] + [load_bundle(path, globals_for(jnp))
+                                       for path in options.family]
+        check_family(bundle["family"])
     target = Path(options.out)
     target.parent.mkdir(parents=True, exist_ok=True)
     progress_path = (

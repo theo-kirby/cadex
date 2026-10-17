@@ -225,6 +225,8 @@ against the actuator rather than deriving it — ADR-162 carries the numbers.
 | `--init-from POLICY` | start the actor from an existing `.cxpolicy`. It must match this bundle's task and model digests, its observation channels in order, its action table, the `--hidden` shape and the `--activation` it was trained with. The actor's location half, its exploration width (unless `--initial-std` is given, ADR-471) and the observation normaliser are carried, the normaliser with the weight of the samples it rests on (ADR-753). The critic and the optimiser start fresh: the container holds neither. |
 | `--init-from-task-change REASON` | let `--init-from` cross a task change, as a **curriculum**, with a one-line reason written into the policy header. It skips the whole-file task digest and nothing else. Requires `--init-from-parent-task`. |
 | `--init-from-parent-task BUNDLE` | the bundle the source policy was trained on. Its digest must equal the one in that policy's header, so the change can be named key by key. |
+| `--family BUNDLE…` | train **one policy on a family** of built variants of one robot (ADR-759): the bundle is variant 0 and names the run, these are the others. Each must map a body with a `morph` block and share the channels, joints, reward-term count, episode and model sizes. The environments are split into contiguous blocks, one per variant, each its own environment (model, randomisation, reward, terminations, clip, reset, pushes, action box); environment *e* draws `random.Random(seed + e)` whatever its variant. The actor and critic read the variant's `morph.*` constants after the channels, and the header lists the variants under `training.family`. Such a policy is a base, not something the engine plays: `--init-from-base` folds its morph inputs into the bias at the target's own values. |
+| `--init-from-base REASON` | let `--init-from` cross onto **another robot of the family** (ADR-755). Both bundles map a canonical body (`api.task(body=...)`); the digests are not compared, but the family and version, the hidden layers and at least one shared joint slot per leg are, and `--critic-warmup` is required. The actor is remapped by canonical name: matched inputs and actions copy, sign-corrected, with the statistics mapped through each channel's sign, offset and scale; a source input the target lacks folds into the first layer's bias at its rest value; a target input or action the source lacks starts at zero (its box centre) with the default exploration width. The actor's statistics keep the base's sample count on the inputs it shares with the target, and a target input the base lacks starts fresh, set by the target's own first batch (ADR-760). |
 
 The keys that may differ are `CURRICULUM_TASK_KEYS`: `disturbance`,
 `episode` (`episode_seconds` and `max_steps` only, never the control rate),
@@ -241,6 +243,9 @@ fresh critic's noise and knocked the carried actor over.
 
 Every policy before ADR-712 is `tanh`; continue one with `--activation tanh`.
 `training/test_curriculum_warm_start.py` (training venv) holds these rules.
+`training/test_canonical_body.py` holds the base remap: onto its own robot
+it is the identity, and onto the same robot listed in another order with a
+joint mounted the other way round it plays the same actions.
 
 ## Checkpoints, and the file a run publishes while it runs (ADR-098)
 
