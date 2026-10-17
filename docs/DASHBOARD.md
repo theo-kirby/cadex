@@ -608,19 +608,29 @@ along the vertical through its own rotation and extents, so a ramp turned
 to its grade and a turned rock are drawn where their tops are. The samples
 run every 25 mm (coarser over a large course, at most `TERRAIN.samples`),
 and on both sides of every box corner's x and y, 0.5 mm apart, so a step's
-face is a wall and not a ramp. There are no box objects, no slab and no
+face is a wall and not a ramp; a box turned about x or y (a ramp, a rock's
+stone, ADR-745) adds the lines where its faces meet the ground under it, so
+its crease is drawn where it is. There are no box objects, no slab and no
 edge lines: one mesh, in the mat's own prototype material and palette
 (`floor.js`, `prototypeMaterial`), its grid anchored to the world's whole
 metres on every facet, with crease normals so a wall's edge stays crisp and
 a gentle rise reads smooth. A box course's surface runs 500 mm past its
 extent and ends at its plane, where the mat lies, so the course and the
 mat meet without a seam and the mat carries the ground on to the horizon
-(ADR-742). A heightfield is drawn on its own vertices and eased down to the
+(ADR-742). An engine course runs out 50 m past its extent (ADR-745): the
+surface is sampled finely over the extent and whatever stands within 10 m
+of it (`TERRAIN.reach_mm`), every 2.5 m (`TERRAIN.far_mm`) over the flat
+run-out beyond, which is exact there since it is planar between its walls,
+and is eased to the plane over 1.5 m past the run-out's end; where a course
+ends at its plane the surface ends and the mat is the ground. A heightfield is drawn on its own vertices and eased down to the
 mat over 1.5 m. `groundAt(x_mm, y_mm)` reads the drawn height off the
 surface's own triangles, and `stats().terrain.surface` gives the mesh
 count, sample columns and rows, triangles and extent
 (`cli/tests/test_dashboard_ground.py` holds a step, a ramp, a rock and a
-mogul to the highest box or dome top within 5 mm at 1,000 points). The ground is the stage, not
+mogul to the highest box or dome top within 5 mm at 1,000 points, and, on
+10 held-out engine courses with every kind, the drawn height to MuJoCo's
+own ray onto the placed course within 5 mm at 1,000 points, past the extent
+included, ADR-745). The ground is the stage, not
 the design: it sizes, picks and outlines nothing, and casts no shadow,
 since a self-shadowed course would not match the mat it meets. Fit takes in 300 mm of it behind the design and 1.5 m ahead along +x,
 where courses run, and a course appearing where there was none is fitted. `setTerrain(block)` draws it. The block is a model's

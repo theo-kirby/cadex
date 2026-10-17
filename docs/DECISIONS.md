@@ -43572,3 +43572,80 @@ foot and holds its peak and side to the sphere within 1 mm.
 the course's extent are still to come, and so is G3's MJX probe of the cat
 on domes. A bundle written before this ADR, with block bumps, is refused
 by the trainer's dome-count check rather than trained on different ground.
+
+
+## ADR-745 — Platforms, rock patches and a run-out: a box course has every ground kind and no edge (2026-10-16)
+
+**Context.** orun8's G1 asks a course to mix flat ground, moguls, steps,
+slopes, boxes to jump onto and rock-like rough patches, with the drawn
+height and the physics' agreeing within 5 mm at 1,000 points over 10
+held-out courses. G2 asks for no physics edge: running off a course is flat
+ground, not a fall. O4 sets jump boxes at 10–50 cm. After ADR-744 a box
+course had steps, slopes and domes; a "rock" was only a shape the drawing
+test made up, and a raised level ended in a cliff at the course's sides and
+at its far end.
+
+**Decision.** Two feature kinds, box course only (a heightfield refuses
+them, `terrain_kind_needs_boxes`):
+
+- **`platform`** (`x_mm`, `y_mm`, `length_mm`, `width_mm`, `height_mm`): a
+  `block` record of its own footprint, its top `height_mm` over the steps
+  and slopes at its centre, with a wall on every side.
+- **`rock`** (`x_mm`, `y_mm`, `radius_mm`, `height_mm` ≤ `radius_mm / 4`,
+  else `terrain_rock_too_tall`): a patch of `stone` records
+  (`terrain_rock_stones`), seeded by the patch's own numbers. Its `2 r`
+  square is a 3 × 3 grid of cells; each cell but the centre is empty with
+  probability 0.3, and a stone is a box tilted about x **or** y by 10–25°,
+  sized to its cell and buried so its peak stands 0.4–1.0 × `height_mm`
+  proud. Tilting about one horizontal axis keeps every wall and crease
+  along x or y, which is what lets the drawing be exact. A patch lies on
+  flat ground (`terrain_rock_off_flat`). Stones go in the box slots, so
+  they need no geom kind of their own; `terrain_box_geoms`, the MJCF, the
+  drawing and the trainer's `course_geoms` stand them as given.
+
+And a **run-out**: `terrain_boxes` runs every segment's box 50 m
+(`TERRAIN_RUNOUT_MM`) past the extent across y, and the first and last
+levels 50 m past it along x (stretched when flat, a block of their own when
+the course ends on a ramp). A 12 s episode at 4 m/s in any direction stays
+on ground at the level it left.
+
+A drawn pool (ADR-717) gains `platform_mm` (with `platform_size_mm`,
+default 600–1200 mm, and `platforms`, default 1) and `rock_mm` (with
+`rock_radius_mm`, default 250–400 mm, and `rocks`, default 1). After the
+bumps it tries up to 8 centres for each, keeping 100 mm clear of every
+bump, platform and patch, and a patch on flat ground; one that finds no
+place is left out. A spec without them draws exactly as before.
+
+The trainer reads every box slot through its own rotation (`box_scan_rows`,
+`box_tops`: the vertical line clipped to the box's three slabs), in place
+of the axis-aligned top it read, so a stone's top, a platform's and a
+ramp's are exact in the height scan; `course_boxes` and
+`course_rock_stones` copy the engine's builder. The dashboard's sampler
+samples finely over the extent and what stands within 10 m of it and
+coarsely over the flat run-out, adds the lines where a turned box's faces
+meet the ground under it as breaks, and eases to the plane past the
+run-out's end.
+
+**Evidence.** `cli/tests/test_dashboard_ground.py` builds the engine's own
+course from source with a pool of every kind (steps 50–100 mm, slopes
+5–15°, moguls 30–80 mm on 250–400 mm, platforms 100–500 mm, rock patches
+30–60 mm), compiles it in MuJoCo, and on 10 held-out evaluation courses
+compares the dashboard's drawn height with MuJoCo's ray onto the placed
+course at 1,000 points, half anywhere (3 m past the extent included), half
+on a mogul, platform or patch. The worst is 1.5 mm; without the crease
+breaks it is 8.8 mm, which fails. The same test holds the physics ground
+3–40 m off each side and past each end to the course's level there, to
+1e-6 mm. Outside the test: MuJoCo's ray and `terrain_box_ground_mm` agree
+to 4e-12 mm at 1,000 points over the same courses, the trainer's
+`course_boxes` equals the engine's on all 8 pooled courses, and its jitted
+float32 scan matches the engine's ground to 0.0007 mm at 768 points on
+features. Screenshot: `docs/probes/orun8/g1-every-kind.png`.
+
+**Not done here.** MJX stepping the cat on stones, platforms and run-outs,
+and an iteration's cost on such a course, are G3's probe. A stone adds a
+box slot, up to nine a patch, so a pool with rock costs more collision
+pairs than one without. A heightfield course still ends at its extent: it
+is not trained on (O5) and gains no run-out. The film still draws a course
+as its boxes, now including 100 m run-out blocks. A bundle written before
+this ADR whose last segment is a ramp is refused by the trainer's box-count
+check, since the trainer now adds that segment's run-out block.

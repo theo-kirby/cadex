@@ -303,13 +303,21 @@ a flat one is a block from below the plane up to its height, a graded one a
 **dome** (ADR-744): a sphere, `environment/terrain/dome/<j>`, buried so its
 cap stands `height_mm` above the steps and slopes at its centre and meets
 them `radius_mm` from it, so a mogul is round; one taller than its radius
-(more than a hemisphere) is refused (`terrain_bump_too_tall`). A dip is
+(more than a hemisphere) is refused (`terrain_bump_too_tall`). A
+`platform` is a block of its own footprint, its top `height_mm` over the
+steps and slopes at its centre, and a `rock` patch a 3 × 3 grid of cells
+each holding a stone (or, but the centre, left empty), a box tilted about x
+or y by 10–25° and buried so its peak stands up to `height_mm` proud, in
+the box slots as `shape: "stone"` (ADR-745). Every level of a course runs
+out 50 m past its extent (`TERRAIN_RUNOUT_MM`), so there is no cliff an
+episode reaches. A dip is
 refused (`terrain_dip_needs_heightfield`), as is a step down off a slope's
 high end, where the ramp's leaning end face would stand proud
 (`terrain_step_off_slope`). The ground is the highest box top or dome cap
 over a point, or the plane (`terrain_box_ground_mm`), which is what MuJoCo's
-ray meets (to 1e-9 mm at 1,000 points over 10 held-out drawn courses with
-domes, ADR-744), and what the height scan reads in the
+ray meets (to 4e-12 mm at 1,000 points over 10 held-out drawn courses with
+every kind, run-outs included, ADR-745), and what the height scan reads, each
+box through its own rotation, in the
 engine and the trainer. Measured on the cat's own
 rig (the f1-g1 model, 27 actuators, random position targets across each
 action's range, 24 starts on bumps, step edges and ramps at up to 3 m/s,

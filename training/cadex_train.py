@@ -827,25 +827,24 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
             if course is not None:
                 # ADR-717: this environment's course, one row per slot.
                 rows, lowest, domes = course
-                xa, xb, ya, yb, za, zb = (rows[..., None, :, column] for column in range(6))
                 lowest = xp.asarray(lowest, dtype=where.dtype)
                 floor, under = lowest[..., None], lowest[..., None, None]
                 dx, dy, dz, dr = (domes[..., None, :, column] for column in range(4))
             else:
                 boxes = terrain["boxes"]
-                xa, xb, ya, yb, za, zb = (
-                    xp.asarray([float(record[key][end]) for record in boxes], dtype=where.dtype)
-                    for key, end in (("x_range_mm", 0), ("x_range_mm", 1), ("y_range_mm", 0),
-                                     ("y_range_mm", 1), ("top_mm", 0), ("top_mm", 1)))
+                rows = xp.asarray(box_scan_rows(course_geoms(
+                    boxes, float(terrain["lowest_mm"]), len(boxes), 1.0)),
+                    dtype=where.dtype).reshape(len(boxes), 15)
                 floor = under = float(terrain["lowest_mm"])
                 dx, dy, dz, dr = (
                     xp.asarray([float(dome[key]) - (float(dome["radius_mm"]) if key == "top_mm" else 0.0)
                                 for dome in terrain.get("domes") or ()], dtype=where.dtype)
                     for key in ("x_mm", "y_mm", "top_mm", "radius_mm"))
             bx, by = px[..., None], py[..., None]
-            inside = (bx >= xa) & (bx <= xb) & (by >= ya) & (by <= yb)
-            top = za + (zb - za) * (bx - xa) / (xb - xa)
-            ground = xp.maximum(xp.max(xp.where(inside, top, under), axis=-1), floor)
+            # ADR-745: each box read through its own rotation, so a ramp's
+            # top, a platform's and a rock's turned stone are all exact.
+            ground = xp.maximum(xp.max(box_tops(xp, rows, bx, by, under), axis=-1), floor) \
+                if rows.shape[-2] else xp.maximum(px * 0.0, floor)
             if dr.shape[-1]:
                 # ADR-744: a dome's sphere over the point, about its centre.
                 reach = dr * dr - (bx - dx) ** 2 - (by - dy) ** 2
@@ -900,6 +899,10 @@ TERRAIN_FLAT_MM = 0.1
 TERRAIN_RAMP_HALF_THICKNESS_MM = 10.0
 TERRAIN_PARKED_DEPTH_MM = 1000.0
 TERRAIN_PARKED_HALF_MM = 1.0
+TERRAIN_RUNOUT_MM = 50000.0
+TERRAIN_ROCK_CELLS = 3
+TERRAIN_ROCK_TILT_DEG = (10.0, 25.0)
+TERRAIN_ROCK_EMPTY = 0.3
 
 
 def course_domes(features: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -939,8 +942,10 @@ def course_boxes(features: Sequence[dict[str, Any]], x_range_mm: Sequence[float]
     y0, y1 = (float(value) for value in y_range_mm)
     cuts = {x0, x1}
     for feature in features:
+        if feature["kind"] not in ("step", "slope"):
+            continue
         for key in ("x_mm",) if feature["kind"] == "step" else ("from_x_mm", "to_x_mm"):
-            if feature["kind"] != "bump" and x0 < feature[key] < x1:
+            if x0 < feature[key] < x1:
                 cuts.add(float(feature[key]))
     edges = sorted(cuts)
     segments = []
@@ -961,13 +966,71 @@ def course_boxes(features: Sequence[dict[str, Any]], x_range_mm: Sequence[float]
                       "y_range_mm": [float(v) for v in ys],
                       "top_mm": [float(v) for v in tops]})
 
+    # ADR-745: the first and last level run on past the extent, and every
+    # segment across it, so the ground has no edge an episode reaches.
+    a, b, za, zb = segments[0]
+    if abs(zb - za) <= TERRAIN_FLAT_MM:
+        segments[0] = (x0 - TERRAIN_RUNOUT_MM, b, za, zb)
+    else:
+        segments.insert(0, (x0 - TERRAIN_RUNOUT_MM, x0, za, za))
+    a, b, za, zb = segments[-1]
+    if abs(zb - za) <= TERRAIN_FLAT_MM:
+        segments[-1] = (a, x1 + TERRAIN_RUNOUT_MM, za, zb)
+    else:
+        segments.append((x1, x1 + TERRAIN_RUNOUT_MM, zb, zb))
+    across = (y0 - TERRAIN_RUNOUT_MM, y1 + TERRAIN_RUNOUT_MM)
     for a, b, za, zb in segments:
         low = min(za, zb)
         if low > lowest + TERRAIN_FLAT_MM:
-            box("block", (a, b), (y0, y1), (low, low))
+            box("block", (a, b), across, (low, low))
         if abs(zb - za) > TERRAIN_FLAT_MM:
-            box("ramp", (a, b), (y0, y1), (za, zb))
+            box("ramp", (a, b), across, (za, zb))
+    for feature in features:
+        if feature["kind"] == "platform":
+            top = _course_profile_mm(features, feature["x_mm"]) + feature["height_mm"]
+            box("block", (feature["x_mm"] - feature["length_mm"] / 2.0,
+                          feature["x_mm"] + feature["length_mm"] / 2.0),
+                (feature["y_mm"] - feature["width_mm"] / 2.0,
+                 feature["y_mm"] + feature["width_mm"] / 2.0), (top, top))
+        elif feature["kind"] == "rock":
+            boxes.extend(course_rock_stones(feature, _course_profile_mm(features, feature["x_mm"])))
     return boxes
+
+
+def course_rock_stones(rock: dict[str, Any], ground_mm: float) -> list[dict[str, Any]]:
+    """A rock patch's stones (``CadexDynamics.terrain_rock_stones``, ADR-745)."""
+
+    import random
+
+    x, y, radius, height = (float(rock[key]) for key in ("x_mm", "y_mm", "radius_mm", "height_mm"))
+    rng = random.Random(f"cadex-rock:{x!r}:{y!r}:{radius!r}:{height!r}")
+    cell = 2.0 * radius / TERRAIN_ROCK_CELLS
+    room = cell / 2.0
+    stones = []
+    for i in range(TERRAIN_ROCK_CELLS):
+        for j in range(TERRAIN_ROCK_CELLS):
+            centre_cell = (i, j) == (TERRAIN_ROCK_CELLS // 2, TERRAIN_ROCK_CELLS // 2)
+            if not centre_cell and rng.random() < TERRAIN_ROCK_EMPTY:
+                continue
+            about = rng.choice(("x", "y"))
+            tilt = math.radians(rng.uniform(*TERRAIN_ROCK_TILT_DEG)) * rng.choice((-1.0, 1.0))
+            sine, cosine = abs(math.sin(tilt)), math.cos(tilt)
+            turned = (rng.uniform(0.55, 0.95) * room - height * sine) / cosine
+            across = rng.uniform(0.55, 0.95) * room
+            reach = turned * cosine + height * sine
+            rise = turned * sine + height * cosine
+            if about == "y":
+                half, plan = [turned, across, height], (reach, across)
+                quat = [math.cos(tilt / 2.0), 0.0, math.sin(tilt / 2.0), 0.0]
+            else:
+                half, plan = [across, turned, height], (across, reach)
+                quat = [math.cos(tilt / 2.0), math.sin(tilt / 2.0), 0.0, 0.0]
+            cx = x - radius + (i + 0.5) * cell + rng.uniform(-1.0, 1.0) * (room - plan[0])
+            cy = y - radius + (j + 0.5) * cell + rng.uniform(-1.0, 1.0) * (room - plan[1])
+            peak = float(ground_mm) + rng.uniform(0.4, 1.0) * height
+            stones.append({"shape": "stone", "centre_mm": [cx, cy, peak - rise],
+                           "quat": quat, "half_mm": half, "top_mm": peak})
+    return stones
 
 
 def course_geoms(boxes: Sequence[dict[str, Any]], lowest_mm: float, slots: int,
@@ -980,6 +1043,11 @@ def course_geoms(boxes: Sequence[dict[str, Any]], lowest_mm: float, slots: int,
     lowest = float(lowest_mm)
     pos, quat, size = [], [], []
     for record in boxes:
+        if record["shape"] == "stone":
+            pos.append([value * scale for value in record["centre_mm"]])
+            quat.append([float(value) for value in record["quat"]])
+            size.append([value * scale for value in record["half_mm"]])
+            continue
         (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
         za, zb = record["top_mm"]
         if record["shape"] == "block":
@@ -1005,14 +1073,54 @@ def course_geoms(boxes: Sequence[dict[str, Any]], lowest_mm: float, slots: int,
     return {"plane_z_m": lowest * scale, "pos_m": pos, "quat": quat, "size_m": size}
 
 
+def box_scan_rows(placed: dict[str, Any]) -> list[list[float]]:
+    """Each box of :func:`course_geoms` (at ``scale`` 1, so in mm) as the row
+    a height scan reads (ADR-745): its centre, its three axes in the world
+    (its rotation's columns) and its half-extents, 15 numbers."""
+
+    rows = []
+    for centre, (w, x, y, z), half in zip(placed["pos_m"], placed["quat"], placed["size_m"]):
+        axes = [1 - 2 * (y * y + z * z), 2 * (x * y + w * z), 2 * (x * z - w * y),
+                2 * (x * y - w * z), 1 - 2 * (x * x + z * z), 2 * (y * z + w * x),
+                2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)]
+        rows.append([*centre, *axes, *half])
+    return rows
+
+
+def box_tops(xp: Any, rows: Any, px: Any, py: Any, under: Any) -> Any:
+    """The highest point of each box on the vertical line at each point
+    (``CadexDynamics.terrain_turned_box_top_mm``), or ``under`` off it:
+    ``rows`` ``(..., S, 15)`` from :func:`box_scan_rows`, ``px`` and ``py``
+    ``(..., N, 1)``; returns ``(..., N, S)``."""
+
+    rows = rows[..., None, :, :]
+    dx, dy, cz = px - rows[..., 0], py - rows[..., 1], rows[..., 2]
+    low = high = None
+    inside = None
+    for axis in range(3):
+        ax, ay, az = (rows[..., 3 + 3 * axis + k] for k in range(3))
+        half = rows[..., 12 + axis]
+        offset = ax * dx + ay * dy - az * cz
+        level = xp.abs(az) < 1e-9
+        safe = xp.where(level, 1.0, az)
+        a, b = (-half - offset) / safe, (half - offset) / safe
+        lo = xp.where(level, -1e12, xp.minimum(a, b))
+        hi = xp.where(level, 1e12, xp.maximum(a, b))
+        within = ~level | (xp.abs(offset) <= half)
+        low = lo if low is None else xp.maximum(low, lo)
+        high = hi if high is None else xp.minimum(high, hi)
+        inside = within if inside is None else inside & within
+    return xp.where(inside & (low <= high), high, under)
+
+
 def terrain_pool(np: Any, terrain: dict[str, Any]) -> dict[str, Any]:
     """The bundle's terrain pool as arrays, course first (ADR-717).
 
     ``plane_z`` ``(P,)``; ``pos``, ``size`` ``(P, S, 3)``; ``quat``
     ``(P, S, 4)``; ``rbound`` ``(P, S)`` and ``aabb`` ``(P, S, 6)``, which
-    MuJoCo derives from a box's size at compile time; ``scan`` ``(P, S, 6)``,
-    each slot's ``x0 x1 y0 y1 top0 top1`` in mm, a parked slot an empty
-    range; and ``lowest`` ``(P,)`` in mm. Domes (ADR-744): ``dome_pos``
+    MuJoCo derives from a box's size at compile time; ``scan`` ``(P, S, 15)``,
+    each slot's :func:`box_scan_rows` row in mm (ADR-745), a parked slot its
+    cube under the plane; and ``lowest`` ``(P,)`` in mm. Domes (ADR-744): ``dome_pos``
     ``(P, D, 3)`` and ``dome_size`` ``(P, D, 3)`` (the radius, then zeros),
     ``dome_rbound`` ``(P, D)``, ``dome_aabb`` ``(P, D, 6)`` and
     ``dome_scan`` ``(P, D, 4)``, each dome's centre and radius in mm, a
@@ -1039,10 +1147,7 @@ def terrain_pool(np: Any, terrain: dict[str, Any]) -> dict[str, Any]:
         columns["quat"].append(placed["quat"])
         columns["size"].append(placed["size_m"])
         columns["lowest"].append(lowest)
-        columns["scan"].append(
-            [[*record["x_range_mm"], *record["y_range_mm"], *record["top_mm"]]
-             for record in boxes]
-            + [[0.0, -1.0, 0.0, -1.0, lowest, lowest]] * (slots - len(boxes)))
+        columns["scan"].append(box_scan_rows(course_geoms(boxes, lowest, slots, 1.0)))
         domes = course_domes(course["features"])
         if len(domes) != int(course.get("domes", 0)):
             raise SystemExit(

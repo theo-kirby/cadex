@@ -35,7 +35,7 @@ const LEADER = {color:0x9aa3ad, opacity:.85};
 // over its extent before the spacing grows; a step's face is `wall_mm` either side of its edge,
 // for up to `breaks` distinct corner lines a side; the surface runs `margin_mm` past a box course's extent and
 // eases a heightfield down to the mat over `blend_mm`; the frame's reach along it.
-const TERRAIN = {pitch_mm:25, samples:120000, wall_mm:.5, breaks:512, margin_mm:500, blend_mm:1500, behind_mm:300, ahead_mm:1500};
+const TERRAIN = {pitch_mm:25, samples:120000, wall_mm:.5, breaks:512, margin_mm:500, blend_mm:1500, reach_mm:10000, far_mm:2500, behind_mm:300, ahead_mm:1500};
 // Render styles (ADR-534, ADR-602). 'shaded' is the lit stage every capture uses and the
 // viewport's default; 'wireframe' (called 'hairline' until ADR-602) is a diagram: silhouettes and
 // creases in ink on flat paper, and no floor, shadow or fog, with an optional soft layer of the
@@ -263,19 +263,23 @@ export function create(canvas, {labels=true}={}) {
   // sampled from the served course -- the highest box top over each point, or the plane, for a box
   // course; the grid, run out over TERRAIN.blend_mm to the mat, for a heightfield -- in the mat's
   // own material. The sample lines take every box corner's x and y on both sides of it
-  // (TERRAIN.wall_mm), so a step's face is a wall and not a ramp. A box course's surface ends at
-  // its plane, where the mat lies, so the two meet without a seam. It is the stage, not the
+  // (TERRAIN.wall_mm), so a step's face is a wall and not a ramp. A box course's surface runs over
+  // its run-out (ADR-745) and ends at its plane, where the mat lies, so the two meet without a
+  // seam. It is the stage, not the
   // design: it sizes, picks and outlines nothing. setTerrain(null) removes it.
   const ground=new THREE.Group(); world.add(ground);
   let terrain=null, terrainMaterial=null, surface=null;
+  // The box's axes in the world (its rotation's columns): a world vector's local components are
+  // its dot with each.
+  const axesOf=b=> {
+    const [qx,qy,qz,qw]=b.rotation_xyzw;
+    return [[1-2*(qy*qy+qz*qz),2*(qx*qy+qz*qw),2*(qx*qz-qy*qw)],[2*(qx*qy-qz*qw),1-2*(qx*qx+qz*qz),2*(qy*qz+qx*qw)],
+            [2*(qx*qz+qy*qw),2*(qy*qz-qx*qw),1-2*(qx*qx+qy*qy)]];
+  };
   // The highest point of a box (centre, xyzw rotation, half-extents; mm) on the vertical line at
   // (x, y), or -Infinity: the line, in the box's own frame, clipped to each of its three slabs.
   const boxTop=(b,x,y)=> {
-    const [qx,qy,qz,qw]=b.rotation_xyzw, dx=x-b.centre_mm[0], dy=y-b.centre_mm[1];
-    // The box's axes in the world (its rotation's columns): a world vector's local components are
-    // its dot with each.
-    const R=[[1-2*(qy*qy+qz*qz),2*(qx*qy+qz*qw),2*(qx*qz-qy*qw)],[2*(qx*qy-qz*qw),1-2*(qx*qx+qz*qz),2*(qy*qz+qx*qw)],
-             [2*(qx*qz+qy*qw),2*(qy*qz-qx*qw),1-2*(qx*qx+qy*qy)]];
+    const dx=x-b.centre_mm[0], dy=y-b.centre_mm[1], R=axesOf(b);
     let lo=-Infinity, hi=Infinity;
     for (let i=0;i<3;i++) {
       const o=R[i][0]*dx+R[i][1]*dy-R[i][2]*b.centre_mm[2], d=R[i][2], h=b.half_mm[i];
@@ -303,20 +307,52 @@ export function create(canvas, {labels=true}={}) {
   };
   // The surface: sample axes and the height (mm) at each of their crossings, row-major by y.
   function sampleSurface(block) {
-    let x0=block.x_range_mm[0], x1=block.x_range_mm[1], y0=block.y_range_mm[0], y1=block.y_range_mm[1], height, bx=[], by=[], run;
+    let x0=block.x_range_mm[0], x1=block.x_range_mm[1], y0=block.y_range_mm[0], y1=block.y_range_mm[1], height, bx=[], by=[], run, far=null;
     if (block.kind==='boxes') {
       const boxes=block.boxes||[], domes=block.domes||[], plane=block.plane_z_mm??block.lowest_mm;
-      boxes.forEach(b=>corners(b).forEach(([x,y])=>{bx.push(x); by.push(y); x0=Math.min(x0,x); x1=Math.max(x1,x); y0=Math.min(y0,y); y1=Math.max(y1,y);}));
+      const exact=(x,y,skip)=>domes.reduce((z,d)=>Math.max(z,domeTop(d,x,y)),boxes.reduce((z,b)=>b===skip?z:Math.max(z,boxTop(b,x,y)),plane));
+      // ADR-745: the course's ground runs on past its extent (its run-out boxes reach 50 m), so the
+      // surface is fine over the extent and what stands near it, coarse over the flat run-out past
+      // that (exact there too: it is planar between breaks), and eased to the plane past its end.
+      const [ex0,ex1]=block.x_range_mm, [ey0,ey1]=block.y_range_mm, near=(v,lo,hi)=>v>=lo-TERRAIN.reach_mm&&v<=hi+TERRAIN.reach_mm;
+      let ox0=x0, ox1=x1, oy0=y0, oy1=y1;
+      boxes.forEach(b=>corners(b).forEach(([x,y])=> {
+        bx.push(x); by.push(y); ox0=Math.min(ox0,x); ox1=Math.max(ox1,x); oy0=Math.min(oy0,y); oy1=Math.max(oy1,y);
+        if (near(x,ex0,ex1)) {x0=Math.min(x0,x); x1=Math.max(x1,x);}
+        if (near(y,ey0,ey1)) {y0=Math.min(y0,y); y1=Math.max(y1,y);}
+      }));
+      // A box turned about x or y (a ramp, a rock's stone) meets the ground under it in a line along
+      // the other axis: that line is a break too, so the crease is drawn where it is.
+      boxes.forEach(b=> {
+        const R=axesOf(b); if (R.every(a=>Math.abs(Math.abs(a[0])+Math.abs(a[1])+Math.abs(a[2])-1)<1e-9)) return;
+        const z0=exact(b.centre_mm[0],b.centre_mm[1],b);
+        R.forEach((a,i)=>[-1,1].forEach(sign=> {
+          const h=sign*b.half_mm[i], dz=a[2]*(z0-b.centre_mm[2]);
+          if (Math.abs(a[2])<1e-9) return;
+          if (Math.abs(a[1])<1e-9&&Math.abs(a[0])>1e-9) bx.push(b.centre_mm[0]+(h-dz)/a[0]);
+          if (Math.abs(a[0])<1e-9&&Math.abs(a[1])>1e-9) by.push(b.centre_mm[1]+(h-dz)/a[1]);
+        }));
+      });
       // A dome is smooth, so it adds no breaks; only its foot on the plane widens the extent.
       domes.forEach(d=>{const r=Math.sqrt(Math.max(0,d.radius_mm**2-(plane-d.centre_mm[2])**2));
         x0=Math.min(x0,d.centre_mm[0]-r); x1=Math.max(x1,d.centre_mm[0]+r); y0=Math.min(y0,d.centre_mm[1]-r); y1=Math.max(y1,d.centre_mm[1]+r);});
+      ox0=Math.min(ox0,x0); ox1=Math.max(ox1,x1); oy0=Math.min(oy0,y0); oy1=Math.max(oy1,y1);
       // Shared edges are one break; a course with more than `breaks` a side gets sloped faces.
       const once=a=>[...new Set(a.map(v=>Math.round(v*100)/100))];
       bx=once(bx); by=once(by);
       if (bx.length>TERRAIN.breaks) bx=[];
       if (by.length>TERRAIN.breaks) by=[];
-      height=(x,y)=>domes.reduce((z,d)=>Math.max(z,domeTop(d,x,y)),boxes.reduce((z,b)=>Math.max(z,boxTop(b,x,y)),plane));
+      // A course with no run-out (an export's, a hand-made one) is exact everywhere: past its boxes
+      // it is the plane.
+      const runout=ox0<x0-TERRAIN.blend_mm||ox1>x1+TERRAIN.blend_mm||oy0<y0-TERRAIN.blend_mm||oy1>y1+TERRAIN.blend_mm;
+      height=(x,y)=> {
+        const cx=Math.min(ox1,Math.max(ox0,x)), cy=Math.min(oy1,Math.max(oy0,y));
+        if (!runout||(cx===x&&cy===y)) return exact(x,y);
+        const edge=exact(cx,cy), t=Math.min(1,Math.hypot(x-cx,y-cy)/TERRAIN.blend_mm), s=t*t*(3-2*t);
+        return edge+(plane-edge)*s;
+      };
       run=TERRAIN.margin_mm;
+      if (runout) far=[ox0,ox1,oy0,oy1];
     } else {
       const {rows,columns,heights_mm:h}=block.grid, [gx0,gx1]=block.x_range_mm, [gy0,gy1]=block.y_range_mm, mat=block.lowest_mm-50;
       for (let k=0;k<columns;k++) bx.push(gx0+(gx1-gx0)*k/(columns-1));
@@ -335,8 +371,13 @@ export function create(canvas, {labels=true}={}) {
     // A heightfield's samples are its own vertices over its extent, exactly as it is triangulated,
     // and the run-out's past them.
     const own=(a,lo,hi,grid)=>a.filter(v=>v<lo).concat(grid,a.filter(v=>v>hi));
-    const xs=block.kind==='boxes'?axis(x0,x1,pitch,bx):own(axis(x0,x1,pitch,[]),bx[0],bx.at(-1),bx);
-    const ys=block.kind==='boxes'?axis(y0,y1,pitch,by):own(axis(y0,y1,pitch,[]),by[0],by.at(-1),by);
+    // Past the fine span, a box course's run-out at TERRAIN.far_mm to its end and the blend past it.
+    const outer=(lo,hi,a,b,breaks)=>far
+      ? [...new Set([...axis(Math.min(lo,a)-TERRAIN.blend_mm,lo,TERRAIN.far_mm,breaks),...axis(lo,hi,pitch,breaks),
+                     ...axis(hi,Math.max(hi,b)+TERRAIN.blend_mm,TERRAIN.far_mm,breaks)])].sort((p,q)=>p-q)
+      : axis(lo,hi,pitch,breaks);
+    const xs=block.kind==='boxes'?outer(x0,x1,far&&far[0],far&&far[1],bx):own(axis(x0,x1,pitch,[]),bx[0],bx.at(-1),bx);
+    const ys=block.kind==='boxes'?outer(y0,y1,far&&far[2],far&&far[3],by):own(axis(y0,y1,pitch,[]),by[0],by.at(-1),by);
     const z=new Float64Array(xs.length*ys.length);
     ys.forEach((y,r)=>xs.forEach((x,k)=>{z[r*xs.length+k]=height(x,y);}));
     return {xs,ys,z};

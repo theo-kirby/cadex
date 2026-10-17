@@ -3559,10 +3559,35 @@ def _environment_floor(mujoco: Any, spec: Any, tree: Mapping[str, Any]) -> dict[
 #: that says ``environment/terrain`` is the ground the environment supplied.
 ENVIRONMENT_TERRAIN_GEOM = "environment/terrain"
 
-#: The three things a course is made of. Each is a function of position that
-#: adds to the ground height, so a course is their sum and the order a script
-#: lists them in changes nothing.
-TERRAIN_FEATURE_KINDS = ("bump", "step", "slope")
+#: The things a course is made of. Bumps, steps and slopes are each a
+#: function of position that adds to the ground height, so a course is their
+#: sum and the order a script lists them in changes nothing. A platform and a
+#: rock patch (ADR-745) stand on the steps and slopes under them, and only a
+#: box course builds them.
+TERRAIN_FEATURE_KINDS = ("bump", "step", "slope", "platform", "rock")
+
+#: The kinds only ``form="boxes"`` builds (ADR-745): a platform is a block
+#: with walls on every side, a rock patch turned boxes, neither a sum of
+#: heights a heightfield samples.
+TERRAIN_BOX_ONLY_KINDS = ("platform", "rock")
+
+#: How far a box course's ground runs on past its extent (ADR-745): the
+#: segments' boxes run this far beyond it across y, and the first and last
+#: segments' level this far beyond it along x, so a run off the course is
+#: flat ground at the level it left, not a fall to the plane. 50 m is a 12 s
+#: episode at 4 m/s in any direction, with room.
+TERRAIN_RUNOUT_MM = 50000.0
+
+#: A rock patch (ADR-745) is a 3 x 3 grid of cells over its square, each
+#: holding a stone unless the patch's own draw leaves it empty; a stone is a
+#: box tilted about x or about y by up to :data:`TERRAIN_ROCK_TILT_DEG`, so
+#: its walls and creases run along the axes, sized to its cell and buried so
+#: its peak stands up to ``height_mm`` above the ground. A patch is at most
+#: :data:`TERRAIN_ROCK_STONES` boxes.
+TERRAIN_ROCK_CELLS = 3
+TERRAIN_ROCK_STONES = TERRAIN_ROCK_CELLS * TERRAIN_ROCK_CELLS
+TERRAIN_ROCK_TILT_DEG = (10.0, 25.0)
+TERRAIN_ROCK_EMPTY = 0.3
 
 #: The grid spacing when a script does not choose one. A step is a one-cell
 #: ramp in a heightfield, so this is also how sharp a step is: 20 mm against a
@@ -3688,6 +3713,8 @@ def _terrain_feature(entry: Any, index: int, context: str) -> dict[str, Any]:
         "bump": {"kind", "x_mm", "y_mm", "radius_mm", "height_mm"},
         "step": {"kind", "x_mm", "height_mm"},
         "slope": {"kind", "from_x_mm", "to_x_mm", "grade_deg"},
+        "platform": {"kind", "x_mm", "y_mm", "length_mm", "width_mm", "height_mm"},
+        "rock": {"kind", "x_mm", "y_mm", "radius_mm", "height_mm"},
     }[str(kind)]
     extra = sorted(str(key) for key in entry if key not in expected)
     if extra:
@@ -3712,12 +3739,38 @@ def _terrain_feature(entry: Any, index: int, context: str) -> dict[str, Any]:
             ),
             observed={"height_mm": record["height_mm"]},
         )
-    if kind == "bump" and record["radius_mm"] <= 0.0:
+    if kind in ("bump", "rock") and record["radius_mm"] <= 0.0:
         raise DynamicsError(
-            f"{where} (bump) has radius {record['radius_mm']:g} mm.",
+            f"{where} ({kind}) has radius {record['radius_mm']:g} mm.",
             reason="malformed_terrain",
-            correction="A bump's radius is positive.",
+            correction=f"A {kind}'s radius is positive.",
             observed={"radius_mm": record["radius_mm"]},
+        )
+    if kind in TERRAIN_BOX_ONLY_KINDS and record["height_mm"] <= 0.0:
+        raise DynamicsError(
+            f"{where} ({kind}) has height {record['height_mm']:g} mm.",
+            reason="malformed_terrain",
+            correction=f"A {kind} stands up from the ground: give it a positive height.",
+            observed={"height_mm": record["height_mm"]},
+        )
+    if kind == "platform" and min(record["length_mm"], record["width_mm"]) <= 0.0:
+        raise DynamicsError(
+            f"{where} (platform) is {record['length_mm']:g} x {record['width_mm']:g} mm.",
+            reason="malformed_terrain",
+            correction="A platform's length_mm (along x) and width_mm (along y) are positive.",
+            observed={"length_mm": record["length_mm"], "width_mm": record["width_mm"]},
+        )
+    if kind == "rock" and record["height_mm"] > record["radius_mm"] / 4.0:
+        raise DynamicsError(
+            f"{where} (rock) stands {record['height_mm']:g} mm on a "
+            f"{record['radius_mm']:g} mm radius.",
+            reason="terrain_rock_too_tall",
+            correction=(
+                "A rock patch's stones are sized to its cells, so a patch is at "
+                "most a quarter of its radius high: widen it, or build the "
+                "obstacle from a platform."
+            ),
+            observed={"height_mm": record["height_mm"], "radius_mm": record["radius_mm"]},
         )
     if kind == "slope":
         if not record["from_x_mm"] < record["to_x_mm"]:
@@ -3760,7 +3813,7 @@ def terrain_height_mm(features: Sequence[Mapping[str, Any]], x_mm: float, y_mm: 
         elif kind == "slope":
             run = min(max(x_mm, feature["from_x_mm"]), feature["to_x_mm"]) - feature["from_x_mm"]
             height += run * math.tan(math.radians(feature["grade_deg"]))
-        else:
+        elif kind == "bump":
             distance = math.hypot(x_mm - feature["x_mm"], y_mm - feature["y_mm"])
             if distance < feature["radius_mm"]:
                 height += feature["height_mm"] * 0.5 * (
@@ -3770,10 +3823,11 @@ def terrain_height_mm(features: Sequence[Mapping[str, Any]], x_mm: float, y_mm: 
 
 
 def _terrain_profile_mm(features: Sequence[Mapping[str, Any]], x_mm: float) -> float:
-    """The steps' and slopes' height at ``x_mm``: a course without its bumps."""
+    """The steps' and slopes' height at ``x_mm``: a course without its bumps,
+    platforms and rocks."""
 
     return terrain_height_mm(
-        [feature for feature in features if feature["kind"] != "bump"], x_mm, 0.0
+        [feature for feature in features if feature["kind"] in ("step", "slope")], x_mm, 0.0
     )
 
 
@@ -3799,16 +3853,27 @@ def terrain_boxes(
     stands ``height_mm`` above them there, one record of ``x_mm``,
     ``y_mm``, ``top_mm`` (the cap's peak) and ``radius_mm`` (the sphere's,
     ``(r**2 + h**2) / (2 h)``). A bump taller than its radius would be more
-    than a hemisphere, overhanging its own foot, and is refused. Returns
-    ``boxes``, ``domes``, ``lowest_mm`` and ``highest_mm``.
+    than a hemisphere, overhanging its own foot, and is refused.
+
+    ADR-745: the segments' boxes run :data:`TERRAIN_RUNOUT_MM` past the
+    extent across y, and the first and last level that far past it along x
+    (stretched if flat, a block of their own if not), so the ground has no
+    edge an episode reaches. A **platform** is a ``block`` of its length and
+    width standing ``height_mm`` over the steps and slopes under its centre;
+    a **rock** patch is its ``stone`` records (:func:`terrain_rock_stones`),
+    each a ``centre_mm``, a ``wxyz`` ``quat``, ``half_mm`` and its peak,
+    ``top_mm``, on flat ground. Returns ``boxes``, ``domes``, ``lowest_mm``
+    and ``highest_mm``.
     """
 
     x0, x1 = (float(value) for value in x_range_mm)
     y0, y1 = (float(value) for value in y_range_mm)
     cuts = {x0, x1}
     for feature in features:
+        if feature["kind"] not in ("step", "slope"):
+            continue
         for key in ("x_mm",) if feature["kind"] == "step" else ("from_x_mm", "to_x_mm"):
-            if feature["kind"] != "bump" and x0 < feature[key] < x1:
+            if x0 < feature[key] < x1:
                 cuts.add(float(feature[key]))
     edges = sorted(cuts)
     segments = []
@@ -3848,12 +3913,36 @@ def terrain_boxes(
                       "y_range_mm": [float(v) for v in ys],
                       "top_mm": [float(v) for v in tops]})
 
+    segments = _terrain_runout(segments, x0, x1)
     for a, b, za, zb in segments:
         low = min(za, zb)
         if low > lowest + TERRAIN_FLAT_MM:
-            box("block", (a, b), (y0, y1), (low, low))
+            box("block", (a, b), (y0 - TERRAIN_RUNOUT_MM, y1 + TERRAIN_RUNOUT_MM), (low, low))
         if abs(zb - za) > TERRAIN_FLAT_MM:
-            box("ramp", (a, b), (y0, y1), (za, zb))
+            box("ramp", (a, b), (y0 - TERRAIN_RUNOUT_MM, y1 + TERRAIN_RUNOUT_MM), (za, zb))
+    for feature in features:
+        if feature["kind"] == "platform":
+            top = _terrain_profile_mm(features, feature["x_mm"]) + feature["height_mm"]
+            box("block", (feature["x_mm"] - feature["length_mm"] / 2.0,
+                          feature["x_mm"] + feature["length_mm"] / 2.0),
+                (feature["y_mm"] - feature["width_mm"] / 2.0,
+                 feature["y_mm"] + feature["width_mm"] / 2.0), (top, top))
+        elif feature["kind"] == "rock":
+            reach = (feature["x_mm"] - feature["radius_mm"], feature["x_mm"] + feature["radius_mm"])
+            levels = {round(_terrain_profile_mm(features, x), 6) for x in reach}
+            if len(levels) > 1 or any(
+                    reach[0] < edge < reach[1] for edge in cuts if edge not in (x0, x1)):
+                raise DynamicsError(
+                    f"{context} puts a rock patch at x {feature['x_mm']:g} mm across a "
+                    "step or a slope.",
+                    reason="terrain_rock_off_flat",
+                    correction=(
+                        "A rock patch lies on flat ground: move it onto a flat run "
+                        "at least its radius from any step or slope."
+                    ),
+                    observed={"x_mm": feature["x_mm"], "radius_mm": feature["radius_mm"]},
+                )
+            boxes.extend(terrain_rock_stones(feature, _terrain_profile_mm(features, feature["x_mm"])))
     domes: list[dict[str, Any]] = []
     for feature in features:
         if feature["kind"] != "bump":
@@ -3885,9 +3974,101 @@ def terrain_boxes(
             "top_mm": _terrain_profile_mm(features, feature["x_mm"]) + rise,
             "radius_mm": (foot * foot + rise * rise) / (2.0 * rise),
         })
-    highest = max([lowest, *(max(record["top_mm"]) for record in boxes),
+    highest = max([lowest, *(_terrain_record_peak_mm(record) for record in boxes),
                    *(record["top_mm"] for record in domes)])
     return {"boxes": boxes, "domes": domes, "lowest_mm": lowest, "highest_mm": highest}
+
+
+def _terrain_runout(segments: Sequence[tuple[float, float, float, float]],
+                    x0: float, x1: float) -> list[tuple[float, float, float, float]]:
+    """A course's segments with their run-outs (ADR-745): the first and last
+    level carried :data:`TERRAIN_RUNOUT_MM` past the extent along x."""
+
+    out = list(segments)
+    a, b, za, zb = out[0]
+    if abs(zb - za) <= TERRAIN_FLAT_MM:
+        out[0] = (x0 - TERRAIN_RUNOUT_MM, b, za, zb)
+    else:
+        out.insert(0, (x0 - TERRAIN_RUNOUT_MM, x0, za, za))
+    a, b, za, zb = out[-1]
+    if abs(zb - za) <= TERRAIN_FLAT_MM:
+        out[-1] = (a, x1 + TERRAIN_RUNOUT_MM, za, zb)
+    else:
+        out.append((x1, x1 + TERRAIN_RUNOUT_MM, zb, zb))
+    return out
+
+
+def terrain_rock_stones(rock: Mapping[str, Any], ground_mm: float) -> list[dict[str, Any]]:
+    """A rock patch's stones (ADR-745), pure and seeded by the patch itself:
+    ``random.Random('cadex-rock:<x>:<y>:<radius>:<height>')`` over the
+    :data:`TERRAIN_ROCK_CELLS`-square grid of cells across its ``2 r``
+    square, row by row from -x -y. Each cell but the centre is left empty
+    with probability :data:`TERRAIN_ROCK_EMPTY`; a stone is tilted about x
+    or y (``choice``) by ``uniform(TERRAIN_ROCK_TILT_DEG)``, signed by
+    ``choice``, ``height_mm`` half-high, its plan ``uniform(0.55, 0.95)``
+    of its half-cell along the turned axis and then across it, set off in
+    its cell by ``uniform(-1, 1)`` of its room in x then y, and buried so
+    its peak stands ``uniform(0.4, 1.0) * height_mm`` over ``ground_mm``."""
+
+    import random
+
+    x, y, radius, height = (float(rock[key]) for key in ("x_mm", "y_mm", "radius_mm", "height_mm"))
+    rng = random.Random(f"cadex-rock:{x!r}:{y!r}:{radius!r}:{height!r}")
+    cell = 2.0 * radius / TERRAIN_ROCK_CELLS
+    room = cell / 2.0
+    stones: list[dict[str, Any]] = []
+    for i in range(TERRAIN_ROCK_CELLS):
+        for j in range(TERRAIN_ROCK_CELLS):
+            centre_cell = (i, j) == (TERRAIN_ROCK_CELLS // 2, TERRAIN_ROCK_CELLS // 2)
+            if not centre_cell and rng.random() < TERRAIN_ROCK_EMPTY:
+                continue
+            about = rng.choice(("x", "y"))
+            tilt = math.radians(rng.uniform(*TERRAIN_ROCK_TILT_DEG)) * rng.choice((-1.0, 1.0))
+            sine, cosine = abs(math.sin(tilt)), math.cos(tilt)
+            turned = (rng.uniform(0.55, 0.95) * room - height * sine) / cosine
+            across = rng.uniform(0.55, 0.95) * room
+            reach = turned * cosine + height * sine
+            rise = turned * sine + height * cosine
+            if about == "y":
+                half, plan = [turned, across, height], (reach, across)
+                quat = [math.cos(tilt / 2.0), 0.0, math.sin(tilt / 2.0), 0.0]
+            else:
+                half, plan = [across, turned, height], (across, reach)
+                quat = [math.cos(tilt / 2.0), math.sin(tilt / 2.0), 0.0, 0.0]
+            cx = x - radius + (i + 0.5) * cell + rng.uniform(-1.0, 1.0) * (room - plan[0])
+            cy = y - radius + (j + 0.5) * cell + rng.uniform(-1.0, 1.0) * (room - plan[1])
+            peak = float(ground_mm) + rng.uniform(0.4, 1.0) * height
+            stones.append({"shape": "stone", "centre_mm": [cx, cy, peak - rise],
+                           "quat": quat, "half_mm": half, "top_mm": peak})
+    return stones
+
+
+def _terrain_record_peak_mm(record: Mapping[str, Any]) -> float:
+    return float(record["top_mm"]) if record["shape"] == "stone" else max(record["top_mm"])
+
+
+def terrain_turned_box_top_mm(centre_mm: Sequence[float], quat_wxyz: Sequence[float],
+                              half_mm: Sequence[float], x_mm: float, y_mm: float) -> float | None:
+    """The highest point of a turned box on the vertical line at ``(x, y)``,
+    or ``None`` off it (ADR-745): the line, in the box's own frame, clipped
+    to each of its three slabs."""
+
+    w, qx, qy, qz = (float(value) for value in quat_wxyz)
+    # The box's axes in the world: the rotation's columns.
+    axes = ((1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy + w * qz), 2 * (qx * qz - w * qy)),
+            (2 * (qx * qy - w * qz), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz + w * qx)),
+            (2 * (qx * qz + w * qy), 2 * (qy * qz - w * qx), 1 - 2 * (qx * qx + qy * qy)))
+    dx, dy, cz = x_mm - float(centre_mm[0]), y_mm - float(centre_mm[1]), float(centre_mm[2])
+    low, high = -math.inf, math.inf
+    for axis, half in zip(axes, half_mm):
+        offset, slope = axis[0] * dx + axis[1] * dy - axis[2] * cz, axis[2]
+        if abs(slope) < 1e-12:
+            if abs(offset) > half:
+                return None
+            continue
+        a, b = (-half - offset) / slope, (half - offset) / slope
+        low, high = max(low, min(a, b)), min(high, max(a, b))
+    return high if low <= high else None
 
 
 def terrain_dome_top_mm(dome: Mapping[str, Any], x_mm: float, y_mm: float) -> float | None:
@@ -3907,6 +4088,12 @@ def terrain_box_ground_mm(terrain: Mapping[str, Any], x_mm: float, y_mm: float) 
 
     ground = float(terrain["lowest_mm"])
     for record in terrain["boxes"]:
+        if record["shape"] == "stone":
+            top = terrain_turned_box_top_mm(record["centre_mm"], record["quat"],
+                                            record["half_mm"], x_mm, y_mm)
+            if top is not None:
+                ground = max(ground, top)
+            continue
         (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
         if xa <= x_mm <= xb and ya <= y_mm <= yb:
             za, zb = record["top_mm"]
@@ -3936,7 +4123,23 @@ TERRAIN_RANDOM_DEFAULTS: dict[str, Any] = {
     "bump_mm": None,
     "bump_radius_mm": [100.0, 200.0],
     "bumps": 6,
+    "platform_mm": None,
+    "platform_size_mm": [600.0, 1200.0],
+    "platforms": 1,
+    "rock_mm": None,
+    "rock_radius_mm": [250.0, 400.0],
+    "rocks": 1,
 }
+
+#: How many places :func:`terrain_random_features` tries for one platform or
+#: rock patch before it leaves it out (ADR-745): a place must keep clear of
+#: the bumps and of the platforms and patches already placed, and a patch
+#: must lie on flat ground.
+TERRAIN_RANDOM_PLACE_TRIES = 8
+
+#: The gap a drawn platform or rock patch keeps from every bump, platform
+#: and patch (ADR-745).
+TERRAIN_RANDOM_GAP_MM = 100.0
 
 #: The most courses one pool may hold. The pool travels in the task bundle,
 #: each course as its features, so this bounds the bundle: about 2.5 KB a
@@ -3964,8 +4167,15 @@ TERRAIN_RANDOM_ALGORITHM = (
     "that leaves the extent), each signed down while the course is above "
     "z = 0, up while below, by choice() at it; then randint(1, bumps) bumps "
     "of uniform(bump_mm) and uniform(bump_radius_mm), centred at "
-    "uniform(clear_mm + r/2, x1 - r/2), uniform(y0 + r/2, y1 - r/2). Course "
-    "0 is the one the model carries"
+    "uniform(clear_mm + r/2, x1 - r/2), uniform(y0 + r/2, y1 - r/2); then "
+    "(ADR-745), if platform_mm, randint(1, platforms) platforms of "
+    "uniform(platform_mm) high, uniform(platform_size_mm) long then wide "
+    "(at most the extent's width), and, if rock_mm, randint(1, rocks) rock "
+    "patches of uniform(rock_mm) high on uniform(rock_radius_mm), each tried "
+    "at up to 8 centres uniform(clear_mm + half, x1 - half), uniform(y0 + "
+    "half, y1 - half) and kept at the first whose square keeps 100 mm clear "
+    "of every bump's, platform's and patch's (and, a patch, lies on flat "
+    "steps and slopes), else left out. Course 0 is the one the model carries"
 )
 
 
@@ -4010,7 +4220,8 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
         )
     merged = {**TERRAIN_RANDOM_DEFAULTS, **dict(spec)}
     for key, low, high in (("seed", 0, 2**31 - 1), ("courses", 1, MAXIMUM_TERRAIN_COURSES),
-                           ("bumps", 1, MAXIMUM_TERRAIN_FEATURES // 2)):
+                           ("bumps", 1, MAXIMUM_TERRAIN_FEATURES // 2),
+                           ("platforms", 1, 8), ("rocks", 1, 8)):
         value = merged[key]
         if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
             raise DynamicsError(
@@ -4022,7 +4233,8 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
                 observed={key: repr(value)},
             )
     record: dict[str, Any] = {"seed": merged["seed"], "courses": merged["courses"],
-                              "bumps": merged["bumps"]}
+                              "bumps": merged["bumps"], "platforms": merged["platforms"],
+                              "rocks": merged["rocks"]}
     record["clear_mm"] = _terrain_number(merged, "clear_mm", where)
     if record["clear_mm"] < TERRAIN_MINIMUM_RUN_MM:
         raise DynamicsError(
@@ -4034,7 +4246,7 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
             ),
             observed={"clear_mm": record["clear_mm"]},
         )
-    for key in ("run_mm", "slope_mm", "bump_radius_mm"):
+    for key in ("run_mm", "slope_mm", "bump_radius_mm", "platform_size_mm", "rock_radius_mm"):
         record[key] = _terrain_random_range(merged, key, where)
     if record["run_mm"][0] < TERRAIN_MINIMUM_RUN_MM:
         raise DynamicsError(
@@ -4048,7 +4260,9 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
         )
     for key, bound in (("step_mm", TERRAIN_MAXIMUM_HEIGHT_MM),
                        ("grade_deg", TERRAIN_MAXIMUM_GRADE_DEG),
-                       ("bump_mm", TERRAIN_MAXIMUM_HEIGHT_MM)):
+                       ("bump_mm", TERRAIN_MAXIMUM_HEIGHT_MM),
+                       ("platform_mm", TERRAIN_MAXIMUM_HEIGHT_MM),
+                       ("rock_mm", TERRAIN_MAXIMUM_HEIGHT_MM)):
         if merged[key] is None:
             record[key] = None
             continue
@@ -4071,11 +4285,23 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
             ),
             observed={"bump_mm": record["bump_mm"], "bump_radius_mm": record["bump_radius_mm"]},
         )
-    if record["step_mm"] is None and record["grade_deg"] is None and record["bump_mm"] is None:
+    if record["rock_mm"] is not None and record["rock_mm"][1] > record["rock_radius_mm"][0] / 4.0:
         raise DynamicsError(
-            f"{where} draws nothing: it gives none of step_mm, grade_deg and bump_mm.",
+            f"{where} draws rock patches up to {record['rock_mm'][1]:g} mm high on radii "
+            f"from {record['rock_radius_mm'][0]:g} mm.",
+            reason="terrain_rock_too_tall",
+            correction=(
+                "A rock patch is at most a quarter of its radius high (ADR-745): "
+                "keep rock_mm's top at most a quarter of rock_radius_mm's bottom."
+            ),
+            observed={"rock_mm": record["rock_mm"], "rock_radius_mm": record["rock_radius_mm"]},
+        )
+    drawn = ("step_mm", "grade_deg", "bump_mm", "platform_mm", "rock_mm")
+    if all(record[key] is None for key in drawn):
+        raise DynamicsError(
+            f"{where} draws nothing: it gives none of {', '.join(drawn)}.",
             reason="malformed_terrain",
-            correction="Give at least one of step_mm, grade_deg and bump_mm.",
+            correction=f"Give at least one of {', '.join(drawn)}.",
         )
     return record
 
@@ -4104,7 +4330,10 @@ def terrain_random_features(
              if spec[key] is not None]
     features: list[dict[str, Any]] = []
     level, x = 0.0, float(spec["clear_mm"])
-    limit = MAXIMUM_TERRAIN_FEATURES - int(spec["bumps"]) if spec["bump_mm"] else MAXIMUM_TERRAIN_FEATURES
+    limit = MAXIMUM_TERRAIN_FEATURES - sum(
+        int(spec.get(count) or 0) for count, key in
+        (("bumps", "bump_mm"), ("platforms", "platform_mm"), ("rocks", "rock_mm"))
+        if spec.get(key) is not None)
 
     def signed(magnitude: float) -> float:
         if level > TERRAIN_FLAT_MM:
@@ -4144,6 +4373,47 @@ def terrain_random_features(
                 "radius_mm": radius,
                 "height_mm": height,
             })
+    # ADR-745: platforms, then rock patches, each kept clear of what is placed.
+    taken = [(f["x_mm"], f["y_mm"], f["radius_mm"], f["radius_mm"])
+             for f in features if f["kind"] == "bump"]
+    cuts = [edge for f in features if f["kind"] in ("step", "slope")
+            for edge in ((f["x_mm"],) if f["kind"] == "step" else (f["from_x_mm"], f["to_x_mm"]))]
+
+    def place(half_x: float, half_y: float, flat: bool) -> tuple[float, float] | None:
+        low_x = float(spec["clear_mm"]) + half_x
+        for _ in range(TERRAIN_RANDOM_PLACE_TRIES):
+            cx = rng.uniform(low_x, max(low_x, x1 - half_x))
+            cy = rng.uniform(y0 + half_y, max(y0 + half_y, y1 - half_y))
+            if any(abs(cx - ox) < half_x + hx + TERRAIN_RANDOM_GAP_MM
+                   and abs(cy - oy) < half_y + hy + TERRAIN_RANDOM_GAP_MM
+                   for ox, oy, hx, hy in taken):
+                continue
+            if flat and (any(cx - half_x - TERRAIN_RANDOM_GAP_MM < edge
+                                 < cx + half_x + TERRAIN_RANDOM_GAP_MM for edge in cuts)
+                         or abs(_terrain_profile_mm(features, cx - half_x)
+                                - _terrain_profile_mm(features, cx + half_x)) > 1e-6):
+                continue
+            taken.append((cx, cy, half_x, half_y))
+            return cx, cy
+        return None
+
+    if spec.get("platform_mm") is not None:
+        for _ in range(rng.randint(1, int(spec["platforms"]))):
+            height = rng.uniform(*spec["platform_mm"])
+            length = rng.uniform(*spec["platform_size_mm"])
+            width = min(rng.uniform(*spec["platform_size_mm"]), y1 - y0)
+            at = place(length / 2.0, width / 2.0, False)
+            if at is not None:
+                features.append({"kind": "platform", "x_mm": at[0], "y_mm": at[1],
+                                 "length_mm": length, "width_mm": width, "height_mm": height})
+    if spec.get("rock_mm") is not None:
+        for _ in range(rng.randint(1, int(spec["rocks"]))):
+            height = rng.uniform(*spec["rock_mm"])
+            radius = rng.uniform(*spec["rock_radius_mm"])
+            at = place(radius, radius, True)
+            if at is not None:
+                features.append({"kind": "rock", "x_mm": at[0], "y_mm": at[1],
+                                 "radius_mm": radius, "height_mm": height})
     return features
 
 
@@ -4165,6 +4435,12 @@ def terrain_box_geoms(
     lowest = float(lowest_mm)
     pos, quat, size = [], [], []
     for record in boxes:
+        if record["shape"] == "stone":
+            # ADR-745: a rock patch's stone stands as drawn.
+            pos.append(vector_m(record["centre_mm"]))
+            quat.append([float(value) for value in record["quat"]])
+            size.append(vector_m(record["half_mm"]))
+            continue
         (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
         za, zb = record["top_mm"]
         if record["shape"] == "block":
@@ -4693,6 +4969,17 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             observed={"cells": nrow * ncol, "maximum": MAXIMUM_TERRAIN_CELLS},
         )
     features = _terrain_features(terrain, context)
+    boxed = sorted({feature["kind"] for feature in features} & set(TERRAIN_BOX_ONLY_KINDS))
+    if boxed:
+        raise DynamicsError(
+            f"{context} puts {' and '.join(boxed)} features on a heightfield.",
+            reason="terrain_kind_needs_boxes",
+            correction=(
+                "Platforms and rock patches are boxes standing on the ground "
+                "(ADR-745): give form='boxes'."
+            ),
+            observed={"kinds": boxed},
+        )
     heights = [
         terrain_height_mm(features, x0 + column * cell, y0 + row * cell)
         for row in range(nrow)

@@ -155,7 +155,7 @@ The philosophy is **remove more than we add** (`docs/VISION.md`).
 2. **The suites hold contracts, not coverage (ADR-725).** They pin the
    process boundaries, the protocol, the tool surface, the HTTP API, the
    licence rule and the read-only dashboard, and each runs in under a
-   minute (engine: 157 passed, 3 skipped, ~34 s; CLI: 52 passed, ~21 s, on
+   minute (engine: 157 passed, 3 skipped, ~34 s; CLI: 53 passed, ~38 s, on
    2026-10-16). Add a test only for a contract, or for a regression that
    actually happened; verify behaviour by running the thing. Live docs cite
    only surviving tests; `docs/DECISIONS.md` and `docs/probes/` are history

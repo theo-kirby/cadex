@@ -13,15 +13,24 @@ builds one, a turned rock, and a mogul built as the engine builds one, a
 buried sphere (ADR-744) -- is drawn as one mesh whose height, read off its
 own triangles, is the highest box or dome top over each point, and which ends
 at the plane the mat lies on.
+
+And what is drawn is what the paws touch (ADR-745): on 10 held-out courses
+the engine draws -- steps, slopes, moguls, platforms and rock patches, with
+their run-outs -- the drawn height and MuJoCo's own ray onto the placed
+course agree within 5 mm at 1,000 points, on the course, on its features and
+past its extent.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import math
 import random
 
 import pytest
+
+from conftest import SOURCE_MODULE_DIR
 
 from cadex_cli.browser import HeadlessBrowser
 from cadex_cli.review_server import serve_projects, terrain_block
@@ -196,3 +205,102 @@ def test_a_box_course_is_one_ground_at_its_boxes_height(app, small_browser) -> N
     rim = [(x, y) for x in (x0, x1) for y in (y0, (y0 + y1) / 2, y1)] + [((x0 + x1) / 2, y) for y in (y0, y1)]
     assert page.evaluate("(function (p) { var v = window.cadexReview.viewer(); "
                          "return p.map(function (q) { return v.groundAt(q[0], q[1]); }); })(%s)" % json.dumps(rim)) == [0.0] * len(rim)
+
+
+# A held-out pool with every kind the engine draws (ADR-745): long flat runs, so rock patches find
+# flat ground, moguls up to 80 mm (C3), and platforms 10 to 50 cm high (O4's ladder).
+EVERY_KIND = {
+    "form": "boxes", "x_range_mm": [-1000.0, 14000.0], "y_range_mm": [-2000.0, 2000.0],
+    "random": {"seed": 7, "courses": 8, "run_mm": [1200.0, 2000.0], "step_mm": [50.0, 100.0],
+               "grade_deg": [5.0, 15.0], "slope_mm": [400.0, 1000.0], "bump_mm": [30.0, 80.0],
+               "bump_radius_mm": [250.0, 400.0], "bumps": 3, "platform_mm": [100.0, 500.0], "platforms": 2,
+               "rock_mm": [30.0, 60.0], "rock_radius_mm": [250.0, 400.0], "rocks": 2}}
+
+
+def _engine():
+    # The engine's own course builder, read from source: the claim is that the two halves agree.
+    spec = importlib.util.spec_from_file_location("cadex_dynamics_under_test", SOURCE_MODULE_DIR / "CadexDynamics.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _walls(block: dict) -> tuple[list[float], list[float]]:
+    """Where a served course's vertical faces stand, along x and along y."""
+    xs, ys = [], []
+    for box in block["boxes"]:
+        qx, qy, qz, qw = box["rotation_xyzw"]
+        axes = [[1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy + qz * qw), 2 * (qx * qz - qy * qw)],
+                [2 * (qx * qy - qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz + qx * qw)],
+                [2 * (qx * qz + qy * qw), 2 * (qy * qz - qx * qw), 1 - 2 * (qx * qx + qy * qy)]]
+        for axis, half in zip(axes, box["half_mm"]):
+            for k, out in ((0, xs), (1, ys)):
+                if abs(abs(axis[k]) - 1.0) < 1e-9:
+                    out += [box["centre_mm"][k] - half, box["centre_mm"][k] + half]
+    return xs, ys
+
+
+@needs_browser
+def test_the_drawn_ground_is_the_ground_physics_stands_on(app, small_browser) -> None:
+    mujoco = pytest.importorskip("mujoco")
+    import numpy as np
+
+    engine = _engine()
+    descriptor = engine.terrain_grid(EVERY_KIND)["descriptor"]
+    spec = mujoco.MjSpec()
+    engine._environment_box_course(mujoco, spec, descriptor)
+    model = spec.compile()
+    data = mujoco.MjData(model)
+    page = _open(small_browser, app.url + "p/biped/")
+    assert _model_state(page) == "loaded"
+    page.evaluate("window.cadexReview.setLook({occlusion: false, detail: false})")
+    rng, kinds, worst, compared, walls = random.Random(745), set(), (0.0, None), 0, 0
+    (x0, x1), (y0, y1) = EVERY_KIND["x_range_mm"], EVERY_KIND["y_range_mm"]
+    for seed in range(10):
+        course = engine.terrain_evaluation_course(descriptor, seed)
+        kinds |= {feature["kind"] for feature in course["features"]}
+        engine.place_terrain_course(model, course)
+        mujoco.mj_forward(model, data)
+        block = terrain_block(json.loads(json.dumps(engine.terrain_drawing(course))))
+        assert page.evaluate("window.cadexReview.viewer().setTerrain(%s)" % json.dumps(block)) > 0
+        # Half the points anywhere, 3 m past the extent included (the run-out); half on a feature.
+        placed = [f for f in course["features"] if f["kind"] in ("bump", "platform", "rock")]
+        points = [(rng.uniform(x0 - 3000, x1 + 3000), rng.uniform(y0 - 3000, y1 + 3000)) for _ in range(50)]
+        for _ in range(50):
+            f = rng.choice(placed)
+            reach = (f["length_mm"] / 2 + 50, f["width_mm"] / 2 + 50) if f["kind"] == "platform" else (f["radius_mm"],) * 2
+            points.append((f["x_mm"] + rng.uniform(-1, 1) * reach[0], f["y_mm"] + rng.uniform(-1, 1) * reach[1]))
+        drawn = page.evaluate("(function (p) { var v = window.cadexReview.viewer(); "
+                              "return p.map(function (q) { return v.groundAt(q[0], q[1]); }); })(%s)" % json.dumps(points))
+        # Off the surface the mat is the drawn ground: where a course ends at its plane, the plane.
+        mat = page.evaluate("window.cadexReview.viewer().stats().floor.z_mm")
+        drawn = [mat if height is None else height for height in drawn]
+        wall_x, wall_y = _walls(block)
+        def physics(x: float, y: float) -> float:
+            geom = np.zeros(1, np.int32)
+            distance = mujoco.mj_ray(model, data, np.array([x / 1000, y / 1000, 5.0]),
+                                     np.array([0.0, 0.0, -1.0]), None, 1, -1, geom)
+            assert distance > 0, (seed, x, y)
+            return (5.0 - distance) * 1000.0
+
+        for (x, y), height in zip(points, drawn):
+            error = abs(height - physics(x, y))
+            # A point within a millimetre of a vertical face is on the wall, which the drawing
+            # gives a 1 mm run: anywhere from the foot of the wall to its top is the ground there.
+            if min(abs(x - w) for w in wall_x) < 1.0 or min(abs(y - w) for w in wall_y) < 1.0:
+                walls += 1
+                side = [physics(x + dx, y + dy) for dx, dy in ((0, 0), (-1, 0), (1, 0), (0, -1), (0, 1))]
+                error = max(0.0, min(side) - height, height - max(side))
+            compared += 1
+            if error > worst[0]:
+                worst = (error, (seed, x, y, height))
+        # No physics edge (G2): 3 to 40 m off either side, and past either end, the ground is the
+        # level the course has there, never a fall to its plane.
+        profile = lambda x: engine._terrain_profile_mm(course["features"], min(max(x, x0), x1))
+        for _ in range(10):
+            x, off = rng.uniform(x0 - 40000, x1 + 40000), rng.uniform(3000, 40000)
+            for y in (y0 - off, y1 + off):
+                assert physics(x, y) == pytest.approx(profile(x), abs=1e-6), (seed, x, y)
+    assert kinds == {"step", "slope", "bump", "platform", "rock"}, kinds
+    assert compared == 1000 and walls <= 50, (compared, walls)
+    assert worst[0] <= 5.0, worst

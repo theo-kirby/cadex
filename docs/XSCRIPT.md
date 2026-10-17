@@ -97,14 +97,25 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   stably as the plane, where the heightfield throws a driven rig to
   non-finite. Steps and slopes become flat blocks and turned ramps, a bump a
   buried sphere whose cap is the bump (ADR-744; no dips, and no taller than
-  its radius), there is no
-  `cell_mm`, beyond the extent the plane goes on, and a step down off a
-  slope's high end is refused (`terrain_step_off_slope`). A box course may be
+  its radius), there is no `cell_mm`, and a step down off a slope's high
+  end is refused (`terrain_step_off_slope`). Two kinds only a box course
+  builds (ADR-745; a heightfield refuses them, `terrain_kind_needs_boxes`):
+  `platform` (`x_mm`, `y_mm`, `length_mm` along x, `width_mm`, `height_mm`),
+  a block with a wall on every side standing `height_mm` over the steps and
+  slopes at its centre, the box to jump onto; and `rock` (`x_mm`, `y_mm`,
+  `radius_mm`, `height_mm` at most a quarter of the radius), a patch of up
+  to nine tilted stones on flat ground, seeded by the patch itself. Past the
+  extent the ground **runs out** (ADR-745): every level runs 50 m on across
+  y, and the first and last 50 m on along x, so leaving a course is flat
+  ground, not a fall to the plane. A box course may be
   **drawn instead of listed** (ADR-717): `"random": {"seed", "courses",
   "step_mm", "grade_deg", "bump_mm", ...}` in place of `features` draws
   steps, slopes and bumps from magnitude ranges, past a flat `clear_mm`
   (default 500) with a flat `run_mm` before each, each signed back towards
-  z = 0. Course 0 is the one the model carries; the bundle's `terrain.pool`
+  z = 0; `platform_mm` (with `platform_size_mm`, `platforms`) and `rock_mm`
+  (with `rock_radius_mm`, `rocks`) add platforms and rock patches, each
+  kept 100 mm clear of the bumps and of each other, a patch only on flat
+  ground (ADR-745). Course 0 is the one the model carries; the bundle's `terrain.pool`
   holds all `courses` (default 32, at most 64) as features, the model has a
   box geom per box of the fullest, and the trainer gives each episode a
   pooled course of its own. `"collides_with": [group, ...]` (ADR-739) makes
