@@ -43698,3 +43698,64 @@ video frame without a ground, so its 12 s, 121-frame video exceeds
 `video.RENDER_SECONDS` (300 s) with or without one; that bound is the
 film's, not the ground's, and is unchanged. G3's MJX probe of the new kinds
 is next.
+
+## ADR-747 — A course of moguls alone trains; G3's probe of the new ground (2026-10-16)
+
+**Context.** orun8's G3 asks that MJX steps every ADR-744/745 kind on the cat
+without going non-finite, that stock MuJoCo and MJX agree on one frozen
+policy's zero-shot tip rate (ADR-741's comparison, whose stock side
+ADR-744 showed was taken on ramps stood flat), and that a course
+iteration's cost is measured against flat.
+
+**The probe** (`docs/probes/orun8/g3/`) composes courses onto existing
+exports with the engine's own builder (`terrain_grid`,
+`_environment_box_course`), one pool of 16 per kind: mild (terrain-cat's
+spec), moguls 40–80 mm, rock patches 30–60 mm, two platforms 450–500 mm,
+mixed (steps, slopes to 15°, moguls, platforms to 500 mm, rock) and a
+course 600 mm wide, so the cat leaves it onto the 50 m run-out within
+seconds.
+
+**A bug found on the way.** A pool drawn with moguls alone has no box
+slots. `terrain_pool` then built its box arrays as `(P, 0)` instead of
+`(P, 0, 15)`, and the trainer's height scan indexed past them on the first
+reset. The pool now keeps the slot axis for every box and dome array, and
+`training/test_terrain_pool.py` holds the shapes and the scan over a dome
+(it fails on the old code).
+
+**Evidence.** Finite: the 0f036864 cat under random and zero actions
+(256 environments, 500 steps, about 2,100–2,700 falls and resets a leg) and
+terrain-cat rough-c4's iteration-50 actor (256 × 200) have **zero
+non-finite events on every kind**, flat included. Frozen-policy tips in
+the first 200 steps, MJX against stock MuJoCo (`rollout_policy` on the same
+pooled courses, the ADR-744 rotation fix in place):
+
+| course | MJX (of 256) | stock (of 32) |
+| --- | --- | --- |
+| flat | 0.0% | — |
+| mild | 4.3% | 0.0% |
+| moguls | 0.0% | 0.0% |
+| rock | 0.4% | 0.0% |
+| platform 50 cm | 8.6% | 6.2% |
+| mixed | 44.1% | 50.0% |
+| run-out | 83.6% | 68.8% |
+
+Every pair agrees within two binomial standard errors of the 32-episode
+stock side (the widest, the run-out, by 1.8). ADR-741's 27% against 1 of 4
+is superseded: MJX is not seeing a different ground.
+
+**Cost.** The 0f036864 cat at 8192 environments, mean of iterations 1–4:
+flat 13.9 s, two platform slots 20.2 s (1.5×), seven dome slots 26.6 s
+(1.9×), 24 rock box slots 73.7 s (5.3×), mixed (21 box + 4 dome slots)
+76.3 s (5.5×). Cost is linear in pairs: 8 paw spheres × each slot, about
+0.31 s a pair, or 2.5 s a box slot. **The reason over 3×:** MJX has no
+broad phase for static geoms, so every slot costs every step whether a paw
+is near it or not, and ADR-741's cap cannot cull them because a strip's
+bounding sphere spans the course. A course stays under 3× flat with at most
+about 11 box slots, and a rock patch's up to nine stones is most of that
+budget. A per-environment window of the nearest slots is the fix if a
+course needs more.
+
+**A finding for C4.** On a feet-only course (ADR-739) the body meets the
+plane, not the boxes: in 3 of 16 stock episodes on the platform pool a
+tail link sat 480 mm and a shin 380 mm inside a 50 cm platform. A jump
+course has to let the legs and body meet a platform's walls.

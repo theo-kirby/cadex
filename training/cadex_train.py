@@ -1162,8 +1162,11 @@ def terrain_pool(np: Any, terrain: dict[str, Any]) -> dict[str, Any]:
         columns["dome_size"].append(
             [[(row[3] or TERRAIN_PARKED_HALF_MM) * scale, 0.0, 0.0] for row in rows])
     arrays = {key: np.asarray(value, dtype=np.float64) for key, value in columns.items()}
-    for key, width in (("dome_pos", 3), ("dome_size", 3), ("dome_scan", 4)):
-        arrays[key] = arrays[key].reshape(len(terrain["pool"]), dome_slots, width)
+    # A course of domes alone has no box slots: keep the slot axis (ADR-747).
+    for key, count, width in (("pos", slots, 3), ("quat", slots, 4), ("size", slots, 3),
+                              ("scan", slots, 15), ("dome_pos", dome_slots, 3),
+                              ("dome_size", dome_slots, 3), ("dome_scan", dome_slots, 4)):
+        arrays[key] = arrays[key].reshape(len(terrain["pool"]), count, width)
     arrays["rbound"] = np.linalg.norm(arrays["size"], axis=-1)
     arrays["aabb"] = np.concatenate([np.zeros_like(arrays["size"]), arrays["size"]], axis=-1)
     arrays["dome_rbound"] = arrays["dome_size"][..., 0]

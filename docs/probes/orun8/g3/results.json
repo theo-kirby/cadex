@@ -1,0 +1,452 @@
+{
+ "policy": "terrain-cat rough-c4 run.000050.cxpolicy (18d5657e, blind actor)",
+ "mjx_frozen_policy": [
+  {
+   "mode": "mjx",
+   "bundle": "orun7-cat r1-t3 flat bundle",
+   "actor": "run.000050.cxpolicy",
+   "envs": 256,
+   "steps": 200,
+   "compile_s": 92.2,
+   "env_steps_per_s": 3795,
+   "nonfinite_events": 0,
+   "terminated_episodes": 0,
+   "ended_episodes": 0,
+   "first_episode_tipped": 0,
+   "first_episode_tip_rate": 0.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "catc4/mild",
+   "actor": "run.000050.cxpolicy",
+   "envs": 256,
+   "steps": 200,
+   "compile_s": 100.0,
+   "env_steps_per_s": 2463,
+   "nonfinite_events": 0,
+   "terminated_episodes": 11,
+   "ended_episodes": 11,
+   "first_episode_tipped": 11,
+   "first_episode_tip_rate": 0.043,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "catc4/rock",
+   "actor": "run.000050.cxpolicy",
+   "envs": 256,
+   "steps": 200,
+   "compile_s": 91.3,
+   "env_steps_per_s": 2479,
+   "nonfinite_events": 0,
+   "terminated_episodes": 1,
+   "ended_episodes": 1,
+   "first_episode_tipped": 1,
+   "first_episode_tip_rate": 0.004,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "catc4/platform50",
+   "actor": "run.000050.cxpolicy",
+   "envs": 256,
+   "steps": 200,
+   "compile_s": 90.1,
+   "env_steps_per_s": 3281,
+   "nonfinite_events": 0,
+   "terminated_episodes": 22,
+   "ended_episodes": 22,
+   "first_episode_tipped": 22,
+   "first_episode_tip_rate": 0.086,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "catc4/mixed",
+   "actor": "run.000050.cxpolicy",
+   "envs": 256,
+   "steps": 200,
+   "compile_s": 91.8,
+   "env_steps_per_s": 2362,
+   "nonfinite_events": 0,
+   "terminated_episodes": 137,
+   "ended_episodes": 137,
+   "first_episode_tipped": 113,
+   "first_episode_tip_rate": 0.441,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "catc4/runout",
+   "actor": "run.000050.cxpolicy",
+   "envs": 256,
+   "steps": 200,
+   "compile_s": 91.9,
+   "env_steps_per_s": 2955,
+   "nonfinite_events": 0,
+   "terminated_episodes": 367,
+   "ended_episodes": 367,
+   "first_episode_tipped": 214,
+   "first_episode_tip_rate": 0.836,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "catc4/moguls",
+   "actor": "run.000050.cxpolicy",
+   "envs": 256,
+   "steps": 200,
+   "compile_s": 88.3,
+   "env_steps_per_s": 2908,
+   "nonfinite_events": 0,
+   "terminated_episodes": 0,
+   "ended_episodes": 0,
+   "first_episode_tipped": 0,
+   "first_episode_tip_rate": 0.0,
+   "final_state_finite": true
+  }
+ ],
+ "stock_frozen_policy": [
+  {
+   "mode": "stock",
+   "bundle": "catc4/mild",
+   "actor": "run.000050.cxpolicy",
+   "episodes": 32,
+   "horizon": 200,
+   "tipped": 0,
+   "tip_rate": 0.0,
+   "reasons": []
+  },
+  {
+   "mode": "stock",
+   "bundle": "catc4/moguls",
+   "actor": "run.000050.cxpolicy",
+   "episodes": 32,
+   "horizon": 200,
+   "tipped": 0,
+   "tip_rate": 0.0,
+   "reasons": []
+  },
+  {
+   "mode": "stock",
+   "bundle": "catc4/rock",
+   "actor": "run.000050.cxpolicy",
+   "episodes": 32,
+   "horizon": 200,
+   "tipped": 0,
+   "tip_rate": 0.0,
+   "reasons": []
+  },
+  {
+   "mode": "stock",
+   "bundle": "catc4/platform50",
+   "actor": "run.000050.cxpolicy",
+   "episodes": 32,
+   "horizon": 200,
+   "tipped": 2,
+   "tip_rate": 0.062,
+   "reasons": [
+    "tipped"
+   ]
+  },
+  {
+   "mode": "stock",
+   "bundle": "catc4/mixed",
+   "actor": "run.000050.cxpolicy",
+   "episodes": 32,
+   "horizon": 200,
+   "tipped": 16,
+   "tip_rate": 0.5,
+   "reasons": [
+    "collapsed",
+    "tipped"
+   ]
+  },
+  {
+   "mode": "stock",
+   "bundle": "catc4/runout",
+   "actor": "run.000050.cxpolicy",
+   "episodes": 32,
+   "horizon": 200,
+   "tipped": 22,
+   "tip_rate": 0.688,
+   "reasons": [
+    "collapsed",
+    "tipped"
+   ]
+  }
+ ],
+ "mjx_0f036864_random_and_zero": [
+  {
+   "mode": "mjx",
+   "bundle": "orun8-cat 0f036864 flat bundle",
+   "actor": "random",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 87.1,
+   "env_steps_per_s": 3552,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2662,
+   "ended_episodes": 2662,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "orun8-cat 0f036864 flat bundle",
+   "actor": "zero",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 84.3,
+   "env_steps_per_s": 3139,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2117,
+   "ended_episodes": 2117,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "cat0f/mild",
+   "actor": "random",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 87.6,
+   "env_steps_per_s": 2315,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2628,
+   "ended_episodes": 2628,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "cat0f/mild",
+   "actor": "zero",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 87.5,
+   "env_steps_per_s": 2041,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2172,
+   "ended_episodes": 2172,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "cat0f/moguls",
+   "actor": "random",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 89.1,
+   "env_steps_per_s": 2706,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2641,
+   "ended_episodes": 2641,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "cat0f/moguls",
+   "actor": "zero",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 85.1,
+   "env_steps_per_s": 2389,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2112,
+   "ended_episodes": 2112,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "cat0f/rock",
+   "actor": "random",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 88.4,
+   "env_steps_per_s": 2313,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2623,
+   "ended_episodes": 2623,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "cat0f/rock",
+   "actor": "zero",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 88.0,
+   "env_steps_per_s": 2040,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2110,
+   "ended_episodes": 2110,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "cat0f/platform50",
+   "actor": "random",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 87.4,
+   "env_steps_per_s": 3091,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2633,
+   "ended_episodes": 2633,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "cat0f/platform50",
+   "actor": "zero",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 86.8,
+   "env_steps_per_s": 2728,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2127,
+   "ended_episodes": 2127,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "cat0f/mixed",
+   "actor": "random",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 88.0,
+   "env_steps_per_s": 2317,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2670,
+   "ended_episodes": 2670,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "cat0f/mixed",
+   "actor": "zero",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 87.8,
+   "env_steps_per_s": 2032,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2185,
+   "ended_episodes": 2185,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "cat0f/runout",
+   "actor": "random",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 88.4,
+   "env_steps_per_s": 2923,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2675,
+   "ended_episodes": 2675,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  },
+  {
+   "mode": "mjx",
+   "bundle": "cat0f/runout",
+   "actor": "zero",
+   "envs": 256,
+   "steps": 500,
+   "compile_s": 87.7,
+   "env_steps_per_s": 2630,
+   "nonfinite_events": 0,
+   "terminated_episodes": 2195,
+   "ended_episodes": 2195,
+   "first_episode_tipped": 256,
+   "first_episode_tip_rate": 1.0,
+   "final_state_finite": true
+  }
+ ],
+ "iteration_cost_0f036864_8192_envs": {
+  "flat": {
+   "seconds_per_iteration": [
+    14.0,
+    13.8,
+    14.2,
+    13.6
+   ],
+   "mean_s": 13.9
+  },
+  "mixed": {
+   "seconds_per_iteration": [
+    75.8,
+    76.6,
+    76.6,
+    76.3
+   ],
+   "mean_s": 76.3
+  },
+  "rock": {
+   "seconds_per_iteration": [
+    72.8,
+    74.2,
+    73.4,
+    74.7
+   ],
+   "mean_s": 73.7
+  },
+  "moguls": {
+   "seconds_per_iteration": [
+    26.4,
+    26.6,
+    26.7,
+    26.8
+   ],
+   "mean_s": 26.6
+  },
+  "platform50": {
+   "seconds_per_iteration": [
+    20.0,
+    20.4,
+    20.1,
+    20.4
+   ],
+   "mean_s": 20.2
+  }
+ },
+ "wall_check_platform50_stock_16_episodes": {
+  "inside_over_20mm": 3,
+  "deepest_mm": [
+   480.0,
+   303.8,
+   379.8
+  ],
+  "bodies": [
+   "c_tail7_link",
+   "c_tail7_link",
+   "c_shin_l"
+  ]
+ }
+}

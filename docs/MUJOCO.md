@@ -1784,7 +1784,7 @@ start (`--init-from`, with `--init-from-task-change` and
 onto a course when the robot is unchanged (ADR-736). Give it
 `--critic-warmup 10` (ADR-740). A course that touches only the feet
 (`terrain={"collides_with": [feet group], ...}`, ADR-739) keeps MJX off
-box–box and capsule–box pairs. terrain-cat's warm start from the flat
+box–box and capsule–box pairs. What remains costs by the slot: on the cat (8 paw spheres, 8192 environments) an iteration takes about 14 s plus 2.5 s for each box slot, so keep a course to about 11 box slots, and a rock patch's stones count (ADR-747). Such a course also lets the body pass through a platform's wall. terrain-cat's warm start from the flat
 turning policy (r1-t3) ran a full 12 s episode on the course by
 iteration 50 (`training/README.md`).
 
