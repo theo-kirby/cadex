@@ -1,13 +1,13 @@
 # orun9 B3: the randomised quadruped family
 
-Verified against source: 2026-10-17. Frozen evidence (orun9, iteration 12).
+Verified against source: 2026-10-17. Frozen evidence (orun9, iterations 12 and 15).
 
 B3's base model trains on a randomised quadruped family. ADR-758 sets out
 how the family is made: as built variants of one parametric robot,
 `~/cadex-projects/orun9-qfam`, with masses drawn per environment. This is
 the family as built, the check that MJX can batch it, and two cold runs on
-members of it. The base itself has not trained: the trainer cannot yet read
-a family (ADR-758, the trainer's half).
+members of it. The last section is the base trained on it (ADR-759,
+`b3-base1`) and its checkpoints played zero-shot on the held-out v0.
 
 The files are outside the repo, in `~/orun9-progress/b3/`:
 - `qfam-script.py`: the family script;
@@ -142,5 +142,57 @@ checkpoint at 75.
 - Knee-forward and mixed-knee members train by the recipe as fast as
   quad-qdd: each first passes at 150, as b1-q1 did. So inverting a knee
   does not make a member untrainable.
-- **Not shown:** a base trained on the family, any fine-tune from it, and
-  the cat mapped onto it.
+- **Not shown here** (see the next section for the base): any fine-tune
+  from it with training iterations, and the cat mapped onto it.
+
+## The base, b3-base1, played zero-shot on the held-out v0 (iteration 15)
+
+`b3-base1` trained cold by the recipe (8,192 environments, unroll 20,
+seed 0) on v7 plus v1, v3, v4, v5 and v6 (ADR-759), 300 iterations,
+checkpoints every 50, from 15:34 to 16:29 (about 55 min with the compile;
+the reward per step went 5.4 at 25, 9.2 at 49 and 14.4 at 299, σ 0.08).
+v0, quad-qdd's own point (200/200 mm, both knees behind), was never in
+its training set.
+
+A family policy cannot be played by the engine (ADR-759), so each
+checkpoint was mapped onto v0 by a **0-iteration fine-tune**:
+`cadex_train.py` on v0's `fam_walk` bundle with `--init-from <checkpoint>
+--init-from-base … --iterations 0 --critic-warmup 1` (CPU, 32
+environments). The actor is not trained: the remap copies 33 inputs, folds
+the 13 `morph.*` inputs into the first layer's bias at v0's own values,
+copies the 12 outputs, and writes an ordinary v0 policy, witness-checked
+(2e-7). Each was judged on v0's walk spec, the 10 frozen seeds 9101–9110,
+by the engine's evaluation (`judge_fam.py`, accepted revision `ffa9f8ee`,
+v0 set by `cadex params`). Scripts: `~/orun9-progress/b3ft/` (`zs.sh`,
+`summ.py`); reports: `~/cadex-projects/orun9-qfam/evaluations/b3-base1-zs-v0-*`.
+
+| base it | passed | failing (seeds failing it) | forward mm/s | steps min | clearance | rated |
+|---|---|---|---|---|---|---|
+| 50 | **0/10** | W3-speed 10, W6-steps 10, W7-clearance 9 | 13 | 0 | 0.016 | 0.45 |
+| 100 | **0/10** | W3-speed 10, W6-steps 9, W7-clearance 10 | 97 | 1.5 | 0.015 | 0.55 |
+| 150 | **0/10** | W7-clearance 10, W6-steps 9, W3-speed 8, one fall | 174 | 2 | 0.018 | 0.52 |
+| 200 | **0/10** | W6-steps 10, W7-clearance 2 | 236 | 2.5 | 0.034 | 0.49 |
+| 250 | **10/10** | — | 231 | 10 | 0.039 | 0.49 |
+| 300 (final = best) | **10/10** | — | 228 | 10.5 | 0.054 | 0.53 |
+
+Medians over the 10 seeds; "clearance" is the step clearance in hip
+heights (spec ≥ 0.02), "rated" the worst drive's RMS over rated.
+
+**So a robot the base never saw walks the spec with zero fine-tune
+iterations,** against 150 cold (b1-q1 on `orun9-quad`, b3-v1cold, b3-v7cold).
+The base's own 250 iterations are not counted against it: B3 compares the
+fine-tune with a cold run on the target.
+
+Limits of this result:
+- v0 lies **inside** the family's ranges (an interpolation test). The cat,
+  with a spine, a tail and other legs, is the extrapolation test, and
+  needs its canonical mapping (ADR-755) and real fine-tune iterations.
+- The cold reference on v0's geometry is b1-q1, which trained
+  `orun9-quad`'s `b1_walk`, not v0's `fam_walk` (whose masses are drawn
+  over 22 entries rather than 10). The two other cold points (v1, v7) are
+  on the family's own task, and all three took 150.
+- The remap sets the normaliser's sample count to one, so a fine-tune
+  *with* training iterations would replace the base's statistics on its
+  first batch (the issue ADR-753 fixed for same-robot warm starts). A zero
+  -iteration fine-tune does not update them, so it does not touch this
+  result.
