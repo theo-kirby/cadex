@@ -30,6 +30,8 @@ const PROXY = {color:0xffe08a, opacity:.9};
 // engine's exploded-view segments, in the page's `--muted`.
 const SECTION_NORMALS = {XY:[0,0,1], XZ:[0,1,0], YZ:[1,0,0]};
 const LEADER = {color:0x9aa3ad, opacity:.85};
+// The trail (ADR-770): its opacity, a ribbon's fainter; its colours are Settings' (trailcolours.js).
+const TRAIL = {opacity:.8, ribbon:.25};
 // Terrain (ADR-734, ADR-743): the course a free base stands on, drawn as one ground in the mat's
 // own prototype material. `pitch_mm` is its finest sample spacing and `samples` the most it takes
 // over its extent before the spacing grows; a step's face is `wall_mm` either side of its edge,
@@ -172,7 +174,7 @@ export function boardColours(mm, board, base) {
 export function create(canvas, {labels=true}={}) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, centreAt(){return null;}, followTo(){return null;}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setFov(){return 55;}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, setHeat(){return false;}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setTrail(){return 0;}, setTrailStyle(){return 'off';}, setTrailColours(){return null;}, showTrail(){return null;}, footfalls(){return [];}, centreAt(){return null;}, followTo(){return null;}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setFov(){return 55;}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, setHeat(){return false;}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   // Soft shadows (ADR-676): a variance shadow map, blurred, so a shadow's edge widens with its
@@ -429,6 +431,8 @@ export function create(canvas, {labels=true}={}) {
     // A course arriving where there was none is framed; a course swapped for another (a playback's
     // own) keeps the person's camera.
     if (bounds) {frameBounds(bounds); if (terrain&&!had) fit();}
+    // The trail lies on the ground, so it is laid again on a new one.
+    if (trailCourse) buildTrail();
     draw(); return terrain?(terrain.boxes||[]).length+(terrain.domes||[]).length||1:0;
   }
   // The timer: one textured quad in an orthographic overlay scene, painted after the stage.
@@ -614,8 +618,8 @@ export function create(canvas, {labels=true}={}) {
     const size=(bounds?.radius||100)*.001, radius=Math.max(1e-4,Math.min(OCCLUSION.radius*size,OCCLUSION.maxRadius*c.distance*.001));
     const lines=[];
     occlusion.apply(scene,camera,{radius, distance:c.distance*.001, clipping:section?[clipPlane]:null, hide:on=> {
-      if (on) {ghost.visible=false; scene.traverse(o=>{if((o.isLine||o.isPoints)&&o.visible){o.visible=false;lines.push(o);}});}
-      else {ghost.visible=true; lines.forEach(o=>{o.visible=true;}); lines.length=0;}
+      if (on) {ghost.visible=false; trail.visible=false; scene.traverse(o=>{if((o.isLine||o.isPoints)&&o.visible){o.visible=false;lines.push(o);}});}
+      else {ghost.visible=true; trail.visible=true; lines.forEach(o=>{o.visible=true;}); lines.length=0;}
     }});
   }
   // The selection's outline (ADR-676), over everything but the timer.
@@ -726,7 +730,7 @@ export function create(canvas, {labels=true}={}) {
     draw();
   }
   function clear() {
-    disposeProxies(); proxyGeoms=[]; setLines([]);
+    disposeProxies(); proxyGeoms=[]; setLines([]); trailCourse=null; disposeTrail();
     meshes.forEach(m=> {
       model.remove(m); m.geometry.dispose(); Object.values(m.userData.materials).forEach(mat=>mat.dispose()); m.userData.meshLines?.geometry.dispose();
     });
@@ -815,6 +819,168 @@ export function create(canvas, {labels=true}={}) {
       return {...e, positions:parseStl(await r.arrayBuffer())};
     }));
     return setGhost(entries,colour,opacity);
+  }
+  // The trail (ADR-770): where the design has been on the rollout shown, on the ground under it,
+  // up to the time shown. setTrail gives the course -- the design's centre at each frame and, for
+  // footprints, its footfalls -- and each view draws it in its own style: a line, a dashed line,
+  // dots along the way, a broad ribbon, or a dot where each foot came down. Its colours are
+  // Settings' (setTrailColours): one colour, white by default, or a ramp by age from the oldest of
+  // the trail shown to the newest. Like the ghost it is beside the model, so it sizes, picks and
+  // outlines nothing, and the wireframe diagram and occlusion leave it out.
+  const trail=new THREE.Group(); trail.renderOrder=2; world.add(trail);
+  let trailCourse=null, trailStyle='off', trailEnds=[], trailAt=Infinity, trailTimes=null, trailT0=0;
+  let trailColours={mode:'solid', solid:'#ffffff', stops:['#2a2a2a','#ffffff']}, trailRamp=null;
+  const TRAIL_STYLES=['off','line','dashed','dots','ribbon','footprints'];
+  function groundZ(x,y) {const g=groundAt(x,y); return g===null?floorZ*1000:g;}
+  function disposeTrail() {trail.children.slice().forEach(o=>{trail.remove(o); o.geometry.dispose(); o.material.dispose();}); trailEnds=[]; trailTimes=null;}
+  // The ramp as 256 linear colours, mixed in sRGB as the heat colours are.
+  function buildRamp() {
+    const stops=(trailColours.mode==='age'?trailColours.stops:[trailColours.solid,trailColours.solid]).map(h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255));
+    trailRamp=new Float32Array(256*3); const c=new THREE.Color();
+    for (let k=0;k<256;k++) {
+      const t=k/255, n=stops.length-1, at=Math.min(n-1,Math.floor(t*n)), f=t*n-at, x=stops[at], y=stops[at+1];
+      c.setRGB(x[0]+(y[0]-x[0])*f,x[1]+(y[1]-x[1])*f,x[2]+(y[2]-x[2])*f,THREE.SRGBColorSpace);
+      trailRamp[3*k]=c.r; trailRamp[3*k+1]=c.g; trailRamp[3*k+2]=c.b;
+    }
+  }
+  buildRamp();
+  // Each vertex its colour: the one colour, or its age along the trail shown, newest at 1.
+  function paintTrail(count) {
+    const m=trail.children[0]; if (!m||!trailTimes) return;
+    const col=m.geometry.attributes.color, a=col.array, age=trailColours.mode==='age';
+    // One colour is painted once, over every vertex; by age, as far as is shown, every time.
+    if (!age) {if (m.userData.painted) return; count=a.length/3; m.userData.painted=true;}
+    const span=Math.max(1e-6,Math.min(trailAt,trailTimes[trailTimes.length-1])-trailT0);
+    for (let i=0;i<count;i++) {
+      const k=age?Math.max(0,Math.min(255,Math.round(255*(trailTimes[i]-trailT0)/span))):255;
+      a[3*i]=trailRamp[3*k]; a[3*i+1]=trailRamp[3*k+1]; a[3*i+2]=trailRamp[3*k+2];
+    }
+    col.needsUpdate=true;
+  }
+  function buildTrail() {
+    disposeTrail();
+    if (!trailCourse||trailStyle==='off'||!bounds) return;
+    const size=Math.max(20,Math.hypot(bounds.max[0]-bounds.min[0],bounds.max[1]-bounds.min[1])), lift=Math.max(.4,size*.003);
+    const out=[], when=[]; const at=(x,y)=>[x*.001,y*.001,(groundZ(x,y)+lift)*.001];
+    let now=0;
+    const tri=(a,b,c)=>{out.push(...a,...b,...c); when.push(now,now,now);};
+    const end=t=>trailEnds.push({t,count:out.length/3});
+    const disc=(cx,cy,r,n=14)=> {
+      const p=k=>{const a=2*Math.PI*k/n; return at(cx+r*Math.cos(a),cy+r*Math.sin(a));};
+      const mid=at(cx,cy); for (let k=0;k<n;k++) tri(mid,p(k),p(k+1));
+    };
+    const {times,path,prints}=trailCourse;
+    trailT0=times.length?times[0]:0;
+    if (trailStyle==='footprints') {
+      (prints||[]).forEach(f=>{now=f.t; disc(f.p[0],f.p[1],Math.max(1.5,f.w*.45)); end(f.t);});
+    } else if (trailStyle==='dots') {
+      const step=size*.22, r=Math.max(1.5,size*.025); let since=Infinity;
+      path.forEach((p,i)=> {
+        now=times[i];
+        if (i) since+=Math.hypot(p[0]-path[i-1][0],p[1]-path[i-1][1]);
+        if (since>=step) {disc(p[0],p[1],r,12); since=0;}
+        end(times[i]);
+      });
+    } else {
+      // A flat strip along the course, its width the style's; a dashed one leaves every other dash out.
+      const half=(trailStyle==='ribbon'?size*.18:Math.max(1.5,size*.012)), dash=size*.1;
+      const side=i=> {
+        const a=path[Math.max(0,i-1)], b=path[Math.min(path.length-1,i+1)], dx=b[0]-a[0], dy=b[1]-a[1], n=Math.hypot(dx,dy);
+        return n>1e-6?[-dy/n,dx/n]:null;
+      };
+      let normal=[0,1], run=0;
+      const edge=i=> {const s=side(i); if (s) normal=s; return [at(path[i][0]+normal[0]*half,path[i][1]+normal[1]*half),at(path[i][0]-normal[0]*half,path[i][1]-normal[1]*half)];};
+      let prev=path.length?edge(0):null;
+      if (path.length) end(times[0]);
+      for (let i=1;i<path.length;i++) {
+        const step=Math.hypot(path[i][0]-path[i-1][0],path[i][1]-path[i-1][1]), next=edge(i);
+        if (trailStyle!=='dashed'||Math.floor(run/dash)%2===0) {
+          // The segment's older edge takes the older time, so a ramp runs smoothly along it.
+          out.push(...prev[0],...prev[1],...next[1],...prev[0],...next[1],...next[0]);
+          when.push(times[i-1],times[i-1],times[i],times[i-1],times[i],times[i]);
+        }
+        run+=step; prev=next; end(times[i]);
+      }
+    }
+    if (!out.length) return;
+    const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(out,3));
+    geo.setAttribute('color',new THREE.Float32BufferAttribute(new Float32Array(out.length),3));
+    trailTimes=Float32Array.from(when);
+    const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true, transparent:true,
+      opacity:trailStyle==='ribbon'?TRAIL.ribbon:TRAIL.opacity, depthWrite:false, side:THREE.DoubleSide,
+      polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2, toneMapped:false}));
+    m.renderOrder=2; m.raycast=()=>{}; trail.add(m);
+    applyTrailAt();
+  }
+  function applyTrailAt() {
+    const m=trail.children[0]; if (!m) return;
+    let lo=-1, hi=trailEnds.length;
+    while (hi-lo>1) {const mid=(lo+hi)>>1; if (trailEnds[mid].t<=trailAt+1e-9) lo=mid; else hi=mid;}
+    const count=lo<0?0:trailEnds[lo].count;
+    m.geometry.setDrawRange(0,count);
+    paintTrail(count);
+  }
+  // The course: {times_s, path_mm: [[x, y, z]] at each time, prints: [{t, p, w}]}, or null.
+  function setTrail(course) {
+    trailCourse=course&&Array.isArray(course.path_mm)&&Array.isArray(course.times_s)?
+      {times:course.times_s, path:course.path_mm, prints:Array.isArray(course.prints)?course.prints:[]}:null;
+    buildTrail(); draw(); return trailEnds.length;
+  }
+  function setTrailStyle(name) {if (TRAIL_STYLES.includes(name)&&name!==trailStyle) {trailStyle=name; buildTrail(); draw();} return trailStyle;}
+  // {mode: 'solid'|'age', solid: '#rrggbb', stops: ['#rrggbb', ...]}, oldest to newest.
+  function setTrailColours(c) {
+    const hex=v=>/^#[0-9a-f]{6}$/i.test(String(v||''));
+    if (c&&(c.mode==='solid'||c.mode==='age')&&hex(c.solid)&&Array.isArray(c.stops)&&c.stops.length>=2&&c.stops.every(hex)) {
+      trailColours={mode:c.mode, solid:c.solid, stops:c.stops.slice()}; buildRamp(); if (trail.children[0]) trail.children[0].userData.painted=false; applyTrailAt(); draw();
+    }
+    return {...trailColours, stops:trailColours.stops.slice()};
+  }
+  // Shows the trail as far as t seconds; it does not draw: the poses that move the design do.
+  function showTrail(t) {trailAt=Number.isFinite(Number(t))?Number(t):Infinity; applyTrailAt(); return trailAt;}
+  // Where the design's feet came down on a rollout (`frames`, each {name: placement}, at `times`):
+  // a solid touches down when its lowest point comes within a hair of the ground under it and lifts
+  // off when it rises clear (2.5 hairs, so a foot that chatters is one step), and each stance leaves
+  // a footfall at its middle frame's contact patch, as wide as the solid's middle extent. A paw, its
+  // toes and its shin all brush the ground together, so a footfall near one already kept (within
+  // its width, a quarter second apart) is the same one; the solid on the ground most often over
+  // the rollout -- the foot itself -- keeps it.
+  function footfalls(frames, times) {
+    if (!frames.length||!bounds) return [];
+    const height=bounds.max[2]-bounds.min[2], hair=Math.max(2,.015*height), q=new THREE.Quaternion(), v=new THREE.Vector3();
+    const size=Math.max(20,Math.hypot(bounds.max[0]-bounds.min[0],bounds.max[1]-bounds.min[1]));
+    const solids=[];
+    meshes.forEach((m,name)=> {
+      if (m.userData.world||!m.visible) return;
+      const a=m.geometry.attributes.position, step=Math.max(1,Math.floor(a.count/400)), pts=[];
+      for (let i=0;i<a.count;i+=step) pts.push([a.getX(i)*1000,a.getY(i)*1000,a.getZ(i)*1000]);
+      const b=m.userData.mmBounds, dims=[b.max.x-b.min.x,b.max.y-b.min.y,b.max.z-b.min.z].sort((x,y)=>x-y);
+      solids.push({name, pts, w:Math.max(6,Math.min(dims[1],size*.1))});
+    });
+    const falls=[];
+    solids.forEach(s=> {
+      // Each frame: the lowest point's gap over the ground, and the patch within a hair of it.
+      const contact=frames.map(poses=> {
+        const p=poses[s.name]; if (!p) return null;
+        q.fromArray(p.rotation_xyzw); let low=Infinity; const world=[];
+        s.pts.forEach(pt=>{v.set(pt[0],pt[1],pt[2]).applyQuaternion(q); const w=[v.x+p.position_mm[0],v.y+p.position_mm[1],v.z+p.position_mm[2]]; world.push(w); if (w[2]<low) low=w[2];});
+        const patch=world.filter(w=>w[2]<=low+hair), cx=patch.reduce((a,w)=>a+w[0],0)/patch.length, cy=patch.reduce((a,w)=>a+w[1],0)/patch.length;
+        return {gap:low-groundZ(cx,cy), x:cx, y:cy};
+      });
+      const rank=contact.filter(c=>c&&c.gap<hair).length;
+      const stance=(a,b)=>{const c=contact[Math.round((a+b)/2)]; falls.push({t:times[a], p:[c.x,c.y], w:s.w, solid:s.name, rank});};
+      let start=-1;
+      contact.forEach((c,k)=> {
+        if (!c) return;
+        if (start<0&&c.gap<hair) start=k;
+        else if (start>=0&&c.gap>2.5*hair) {stance(start,k-1); start=-1;}
+      });
+      if (start>=0) stance(start,contact.length-1);
+    });
+    const kept=[];
+    falls.sort((a,b)=>b.rank-a.rank||a.t-b.t).forEach(f=> {
+      if (!kept.some(k=>Math.abs(k.t-f.t)<.25&&Math.hypot(k.p[0]-f.p[0],k.p[1]-f.p[1])<Math.max(k.w,f.w)*1.2)) kept.push(f);
+    });
+    return kept.map(({rank,...f})=>f).sort((a,b)=>a.t-b.t);
   }
   // Exact bounds of the installed solids, in mm simulator coordinates, at each pose set in
   // `frames` (a list of {name: placement}): every vertex of every solid is transformed, so a
@@ -1002,7 +1168,7 @@ export function create(canvas, {labels=true}={}) {
     picked=selectedNames.length?selectedNames[selectedNames.length-1]:null;
     applyHeat();
   }
-  // The heat view (ADR-727; the Activations editor's "Show in viewport"): a map of part name to
+  // The heat view (ADR-727; each viewport's Activations switch, ADR-770): a map of part name to
   // colour paints those parts in it, lit from within a little so a dark part still reads, and
   // every other part a quiet grey so the heat stands out; null gives every part its own colour
   // back. Over the selection, which still glows where it is.
@@ -1104,7 +1270,7 @@ export function create(canvas, {labels=true}={}) {
     meshes.forEach(m=>{m.userData.materials.parts.envMapIntensity=m.userData.env*reflections*lighting.env;}); draw(); return reflections;
   }
   applyLook();
-  return {available:true,load,install,clear,fit,draw,setPoses,centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,setTerrain,groundAt,
+  return {available:true,load,install,clear,fit,draw,setPoses,setTrail,setTrailStyle,setTrailColours,showTrail,footfalls,trail:()=>({style:trailStyle,at:trailAt,stops:trailEnds.length,shown:trail.children[0]?trail.children[0].geometry.drawRange.count:0}),centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,setTerrain,groundAt,
     setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
     setLook,look:()=>look,setFov,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
     setHidden,hidden:()=>[...hiddenNames],select,setHeat,heat:()=>heat&&{...heat},selected:()=>selectedNames.slice(),parts,fitTo,

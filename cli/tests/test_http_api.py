@@ -36,9 +36,10 @@ from review_helpers import motor_trace, write_policy
 REPO = Path(__file__).resolve().parents[2]
 STATIC = REPO / "cli" / "cadex_cli" / "review_static"
 #: The per-viewer conveniences the page may keep in ``localStorage``.
-BROWSER_KEYS = {"cadex.theme", "cadex.layout.v6", "cadex.render", "cadex.meshlines", "cadex.meshlines.strength",
+BROWSER_KEYS = {"cadex.theme", "cadex.layout.v7", "cadex.render", "cadex.meshlines", "cadex.meshlines.strength",
                 "cadex.reflections", "cadex.look", "cadex.occlusion", "cadex.detail", "cadex.outliner.group",
-                "cadex.outliner.folded", "cadex.follow", "cadex.heat", "cadex.activations.views"}
+                "cadex.outliner.folded", "cadex.follow", "cadex.heat", "cadex.activations.views",
+                "cadex.trail", "cadex.trail.colours", "cadex.gizmo", "cadex.training.cards"}
 
 
 def _documented() -> dict[str, tuple[set[str], set[str]]]:
@@ -241,7 +242,7 @@ def test_the_page_keeps_only_per_viewer_conveniences_in_the_browser() -> None:
         stored |= set(re.findall(r"storageKey: '([^']+)'", text))
         stored |= set(re.findall(r"var KEY = '([^']+)'", text))
         calls = len(re.findall(r"localStorage\.(?:getItem|setItem|removeItem)\(", text))
-        named = {"review.js": 2, "layout.js": 3, "theme.js": 2, "outliner.js": 2, "heat.js": 2, "activations.js": 2}.get(path.name, 0)
+        named = {"review.js": 2, "layout.js": 3, "theme.js": 2, "outliner.js": 2, "heat.js": 2, "activations.js": 2, "status.js": 2, "trailcolours.js": 2}.get(path.name, 0)
         assert calls == named, (path.name, calls)
     assert stored == BROWSER_KEYS
     doc = (REPO / "docs" / "CLI.md").read_text(encoding="utf-8")

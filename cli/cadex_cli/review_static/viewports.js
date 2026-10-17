@@ -5,22 +5,23 @@
 // builds the copies from.
 //
 //   group()      every 3D viewport as one viewer: what the model is (load, ghost, poses, the
-//                hidden and selected parts, the heat) goes to all of them, and a viewport added
+//                hidden and selected parts, the heat, the trail's course) goes to all of them, and a viewport added
 //                later is brought up to date; what a view is (its camera, style and lighting) is
 //                each one's own, and a question about it is asked of the first. Follow is each
 //                view's own: followTo moves only the cameras that follow.
 //   copy()       an editor's markup copied from its pristine template: every id becomes a
 //                data-ref, so the copy carries no id of its own and the page's hooks still name
 //                the first.
-//   mirror()     a copy's shared controls (the source, the scrubbers, the status lines) kept as
-//                the first's are, and worked through the first's own: its scrubber moves the
-//                first's, so there is one timeline whichever is touched.
+//   mirror()     a copy's shared controls (now the model's status line; the source, scrubbers
+//                and timeline are the Version editor's, ADR-770) kept as the first's are, and
+//                worked through the first's own.
 (function () {
   'use strict';
 
   // What the model is: sent to every viewer, and replayed onto one added later.
   var MODEL = ['clear', 'load', 'loadGhost', 'setGhost', 'setPoses', 'setHidden', 'select', 'setHeat',
-               'setMeshLines', 'setReflections', 'setOcclusion', 'setDetail', 'setProxies', 'setTerrain', 'setSection', 'setLines'];
+               'setMeshLines', 'setReflections', 'setOcclusion', 'setDetail', 'setProxies', 'setTerrain', 'setSection', 'setLines',
+               'setTrail', 'showTrail', 'setTrailColours'];
   var EVERY = MODEL.concat(['draw', 'highlight', 'setOnPick', 'showProxies', 'showLines']);
 
   // A fetch that reads each URL once for every viewer that asks: the meshes come down once.

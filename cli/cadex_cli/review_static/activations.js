@@ -17,8 +17,9 @@
 //                neurons a layer, sized by how much they move its command, joined by what flows
 //                between them.
 //   Hovering a neuron in either shows what silencing it would do to each motor.
-//   Viewport     "Show in viewport" paints each motor's housing and the parts it moves in the heat
-//                colours (review_scene.js setHeat); hovering a neuron paints its influence instead.
+//   Viewport     each 3D viewport's own Activations switch (ADR-770; this editor's "Show in
+//                viewport" until then) paints each motor's housing and the parts it moves in the
+//                heat colours (review_scene.js setHeat); hovering a neuron paints its influence instead.
 //
 // The colours are heat.js's, which the Settings editor picks. The network is the rollout's own
 // policy (`api/policy/...`), run here on inputs rebuilt from the trace: joint positions,
@@ -207,7 +208,8 @@
   }
 
   function create(o) {
-    var viewer = o.viewer;
+    // The 3D viewports, each with whether it paints the heat: [{viewer, heat}] (ADR-770).
+    var viewports = o.viewports || function () { return []; };
     var policyUrl = null, playback = null, policy = null, net = null, inputs = null;
     var frames = [], scales = [], match = [], motors = [], selected = 0, hover = null, frameAt = 0, blendAt = null;
     var eased = {}, easedAt = 0, ticket = 0, grads = null, panels = [], statusLine = { text: '', state: 'empty' };
@@ -216,7 +218,8 @@
       statusLine = { text: text, state: state || '' };
       panels.forEach(function (p) { if (p.status) { p.status.textContent = text; p.status.dataset.state = state || ''; if (p.kind === 'motors') p.status.hidden = !text; } });
     }
-    function anyViewport() { return panels.some(function (p) { return p.kind === 'motors' && p.showInViewport; }); }
+    function anyViewport() { return viewports().some(function (v) { return v.heat; }); }
+    var viewportState = 'off';
 
     function setPlayback(served) {
       ticket++;
@@ -606,10 +609,9 @@
 
     // -- the viewport ----------------------------------------------------------------------
     function paintViewport(now) {
-      var v = viewer && viewer();
-      if (!v || !v.setHeat) return;
+      var all = viewports().filter(function (v) { return v.viewer && v.viewer.setHeat; });
       var on = anyViewport() && playback && motors.length;
-      if (!on) { v.setHeat(null); panels.forEach(function (p) { if (p.kind === 'motors') p.body.dataset.viewport = 'off'; }); return; }
+      if (!on) { all.forEach(function (v) { v.viewer.setHeat(null); }); viewportState = 'off'; return; }
       var parts = (policy && policy.parts) || {}, influence = hoverInfluence(), map = {};
       var t = performance.now() / 1000, k = now ? 1 : 1 - Math.exp(-(t - easedAt) / EASE_S); easedAt = t;
       motors.forEach(function (g, m) {
@@ -620,9 +622,9 @@
         // A motor's housing shows its own joint, over the segment it rides on.
         (own.motor || []).forEach(function (name) { map[name] = rampHex(h); });
       });
-      var state = Object.keys(map).length ? 'on' : 'unmapped';
-      panels.forEach(function (p) { if (p.kind === 'motors') p.body.dataset.viewport = p.showInViewport ? state : 'off'; });
-      v.setHeat(Object.keys(map).length ? map : null);
+      var painted = Object.keys(map).length ? map : null;
+      viewportState = painted ? 'on' : 'unmapped';
+      all.forEach(function (v) { v.viewer.setHeat(v.heat ? painted : null); });
     }
 
     function render() {
@@ -677,13 +679,8 @@
     }
     function addMotors(e) {
       var p = { kind: 'motors', body: e.body, motorsBox: e.motors, barsBox: e.bars, detail: e.detail, status: e.status,
-                toggle: e.toggle, ramp: e.ramp, showInViewport: false, gauges: [] };
+                ramp: e.ramp, gauges: [] };
       wireViews(p, e.views, !!e.keep);
-      if (p.toggle) p.toggle.addEventListener('click', function () {
-        p.showInViewport = !p.showInViewport;
-        p.toggle.setAttribute('aria-pressed', String(p.showInViewport));
-        eased = {}; paintViewport(true);
-      });
       panels.push(p);
       paintRamp(p); buildMotors(p); say(statusLine.text, statusLine.state);
       if (net) p.body.dataset.match = panels[0].body.dataset.match || '';
@@ -696,6 +693,20 @@
       wireViews(p, e.networkViews, !!e.keep);
       panels.push(p);
       say(statusLine.text, statusLine.state);
+      // A view's corner button maximizes it over the editor, and restores it (ADR-770).
+      var maxButtons = p.body.querySelectorAll('button[data-max]');
+      function maximize(view) {
+        p.body.dataset.max = view || '';
+        maxButtons.forEach(function (b) {
+          var on = b.dataset.max === view, label = (on ? 'Restore the ' : 'Maximize the ') + b.dataset.max;
+          b.setAttribute('aria-pressed', String(on)); b.title = label; b.setAttribute('aria-label', label);
+        });
+        render();
+      }
+      maxButtons.forEach(function (b) {
+        b.addEventListener('click', function () { maximize(p.body.dataset.max === b.dataset.max ? '' : b.dataset.max); });
+      });
+      p.maximize = maximize;
       if (p.layers) {
         p.layers.addEventListener('pointermove', function (ev) {
           var r = p.layers.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top, found = null;
@@ -734,20 +745,23 @@
       return p;
     }
     // The first Activations and Network editors, from the page's own markup.
-    var first = o.body ? addMotors({ body: o.body, motors: o.motors, bars: o.bars, detail: o.detail, status: o.status, toggle: o.toggle,
+    var first = o.body ? addMotors({ body: o.body, motors: o.motors, bars: o.bars, detail: o.detail, status: o.status,
                                      views: o.views, ramp: o.ramp, keep: true }) : null;
     var firstNet = o.network ? addNetwork({ network: o.network, networkStatus: o.networkStatus, layers: o.layers, paths: o.paths,
                                             networkViews: o.networkViews, keep: true }) : null;
 
     return {
       setPlayback: setPlayback, setFrame: setFrame, addMotors: addMotors, addNetwork: addNetwork,
-      setViewport: function (on) { if (first && !!on !== first.showInViewport) first.toggle.click(); return !!(first && first.showInViewport); },
+      // A viewport's Activations switch moved: paint again now, from the current loads.
+      repaintViewports: function () { eased = {}; paintViewport(true); return viewportState; },
+      viewportState: function () { return viewportState; },
       select: function (m) { selected = m; render(); return selected; },
       hoverNeuron: function (layer, i) { var d = setHover(layer, i); render(); return d; },
       clearHover: function () { hover = null; render(); },
       paths: function () { var f = frames[frameAt]; var P = net && f ? paths(f) : null; return P && P.cols.map(function (c) { return { kind: c.kind, layer: c.layer, units: c.units.map(function (u) { return u.i; }) }; }); },
       views: function () { return Object.assign({}, first ? first.views : DEFAULT_VIEWS, firstNet ? { layers: firstNet.views.layers, paths: firstNet.views.paths } : {}); },
-      panels: function () { return panels.map(function (p) { return { kind: p.kind, views: Object.assign({}, p.views), viewport: !!p.showInViewport }; }); },
+      panels: function () { return panels.map(function (p) { return { kind: p.kind, views: Object.assign({}, p.views), maximized: p.kind === 'network' ? p.body.dataset.max || null : null }; }); },
+      maximizeNetwork: function (view) { if (firstNet) firstNet.maximize(view || ''); return firstNet ? firstNet.body.dataset.max || null : null; },
       state: function () {
         return { policy: policyUrl, ready: !!net, frame: frameAt, selected: selected, motors: motors.length,
                  match: match.slice(), missing: inputs ? inputs.missing.slice() : [], viewport: anyViewport(),

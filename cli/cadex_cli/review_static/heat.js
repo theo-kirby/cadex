@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // The heat colours (ADR-728; docs/DASHBOARD.md §27, §28): the ramp the Activations and Network
-// editors and the 3D viewport's "Show in viewport" paint a load or an activation in, from 0
+// editors and each 3D viewport's Activations switch (ADR-770) paint a load or an activation in, from 0
 // (idle) to 1 (peak). A theme is two or three colours, low to high through an optional middle,
 // mixed in sRGB; the Settings editor picks a preset or the colours, and the choice is this
 // browser's own (`localStorage` cadex.heat). Every painter asks for the colour each time it

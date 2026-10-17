@@ -22,7 +22,9 @@
 // the rest copies the editor's `instance(copy)` makes, once, and keeps, and
 // `collapsed` set when its header is collapsed. It is this browser's own, kept in localStorage; a browser
 // that refuses storage gets the default every visit. Below 700 px there is
-// no room to tile, so one editor fills the screen and a tab bar picks it.
+// no room to tile, so one editor fills the screen and a tab bar picks it; an
+// editor that is another's companion (`companions`: Version is the 3D
+// viewport's, ADR-770) has no tab of its own and shows under its host.
 (function () {
   'use strict';
 
@@ -69,6 +71,9 @@
   function create(options) {
     var root = options.root, shelf = options.shelf, editors = options.editors, order = options.order;
     var storageKey = options.storageKey, onChange = options.onChange || function () {};
+    var companions = options.companions || {}, hostOf = {};
+    Object.keys(companions).forEach(function (host) { hostOf[companions[host]] = host; });
+    var tabbed = order.filter(function (type) { return !hostOf[type]; });
     var narrow = window.matchMedia('(max-width: 699px)');
     var seq = 0, tree = null, maximized = null, tab = order[0], hovered = null;
 
@@ -252,7 +257,7 @@
     // area, or else beside the largest area, when it is not already shown.
     function show(type) {
       if (!editors[type]) return false;
-      if (narrow.matches) { tab = type; render(); onChange(); return true; }
+      if (narrow.matches) { tab = hostOf[type] || type; render(); onChange(); return true; }
       if (shown().indexOf(type) >= 0) return true;
       var empty = areas().filter(function (area) { return area.editor === EMPTY; })[0];
       if (empty) return setEditor(empty.id, type);
@@ -368,18 +373,23 @@
       dragHeader(header, node);
       return area;
     }
-    function renderTabs() {
-      var editor = editors[tab];
-      var area = el('section', 'area area-tab');
-      area.dataset.editor = tab;
+    function tabArea(type, className) {
+      var editor = editors[type];
+      var area = el('section', 'area ' + className);
+      area.dataset.editor = type;
       var header = el('header', 'area-header');
       header.appendChild(el('span', 'area-title', editor.title));
       header.appendChild(editor.tools);
       area.appendChild(header);
       area.appendChild(editor.body);
+      return area;
+    }
+    function renderTabs() {
+      if (hostOf[tab]) tab = hostOf[tab];
+      var area = tabArea(tab, 'area-tab');
       var tabs = el('nav', 'tabs');
       tabs.setAttribute('aria-label', 'Editors');
-      order.forEach(function (type) {
+      tabbed.forEach(function (type) {
         var button = el('button', 'tab', editors[type].short || editors[type].title);
         button.type = 'button';
         button.dataset.editor = type;
@@ -388,6 +398,7 @@
         tabs.appendChild(button);
       });
       root.appendChild(area);
+      if (companions[tab] && editors[companions[tab]]) root.appendChild(tabArea(companions[tab], 'area-tab area-companion'));
       root.appendChild(tabs);
     }
 
@@ -502,7 +513,7 @@
       maximize: maximize, show: show, collapse: collapse,
       tree: function () { return strip(tree); },
       areas: function () { return areas().map(function (area) { return { id: area.id, editor: area.editor, copy: area.copy || 0 }; }); },
-      shown: function () { return narrow.matches ? [tab] : (maximized ? [find(maximized).node.editor] : shown()); },
+      shown: function () { return narrow.matches ? [tab].concat(companions[tab] ? [companions[tab]] : []) : (maximized ? [find(maximized).node.editor] : shown()); },
       mode: function () { return narrow.matches ? 'tabs' : 'areas'; }
     };
   }

@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-16. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-17. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -1399,7 +1399,7 @@ assembly every one of these is `null`.
 **What the browser keeps.** The page keeps no project state of its own:
 everything it shows is read from these routes on each poll. What it keeps in
 `localStorage` is per-viewer conveniences — `cadex.theme` (dark, light
-or system), `cadex.layout.v6` (the screen's areas), `cadex.render` (the
+or system), `cadex.layout.v7` (the screen's areas), `cadex.render` (the
 viewport's render style, shaded or wireframe; a stored `hairline` is read as
 wireframe), `cadex.meshlines` and `cadex.meshlines.strength` (the wireframe's
 mesh lines, on or off, and their strength), `cadex.reflections` (the shaded
@@ -1408,9 +1408,13 @@ solids' reflection strength), `cadex.look`, `cadex.occlusion` and
 occlusion and its surface detail, ADR-676), and `cadex.outliner.group` and
 `cadex.outliner.folded` (how the Outliner groups the parts, and which groups
 are folded), and `cadex.follow` (whether the viewport follows a playing
-design, ADR-693), `cadex.heat` (the heat colours Settings picks, ADR-728) and
+design, ADR-693), `cadex.heat` (the heat colours Settings picks, ADR-728),
 `cadex.activations.views` (which Activations and Network views are on,
-ADR-728) — and `cli/tests/test_http_api.py` fails if the page stores any
+ADR-728), `cadex.trail` and `cadex.gizmo` (the first 3D viewport's trail
+style and whether its axes gizmo is shown, ADR-770), `cadex.trail.colours`
+(the trail's colour, or its colours by age, that Settings picks, ADR-770) and
+`cadex.training.cards` (how the Training cards are arranged: their order,
+which are pinned or hidden, and their sizes, ADR-770) — and `cli/tests/test_http_api.py` fails if the page stores any
 other key, or this list names one it does not. A picked
 checkpoint, a scrubbed revision, a selected run, and the parts hidden or
 selected in the Outliner last only as long as the page.

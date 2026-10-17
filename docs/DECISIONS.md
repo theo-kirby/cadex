@@ -44105,3 +44105,89 @@ stride 150 mm, IK miss < 1 µm, and the six `ref_*` channels.
 **Not done.** A biped's legs are still scaled from one mean hip height
 and given one stride, as a quadruped's are; no biped has trained on the
 reference yet (B1's biped proof).
+
+## ADR-770 — A Version editor; Training cards; the rollout's trail; the gizmo folds; views maximize (2026-10-17)
+
+**Context.** The owner asked for seven dashboard changes at once: the run's
+iteration line and bar in Training as well as Status; Training's stats and
+charts dragged, resized, pinned and hidden; the navigation gizmo hidden the
+way an area's header is; a Training chart maximized to fill the editor; the
+same for the Network editor's views; a trail on the ground showing where the
+design has moved from, in several styles including footprints; and the
+controls every 3D viewport shares (the model's source, the revision
+scrubber, the checkpoint dropdown, the rollout's timeline) moved out of the
+viewport into an editor of their own called Version.
+
+**Decision.**
+- **Version** (`data-editor="version"`) holds `#view3d-source` in its header
+  and `#revision-timeline`, `#checkpoints`, `#playback` and the two notes in
+  its body, ids kept, so review.js drives them unchanged. It is one editor
+  for every viewport, as Blender keeps one timeline; the mirroring of a
+  copy's source, pickers and Play (ADR-729) goes, leaving only the model's
+  status line mirrored. The default layout puts it under the 3D viewport at
+  14% of that column, so the layout key moves to `cadex.layout.v7`.
+  **Follow** stays each viewport's own and moves into its header.
+- **Training** gets Status's line and bar (`#training-head`); once the run
+  has ended it says how far it got and how it ended, on a still bar. The
+  six stats and four charts become cards on one grid of 104 px columns
+  (`#training-board`): dragged by the title (onto the sticky pinned strip to
+  pin), resized from the corner in columns and pixels, pinned, hidden, and
+  shown again from a **Cards** popover in the header; a chart maximizes over
+  the editor (Escape restores). A chart now draws at its card's height
+  rather than a fixed 132 px. The arrangement is `cadex.training.cards`.
+- **The trail** is the scene's (`setTrail`, `showTrail`, `setTrailStyle`,
+  `footfalls`): the course is the follow camera's smoothed centre track,
+  shared by every viewport through the group; each viewport picks its style
+  (`#view3d-trail`: off, line, dashed, dots, ribbon, footprints; the
+  first's kept as `cadex.trail`). Footprints are a dot per footfall, from
+  contact: a solid's lowest point within 1.5% of the design's height of the
+  ground under it, with hysteresis; one dot per footfall, the solid on the
+  ground most often keeping it. (A sole and a paw outline, mirrored by side,
+  were tried first and dropped at the owner's word for plain dots.) Its
+  colour is Settings' (`trailcolours.js`, `cadex.trail.colours`): white by
+  default, or a ramp of two or three colours by age, oldest to newest over
+  the trail shown, picked as the activation colours are. Drawn beside the
+  model, it sizes, picks and outlines nothing, and occlusion and the
+  wireframe diagram leave it out.
+- **Activations in the viewport** move from the Activations editor's
+  **Show in viewport**, which painted every 3D viewport at once, to a switch
+  in each viewport's header (`#view3d-heat`): the Activations core works
+  the loads out once and each viewport takes them or not.
+- **The gizmo** folds away to a caret, each viewport's own, the first's kept
+  as `cadex.gizmo`.
+- **Network**: each canvas sits in a `.net-view` with a corner maximize
+  button; `#network[data-max]` hides the other view and the status line.
+
+- **On a phone** Version has no tab of its own: `layout.js` takes
+  `companions` (`{view3d: 'version'}`), and the 3D tab shows Version under
+  the viewport. Under `(hover: none)` the hover-only controls stay shown; a
+  stat card shows its tools when tapped; a card's title takes a touch drag.
+
+**Consequences.** Four new `localStorage` keys and a bumped layout key:
+`test_http_api.py`'s `BROWSER_KEYS`, its per-file counts (status.js and
+trailcolours.js 2 each) and `docs/CLI.md`'s list change with them;
+`review_server.py`'s `STATIC_FILES` serves `trailcolours.js`. A stored v6 layout opens as the
+new default. On a phone Version rides under the 3D tab rather than taking a
+tab of its own.
+
+**Not done.** The Runs table can still be wider than a narrow Training area
+(it was before). Footfalls are found per solid, not per kinematic foot; on
+`cat-bound` they land in clean fours a bound, but a design whose foot is
+several solids landing far apart would mark each.
+
+**Evidence.** `pixi run python -m pytest cli/tests` 52 passed, 1 skipped (no
+engine). Driven in headless Chromium against the live app: on `orun8-cat`
+the default layout shows Version under the viewport and Training's
+`iteration 12 / 100 · ETA 32 min` line; the reward chart pinned, the loss
+stat hidden, the loss chart dragged to 6 columns × 252 px and the action-std
+chart dragged before the stats, all by their own controls, and the
+arrangement read back unchanged after a reload; the episode chart maximized
+to 784 px tall. On `cat-bound`, `run:bound-h3`, every trail style built
+(line 1050 vertices at 7 s of 10 s; footprints 184 prints) and drew on the
+ground; with two viewports, Activations on in the first only painted the
+first's parts and left the second's own colours; a trail by age (Ember)
+ran dark to red along the course; at 390 × 844 under touch emulation, no
+horizontal overflow, Version under the 3D tab with its Play row, and the axes
+caret, a stat's tools, a chart's and a Network view's maximize each worked
+by a tap and a card moved by a touch drag; the Network's layers maximized to 829 of 845 px; the gizmo folded
+(`display: none`) and came back. No page errors.

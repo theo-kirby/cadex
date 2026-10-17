@@ -5,10 +5,13 @@
 // under a menu bar (ADR-539).
 //
 //   3D viewport  the accepted model or a run's, shaded or wireframe, a
-//                run's rollout played back on a timeline, a training run's
-//                checkpoints looped as they land (ADR-545), the design's
-//                revisions on a timeline with a ghost and a tint (ADR-547) -- most
-//                of the screen by default;
+//                run's rollout played back, a training run's checkpoints looped
+//                as they land (ADR-545), the design's revisions with a ghost and
+//                a tint (ADR-547), the rollout's trail on the ground (ADR-770) --
+//                most of the screen by default;
+//   Version      which of those every 3D viewport shows and when: the source,
+//                the revision scrubber, the checkpoints and the rollout's
+//                timeline (ADR-770) -- a strip under the 3D viewport;
 //   Status       what the project is doing, how training is going and what
 //                the agent last did (ADR-542, ADR-550; an editor since
 //                ADR-572) -- an area beside the 3D viewport by default;
@@ -33,14 +36,18 @@
   // (`cadex app`) it is `p/<name>/` under the index, and NAME is that project.
   var NAME = (location.pathname.match(/\/p\/([^/]+)\/(?:index\.html)?$/) || [null, null])[1];
   var POLL_MS = 2000;
-  var ORDER = ['view3d', 'status', 'training', 'view2d', 'outliner', 'activations', 'network', 'settings'];
-  // The 3D viewport with the Outliner over Status over Training beside it, as Blender has its
-  // Outliner over its Properties; split an area for the 2D one.
-  var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.72, 0.28], children: [{ editor: 'view3d' },
+  var ORDER = ['view3d', 'version', 'status', 'training', 'view2d', 'outliner', 'activations', 'network', 'settings'];
+  // The 3D viewport over a strip of Version, as Blender has its timeline under the viewport, with
+  // the Outliner over Status over Training beside them, as Blender has its Outliner over its
+  // Properties; split an area for the 2D one.
+  var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.72, 0.28], children: [
+    { dir: 'col', sizes: [0.86, 0.14], children: [{ editor: 'view3d' }, { editor: 'version' }] },
     { dir: 'col', sizes: [0.3, 0.2, 0.5], children: [{ editor: 'outliner' }, { editor: 'status' }, { editor: 'training' }] }] };
   var STYLES = ['shaded', 'wireframe'];
   // The shaded look (ADR-676): four lighting setups and two matcaps (shading.js LOOKS).
   var LOOKS = ['studio', 'softbox', 'dramatic', 'daylight', 'aluminium', 'clay'];
+  // The trail's styles (ADR-770; review_scene.js setTrailStyle).
+  var TRAILS = ['off', 'line', 'dashed', 'dots', 'ribbon', 'footprints'];
   var state = { review: null, lastOk: null, stale: false, error: null, model: null, viewer: null, layout: null, outliner: null };
   var pendingPoll = null;
   var lastPoll = { project_bytes: 0, ms: 0 };
@@ -272,7 +279,7 @@
     if (modelAbort) modelAbort.abort();
     var controller = modelAbort = new AbortController(), signal = controller.signal;
     status.dataset.state = 'loading'; status.textContent = 'loading model…';
-    stopPlayback(); playback = null; looping = false; ckpt.shown = null; $('playback').hidden = true; state.activations.setPlayback(null);
+    stopPlayback(); playback = null; looping = false; ckpt.shown = null; $('playback').hidden = true; state.activations.setPlayback(null); refreshTrail();
     return fetchRetry(path, signal, 2).then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.json();
@@ -475,7 +482,63 @@
     state.viewer.followTo(null);
     state.activations.setPlayback(served);
     if (anyFollow() && track) state.viewer.followTo(track[0], true);
+    refreshTrail();
     seek(times[0]);
+  }
+
+  // The trail (ADR-770): each 3D viewport's own style, the first's kept by this browser; the course
+  // is the rollout's, worked out once for every viewport: the design's smoothed centre at each
+  // frame (the follow camera's track) and, when a viewport draws prints, its footfalls.
+  var trailPref = readPref('cadex.trail', TRAILS, 'off'), trailCourse = { served: null, prints: false };
+  function refreshTrail() {
+    if (!state.viewer) return;
+    if (!playback) {
+      if (trailCourse.served) { trailCourse = { served: null, prints: false }; state.viewer.setTrail(null); }
+      return;
+    }
+    var styles = views().map(function (v) { return v.trail; });
+    var prints = styles.indexOf('footprints') >= 0;
+    if (!styles.some(function (s) { return s !== 'off'; })) return;
+    if (trailCourse.served === playback && (trailCourse.prints || !prints)) return;
+    var centres = trackOf(playback);
+    if (!centres) return;
+    trailCourse = { served: playback, prints: prints };
+    state.viewer.setTrail({ times_s: playback.times_s, path_mm: centres,
+                            prints: prints ? state.viewer.footfalls(playback.frames, playback.times_s) : [] });
+    state.viewer.showTrail(playT);
+  }
+  function applyTrail(name, view) {
+    view = view || firstView();
+    if (!view || TRAILS.indexOf(name) < 0) return view ? view.trail : trailPref;
+    view.trail = name;
+    view.trailSelect.value = name;
+    if (view === firstView()) { trailPref = name; writePref('cadex.trail', name); }
+    refreshTrail();
+    view.viewer.setTrailStyle(name);
+    return name;
+  }
+  // Activations in the viewport (ADR-770): each viewport paints the rollout's motor loads on the
+  // parts they move, or not, by its own switch; the Activations editor works them out once.
+  function applyHeat(on, view) {
+    view = view || firstView();
+    if (!view) return false;
+    view.heat = !!on;
+    view.heatButton.setAttribute('aria-pressed', String(view.heat));
+    if (state.activations) state.activations.repaintViewports();
+    return view.heat;
+  }
+  // The axes gizmo folds away to a caret, and back (ADR-770); each viewport's own, the first's kept.
+  var gizmoPref = readPref('cadex.gizmo', ['on', 'off'], 'on') === 'on';
+  function applyGizmo(on, view) {
+    view = view || firstView();
+    if (!view) return gizmoPref;
+    view.gizmoOn = !!on;
+    view.body.dataset.gizmo = on ? 'on' : 'off';
+    var label = on ? 'Hide the axes' : 'Show the axes';
+    view.gizmoToggle.setAttribute('aria-pressed', String(!!on));
+    view.gizmoToggle.title = label; view.gizmoToggle.setAttribute('aria-label', label);
+    if (view === firstView()) { gizmoPref = !!on; writePref('cadex.gizmo', on ? 'on' : 'off'); }
+    return view.gizmoOn;
   }
   function blend(a, b, f) {
     var out = {};
@@ -497,6 +560,7 @@
     var span = times[hi] - times[lo], f = span > 0 ? (playT - times[lo]) / span : 0;
     f = Math.max(0, Math.min(1, f));
     if (anyFollow() && track) state.viewer.followTo(trackAt(lo, hi, f));
+    if (trailCourse.served === playback) state.viewer.showTrail(playT);
     state.viewer.setPoses(blend(playback.frames[lo], playback.frames[hi], f));
     state.activations.setFrame(lo, hi, f);
     $('play-time').value = String(playT);
@@ -597,7 +661,7 @@
   }
   function showCheckpoint(item, key) {
     var ticket = modelLoad;
-    stopPlayback(); playback = null; ckpt.playing = null; state.activations.setPlayback(null);
+    stopPlayback(); playback = null; ckpt.playing = null; state.activations.setPlayback(null); refreshTrail();
     if (item.state !== 'ready') {
       $('playback').hidden = true;
       state.viewer.setPoses(restPoses()); state.viewer.setTerrain(modelTerrain());
@@ -1025,11 +1089,13 @@
     if (sheet.kind === 'plot') drawPlot();
   }
 
-  // A 3D viewport: its own viewer, camera, gizmo, style, lighting and follow, over the one model.
+  // A 3D viewport: its own viewer, camera, gizmo, style, lighting, follow and trail, over the one model.
   function addView(ref, tools) {
     var canvas = ref('viewer'), viewer = window.CadexViewer.create(canvas);
     var view = { viewer: viewer, canvas: canvas, tools: tools, body: ref('model'), follow: false, style: renderStyle, look: look.name,
-                 styleGroup: ref('view3d-style'), lookSelect: ref('view3d-look'), followButton: ref('play-follow') };
+                 styleGroup: ref('view3d-style'), lookSelect: ref('view3d-look'), followButton: ref('play-follow'),
+                 trail: 'off', trailSelect: ref('view3d-trail'), gizmoOn: true, gizmoToggle: ref('view3d-gizmo-toggle'),
+                 heat: false, heatButton: ref('view3d-heat') };
     view.gizmo = window.CadexGizmo.create(viewer, ref('view3d-gizmo'), canvas);
     var first = !state.views.first();
     view.styleGroup.addEventListener('click', function (event) {
@@ -1040,11 +1106,18 @@
     ref('model-fit').addEventListener('click', function () { viewer.fit(); });
     view.followButton.addEventListener('click', function (event) { event.stopPropagation(); applyFollow(!view.follow, view); });
     if (window.ResizeObserver) new ResizeObserver(function () { viewer.draw(); }).observe(canvas);
+    view.trailSelect.addEventListener('change', function () { applyTrail(view.trailSelect.value, view); });
+    view.gizmoToggle.addEventListener('click', function () { applyGizmo(!view.gizmoOn, view); });
+    view.heatButton.addEventListener('click', function () { applyHeat(!view.heat, view); });
     if (first) view.follow = followCam;
     view.followButton.setAttribute('aria-pressed', String(view.follow));
     state.views.add(view);
     viewer.setLook(view.look); setViewStyle(view, view.style);
     if (!first && view.follow && playback && track) viewer.followTo(pointAt(playT), true);
+    // A copy starts from the first's trail and axes; the first from what this browser kept.
+    var lead = first ? null : firstView();
+    applyTrail(lead ? lead.trail : trailPref, view);
+    applyGizmo(lead ? lead.gizmoOn : gizmoPref, view);
     return view;
   }
   // A copy of an editor that may be shown more than once (ADR-729), from its pristine markup.
@@ -1054,16 +1127,13 @@
     $('editor-shelf').appendChild(copy.home);
     if (type === 'view3d') {
       addView(ref, copy.tools);
-      // The model's source, its scrubbers and its status lines are the first viewport's, worked from either.
-      var mirror = window.CadexViewports.mirror;
-      // The first's elements as kept at the start: a copy is made while the layout builds its
-      // areas, when the first's header may not be in the page to be found by id.
-      mirror(shared.source, ref('view3d-source'));
-      mirror(shared.play, copy.tools.querySelector('.view3d-play'));
-      mirror(shared.timelines, copy.body.querySelector('.timelines'), '[data-ref="play-follow"]');
+      // The model's status line is the first viewport's (the source, the scrubbers and the
+      // timeline are the Version editor's, ADR-770). The first's element as kept at the start: a
+      // copy is made while the layout builds its areas, when the first may not be in the page.
+      window.CadexViewports.mirror(shared.timelines, copy.body.querySelector('.timelines'));
     } else if (type === 'activations') {
       state.activations.addMotors({ body: ref('activations'), motors: ref('activations-motors'), bars: ref('activations-bars'),
-                                    detail: ref('activations-detail'), status: ref('activations-status'), toggle: ref('activations-viewport'),
+                                    detail: ref('activations-detail'), status: ref('activations-status'),
                                     views: ref('activations-views'), ramp: copy.body.querySelector('.ramp-bar') });
     } else if (type === 'network') {
       state.activations.addNetwork({ network: ref('network'), networkStatus: ref('network-status'), layers: ref('network-layers'),
@@ -1087,24 +1157,34 @@
         editors[type].copies = function () { return Object.keys(made).map(function (k) { return made[k]; }); };
       }
     });
-    shared = { source: $('view3d-source'), play: editors.view3d.tools.querySelector('.view3d-play'), timelines: $('model').querySelector('.timelines') };
+    shared = { timelines: $('model').querySelector('.timelines') };
     state.views = window.CadexViewports.group();
     state.viewer = state.views.viewer;
     var firstRef = function (name) { return $(name); };
     addView(firstRef, editors.view3d.tools);
     state.gizmo = firstView().gizmo;
-    state.activations = window.CadexActivations.create({ viewer: function () { return state.viewer; }, body: $('activations'),
+    state.activations = window.CadexActivations.create({ viewports: function () { return views().map(function (v) { return { viewer: v.viewer, heat: v.heat }; }); },
+                                                         body: $('activations'),
                                                          motors: $('activations-motors'), bars: $('activations-bars'),
                                                          detail: $('activations-detail'), status: $('activations-status'),
-                                                         toggle: $('activations-viewport'), views: $('activations-views'),
+                                                         views: $('activations-views'),
                                                          network: $('network'), networkStatus: $('network-status'),
                                                          layers: $('network-layers'), paths: $('network-paths'),
                                                          networkViews: $('network-views'), ramp: document.querySelector('.activations-ramp .ramp-bar') });
     state.settings = window.CadexSettings.create({ preset: $('settings-heat-preset'), count: $('settings-heat-count'),
                                                    low: $('settings-heat-low'), mid: $('settings-heat-mid'), high: $('settings-heat-high'),
                                                    preview: $('settings-heat-preview'), reset: $('settings-heat-reset') });
+    state.trailSettings = window.CadexSettings.createTrail({ mode: $('settings-trail-mode'), solid: $('settings-trail-solid'),
+                                                             solidRow: $('settings-trail-solid-row'), age: $('settings-trail-age'),
+                                                             preset: $('settings-trail-preset'), count: $('settings-trail-count'),
+                                                             old: $('settings-trail-old'), mid: $('settings-trail-mid'), newest: $('settings-trail-new'),
+                                                             preview: $('settings-trail-preview'), reset: $('settings-trail-reset') });
+    // The trail's colours are every viewport's, from Settings.
+    state.viewer.setTrailColours(window.CadexTrailColours.get());
+    window.CadexTrailColours.onChange(function (c) { state.viewer.setTrailColours(c); });
     state.layout = window.CadexLayout.create({ root: $('screen'), shelf: $('editor-shelf'), editors: editors, order: ORDER,
-                                               storageKey: 'cadex.layout.v6', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
+                                               storageKey: 'cadex.layout.v7', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout,
+                                               companions: { view3d: 'version' } });
     state.outliner = window.CadexOutliner.create({ tree: $('outliner-tree'), filter: $('outliner-filter'), group: $('outliner-group'),
                                                    showAll: $('outliner-show-all'), summary: $('outliner-summary'), scope: $('model'),
                                                    viewer: function () { return state.viewer; } });
@@ -1213,11 +1293,15 @@
     pickRevision: pickRevision,
     showRevision: showRevision,
     seek: seek,
+    setTrail: applyTrail,
+    trail: function () { return { style: trailPref, course: !!trailCourse.served, prints: trailCourse.prints, scene: state.viewer.trail && state.viewer.trail() }; },
+    setGizmo: applyGizmo,
+    setHeat: function (on, i) { return applyHeat(on, views()[i || 0]); },
     setFollow: applyFollow,
     follow: function () { return { on: followCam, tracked: !!track, camera: state.viewer.camera && state.viewer.camera() }; },
     view: function (i) { var v = views()[i]; return v ? v.viewer : null; },
     views: function () {
-      return views().map(function (v) { return { style: v.style, look: v.look, follow: v.follow, camera: v.viewer.camera(), gizmo: v.gizmo }; });
+      return views().map(function (v) { return { style: v.style, look: v.look, follow: v.follow, trail: v.trail, axes: v.gizmoOn, heat: v.heat, camera: v.viewer.camera(), gizmo: v.gizmo }; });
     },
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, ms: lastPoll.ms }; },
     state: function () {

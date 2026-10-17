@@ -138,7 +138,6 @@
 <div id="editor-shelf" hidden>
   <section class="editor" id="editor-view3d" data-editor="view3d" data-title="3D viewport" data-short="3D">
     <div class="editor-tools">
-      <select id="view3d-source" aria-label="Model to show"></select>
       <span class="segmented" id="view3d-style" role="group" aria-label="Render style">
         <button type="button" data-style="shaded" aria-pressed="true">Shaded</button>
         <button type="button" data-style="wireframe" aria-pressed="false">Wireframe</button>
@@ -156,12 +155,49 @@
         </optgroup>
       </select>
       <button id="model-fit" type="button">Fit</button>
-      <!-- The pickers ride in the header, after Fit (ADR-728): the revision history's scrubber and
-           a run's checkpoints' dropdown; the rollout's own timeline is at the foot of the view (ADR-733). -->
-      <div class="view3d-play">
+      <!-- The follow camera: the view travels with the design while it plays (DASHBOARD.md §5). -->
+      <button id="play-follow" type="button" aria-pressed="false" title="Follow the design as it moves">Follow</button>
+      <!-- The trail (ADR-770): where the design has been on the rollout shown, drawn on the ground. -->
+      <select id="view3d-trail" aria-label="Trail" title="Where the design has been on the rollout">
+        <option value="off">No trail</option>
+        <option value="line">Trail: line</option>
+        <option value="dashed">Trail: dashed</option>
+        <option value="dots">Trail: dots</option>
+        <option value="ribbon">Trail: ribbon</option>
+        <option value="footprints">Trail: footprints</option>
+      </select>
+      <!-- The rollout's motors painted on the parts they move, in the heat colours: each viewport's
+           own (ADR-770; the Activations editor's "Show in viewport" until then). -->
+      <button id="view3d-heat" type="button" aria-pressed="false"
+              title="Paint each motor and the parts it moves by its load">Activations</button>
+    </div>
+    <div class="editor-body" id="model" data-gizmo="on">
+      <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
+      <!-- The navigation gizmo (ADR-726): the axes as the camera sees them; gizmo.js draws it. It
+           folds away to a caret in the corner, as an area's header does (ADR-770). -->
+      <svg id="view3d-gizmo" data-view="" role="group" aria-label="View axes" hidden></svg>
+      <button id="view3d-gizmo-toggle" class="icon-button" type="button" aria-pressed="true" title="Hide the axes" aria-label="Hide the axes">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10l4-4 4 4"/></svg>
+      </button>
+      <!-- Why no model is drawn, over the bottom left of the view (ADR-557). -->
+      <div class="timelines">
+        <div id="model-status" data-state="empty">no model loaded</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Which version of the design every 3D viewport shows, and when in its rollout (ADR-770): the
+       model's source, the revision scrubber, a run's checkpoints and the rollout's timeline, once
+       for all of them; they were in the 3D viewport until then (ADR-728, ADR-733). -->
+  <section class="editor" id="editor-version" data-editor="version" data-title="Version" data-short="Version">
+    <div class="editor-tools">
+      <select id="view3d-source" aria-label="Model to show"></select>
+    </div>
+    <div class="editor-body" id="version">
+      <div class="version-row">
         <!-- The design's history (ADR-547): each stored revision's retained model (ADR-546), the one
-             before it as a ghost and the parts whose digest changed tinted. Shown while the 3D
-             viewport's source is the revision history; at the newest end it follows new revisions. -->
+             before it as a ghost and the parts whose digest changed tinted. Shown while the source
+             is the revision history; at the newest end it follows new revisions. -->
         <div id="revision-timeline" class="timeline" data-follow="true" data-state="retained" hidden>
           <span class="timeline-name">Revision</span>
           <input id="revision-pick" type="range" min="0" max="0" step="1" value="0" aria-label="Revision">
@@ -169,30 +205,20 @@
         </div>
         <!-- A training run's checkpoints, each rolled out by the engine as it lands (ADR-544, ADR-545):
              the newest loops; the dropdown picks an older one (ADR-733), and the newest follows again. -->
-        <div id="checkpoints" data-follow="true" data-state="ready" hidden>
+        <div id="checkpoints" class="timeline" data-follow="true" data-state="ready" hidden>
+          <span class="timeline-name">Checkpoint</span>
           <select id="checkpoint-pick" aria-label="Checkpoint"></select>
         </div>
       </div>
-    </div>
-    <div class="editor-body" id="model">
-      <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
-      <!-- The navigation gizmo (ADR-726): the axes as the camera sees them; gizmo.js draws it. -->
-      <svg id="view3d-gizmo" data-view="" role="group" aria-label="View axes" hidden></svg>
-      <!-- What the model and its scrubbers have to say, over the bottom left of the view (ADR-557). -->
-      <div class="timelines">
-        <div id="model-status" data-state="empty">no model loaded</div>
-        <p id="revision-status" hidden></p>
-        <p id="checkpoint-status" hidden></p>
-        <!-- A run's rollout trace plays here (orun2 D2.5), across the foot of the view (ADR-733);
-             nothing is simulated in the page. -->
-        <div id="playback" class="timeline" hidden>
-          <button id="play-toggle" type="button">Play</button>
-          <input id="play-time" type="range" min="0" max="1" step="any" value="0" aria-label="Time">
-          <output id="play-clock">0.00 s</output>
-          <!-- The follow camera: the view travels with the design while it plays (DASHBOARD.md §5). -->
-          <button id="play-follow" type="button" aria-pressed="false" title="Follow the design as it moves">Follow</button>
-        </div>
+      <!-- A run's rollout trace plays here (orun2 D2.5); nothing is simulated in the page. -->
+      <div id="playback" class="timeline" hidden>
+        <button id="play-toggle" type="button">Play</button>
+        <input id="play-time" type="range" min="0" max="1" step="any" value="0" aria-label="Time">
+        <output id="play-clock">0.00 s</output>
       </div>
+      <p class="playback-empty muted">No rollout to play for this model.</p>
+      <p id="revision-status" hidden></p>
+      <p id="checkpoint-status" hidden></p>
     </div>
   </section>
 
@@ -224,22 +250,37 @@
   <section class="editor" id="editor-training" data-editor="training" data-title="Training" data-short="Training">
     <div class="editor-tools">
       <span id="training-run" class="muted">no runs</span>
+      <!-- The cards this browser hides, to show again, and a reset (ADR-770). -->
+      <button id="training-cards-button" type="button" popovertarget="training-cards-menu">Cards</button>
+      <div id="training-cards-menu" class="menu-panel cards-menu" popover>
+        <ul id="training-cards-list"></ul>
+        <div class="controls"><button id="training-cards-reset" type="button">Reset cards</button></div>
+      </div>
     </div>
     <div class="editor-body" id="training" aria-label="Training">
-      <dl id="training-stats" hidden>
-        <div><dt>Reward/step</dt><dd id="training-reward-now">—</dd></div>
-        <div><dt>Best</dt><dd id="training-best">—</dd></div>
-        <div><dt>Loss</dt><dd id="training-loss-now">—</dd></div>
-        <div><dt>Episode</dt><dd id="training-episode-now">—</dd></div>
-        <div><dt>Action std</dt><dd id="training-std-now">—</dd></div>
-        <div id="training-eta-tile"><dt>ETA</dt><dd id="training-eta">—</dd></div>
-      </dl>
-      <!-- One chart per measure, each on its own axis (ADR-606); drawn at the area's width. -->
-      <div class="charts" id="training-charts" hidden>
-        <figure class="chart"><figcaption>Reward per step</figcaption><svg id="training-reward" role="img" aria-label="Reward per step by iteration"></svg></figure>
-        <figure class="chart"><figcaption>Loss</figcaption><svg id="training-loss" role="img" aria-label="Loss by iteration"></svg></figure>
-        <figure class="chart"><figcaption>Episode length (steps)</figcaption><svg id="training-episode" role="img" aria-label="Episode length by iteration"></svg></figure>
-        <figure class="chart"><figcaption>Action std</figcaption><svg id="training-std" role="img" aria-label="Action standard deviation by iteration"></svg></figure>
+      <!-- Where the run is, as Status says it (ADR-770): its iteration of its total, the ETA, a bar. -->
+      <div id="training-head" hidden>
+        <p id="training-line"></p>
+        <div id="training-progress" class="progress"><span></span></div>
+      </div>
+      <!-- The run's numbers and charts as cards (ADR-770): each dragged to a new place by its title,
+           resized from its corner, pinned to the strip that stays at the top or hidden; the
+           charts maximized to fill the editor. status.js adds the handles; this browser keeps the
+           arrangement. One chart per measure, each on its own axis (ADR-606). -->
+      <div id="training-board" hidden>
+        <div id="training-pinned" class="card-grid" data-zone="pinned" data-empty="true"></div>
+        <div id="training-cards" class="card-grid" data-zone="main">
+          <div class="card stat" data-card="reward"><span class="card-title">Reward/step</span><span class="stat-value" id="training-reward-now">—</span></div>
+          <div class="card stat" data-card="best"><span class="card-title">Best</span><span class="stat-value" id="training-best">—</span></div>
+          <div class="card stat" data-card="loss"><span class="card-title">Loss</span><span class="stat-value" id="training-loss-now">—</span></div>
+          <div class="card stat" data-card="episode"><span class="card-title">Episode</span><span class="stat-value" id="training-episode-now">—</span></div>
+          <div class="card stat" data-card="std"><span class="card-title">Action std</span><span class="stat-value" id="training-std-now">—</span></div>
+          <div class="card stat" data-card="eta" id="training-eta-tile"><span class="card-title">ETA</span><span class="stat-value" id="training-eta">—</span></div>
+          <figure class="card chart" data-card="reward-chart"><figcaption class="card-title">Reward per step</figcaption><svg id="training-reward" role="img" aria-label="Reward per step by iteration"></svg></figure>
+          <figure class="card chart" data-card="loss-chart"><figcaption class="card-title">Loss</figcaption><svg id="training-loss" role="img" aria-label="Loss by iteration"></svg></figure>
+          <figure class="card chart" data-card="episode-chart"><figcaption class="card-title">Episode length (steps)</figcaption><svg id="training-episode" role="img" aria-label="Episode length by iteration"></svg></figure>
+          <figure class="card chart" data-card="std-chart"><figcaption class="card-title">Action std</figcaption><svg id="training-std" role="img" aria-label="Action standard deviation by iteration"></svg></figure>
+        </div>
       </div>
       <section id="training-eval" class="status-section" hidden>
         <h2>Latest evaluation <span id="training-eval-verdict" class="chip"></span></h2>
@@ -294,10 +335,8 @@
         <button type="button" data-view="bars" aria-pressed="false">Bars</button>
         <button type="button" data-view="drivers" aria-pressed="true">Drivers</button>
       </span>
-      <button id="activations-viewport" type="button" aria-pressed="false"
-              title="Paint each motor and the parts it moves by its load">Show in viewport</button>
     </div>
-    <div class="editor-body" id="activations" data-viewport="off" data-match="" data-gauges="true" data-bars="false" data-drivers="true">
+    <div class="editor-body" id="activations" data-match="" data-gauges="true" data-bars="false" data-drivers="true">
       <p id="activations-status" data-state="empty">Play a rollout in the 3D viewport to see its motors and its network.</p>
       <div class="activations-ramp" aria-hidden="true"><span class="ramp-bar"></span><span style="left:0">idle</span><span style="left:80%">rated</span><span style="left:100%">peak</span></div>
       <div id="activations-motors"></div>
@@ -317,8 +356,19 @@
     </div>
     <div class="editor-body" id="network" data-layers="true" data-paths="true">
       <p id="network-status" data-state="empty">Play a rollout with a policy in the 3D viewport to see its network.</p>
-      <canvas id="network-layers" aria-label="The policy network's activations, layer by layer"></canvas>
-      <canvas id="network-paths" aria-label="The strongest paths through the network to the picked motor"></canvas>
+      <!-- Each view maximizes to fill the editor, and back (ADR-770). -->
+      <div class="net-view" data-view="layers">
+        <canvas id="network-layers" aria-label="The policy network's activations, layer by layer"></canvas>
+        <button class="icon-button view-max" type="button" data-max="layers" aria-pressed="false" title="Maximize the layers" aria-label="Maximize the layers">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg>
+        </button>
+      </div>
+      <div class="net-view" data-view="paths">
+        <canvas id="network-paths" aria-label="The strongest paths through the network to the picked motor"></canvas>
+        <button class="icon-button view-max" type="button" data-max="paths" aria-pressed="false" title="Maximize the paths" aria-label="Maximize the paths">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg>
+        </button>
+      </div>
     </div>
   </section>
 
@@ -348,6 +398,41 @@
         <div id="settings-heat-preview" class="settings-preview" aria-hidden="true"></div>
         <div class="controls"><button id="settings-heat-reset" type="button">Reset</button></div>
       </section>
+      <!-- The trail's colours (ADR-770; trailcolours.js): one colour, or a ramp by how recent. -->
+      <section class="settings-group" id="settings-trail">
+        <h2>Trail colour</h2>
+        <p class="muted small">The colour of the trail a 3D viewport draws where the design has been: one colour, or by age, from the oldest of the trail shown to the newest, at the design.</p>
+        <div class="field">
+          <span>Colour by</span>
+          <span class="segmented" id="settings-trail-mode" role="group" aria-label="Colour the trail by">
+            <button type="button" data-mode="solid" aria-pressed="true">One colour</button>
+            <button type="button" data-mode="age" aria-pressed="false">Age</button>
+          </span>
+        </div>
+        <div class="settings-swatches" id="settings-trail-solid-row">
+          <label>Colour <input type="color" id="settings-trail-solid"></label>
+        </div>
+        <div id="settings-trail-age">
+          <div class="field">
+            <label for="settings-trail-preset">Preset</label>
+            <select id="settings-trail-preset"></select>
+          </div>
+          <div class="field">
+            <span>Colours</span>
+            <span class="segmented" id="settings-trail-count" role="group" aria-label="Number of colours">
+              <button type="button" data-count="2" aria-pressed="true">Two</button>
+              <button type="button" data-count="3" aria-pressed="false">Three</button>
+            </span>
+          </div>
+          <div class="settings-swatches">
+            <label>Oldest <input type="color" id="settings-trail-old"></label>
+            <label>Middle <input type="color" id="settings-trail-mid"></label>
+            <label>Newest <input type="color" id="settings-trail-new"></label>
+          </div>
+        </div>
+        <div id="settings-trail-preview" class="settings-preview" aria-hidden="true"></div>
+        <div class="controls"><button id="settings-trail-reset" type="button">Reset</button></div>
+      </section>
     </div>
   </section>
 
@@ -356,6 +441,7 @@
 <script src="outliner.js"></script>
 <script src="gizmo.js"></script>
 <script src="heat.js"></script>
+<script src="trailcolours.js"></script>
 <script src="viewports.js"></script>
 <script src="activations.js"></script>
 <script src="settings.js"></script>
