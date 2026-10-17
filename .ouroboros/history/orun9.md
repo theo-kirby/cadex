@@ -6,11 +6,11 @@ ended: 2026-10-17T23:46:50+00:00
 hours: 10.4
 state: killed
 iterations: 23
-commits: 36
+commits: 37
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 10
-merged: no
+merged: bdaf363e98ceba737917da0bab702bc8765deca5
 branch: ouroboros/orun9
 memory: governor
 actor: claude:claude-opus-5-5
@@ -18,14 +18,14 @@ actor: claude:claude-opus-5-5
 
 # Run orun9
 
-23 iterations in 10.4h on `sb1x`, killed (-). Branch `ouroboros/orun9`, not merged.
+23 iterations in 10.4h on `sb1x`, killed (-). Branch `ouroboros/orun9`, merged as `bdaf363e`.
 
 ## The numbers
 
 | | |
 |---|---|
 | iterations | 23 (changed 23, recorded 0) |
-| commits | 36 — 25 files changed, 3256 insertions(+), 53 deletions(-) |
+| commits | 37 — 26 files changed, 3400 insertions(+), 53 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 10 checked at the tip |
 | reverts | 0 |
 | verdicts | continue 23 |
@@ -35,6 +35,7 @@ actor: claude:claude-opus-5-5
 
 ## What landed
 
+- orun9 stopped by the owner at iteration 24: digest, stand-from-rest evidence (scarlet-ember-6770), tail folded
 - orun9 C2/B3: c1-c11b judged — waypoint 16 ends the ladder (points within_rated 7/10 at 0.970, 4 targets vs 6; turn2 9/10); nav-mode reference priced at 1/4/8/12 (go/stand 1.99/1.71/1.51/1.40x) and built at 4; b3-cat-cold (300 it) training
 - orun9 C2 O8: j_wrist_r's points load is a lopsided nav-mode gait, not speed — per-leg RMS vs speed r=+0.00 (30 legs), 1.06 first 1 s vs 0.98 cruising, wrists 0.73/0.98 on points vs 0.84/0.82 on run; track_reference pays <=4/step vs waypoint 24
 - orun9 B3/C2: b3-cat-ft judged at 25-150 — 0/10 everywhere, survival peaks 7/10 at 75 then collapses while trainer reward climbs; c1-c11b (waypoint 16) training
@@ -59,8 +60,7 @@ actor: claude:claude-opus-5-5
 - orun9 O8: c1-sp2 sprint allowance (rated prices off above 2.5 m/s, peak kept) launched warm from c1-h2@100; B1 biped task written, blocked by two engine defects
 - orun9 B1: cold quadruped by the recipe (b1-q1) passes its walk spec 10/10 from iteration 150; c1-h2x judged, no new clause
 - orun9 O8: c1-h4 (hinge_w 4) judged at 50 and 100 on six specs, passes no clause c1-h2 did not; c1-h2x (c1-h2 extended 100 it) launched
-- orun9 O8: c1-h2 (hinge_w 2) judged on six specs, turn2 10/10; tail servos saturate at stall, never exceed; c1-h4 launched
-- ... and 3 more
+- ... and 4 more
 
 <!-- notes: everything below this line is yours; a rewrite keeps it -->
 
