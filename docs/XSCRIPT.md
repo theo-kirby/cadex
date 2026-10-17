@@ -615,8 +615,9 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   the episode's first step: `ref_sin` and `ref_cos`, which the policy
   reads; and, privileged, `<name>_ref` for each `position` observation of a
   joint the stride poses (its unit), `ref_<foot>_lift` in mm above the
-  reference foot's lowest point and `ref_<foot>_down` for `lf`, `rf`, `lh`,
-  `rh`. A step is scored against the reference where it lands, so
+  reference foot's lowest point and `ref_<foot>_down` for each foot the
+  reference names, lower-cased (`lf`, `rf`, `lh`, `rh`; a biped's `l`, `r`,
+  ADR-756). A step is scored against the reference where it lands, so
   `exp(-((q_knee - q_knee_ref) / 15)^2)` is a joint-tracking reward term. A
   name one of them would take is refused as `tracking_channel_clash`.
   `assembly.task(..., reference_start="random")` (default `"phase0"`) starts
@@ -629,6 +630,18 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   exponent in (0, 1], 0.4 by default (dynamic similarity). A zero command
   stops the clock. It is refused on a task with no reference or without
   exactly one speed goal.
+  `assembly.task(..., body={"family": "quadruped", "legs": {"fl": {"abd":
+  j, "hip": j, "knee": j, "ankle": j}, ...}})` maps the robot onto its
+  family's canonical body (ADR-755) so a policy can warm-start across robots
+  of the family. A `quadruped` has legs `fl fr hl hr`, a `biped` `l r`; a
+  slot left out is empty. An optional `morph` block states `hip_h_m`,
+  `mass_kg` and per leg `knee_dir` (±1), `thigh_m`, `shank_m`. The engine
+  resolves each slot into the bundle's `body`: its action, its two encoder
+  channels, `sign` (the joint's axis at the reset pose against the slot's:
+  `abd` swings the foot outward, the others swing the distal segment
+  forward, in the IMU's frame) and `offset` (its reset angle). A slot whose
+  joint lacks an action or a policy encoder channel, turns more than
+  acos 0.9 off its slot's axis, or is mapped twice is refused (`body_*`).
   **`assembly.success(predicates, seeds=...)` says what the behaviour must
   measurably be, apart from the reward** (ADR-456), and goes to
   `assembly.task(..., success=spec)`. A reward is what a policy is paid for;

@@ -44106,6 +44106,433 @@ stride 150 mm, IK miss < 1 µm, and the six `ref_*` channels.
 and given one stride, as a quadruped's are; no biped has trained on the
 reference yet (B1's biped proof).
 
+## ADR-755 — A canonical body for the quadruped and biped families (2026-10-17, orun9)
+
+**Context.** A warm start today is refused unless the source is the same
+network on the same robot: `check_policy_fits` (`training/cadex_train.py`)
+compares the model digest, the actor's channels in order and every
+action's actuator, index, unit and box. That is right for a curriculum
+step and it is why every legged robot trains from nothing (orun9 B2,
+`young-coast-4645`). The robots to be mapped are not alike:
+
+| robot | per leg | beyond the legs | actor inputs |
+|---|---|---|---|
+| `orun8-cat` (`0f036864`) | fore: haa, scap, shoulder, elbow, wrist; hind: haa, hip, knee, hock | spine, spine_yaw, tail1–4 | 77: 48 joint, 7 IMU, 5 goal, 2 clock, 15 scan |
+| `quad-qdd` | abad, hip, knee | — | joint + IMU |
+| `ot11-quad-1` | hip, knee | — | joint + IMU |
+| `orun8-biped` / `biped-sts` | roll, pitch, knee | — | joint + IMU |
+
+The policy's network is a tanh-squashed MLP whose first layer reads
+normalised actor channels and whose last layer's location half is the
+box-normalised action, `tanh(out) × (high−low)/2 + (high+low)/2` per
+action; the critic does not ship and already restarts on a warm start
+(`--critic-warmup`, ADR-740).
+
+**Decision.** A family is a fixed list of *named slots*. A warm start
+across robots matches source and target by slot name and rewrites only the
+first layer, the last layer and the normaliser; the result is an ordinary
+policy in the target's own layout, so the engine's `verify_policy`, the
+evaluations and the protocol do not move.
+
+- **Two families, version 1.** `quadruped` has legs `fl`, `fr`, `hl`,
+  `hr`; `biped` has `l`, `r`. Each leg has four joint slots in this order:
+  `abd` (abduction), `hip`, `knee`, `ankle` (O7). The body has `quat.w/x/y/z`
+  (the IMU's orientation, IMU frame x forward, z up) and `gyro.x/y/z`.
+- **Slot conventions are geometric, so signs are derived, not chosen.**
+  `abd` is positive when the foot moves outward (left legs about +x, right
+  about −x); `hip`, `knee` and `ankle` are positive when the distal segment
+  swings forward (about −y, both sides). At task build the engine takes
+  each mapped joint's axis at the reset pose: `sign = ±1` from its dot with
+  the slot axis, refused below |0.9| (a joint not aligned with its slot).
+  Each slot's `offset` is the joint's angle at the reset pose, so a
+  canonical angle is `sign × (q − offset)` in radians, through the record's
+  `scale`.
+- **The task declares the map; the engine resolves it.** An xscript
+  `body=` block on the task names the family, each slot's joint (a slot
+  left out is *empty*), and the morphology constants below. The bundle
+  carries the resolved block (`task["body"]`): per slot its joint, action
+  index, `q`/`dq` channels, `sign` and `offset`. A joint mapped twice, a
+  slot that is not the family's, or a joint without both an action and its
+  position and velocity channels is refused. The trainer reads the block
+  and never re-derives it (it imports no engine code).
+- **Morphology constants are inputs a base reads.** `morph.<leg>.knee_dir`
+  (±1: the knee bends forward or back at the stance), `morph.<leg>.thigh_m`,
+  `morph.<leg>.shank_m`, `morph.hip_h_m`, `morph.mass_kg`. A base trained
+  on a randomised family (B3) reads them as channels; a robot knows its own
+  geometry, so they are not privileged (real hardware: no sensor needed).
+- **One matching rule for every input.** Each actor input has a canonical
+  name: `<leg>.<slot>.q` / `.dq`, `body.*`, `goal.<channel>`,
+  `clock.<channel>`, `scan.<i>` (only when both scans have the same grid),
+  `morph.*`. Matched inputs copy their first-layer column, negated where the
+  signs differ, with the normaliser's mean and std mapped through the sign,
+  offset and unit. A source input the target lacks (an empty slot, a goal
+  it has no channel for, a morphology constant) is **folded into the first
+  layer's bias at its rest value** (0 for a joint and a goal, the target's
+  constant for `morph.*`) and dropped; that is exact, not an approximation,
+  for a constant input. A target input the source lacks (the cat's scap,
+  spine, tail, a scan of another grid) gets a **zero column** and fresh
+  statistics, so it cannot move the action until training gives it weight.
+- **One rule for every output.** A matched slot copies its last-layer row
+  and bias, negated where the signs differ: the canonical action is the
+  box-normalised one, and each robot keeps its own box. A source slot the
+  target lacks is dropped. A target output the source lacks (scap, spine,
+  spine_yaw, tail1–4 on the cat; a hip yaw on a biped) is a **zero row and
+  zero bias**, so it starts at its box centre; a box should be centred on
+  the stance for that to mean "hold" (the biped's already is). The scale
+  half is not in a policy file and starts as a cold run's.
+- **The check.** `check_policy_fits` takes a third path, beside the exact
+  one and ADR-161's task change: `--init-from-base`, asserted like
+  `--init-from-task-change`. It requires a `body` block on both, the same
+  family and version, the same hidden layers and activation, at least one
+  matched joint slot per leg the target has, and `--critic-warmup`. The
+  model and task digests are not compared (they are expected to differ).
+  It prints the counts copied, folded and zero-initialised per layer. The
+  exact path is unchanged and still refuses a cross-robot policy.
+- **Provenance.** A policy trained on a task with a `body` block records
+  it in its header, so a fine-tuned robot can itself be a source, and a
+  fine-tune records its base's digest (`base.sha256`). The engine reads
+  neither.
+
+**The cat on it.** `fl`: abd `j_fhaa_l`, hip `j_shoulder_l`, knee
+`j_elbow_l`, ankle `j_wrist_l`; `hl`: abd `j_hhaa_l`, hip `j_hip_l`, knee
+`j_knee_l`, ankle `j_hock_l`; the right legs alike. `j_scap_*`, `j_spine`,
+`j_spine_yaw` and `j_tail1–4` are its 8 extra outputs and 16 extra inputs;
+32 of its 48 joint inputs and 16 of its 24 actions are canonical. `quad-qdd`
+fills `abd`, `hip`, `knee` and leaves `ankle` empty; `ot11-quad-1` leaves
+`abd` and `ankle` empty; the bipeds map roll, pitch, knee to `abd`, `hip`,
+`knee`.
+
+**Rejected.** A fixed-width canonical network that every robot pads to:
+the shipped policy would carry dead inputs and outputs, and the engine
+would need to know the family to play it. A trainer-side map file
+(`--init-from-body map.json`): the joint axes and the reset pose that fix
+the signs live in the model, which only the engine reads; a hand map would
+be the hand sign choice this avoids. A fifth leg slot for the cat's
+scapula: one robot's anatomy in every family member.
+
+**What it needs to land (B2's next unit).** The engine's `body=` block and
+its resolution into the bundle; the trainer's remap and the third path in
+`check_policy_fits`; one contract test that a remap of a policy onto its
+own robot under a `body` block is the identity, and that a remap onto the
+same robot with its actions and legs permuted produces the same actions
+on the matching inputs. Status: **decided, not implemented.**
+
+**Implemented (orun9, B2).** `api.task(body=...)` (`_task_body`) checks the
+family, legs, slots and `morph`; the worker passes each slot's joint by
+name; `CadexDynamics._body_records` resolves it on the exported model at the
+reset keyframe into the bundle's `body` (`family`, `version` 1, per slot
+`joint action q dq sign offset`, and `body.quat`/`body.gyro`, the one policy
+orientation and rate observation, refused as `body_imu_ambiguous` if there
+are more). `body` is not a semantic task field, and it may move across a
+curriculum step (`CURRICULUM_TASK_KEYS`): it moves neither input nor output.
+The trainer's `body_layout` names every input and action, a policy trained
+on a body records it as the header's `body`, `check_policy_fits` takes the
+`--init-from-base REASON` path (`check_base_fits`), and `remap_from_base`
+rewrites the first and last layers, the statistics and the exploration
+width; the run's header records `init_from.base` (reason, family, the
+source's model and task digests, the counts). Four choices the decision
+left open or that changed in the doing:
+
+- **An input or action outside the slots is named by what it is**, not
+  dropped: `obs.<kind>.<target>.<i>` for any other policy channel,
+  `goal.`/`clock.`/`command.<channel>`, and `joint.<name>` for an unslotted
+  action. So a robot is a base for itself (the cat's spine and tail carry),
+  and two robots share such an input only where kind and target agree. A
+  height scan is `scan.<grid digest>.<i>`.
+- **Morphology constants are recorded, not yet read.** `morph` goes into
+  the bundle and the header; it becomes actor channels with B3's randomised
+  family, which is what needs them.
+- **Exploration width:** a matched action carries the source's, a new one
+  starts at the warm default, 0.3 (`DEFAULT_INITIAL_STD`), rather than at
+  Brax's cold 0.69: a cold width on a warm actor is ADR-471's failure.
+- **Statistics restart at a count of one.** The mapped mean and std are what
+  the first unroll reads; the target's own first batch then sets every
+  channel's. Carrying the source's count (ADR-753) would pin a new input at
+  mean 0 and std 1 for the run.
+
+Measured: `training/test_canonical_body.py` (identity onto its own robot;
+the same biped listed right leg first, knee before hip, its right knee's
+encoder reversed and a tail added plays the same actions, the tail at 0; it
+fails if the sign rule is removed). On the exported models, see the B2
+probe `docs/probes/orun9/b2-body.md`.
+
+## ADR-756 — A biped reward may name its reference's foot channels (2026-10-17, orun9)
+
+**Context.** ADR-706 compiles a task's reward and termination twice: first
+against every channel a reference *could* add (`_tracking_candidates`),
+because which joints the stride poses is known only once it is generated,
+then against the exact ones. The first list hard-coded the four quadruped
+feet, `lf rf lh rh`. ADR-754's two-foot reference names its channels
+`ref_l_lift`, `ref_r_lift`, `ref_l_down` and `ref_r_down`, so a biped reward
+naming them was refused as not an observation channel of the task before
+the stride was ever built. That blocked recipe step 1.1 (track foot lift and
+contact) on B1's biped (`docs/probes/orun9/b1-biped.md`).
+
+**Decision.** The candidate feet are the labels the declared reference
+keys in `feet` (`LF RF LH RH`, or `L R`), lower-cased, which are the labels
+`_tracking_records` gives the clip's channels. A quadruped's candidates are
+unchanged. No channel, op or bundle field changes.
+
+**Measured.** A scratch copy of `orun9-biped` with B1's biped task minus its
+foot `contact` channels (`b1b-script.py` without `cl`/`cr` and the
+`track_contact` term) was refused with "reward 'track_lift' names
+'ref_l_lift', 'ref_r_lift'" before; after, `cadex script --set` accepts it
+and the bundle's tracking channels end `ref_l_lift ref_r_lift ref_l_down
+ref_r_down`. `pixi run test-engine` and the CLI suite pass.
+
+The other biped blocker, the foot `contact` channel's export check, is
+ADR-757.
+
+## ADR-757 — A touch at exact tangency is not compared on export (2026-10-17, orun9)
+
+**Context.** `_verify_exported_sensors` compares the exported file's
+observation values at the solved keyframe against the engine's own compiled
+model, at 1e-5 relative. B1's biped (`orun9-biped`, twin-keel capsule feet)
+failed it with 0.92 relative drift as soon as a foot `contact` channel
+(ADR-698) was declared (`docs/probes/orun9/b1-biped.md`, defect 1).
+
+**Measured.** Dumping both models at the keyframe: every sensor agrees to
+1e-6 but the two touch channels, which read 0.922 N and 0.922 N in the
+compiled model and 0 and 0 in the reload. The keyframe stands the flat
+capsules exactly on the floor. In the compiled model each capsule's contact
+is at −5.2e-18 m (round-off) and carries 0.46 N a contact. The reloaded XML
+puts them at exactly 0.0 m, with two zero-force contacts per capsule. The
+joint pose agrees exactly. So the sensor is not mismatched: a touch at
+tangency is a constraint force set by round-off, and either value is right.
+The quadruped's ball feet passed only because their round-off happened to
+fall the same way in both models.
+
+**Decision.** A `contact` channel whose body has a contact within
+`MJCF_WRITER_ZERO` (1e-12 m) of zero distance, in either model, is left out
+of the keyframe value comparison (`_touches_tangent`). Every other channel,
+and a touch channel whose body is clear of the floor or in real
+penetration, is compared as before. The pose that puts the foot there is
+still held by `_verify_exported_pose`, and the site and sensor by the count,
+order and width checks. No channel, op or bundle field changes.
+
+**Result.** `b1b-script.py` builds as written on a scratch copy of
+`orun9-biped` (task reward: alive, speed, track_pose, track_lift,
+track_contact, over_rated, height, posture, heading; channels `cl`,
+`cl_down`, `cr`, `cr_down`, `ref_l_*`, `ref_r_*`). `orun9-quad`'s accepted
+script rebuilds. `pixi run test-engine` and the CLI suite pass.
+
+## ADR-758 — B3's randomised quadruped family is a set of built variants of one parametric robot (2026-10-17, orun9)
+
+**Context.** B3 asks for a quadruped base trained on a randomised family,
+where each episode draws segment lengths, masses and knee direction across a
+stated range. The engine's randomisation moves only `mass`, `damping`,
+`armature` and `friction_loss` (`RANDOMISATION_TARGETS`,
+`CadexDynamics.py`). A segment length or a knee direction is geometry: it
+moves the joint and collision frames, the inertias, the joint limits, the
+reset pose and the generated gait. The trainer imports no engine code
+(ADR-084), so it cannot rebuild a robot. And editing the exported MJCF
+inside the trainer would train on mechanisms the engine never built or
+checked.
+
+**Decision.** The family is **a set of built variants of one parametric
+robot**. Each variant is a whole Cadex build: fit, mounting and the joint
+sweep must pass, the gait is generated on that variant's own legs, and the
+`body=` block (ADR-755) is resolved for it. The trainer will batch the
+variants (below). Masses are drawn per environment by the bundle's own
+randomisation, as before.
+
+- **The robot.** `~/cadex-projects/orun9-qfam` is `orun9-quad`'s
+  (quad-qdd's) script with three changes, in `~/orun9-progress/b3/qfam-script.py`:
+  `knee_f`/`knee_h` (±1: the front and hind knee ahead of or behind the
+  hip–foot line); `thigh`/`shin` widened to 160–240 mm; and a `body=`
+  block whose `morph` carries each leg's `knee_dir`, `thigh_m`, `shank_m`
+  and the hip height. Two measured defects were fixed. With thigh ≠ shin
+  the foot is not under the hip, so the foot collision follows the shin,
+  and the reset tilt's lift is taken from the farthest foot. The standing
+  COM is the hip height less 51.7 mm, measured on the 200/200 build.
+- **The ranges.** Thigh and shank are each uniform in 160–240 mm, drawn by
+  `random.Random(758)` and rounded to 5 mm. Knee direction is ±1 front and
+  ±1 hind, all four combinations, two draws each.
+  - Masses are drawn per environment (`RANDOMISATION_MODE`). The chassis
+    and each thigh, shin and drive case (12 AK80-9) are scaled ×0.8–1.2,
+    and the battery ×0.7–1.3: 22 entries of the 32 allowed. That is
+    9.27 ± 1.76 kg (7.5–11.0 kg) on the 200/200 build.
+  - Fixed across the family: hip spacing (400 mm), abduction offset, foot
+    radius, the 40° stance, the drives and their gains, and the 250 mm/s
+    trot spec.
+- **The variants.** Eight were drawn and seven build (v0, v1, v3–v7). The
+  drawn lengths came out at 180–235 mm, hip heights at 292–357 mm, and
+  build masses at 9.22–9.33 kg. v2 (200/215, front knee ahead, hind behind)
+  fails in OCCT: the bolt-hole cut on `shin_rl` gives an invalid shape, on
+  both tries. It is left out and not redrawn; v6 has the same knee
+  combination. v0 is quad-qdd's own point (200/200, both knees behind). It
+  is **held out** of the base's training set, so `orun9-quad` and its cold
+  curve (b1-q1, walk 10/10 at 150) are a fine-tune target the base never
+  saw. That is an interpolation test, because v0 lies inside the ranges.
+  The cat is the extrapolation test.
+- **One topology, measured.** All seven compile in stock MuJoCo to the same
+  sizes and array shapes. The fields that differ are `geom_pos`, `jnt_pos`,
+  `site_pos`, `body_ipos`/`iquat`/`mass`/`inertia` and `jnt_range`, plus
+  what is derived from them (`body_subtreemass`, `dof_M0`,
+  `*_invweight0`, `actuator_acc0`, `dof_length`). These are the kind of
+  fields the trainer already batches per environment for a mass draw
+  (`randomised_models`). The tasks also differ, per variant:
+  - the tracking clip (41–48 samples, its period and reset states);
+  - the height reward's and the crouch termination's constant (the
+    standing COM);
+  - the shove's newtons, the reset lift and the success spec's shove;
+  - the hip action box, which is mirrored with the knee direction
+    (−35…15° or −15…35°);
+  - `body.morph`.
+
+  The actor's channels, actions, reward terms and network shapes are the
+  same.
+
+**The trainer's half (implemented as ADR-759, which departs from this plan in how).** `--family DIR…`
+takes the variants' bundles; environment *e* is variant *e* mod *K*, held
+for the run. The batched model is each variant's fields gathered by
+environment, the same move a mass draw already makes. Reward and termination
+are compiled per variant and selected by the variant index. The tracking
+tables are padded to the longest clip, with each variant's own sample count.
+The action boxes are per variant. The `morph.*` constants become actor
+inputs (ADR-755 recorded them for this). The result is an ordinary policy
+whose header records the family, which `--init-from-base` maps onto any
+quadruped (ADR-755).
+
+**Rejected.**
+- *Trainer-side geometry randomisation* (scaling `body_pos`/`geom_size` on
+  the host): the mechanisms trained on would not be ones the engine built,
+  checked for fit or swept, and a knee flip is not a scale.
+- *Redrawing v2 until it builds*: a failed point is a fact about the script,
+  and the knee combination is covered.
+- *Engine `length` randomisation targets*: these would mean rebuilding the
+  gait reference, the reset pose and the limits per draw inside the
+  engine's task build, which is more engine for the same family.
+
+**Measured: a knee-forward variant trains by the recipe.** `b3-v1cold`
+trained v1 (185/225 mm, all four knees ahead of the hip–foot line) cold by
+the recipe exactly as b1-q1, with 200 iterations at 8192 environments in
+965 s. It ran on the family's first task, the 10 mass entries without the
+drive cases (9.27 ± 0.78 kg), because the cases were added after it
+launched; the walk spec it was judged on is unchanged. It was judged on the family's walk spec (10 frozen seeds 9101–9110):
+4/10 at 50, 8/10 at 100, **10/10 at 150 and 200**. b1-q1 on quad-qdd went
+0/10, 0/10, 10/10. `b3-v7cold` (v7, 180/180 mm, the front knee
+behind and the hind knee ahead) used the widened 22-entry task and took 915
+s. It went 0/10 at 50, 0/10 at 100 (standing still), and **10/10 at 150 and
+200**. So the recipe's cold curve is 150 iterations on all three knee
+arrangements tried. Evidence: `docs/probes/orun9/b3-family.md`.
+
+## ADR-759 — A family trains as one batch of its variants' own environments (2026-10-17, orun9)
+
+**Context.** ADR-758 built B3's family as seven variants of one robot and
+planned the trainer's half: `--family`, one batched model with each
+variant's fields gathered per environment, reward and termination compiled
+per variant and selected by index, clips padded to the longest, per-variant
+action boxes, and the morph constants as actor inputs. Each of those is a
+second, index-selected copy of something `build_environment` already does
+correctly for one bundle, and the per-variant facts ADR-758 measured (clip
+length and reset states, the height constant, shove newtons, reset lift,
+mirrored hip boxes) reach a dozen places in it.
+
+**Decision.** `cadex_train.py --family BUNDLE…` builds **one environment
+per variant** with the unchanged `build_environment` and joins them
+(`family_environment`):
+
+- The bundle is variant 0 and names the run (its digests are the header's
+  `task` and `model`); `--family` lists the others. `check_family` refuses
+  a variant whose channels, actor channels, joints, reward-term count,
+  episode (steps, solver steps) or body (family, version, morph names)
+  differ, or a duplicate. The models are compiled and their sizes
+  (`FAMILY_SIZES`) compared before anything is batched.
+- The environments are split into **contiguous blocks**, as evenly as they
+  go, not `e mod K`: a block is a slice, so each variant's environment is
+  built and stepped whole. Block *k*'s host draws are seeded at `seed` plus
+  the environments before it, so environment *e* draws
+  `random.Random(seed + e)` whatever its variant. A step splits the state by
+  block, steps each variant, and concatenates; the PRNG key, the one leaf
+  with no environment axis, is stacked per block. PPO's minibatches are a
+  permutation of environments, so each mixes the variants.
+- The morph constants (`morph_inputs`: `morph.<leg>.<key>` sorted, then
+  `morph.<key>`) are appended to the actor's and the critic's observation.
+  The header lists them in `observations` and in `body.inputs` (gain 1,
+  centre 0; `family_body`), and the variants under `training.family`
+  (task and model digests, label, morph).
+- `remap_from_base` folds a source `morph.*` input the target lacks into
+  the first layer's bias **at the target's own morph value**, so a base
+  remapped onto a robot plays what the base plays reading that robot's
+  constants (`test_canonical_body.py`, the contract). `--init-from-base`
+  onto a `--family` run is refused; a family continues from a family policy
+  by `--init-from`, whose channel check now expects the morph inputs.
+- `cadex_cli.loop` takes `family` (the other variants' bundles, copied with
+  their models into `train/family/<k>/`) and `init_from_base` (the reason,
+  which needs `init_from`) as settings, so a base run and its fine-tunes are
+  registered and followed on the dashboard like any other.
+
+**Cost.** The step is traced once per variant, so the graph and the compile
+grow about K-fold; the steps themselves are each `count/K` wide. On the
+5090 the first base run (`b3-base1`, six variants, 8,192 environments)
+compiled in about 230 s and then took **8.7 s an iteration**, against about
+4.4 s for one variant at the same batch (b3-v7cold, 885 s for 200
+iterations including its compile): the blocks run one after another, not
+fused, so a family iteration costs about twice a single robot's. Measured on CPU at 32 environments: a three-variant family (v1, v3, v7) compiled and
+ran two iterations in 97 s.
+
+**A family policy is a base, not a controller the engine plays.** Its
+actor reads `morph.*` inputs no bundle provides, so `assembly.policy`
+refuses it, and the dashboard's checkpoint rollouts cannot replay it. It is
+judged through a fine-tune: `--init-from-base` onto a variant (0 or more
+iterations) writes an ordinary policy for that robot. Checked: a 2-iteration
+CPU fine-tune from the smoke base onto the held-out v0 was accepted, 33
+inputs copied and 13 folded, and wrote a witness-checked policy with v0's
+33 channels.
+
+**Rejected.**
+- *ADR-758's gathered model with index-selected reward, clips and boxes*:
+  more code, and every per-variant constant would be a second copy that can
+  drift from the one-bundle path the cold runs proved.
+- *Feeding the morph only to the critic*: the hip box mirrors with the knee
+  direction, so the actor has to know which way its knees bend.
+
+
+## ADR-760 — A base remap keeps the base's normaliser weight on the inputs it shares (2026-10-17, orun9)
+
+**Context.** ADR-755 restarted a remapped base's actor statistics at a
+count of one, because carrying the source's count (ADR-753) on every input
+would pin a target input the base never read at mean 0 and std 1 for the
+run. That swaps one defect for another: the first batch then replaces the
+statistics of every input the base *did* read, so the frozen actor reads
+its shared inputs on a new scale. B3's zero-shot proof never saw it (0
+training iterations); a fine-tune with iterations would.
+
+Measured on CPU, b3-base1's final policy (count 49,152,000) onto held-out
+v0 for 3 iterations at 64 environments, `--critic-warmup 1`
+(`~/orun9-progress/adr760/`): on the pre-fix trainer the carried means moved
+up to 1.33 of their std and the stds by up to ×2.0 (|log ratio| 0.71); the
+episode fell from 1,280 to 85 steps, reward per step from +12.79 to −7.34,
+and the exploration width rose from 0.078 to 1.64.
+
+**Decision.** `remap_from_base` returns `carried`, per target input, true
+where the input matched a source input. The warm start keeps the source's
+count (`source_normaliser_count` of the base) and, when some input is not
+carried, makes ADR-753's actor offset per input: the initial summed
+variance is std² × count on a carried input and std² × 1 on a new one, and
+`update_normaliser` takes a carried input's statistics from the offset
+update and a new one's from Brax's own count, so the target's first batch
+sets the new inputs and barely moves the shared ones. With every input
+carried the path is ADR-753's unchanged. The header still records one
+count, the carried inputs' (Brax keeps one): a later warm start from the
+fine-tune credits its once-new inputs with that count too, which is the
+same weight their own run's samples would carry within a factor of the
+base's count. Superseded: ADR-755's "statistics restart at a count of one".
+
+Measured, same setup on the fixed trainer: carried means moved at most
+6.3e-5 of their std and stds by |log ratio| 3.5e-5, the episode stayed at
+1,280 steps and reward per step at +12.79–13.30; with v0's privileged
+centre of mass given to the actor as three new inputs, the carried inputs
+moved at most 7.1e-5 / 4.1e-5 and the new ones took their own statistics
+from the first batches (com_z mean 274.4 mm, std 7.8, from 0 and 1).
+`test_canonical_body.py` asserts the mask (the remap's new tail inputs are
+the uncarried ones, the identity remap carries all).
+
+**Rejected.** *Recording a per-input count in the header*: the container's
+normaliser is one count, and the engine never reads it; the overstatement
+above is bounded and the next warm start's own batches correct it.
+
 ## ADR-770 — A Version editor; Training cards; the rollout's trail; the gizmo folds; views maximize (2026-10-17)
 
 **Context.** The owner asked for seven dashboard changes at once: the run's

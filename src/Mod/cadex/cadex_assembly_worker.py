@@ -4212,6 +4212,20 @@ def _execute_task_bundle(
             # ADR-752: the clock follows the task's one speed goal.
             declaration["reference"]["cadence"] = dict(properties["reference_cadence"])
 
+    if properties.get("body") is not None:
+        # ADR-755: each slot's joint by output name; the engine resolves it.
+        declared_body = properties["body"]
+        declaration["body"] = {
+            "family": str(declared_body["family"]),
+            "legs": {
+                str(leg): {str(slot): joint_outputs[id(joint)]
+                           for slot, joint in dict(slots).items()}
+                for leg, slots in dict(declared_body["legs"]).items()
+            },
+            **({"morph": json.loads(json.dumps(
+                declared_body["morph"], default=dict))}
+               if declared_body.get("morph") is not None else {}),
+        }
     try:
         reloaded = CadexDynamics.load_model(xml)
         bundle = CadexDynamics.task_records(

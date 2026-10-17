@@ -1622,6 +1622,9 @@ swing, and foot slip is a foot's speed while it is down.
   component's colliding shapes, from each shape's bounding sphere, and puts
   a `touch` sensor on it. Stock MuJoCo and MJX compute the force; the flag
   is one comparison the engine and the trainer each make. A component with no collision shape is refused.
+  The export compares the file's touch at the keyframe with the engine's
+  unless the body rests exactly tangent to what it touches, where the force
+  is round-off (ADR-757).
 - **It is privileged.** No sensor in the library measures foot contact, so
   the reward, the terminations and the critic read it and the policy does
   not. A contact schedule term is then `paw_down` (or `1 - paw_down` in

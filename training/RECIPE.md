@@ -1,8 +1,10 @@
 # The cold-start recipe for a legged policy
 
-Verified against source: 2026-10-17. Provenance: `[Cadex-new]`. A draft of
-orun8's B1 (`wild-forest-4815`); it is **not yet proven** on a robot other
-than the cat (see *What is not proven*).
+Verified against source: 2026-10-17. Provenance: `[Cadex-new]`. orun8's B1
+draft (`wild-forest-4815`), half proven: a cold quadruped that is not the cat
+followed it to its walk spec on 10/10 seeds by iteration 150 (orun9 `b1-q1`,
+`docs/probes/orun9/b1-quad.md`); the biped has not run (see *What is not
+proven*).
 
 This is the order of work that has made a cold legged policy train quickly
 in Cadex, written from the runs that showed it. Each step names the record
@@ -125,7 +127,21 @@ the engine's (`docs/MUJOCO.md`, `docs/XSCRIPT.md`).
    fix, 1,012 [rec: bright-thistle-0405].
 5. **A warm start needs the same observations, actions and reference**; a
    reward, goal or spec change is a declared curriculum step
-   (`--init-from-task-change`). A new actor input means a cold start.
+   (`--init-from-task-change`). A new actor input or action needs the
+   task's `body=` block (ADR-755): `--init-from-base` then maps the old
+   policy onto the new layout, a new input starting as a zero first-layer
+   row with fresh statistics while the shared inputs keep theirs (ADR-760),
+   and a new action as a zero output at its box centre. Without a `body=`
+   block it is still a cold start. The remap is shown across robots (orun9
+   `b3-base1` onto v0); a same-robot input change through it has not been
+   run.
+6. **A fine-tune from a base model (`--init-from-base`, ADR-755) trains at
+   `--learning-rate 3e-5`, a tenth of the default.** At 3e-4 the first actor
+   update after the warm-up threw a base at sigma 0.14 out to 0.47, and the
+   fine-tune then followed a cold curve (orun9 `b3-ft150`: 6/10 at 25, 0/10
+   at 50 and 75). At 3e-5 sigma held and it walked 9/10 at 50 and 75
+   (`b3-ftlr`, `docs/probes/orun9/b3-family.md`). Shown on one quadruped
+   pair, base and v0; not yet on a cat-sized extrapolation or a biped.
 
 ## 4. Budgets
 
@@ -140,6 +156,12 @@ the engine's (`docs/MUJOCO.md`, `docs/XSCRIPT.md`).
 3. **A speed curriculum at a fixed tempo does not buy speed** (f1-s1, a dead
    end slower than its source) [rec: warm-hill-9213]; change the reference's
    tempo (step 1.4) instead.
+4. **Keep the first checkpoint that passes, and judge every one.** The
+   cold biped b1-b1 passed its walk spec 10/10 at iteration 100. Its reward
+   per step went on climbing to 264, and by 200 it had traded the stride for
+   a shuffle that fails step clearance; at 300 it fell. The reward curve
+   alone would have kept the worst file (orun9 iteration 10,
+   `docs/probes/orun9/b1-biped.md`).
 
 ## What is not proven
 
@@ -147,19 +169,29 @@ These are the parts of B1's criterion no run has shown yet. The recipe's
 proof (a cold walk on one new quadruped and one biped, 10 seeds, ≤ 300
 iterations) is what settles them.
 
-- **A biped's reference has not trained.** Since ADR-754 `CadexGait` builds
-  a two-foot `walk` or `run` (`assembly.gait([foot_l, foot_r], ...)`), and
-  it builds into `orun8-biped`'s task bundle, so steps 1.1–1.4 can be
-  followed on a biped; no biped has trained on one yet.
-- **Inverted knees.** The generator's IK pulls toward the home pose, so a
-  leg keeps the knee direction its build pose has; no run has tried a
-  backward-bending knee.
+- **Inverted knees: shown on one quadruped.** The generator's IK pulls
+  toward the home pose, so a leg keeps the knee direction its build pose
+  has. orun9's `b3-v1cold` built quad-qdd's legs with all four knees ahead
+  of the hip–foot line (`orun9-qfam` v1, thigh 185, shank 225 mm,
+  ADR-758). Following the same steps cold, it passed the walk spec 10/10
+  at iterations 150 and 200 (4/10 at 50, 8/10 at 100), as b1-q1 did with
+  the knees behind. `b3-v7cold` (v7, 180/180 mm, the front knee behind
+  and the hind knee ahead) also passed 10/10 at 150 and 200, after standing
+  still at 100 (`docs/probes/orun9/b3-family.md`). No biped has tried it.
 - **Uneven legs** (short forelegs). The generator scales the stride from
   one hip height, the mean of the four legs', and gives every leg the same
   stride length, so a short leg is asked the long leg's stride; no run has
   tried legs of different length.
 - **A stand-first stage.** Only stand-and-move in one task (step 1.7) has a
   run behind it.
-- **Any robot but the cat.** Every C1 run in this recipe is the orun8 cat
-  (`0f036864`); Go1 is the one other robot the trainer has trained
-  [rec: cold-meadow-3037].
+- **A robot but the cat: the quadruped and the biped are proven.** orun9's
+  `b1-b1` followed the same steps cold on `orun9-biped` (the servo biped,
+  STS3215 position servos, a 160 mm/s two-foot walk from ADR-754's
+  generator, step 1.1 by ADR-756/757): the walk spec passed 10/10 at
+  iteration 100, then failed step clearance from 150 on (4.4).
+  orun9's `b1-q1` followed steps 0.1–4.1 cold on `orun9-quad` (9.27 kg,
+  twelve AK80-9 position servos, a 250 mm/s trot generated on its legs): the
+  walk spec passed 10/10 at iterations 150, 200, 250 and 300, 0/10 at 50
+  and 100, at 4.5 s an iteration (`docs/probes/orun9/b1-quad.md`). Every
+  run here used position drives about the build stance; no torque-drive
+  robot has followed the recipe.
