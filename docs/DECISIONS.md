@@ -44105,3 +44105,114 @@ stride 150 mm, IK miss < 1 µm, and the six `ref_*` channels.
 **Not done.** A biped's legs are still scaled from one mean hip height
 and given one stride, as a quadruped's are; no biped has trained on the
 reference yet (B1's biped proof).
+
+## ADR-755 — A canonical body for the quadruped and biped families (2026-10-17, orun9)
+
+**Context.** A warm start today is refused unless the source is the same
+network on the same robot: `check_policy_fits` (`training/cadex_train.py`)
+compares the model digest, the actor's channels in order and every
+action's actuator, index, unit and box. That is right for a curriculum
+step and it is why every legged robot trains from nothing (orun9 B2,
+`young-coast-4645`). The robots to be mapped are not alike:
+
+| robot | per leg | beyond the legs | actor inputs |
+|---|---|---|---|
+| `orun8-cat` (`0f036864`) | fore: haa, scap, shoulder, elbow, wrist; hind: haa, hip, knee, hock | spine, spine_yaw, tail1–4 | 77: 48 joint, 7 IMU, 5 goal, 2 clock, 15 scan |
+| `quad-qdd` | abad, hip, knee | — | joint + IMU |
+| `ot11-quad-1` | hip, knee | — | joint + IMU |
+| `orun8-biped` / `biped-sts` | roll, pitch, knee | — | joint + IMU |
+
+The policy's network is a tanh-squashed MLP whose first layer reads
+normalised actor channels and whose last layer's location half is the
+box-normalised action, `tanh(out) × (high−low)/2 + (high+low)/2` per
+action; the critic does not ship and already restarts on a warm start
+(`--critic-warmup`, ADR-740).
+
+**Decision.** A family is a fixed list of *named slots*. A warm start
+across robots matches source and target by slot name and rewrites only the
+first layer, the last layer and the normaliser; the result is an ordinary
+policy in the target's own layout, so the engine's `verify_policy`, the
+evaluations and the protocol do not move.
+
+- **Two families, version 1.** `quadruped` has legs `fl`, `fr`, `hl`,
+  `hr`; `biped` has `l`, `r`. Each leg has four joint slots in this order:
+  `abd` (abduction), `hip`, `knee`, `ankle` (O7). The body has `quat.w/x/y/z`
+  (the IMU's orientation, IMU frame x forward, z up) and `gyro.x/y/z`.
+- **Slot conventions are geometric, so signs are derived, not chosen.**
+  `abd` is positive when the foot moves outward (left legs about +x, right
+  about −x); `hip`, `knee` and `ankle` are positive when the distal segment
+  swings forward (about −y, both sides). At task build the engine takes
+  each mapped joint's axis at the reset pose: `sign = ±1` from its dot with
+  the slot axis, refused below |0.9| (a joint not aligned with its slot).
+  Each slot's `offset` is the joint's angle at the reset pose, so a
+  canonical angle is `sign × (q − offset)` in radians, through the record's
+  `scale`.
+- **The task declares the map; the engine resolves it.** An xscript
+  `body=` block on the task names the family, each slot's joint (a slot
+  left out is *empty*), and the morphology constants below. The bundle
+  carries the resolved block (`task["body"]`): per slot its joint, action
+  index, `q`/`dq` channels, `sign` and `offset`. A joint mapped twice, a
+  slot that is not the family's, or a joint without both an action and its
+  position and velocity channels is refused. The trainer reads the block
+  and never re-derives it (it imports no engine code).
+- **Morphology constants are inputs a base reads.** `morph.<leg>.knee_dir`
+  (±1: the knee bends forward or back at the stance), `morph.<leg>.thigh_m`,
+  `morph.<leg>.shank_m`, `morph.hip_h_m`, `morph.mass_kg`. A base trained
+  on a randomised family (B3) reads them as channels; a robot knows its own
+  geometry, so they are not privileged (real hardware: no sensor needed).
+- **One matching rule for every input.** Each actor input has a canonical
+  name: `<leg>.<slot>.q` / `.dq`, `body.*`, `goal.<channel>`,
+  `clock.<channel>`, `scan.<i>` (only when both scans have the same grid),
+  `morph.*`. Matched inputs copy their first-layer column, negated where the
+  signs differ, with the normaliser's mean and std mapped through the sign,
+  offset and unit. A source input the target lacks (an empty slot, a goal
+  it has no channel for, a morphology constant) is **folded into the first
+  layer's bias at its rest value** (0 for a joint and a goal, the target's
+  constant for `morph.*`) and dropped; that is exact, not an approximation,
+  for a constant input. A target input the source lacks (the cat's scap,
+  spine, tail, a scan of another grid) gets a **zero column** and fresh
+  statistics, so it cannot move the action until training gives it weight.
+- **One rule for every output.** A matched slot copies its last-layer row
+  and bias, negated where the signs differ: the canonical action is the
+  box-normalised one, and each robot keeps its own box. A source slot the
+  target lacks is dropped. A target output the source lacks (scap, spine,
+  spine_yaw, tail1–4 on the cat; a hip yaw on a biped) is a **zero row and
+  zero bias**, so it starts at its box centre; a box should be centred on
+  the stance for that to mean "hold" (the biped's already is). The scale
+  half is not in a policy file and starts as a cold run's.
+- **The check.** `check_policy_fits` takes a third path, beside the exact
+  one and ADR-161's task change: `--init-from-base`, asserted like
+  `--init-from-task-change`. It requires a `body` block on both, the same
+  family and version, the same hidden layers and activation, at least one
+  matched joint slot per leg the target has, and `--critic-warmup`. The
+  model and task digests are not compared (they are expected to differ).
+  It prints the counts copied, folded and zero-initialised per layer. The
+  exact path is unchanged and still refuses a cross-robot policy.
+- **Provenance.** A policy trained on a task with a `body` block records
+  it in its header, so a fine-tuned robot can itself be a source, and a
+  fine-tune records its base's digest (`base.sha256`). The engine reads
+  neither.
+
+**The cat on it.** `fl`: abd `j_fhaa_l`, hip `j_shoulder_l`, knee
+`j_elbow_l`, ankle `j_wrist_l`; `hl`: abd `j_hhaa_l`, hip `j_hip_l`, knee
+`j_knee_l`, ankle `j_hock_l`; the right legs alike. `j_scap_*`, `j_spine`,
+`j_spine_yaw` and `j_tail1–4` are its 8 extra outputs and 16 extra inputs;
+32 of its 48 joint inputs and 16 of its 24 actions are canonical. `quad-qdd`
+fills `abd`, `hip`, `knee` and leaves `ankle` empty; `ot11-quad-1` leaves
+`abd` and `ankle` empty; the bipeds map roll, pitch, knee to `abd`, `hip`,
+`knee`.
+
+**Rejected.** A fixed-width canonical network that every robot pads to:
+the shipped policy would carry dead inputs and outputs, and the engine
+would need to know the family to play it. A trainer-side map file
+(`--init-from-body map.json`): the joint axes and the reset pose that fix
+the signs live in the model, which only the engine reads; a hand map would
+be the hand sign choice this avoids. A fifth leg slot for the cat's
+scapula: one robot's anatomy in every family member.
+
+**What it needs to land (B2's next unit).** The engine's `body=` block and
+its resolution into the bundle; the trainer's remap and the third path in
+`check_policy_fits`; one contract test that a remap of a policy onto its
+own robot under a `body` block is the identity, and that a remap onto the
+same robot with its actions and legs permuted produces the same actions
+on the matching inputs. Status: **decided, not implemented.**
