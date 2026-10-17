@@ -69,6 +69,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/SHELL-PARITY.md` | Where each part of the deleted shell went: ported, covered, or dropped. |
 | `docs/cadex-release-packaging.md` | The engine payload: what ships, how it is gated. |
 | `training/README.md`, `training/SETUP.md` | The offboard trainer, and four ways to run it (ADR-089). |
+| `training/RECIPE.md` | How to write a legged task so a cold policy trains quickly, each step with the run that showed it (draft, orun8 B1). |
 | `analysis/README.md` | The offboard structural analysis and its licence rule. |
 | `docs/PERFORMANCE-AUDIT.md` | Where build and read time goes on a large assembly, measured; what ADR-630 fixed and what remains, ranked. |
 | `docs/MACHINES.md` | The breadth bench: the machine briefs beyond robots, and what each run is for. |
