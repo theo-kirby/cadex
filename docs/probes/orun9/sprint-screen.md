@@ -78,3 +78,34 @@ they do not move with torque.
   the compile. c1-h2 and c1-h2x averaged 15.9 s/it over 100 iterations,
   compile included. Reward per step was 6.0 at iteration 18 (best 6.39 at
   iteration 6). Not judged yet.
+
+## Judged (iteration 8)
+
+c1-sp2, warm from c1-h2 at 100, finished 100 iterations (exit 0; the
+witness agrees to 1.5e-7). Both checkpoints were judged on the six specs on
+the 10 frozen seeds (`judge2.py --reward-may-differ`, CPU only).
+
+| spec | it 50 | it 100 | failing predicate, median (it 100) |
+|---|---|---|---|
+| run | 0/10 | 0/10 | tracks_speed 781 mm/s RMS (713 at 50); within_rated passes, worst drive 0.82–0.91 |
+| stand | 0/10 | 0/10 | still 559 mm (532 at 50) |
+| shove | 10/10 | 10/10 | — |
+| turn2 | 10/10 | 5/10 | tracks_yaw 7/10 (median 18.9), tracks_speed 8/10 (261 mm/s), tail_clear 7/10 |
+| reverse | 0/10 | 0/10 | reverses 78° (64° at 50) |
+| points | 0/10 | 0/10 | reaches 0, close 5790 mm |
+
+**Speed per command segment** on `run` at iteration 100 (commands 0.5, 3.0,
+1.5, 0.5 and 3.0 m/s, 2.4 s each; `segspeed.py`, mm/s across the 10 seeds):
+0.54–0.63, 2.20–2.35, 2.04–2.17, 0.65–0.76 and 1.66–2.16. At iteration 50
+the figures were 2.16–2.25 in the first 3 m/s segment and 1.86–2.23 in the
+second.
+
+**Finding.** The sprint allowance bought no speed. With the rated prices
+switched off above 2.5 m/s, the cat ran no faster than c1-h2, and every
+drive stayed within rated over the whole episode (worst 0.91). So `run` does
+not fail `within_rated` in its 3 m/s segments: it fails on speed while the
+drives have rated margin left. This agrees with `frosty-trail-8831` (the run
+binds on speed, not torque). The rated price is not what holds the cat below
+3 m/s at this weighting. c1-sp2 passes no clause c1-h2 did not, and it lost
+turn2 by iteration 100. Under O1, c1-h2x and c1-sp2 are two consecutive
+judged cat runs with no new clause, so the next GPU run is a B run.
