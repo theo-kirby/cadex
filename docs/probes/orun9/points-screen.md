@@ -86,3 +86,32 @@ c1-c8 trains from the accepted revision `8342d6d1`, in scope
 `orun9-c1-c8`. Its bundle differs from c1-c7's only in that one weight,
 checked field by field, and `navcheck.py` on it gives the c1-c8 row above.
 Iteration 0 logged +4.28 reward per step.
+
+## c1-c10: the ladder's next rung (iteration 19)
+
+c1-c9 extended c1-c8 at weight 8 and its closing speed stayed at 0.99–1.08
+m/s. On `points`, c1-c8 @100 kept every drive within rated: the worst drive
+per seed was at 0.82–0.94 of rated. So the waypoint pay, not the drives,
+holds the cat back, and the next rung of the O8 ladder is weight 12.
+
+**c1-c10**:
+- the change: `waypoint_w` goes 8 → 12 and nothing else. Its bundle differs
+  from c1-c8's in that one weight and no other field;
+- the warm start: from c1-c8 @100 (ADR-753, critic warm-up 10);
+- the budget: 100 iterations, 8,192 envs, checkpoints at 50 and 100;
+- the revision: accepted `accf672b`, in scope `orun9-c1-c10`. The launcher
+  and judge are `~/orun9-progress/c1c10/launch_c10.py` and `judge_c10.sh`.
+
+`navcheck.py` on its bundle, with the target 5 m ahead in nav mode:
+
+| v (mm/s) | 0 | 600 | 1500 | 2000 | 2500 |
+|---|---|---|---|---|---|
+| c1-c10 (waypoint ×12) | +9.41 | +12.16 | +16.20 | +18.30 | +20.20 |
+
+Going at 2.5 m/s pays 2.15× standing at the target, against 1.9× at
+weight 8. The gap from 0.6 to 2.5 m/s is +8.0 a step, against +5.0 at
+weight 8. Standing with the target 5 m behind pays −2.59 a step. The stand
+rows are unchanged.
+
+The ladder rule stays: if points moves, the next rung is 16; if it does not,
+the waypoint pay is not what holds points back.
