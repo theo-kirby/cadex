@@ -4796,7 +4796,11 @@ class AssemblyDomainAPI:
           ``largest_step_crossed_mm`` and ``steepest_slope_crossed_deg``,
           the course's steps and slopes the centre of mass ended beyond,
           and ``platforms_crossed`` and ``highest_platform_crossed_mm``,
-          the platforms it was over and ended beyond (ADR-749). A drawn box course is re-drawn for each evaluation seed from a
+          the platforms it was over and ended beyond (ADR-749); with
+          ``feet`` on a course of platforms, ``gap_touches``,
+          ``gaps_cleared``, ``widest_gap_cleared_mm``,
+          ``highest_platform_reached_mm``, ``leap_takeoff_speed_mm_s``
+          and ``leap_peak_mm`` (ADR-772). A drawn box course is re-drawn for each evaluation seed from a
           stream the training pool never uses, so every seed is judged on
           a course the policy did not train on.
         * with a floating base and commands that change (ADR-721):
