@@ -1339,6 +1339,9 @@ _SUCCESS_SCALE_KEYS = (
 
 #: What a goal may be (ADR-462). ``CadexDynamics.GOAL_KINDS`` is the same
 #: tuple, and ``test_goal_api`` holds the two equal.
+#: How many strides one speed-scheduled reference may list (ADR-773).
+MAXIMUM_REFERENCE_SCHEDULE = 8
+
 _GOAL_KINDS = ("value", "speed", "point", "phase", "yaw_rate", "waypoint")
 
 #: An observation's name, which becomes a name a reward formula writes. The
@@ -4307,6 +4310,7 @@ class AssemblyDomainAPI:
         frame: DomainValue | None = None,
         period_seconds: float | None = None,
         resample_seconds: float | None = None,
+        ramp_seconds: float | None = None,
         sequence: Sequence[float] | None = None,
         bearing_deg: float | None = None,
         label: str = "",
@@ -4397,6 +4401,14 @@ class AssemblyDomainAPI:
         episode, which is what makes a policy learn to *change* what it is
         doing. It must be a whole number of control steps. Omitted, the goal
         is held for the episode.
+
+        ``ramp_seconds`` (ADR-773) moves a ``value``, ``speed`` or
+        ``yaw_rate`` goal from one segment's value to the next in a straight
+        line over that long, from the segment's start, instead of in one
+        step: a speed command that accelerates the robot from a walk to a
+        gallop. It needs ``resample_seconds``, is at most that, and is a
+        whole number of control steps; the first segment is held from the
+        start.
 
         ``sequence=[v0, v1, ...]`` scripts the opening of a ``value``,
         ``speed`` or ``yaw_rate`` goal (ADR-721): segment ``k`` holds
@@ -4569,6 +4581,24 @@ class AssemblyDomainAPI:
             properties["resample_seconds"] = _number(
                 operation, "resample_seconds", resample_seconds,
                 minimum=0.0, maximum=3600.0, strict_minimum=True,
+            )
+        if ramp_seconds is not None:
+            if clean_kind not in ("value", "speed", "yaw_rate"):
+                raise _error(
+                    operation, "ramp_seconds",
+                    "ramps a value, a speed or a yaw rate between segments; "
+                    f"this is a {clean_kind}", ramp_seconds,
+                )
+            if resample_seconds is None:
+                raise _error(
+                    operation, "ramp_seconds",
+                    "ramps from one segment to the next, and a goal without "
+                    "resample_seconds has one segment", ramp_seconds,
+                )
+            properties["ramp_seconds"] = _number(
+                operation, "ramp_seconds", ramp_seconds,
+                minimum=0.0, maximum=properties["resample_seconds"],
+                strict_minimum=True,
             )
         return self._value(
             operation, "goal", label=_label(operation, label), **properties
@@ -5283,7 +5313,7 @@ class AssemblyDomainAPI:
         disturbance: Sequence[DomainValue] = (),
         goals: Sequence[DomainValue] = (),
         success: DomainValue | None = None,
-        reference: DomainValue | None = None,
+        reference: DomainValue | Sequence[DomainValue] | None = None,
         reference_start: str = "phase0",
         reference_cadence: str = "fixed",
         reference_cadence_exponent: float | None = None,
@@ -5378,6 +5408,24 @@ class AssemblyDomainAPI:
         default (dynamic similarity, stride frequency ~ v ** 0.4 at a free
         stride length), so a faster command is a quicker gait and a zero
         command stops the clock.
+
+        ``reference=[walk, canter, gallop]`` -- two to eight ``api.gait``
+        values, slowest first, on the same feet and spine -- is a **speed
+        schedule** (ADR-773): the reference is the strides blended at the
+        task's one ``speed`` goal. Each step the command in force picks the
+        two strides whose speeds bracket it and the weight between them;
+        every ``*_ref`` and ``ref_<foot>_*`` channel is that blend of the two
+        strides at the same phase (a foot reads down where the blend is at
+        least one half), and the clock turns at the blended stride
+        frequency, so a change of command changes the gait without a jump in
+        phase. The strides share one phase grid and must keep one footfall
+        order, so a rotary gallop's lead/trail lag can close from 0.25 to
+        0.05 across the range. The goal's ``between`` must lie inside the
+        strides' speeds; give it ``resample_seconds`` (and ``ramp_seconds``)
+        to change speed within an episode. ``reference_start="random"``
+        starts at a random phase of the stride nearest the opening command.
+        The bundle's ``reference`` is the slowest stride (the one the
+        dashboard plays); ``reference_schedule`` lists every stride.
 
         Like ``api.mjcf`` and for the same reason, ``api.task`` is not under
         the "exactly one simulation" rule: a script may declare several,
@@ -5515,6 +5563,63 @@ class AssemblyDomainAPI:
                 component_ids, joint_ids,
             )
             judged["success"] = spec
+        scheduled: list[DomainValue] = []
+        if isinstance(reference, (list, tuple)):
+            # ADR-773: a family of strides over the commanded speed.
+            scheduled = _values(
+                operation, "reference", reference, output_type="gait", minimum=2
+            )
+            if len(scheduled) > MAXIMUM_REFERENCE_SCHEDULE:
+                raise _error(
+                    operation, "reference",
+                    f"schedules at most {MAXIMUM_REFERENCE_SCHEDULE} strides",
+                    len(scheduled),
+                )
+            first = scheduled[0]
+            speeds_mm_s: list[float] = []
+            for index, entry in enumerate(scheduled):
+                if [id(foot) for foot in entry.properties.get("feet", ())] != [
+                    id(foot) for foot in first.properties.get("feet", ())
+                ] or entry.properties.get("spine") is not first.properties.get("spine"):
+                    raise _error(
+                        operation, f"reference[{index}]",
+                        "names other feet or another spine than reference[0]; "
+                        "the strides of a schedule are one robot's, so they "
+                        "pose the same joints",
+                    )
+                speeds_mm_s.append(float(entry.properties.get("speed_mm_s")))
+            if any(b <= a for a, b in zip(speeds_mm_s, speeds_mm_s[1:])):
+                raise _error(
+                    operation, "reference",
+                    "lists its strides slowest first, each faster than the one "
+                    "before", speeds_mm_s,
+                )
+            commanded = [entry for entry in goal_values
+                         if entry.properties.get("kind") == "speed"]
+            if len(commanded) != 1:
+                raise _error(
+                    operation, "reference",
+                    "a list of strides is blended at the task's one speed goal, "
+                    f"and this task declares {len(commanded)}",
+                )
+            if reference_cadence != "fixed":
+                raise _error(
+                    operation, "reference_cadence",
+                    "is the schedule's own when reference is a list: the clock "
+                    "turns at the frequency the strides interpolate to",
+                    reference_cadence,
+                )
+            low = float(commanded[0].properties.get("low"))
+            high = float(commanded[0].properties.get("high"))
+            if low < speeds_mm_s[0] or high > speeds_mm_s[-1]:
+                raise _error(
+                    operation, "reference",
+                    f"covers {speeds_mm_s[0]:g} to {speeds_mm_s[-1]:g} mm/s, and "
+                    f"the speed goal draws from {low:g} to {high:g}; a command "
+                    "is never extrapolated past the strides, so the slowest "
+                    "and fastest must bracket the goal's between",
+                )
+            reference = first
         if reference is not None:
             gait_value = _domain_value(
                 operation, "reference", reference, output_type="gait"
@@ -5536,6 +5641,8 @@ class AssemblyDomainAPI:
                     "names a joint that is not listed in this assembly",
                 )
             judged["reference"] = gait_value
+            if scheduled:
+                judged["reference_schedule"] = scheduled
         if reference_start not in ("phase0", "random"):
             raise _error(operation, "reference_start",
                          "must be 'phase0' or 'random'", reference_start)

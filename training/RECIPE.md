@@ -57,7 +57,10 @@ the engine's (`docs/MUJOCO.md`, `docs/XSCRIPT.md`).
    ADR-752) when the task asks more than one speed. On a fixed 1.72 Hz clock
    the cat ran 1.0–1.3 m/s whatever it was told [rec: wise-spark-1215]; on
    the cadenced clock it ran 2.4 m/s at a 3 m/s command with no reward
-   change [rec: keen-harbor-0874].
+   change [rec: keen-harbor-0874]. Where the stride's length and footfall
+   should change with speed too, a speed schedule (`reference=[slow, ...,
+   fast]`, ADR-773) blends strides at the command instead; no run has
+   trained on one yet, so this step does not claim it.
 5. **Pay speed as a share of the command made good, linear up to the
    command.** A kernel round the command alone is flat far from it: at a
    3 m/s command the cat stopped (0.06 m/s); with

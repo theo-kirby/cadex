@@ -911,9 +911,11 @@ def policy_view(train: Path, path: Path, run: str, root: Path) -> dict[str, Any]
         "actions": actions, "weights": base64.b64encode(blob).decode("ascii"),
         "inputs": _policy_inputs(bundle, [str(n) for n in header.get("observations") or []]),
         # ADR-752: a clock that follows the command is not the trace's time
-        # over a period, so the page does not rebuild it.
+        # over a period, so the page does not rebuild it; nor is a speed
+        # schedule's (ADR-773).
         "clock": ({"period_s": float(period)} if isinstance(period, (int, float)) and period > 0
-                  and not ((bundle or {}).get("tracking") or {}).get("cadence") else None),
+                  and not any(((bundle or {}).get("tracking") or {}).get(key)
+                              for key in ("cadence", "schedule")) else None),
         "parts": _mjcf_parts(mjcf if mjcf is not None and mjcf.is_file() and not mjcf.is_symlink() else None,
                              [str(a.get("joint")) for a in actions])})
     return reply

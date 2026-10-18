@@ -1700,12 +1700,42 @@ def tracking_channels(task: dict[str, Any], *, policy_only: bool = False) -> lis
             tracking["policy_channels" if policy_only else "channels"]]
 
 
+def schedule_blend(xp: Any, task: dict[str, Any], told: Any) -> tuple[Any, Any]:
+    """The lower bracketing stride of a speed schedule and the upper one's
+    weight, at the command in ``told`` (ADR-773).
+    ``CadexDynamics.schedule_blend`` in ``xp``."""
+
+    scheduled = task["tracking"]["schedule"]
+    speeds = xp.asarray([float(v) for v in scheduled["speeds_mm_s"]], dtype=told.dtype)
+    count = len(scheduled["speeds_mm_s"])
+    v = xp.clip(xp.abs(told[..., goal_channels(task).index(str(scheduled["channel"]))]),
+                speeds[0], speeds[-1])
+    index = xp.clip(xp.searchsorted(speeds, v, side="right") - 1, 0, count - 2)
+    return index, (v - speeds[index]) / (speeds[index + 1] - speeds[index])
+
+
+def schedule_nearest(xp: Any, task: dict[str, Any], told: Any) -> Any:
+    """The stride nearest the command in ``told``, the slower on a tie
+    (ADR-773). ``CadexDynamics.schedule_nearest`` in ``xp``."""
+
+    scheduled = task["tracking"]["schedule"]
+    speeds = xp.asarray([float(v) for v in scheduled["speeds_mm_s"]], dtype=told.dtype)
+    v = xp.abs(told[..., goal_channels(task).index(str(scheduled["channel"]))])
+    return xp.argmin(xp.abs(speeds - v[..., None]), axis=-1)
+
+
 def tracking_turn(xp: Any, task: dict[str, Any], told: Any) -> Any:
     """Cycles the gait clock turns over one control step taken under the
     goal channels ``told`` (``(..., G)`` in ``goal_channels`` order), on a
-    speed cadence (ADR-752). ``CadexDynamics.tracking_turn`` in ``xp``."""
+    speed cadence (ADR-752) or a speed schedule (ADR-773).
+    ``CadexDynamics.tracking_turn`` in ``xp``."""
 
     tracking = task["tracking"]
+    if tracking.get("schedule"):
+        index, weight = schedule_blend(xp, task, told)
+        turns = xp.asarray([float(v) for v in tracking["schedule"]["turns_per_step"]],
+                           dtype=told.dtype)
+        return (1.0 - weight) * turns[index] + weight * turns[index + 1]
     cadence = tracking["cadence"]
     speed = xp.abs(told[..., goal_channels(task).index(str(cadence["channel"]))])
     return float(tracking["turn_per_step"]) * (
@@ -1713,7 +1743,7 @@ def tracking_turn(xp: Any, task: dict[str, Any], told: Any) -> Any:
 
 
 def tracking_vector(xp: Any, task: dict[str, Any], steps: Any, origin: Any = None,
-                    turned: Any = None) -> Any:
+                    turned: Any = None, told: Any = None) -> Any:
     """The tracking channels after ``steps`` control steps (ADR-706) of an
     episode that started at clip sample ``origin`` (ADR-709), or, on a
     speed cadence, after the clock has turned ``turned`` cycles (ADR-752).
@@ -1723,6 +1753,10 @@ def tracking_vector(xp: Any, task: dict[str, Any], steps: Any, origin: Any = Non
     ``origin / samples``, less its whole turns; a
     phase between two rows of the clip's table is read linearly between
     them, round the end, and a ``held`` column reads 1 from one half up.
+    On a speed schedule (ADR-773) ``told`` is the goal channels in force,
+    and the two bracketing strides' readings are blended before a held
+    column is thresholded; ``origin`` is then a row of every stride's
+    samples, whose phase is ``origin mod samples``.
     """
 
     tracking = task["tracking"]
@@ -1730,15 +1764,23 @@ def tracking_vector(xp: Any, task: dict[str, Any], steps: Any, origin: Any = Non
     turned = (xp.asarray(steps) * float(tracking["turn_per_step"]) if turned is None
               else xp.asarray(turned))
     if origin is not None:
-        turned = turned + xp.asarray(origin) / float(rows)
+        turned = turned + (xp.asarray(origin) % rows) / float(rows)
     phase = turned - xp.floor(turned)
     at = phase * rows
     floor = xp.floor(at)
     weight = (at - floor)[..., None]
     low = floor.astype(xp.int32) % rows
     high = (low + 1) % rows
-    table = xp.asarray(tracking["table"], dtype=weight.dtype)
-    value = table[low] + weight * (table[high] - table[low])
+    if tracking.get("schedule"):
+        stride, share = schedule_blend(xp, task, told)
+        share = share[..., None].astype(weight.dtype)
+        tables = xp.asarray(tracking["schedule"]["tables"], dtype=weight.dtype)
+        below = (1.0 - share) * tables[stride, low] + share * tables[stride + 1, low]
+        above = (1.0 - share) * tables[stride, high] + share * tables[stride + 1, high]
+        value = below + weight * (above - below)
+    else:
+        table = xp.asarray(tracking["table"], dtype=weight.dtype)
+        value = table[low] + weight * (table[high] - table[low])
     held = xp.asarray([bool(flag) for flag in tracking["held"]])
     value = xp.where(held, (value >= 0.5).astype(value.dtype), value)
     angle = (2.0 * math.pi) * phase
@@ -2625,6 +2667,10 @@ def build_environment(
     # ADR-752: a PYTHON bool on the same terms; a speed cadence's clock is
     # the cycles turned so far, carried beside the step counter.
     cadenced = tracking and bool(task["tracking"].get("cadence"))
+    # ADR-773: a speed schedule's clock is carried the same way, and its
+    # random start row is the stride nearest the opening command.
+    scheduled = tracking and bool(task["tracking"].get("schedule"))
+    cadenced = cadenced or scheduled
     # ADR-715: a PYTHON bool on the same terms; a scan is read from the
     # state's xpos and xmat, never carried.
     scanning = bool(task.get("scans"))
@@ -2678,6 +2724,15 @@ def build_environment(
         start_qpos = jnp.asarray(task["tracking"]["reset_qpos"], dtype=jnp.float32)
         start_qvel = jnp.asarray(task["tracking"]["reset_qvel"], dtype=jnp.float32)
         start_samples = int(task["tracking"]["samples"])
+
+    def scheduled_origin(sample, picks):
+        """ADR-773: the start row of the stride nearest each opening command."""
+
+        if not scheduled:
+            return sample
+        return schedule_nearest(jnp, task, goals_at(picks, jnp.zeros_like(sample))) \
+            * start_samples + sample
+
     nbody = int(host.nbody)
 
     # ADR-715: the ground the scans read is the elevation the model collides with.
@@ -2761,6 +2816,8 @@ def build_environment(
         )
     ]
     goal_periods = [int(entry["resample_steps"]) for entry in goal_entries]
+    # ADR-773: a goal's ramp between segments, in steps; 0 steps at once.
+    goal_ramps = [int(entry.get("ramp_steps") or 0) for entry in goal_entries]
     # ADR-598: a phase goal's turn per step; None for a goal that is held.
     goal_turns = [
         float(entry["radians_per_step"]) if entry["kind"] == "phase" else None
@@ -2779,9 +2836,15 @@ def build_environment(
         """
 
         told = []
-        for pooled, period, turn in zip(goal_tables, goal_periods, goal_turns):
+        for pooled, period, turn, ramp in zip(goal_tables, goal_periods, goal_turns,
+                                              goal_ramps):
             segment = goal_segment(jnp, steps, period, pooled.shape[1])
             held = pooled[picks, segment]
+            if ramp:
+                # ADR-773: from the segment before, in a straight line.
+                before = pooled[picks, jnp.maximum(segment - 1, 0)]
+                share = jnp.minimum(1.0, (steps - segment * period + 1) / float(ramp))
+                held = before + (held - before) * share[..., None].astype(held.dtype)
             if turn is not None:
                 held = phase_channels(jnp, held, steps - segment * period, turn)
             told.append(held)
@@ -3178,6 +3241,7 @@ def build_environment(
             vector = jax.vmap(observe)(data, noise)
         else:
             vector = jax.vmap(observe)(data)
+        told = None
         if goaled:
             told = goals_at(picks, steps)
             if waypointed:
@@ -3195,7 +3259,7 @@ def build_environment(
         if tracking:
             # ADR-706: the clock the policy acts on.
             vector = jnp.concatenate(
-                [vector, tracking_vector(jnp, task, steps, origin, turned)], axis=-1)
+                [vector, tracking_vector(jnp, task, steps, origin, turned, told)], axis=-1)
         if scanning:
             # ADR-715: the critic's, and the actor's when role: policy (ADR-748).
             vector = jnp.concatenate([vector, height_scan_vector(
@@ -3225,6 +3289,12 @@ def build_environment(
         # 0 draws the stream it always did.
         origin = (jax.random.randint(jax.random.fold_in(start_key, 709), (envs,),
                                      0, start_samples) if starting else None)
+        early = None
+        if starting and scheduled:
+            # ADR-773: the goals first, so the start row can follow the command.
+            early = jax.random.randint(jax.random.fold_in(start_key, 773), (envs,),
+                                       0, goal_pool_size)
+            origin = scheduled_origin(origin, early)
         start_key, qpos, qvel = varied_reset(start_key, origin)
         pick_key, forces, starts = drawn_pushes(start_key)
         # ADR-717: folded from the start key, like ADR-709's origin, so a
@@ -3242,7 +3312,8 @@ def build_environment(
                 "nonfinite": jnp.zeros((envs,), dtype=jnp.float32)}
         picks = None
         if goaled:
-            picks = jax.random.randint(pick_key, (envs,), 0, goal_pool_size)
+            picks = (early if early is not None
+                     else jax.random.randint(pick_key, (envs,), 0, goal_pool_size))
             info["picks"] = picks
         if starting:
             info["origin"] = origin
@@ -3300,7 +3371,8 @@ def build_environment(
             turned = turned - jnp.floor(turned)
         if tracking:
             # ADR-706: the reference one step on, where the step will land.
-            goal_args = goal_args + (tracking_vector(jnp, task, steps + 1, origin, turned),)
+            goal_args = goal_args + (
+                tracking_vector(jnp, task, steps + 1, origin, turned, told),)
         if push_entries:
             data = data.replace(xfrc_applied=applied_forces(forces, starts, elapsed))
         if commanding:
@@ -3338,6 +3410,12 @@ def build_environment(
         key, reset_key, push_key = jax.random.split(key, 3)
         fresh_origin = (jax.random.randint(jax.random.fold_in(reset_key, 709), (envs,),
                                            0, start_samples) if starting else None)
+        fresh_picks = None
+        if starting and scheduled:
+            # ADR-773: the next episode's goals first, as at the reset.
+            fresh_picks = jax.random.randint(jax.random.fold_in(reset_key, 773), (envs,),
+                                             0, goal_pool_size)
+            fresh_origin = scheduled_origin(fresh_origin, fresh_picks)
         _unused, fresh_qpos, fresh_qvel = varied_reset(reset_key, fresh_origin)
         _unused, fresh_forces, fresh_starts = drawn_pushes(push_key)
         if redrawing:
@@ -3374,7 +3452,8 @@ def build_environment(
         if goaled:
             key, pick_key = jax.random.split(key)
             picks = jnp.where(
-                done, jax.random.randint(pick_key, (envs,), 0, goal_pool_size), picks)
+                done, fresh_picks if fresh_picks is not None
+                else jax.random.randint(pick_key, (envs,), 0, goal_pool_size), picks)
             info["picks"] = picks
         if starting:
             origin = jnp.where(done, fresh_origin, origin)

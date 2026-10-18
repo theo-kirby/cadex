@@ -332,12 +332,14 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
              stride_length_m: float | None = None, swing_height_m: float | None = None,
              pitch_amplitude_deg: float | None = None, spine_joint: str | None = None,
              spine_amplitude_deg: float | None = None, sample_hz: float = 50.0,
-             home_qpos: Sequence[float] | None = None, mujoco: Any | None = None) -> dict[str, Any]:
+             samples: int | None = None, home_qpos: Sequence[float] | None = None, mujoco: Any | None = None) -> dict[str, Any]:
     """One stride of ``gait`` at ``speed_m_s`` on ``model``'s own legs, or a :class:`GaitError`.
 
     ``home_qpos`` is the standing pose the stride is built about (default:
     the model's first keyframe, else ``qpos0``); it must stand on the floor,
-    since each foot's home height is taken as the ground. Returns a
+    since each foot's home height is taken as the ground. ``samples`` fixes
+    the stride's sample count instead of ``sample_hz`` (ADR-773: the clips of
+    a speed schedule share one phase grid). Returns a
     ``cadex-gait-clip-v1`` dictionary, plain JSON.
     """
 
@@ -394,7 +396,7 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
     period, length = s["period_s"], s["stride_length_m"]
     swing = 0.08 * hip_height if swing_height_m is None else float(swing_height_m)
     pitch_amp = math.radians(params["pitch_deg"] if pitch_amplitude_deg is None else pitch_amplitude_deg)
-    samples = max(8, int(round(period * sample_hz)))
+    samples = max(8, int(samples) if samples is not None else int(round(period * sample_hz)))
     dt = period / samples
 
     limits = {}

@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-17
+Verified against source: 2026-10-18
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -584,7 +584,12 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   sqrt(x*x + y*y)`. It is the controller's own timer, not a sensor, so it
   is grounded. Unseeded, it starts at 0. It takes no `between`.
   `resample_seconds=...` draws the goal again that often during the
-  episode, on a whole number of control steps; omitted, it is held. The
+  episode, on a whole number of control steps; omitted, it is held.
+  `ramp_seconds=...` (ADR-773; a `value`, `speed` or `yaw_rate` with
+  `resample_seconds`, at most one segment long, whole control steps) moves
+  each segment's value in from the one before in a straight line instead
+  of one step: `goal("cmd", kind="speed", between=[800, 4500],
+  resample_seconds=3, ramp_seconds=1.5)` accelerates through the range. The
   step a goal changes on is scored against the goal its action was taken
   under. A task states up to four goals in all, and a goal may not share a
   channel name with an observation. An episode played without a seed holds the middle of a
@@ -630,6 +635,36 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   exponent in (0, 1], 0.4 by default (dynamic similarity). A zero command
   stops the clock. It is refused on a task with no reference or without
   exactly one speed goal.
+  **`reference=[slow, ..., fast]` is a speed schedule** (ADR-773): two to
+  eight `assembly.gait` values, slowest first, on the same feet and spine,
+  keeping one footfall order. The engine generates them on one phase grid;
+  each step the task's one `speed` goal picks the two strides that bracket
+  it and a weight, every `*_ref` and `ref_<foot>_*` channel is the two
+  strides blended at the same phase (a foot reads down where the blend is
+  at least one half), and the clock turns at the blended stride frequency,
+  so a change of command, stepped or ramped, never jumps the phase. The
+  goal's `between` must lie inside the strides' speeds (a command is never
+  extrapolated). With `reference_start="random"` an episode starts at a
+  random phase of the stride nearest its opening command. The bundle's
+  `reference` is the slowest stride (the one the dashboard plays),
+  `reference_schedule` lists every stride, and `tracking.schedule` holds
+  their tables, speeds, turns and the rule. An evaluation judges the gait
+  against the stride nearest the settled command. A cat whose rotary-gallop
+  lag closes with speed:
+
+  ```python
+  def gallop(speed, lag, duty, stride=None):
+      return assembly.gait(feet, speed_mm_s=speed, duty=duty, stride_length_mm=stride,
+                           offsets={"LH": 0.0, "RH": lag, "RF": 0.5, "LF": 0.5 + lag})
+  cmd = assembly.goal("cmd", kind="speed", between=[800, 4500],
+                      resample_seconds=3.0, ramp_seconds=1.5)
+  task = assembly.task(model, actions=drives, goals=[cmd],
+                       reference=[gallop(800, 0.25, 0.60), gallop(2000, 0.15, 0.45),
+                                  gallop(3200, 0.09, 0.35), gallop(4500, 0.05, 0.28)],
+                       reference_start="random",
+                       reward=[assembly.reward("exp(-abs(comv_x - cmd) / (0.2 * cmd))", weight=4.0),
+                               ...], ...)
+  ```
   `assembly.task(..., body={"family": "quadruped", "legs": {"fl": {"abd":
   j, "hip": j, "knee": j, "ankle": j}, ...}})` maps the robot onto its
   family's canonical body (ADR-755) so a policy can warm-start across robots

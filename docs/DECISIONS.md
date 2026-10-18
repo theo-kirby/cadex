@@ -44718,3 +44718,105 @@ with every paw 0.13–0.24 mm into the ground under it (inside `STANCE_MM`),
 and `highest_platform_reached_mm` reads 0 and 300. Probe:
 `docs/probes/orun10/j-course.md`. Verified by running, per ADR-725; the
 suites hold no evaluation metric.
+
+## ADR-773 — A speed-scheduled gait reference, a ramped goal, and 32 reward terms (2026-10-18)
+
+**Context.** A task followed exactly one gait clip (ADR-702/703), at one
+stride length and one footfall timing, and ADR-752's cadence only turned
+its clock faster. ADR-752 named what was missing: "a family over speed,
+blended by command". The owner's goal for the cat is a rotary gallop over
+the whole speed range: clearly alternating, walk-like steps when slow (the
+lead/trail lag within each fore and hind pair ~0.25 of a stride), closing
+to ~0.05 at a sprint, an almost-half-bound. One clip cannot ask for that,
+and a task paid to run as fast as it can never learns a speed-dependent
+gait. Separately, the cat's tasks had reached the 16-reward-term cap.
+
+**Decision.**
+- **`api.task(reference=[g0, ..., gK-1])`**: two to eight `api.gait`
+  values, slowest first (strictly rising speeds), on the same feet and the
+  same spine (`MAXIMUM_REFERENCE_SCHEDULE = 8`). It needs exactly one
+  `speed` goal, whose `between` lies inside the strides' speeds (never
+  extrapolated), and refuses `reference_cadence="speed"`, since the
+  schedule is its own clock. One value, as before, is unchanged.
+- **One phase grid.** The engine generates every stride with
+  `CadexGait.generate(samples=N)`, N the largest count any stride takes at
+  50 Hz, so a phase is one row of every table. Consecutive strides must
+  keep one footfall order (a pair of feet may meet, not cross:
+  `schedule_footfall_order`), because a blend of two strides at one phase
+  is only a gait if the same foot lands in both. A stride the legs cannot
+  reach is refused naming its index, label and speed.
+- **Blend, not nearest.** Each step the command in force `g` picks the
+  lower bracketing stride `i` and the weight `w` of `i+1`
+  (`schedule_blend`); every `*_ref`, `ref_<foot>_lift` and
+  `ref_<foot>_down` channel is `(1-w) table_i + w table_{i+1}` at the
+  phase, a down flag thresholded at one half after the blend (so a
+  touch-down moves smoothly with the command), and the clock turns
+  `(1-w) turn_i + w turn_{i+1}` cycles, summed from the reset as ADR-752's
+  is. Nearest-stride selection was rejected: it jumps the joint targets and
+  the contact pattern at every boundary. Blending frequencies and summing
+  the turns keeps the phase continuous through any change of command.
+- **The command** is the speed goal: the policy observes it (a deployed
+  robot is told its speed) and a reward names it (`exp(-abs(comv_x - cmd)
+  / (0.2 * cmd))` pays tracking, not top speed).
+- **Within an episode.** `resample_seconds` already redraws a goal;
+  **`api.goal(ramp_seconds=)`** (value, speed, yaw rate; needs
+  `resample_seconds`; at most one segment; whole control steps) moves each
+  segment's value in from the one before in a straight line:
+  `previous + (held - previous) * min(1, (u + 1) / ramp_steps)`, u the
+  steps into the segment; segment 0 is held. With `sequence=[800, 4500]`
+  an episode accelerates from walk to gallop. The bundle's goal carries
+  `ramp_steps` and `goal_algorithm` gains `GOAL_RAMP_ALGORITHM`, only when
+  a goal ramps, so no earlier digest moves.
+- **The random start** (ADR-709) on a schedule starts at a random sample
+  of the stride nearest the opening command: `reset_qpos`/`reset_qvel`
+  hold every stride's samples in order, the origin is `k * samples +
+  sample`, and the phase is `origin mod samples` (`SCHEDULE_START_RULE`).
+  The trainer draws a scheduled episode's goal pick before its start row
+  (`fold_in(key, 773)`), only on a scheduled random-start task.
+- **The bundle.** `reference` stays the slowest stride, with the poses the
+  dashboard plays; `reference_schedule` lists every stride without poses;
+  `tracking.schedule` holds `goal`, `channel`, `labels`, `speeds_mm_s`,
+  `periods_s`, `turns_per_step`, `tables`, `rule` (`SCHEDULE_RULE`) and,
+  on a random start, `start_rule`. `tracking.table` and `turn_per_step`
+  stay the slowest stride's.
+- **Both players.** `CadexDynamics.tracking_turn`, `tracking_values(...,
+  told)`, `tracking_phase` and `reference_start(..., told)` in the engine;
+  `schedule_blend`, `schedule_nearest`, `tracking_turn`, `tracking_vector(...,
+  told)` and `goals_at`'s ramp in the trainer (it imports no engine,
+  ADR-084). An evaluation judges the gait against the stride nearest the
+  settled command (`judged_reference`). The dashboard's Activations editor
+  does not rebuild a scheduled clock from a trace's time, as for a cadence.
+- **32 reward terms.** `MAXIMUM_REWARD_TERMS` was 16 since M6 phase 1,
+  sized "for the description rather than the arithmetic"; no test pins it,
+  and the trainer and the evaluator loop over the bundle's list (no array
+  is sized by it). Raised to 32, beside `MAXIMUM_RANDOMISATION_ENTRIES`.
+
+**Not done.** No policy has trained on a schedule. A warm start onto one is
+not a curriculum step (`reference` and `tracking` move, which
+`check_curriculum_change` refuses). The drive proxy (ADR-710) replays only
+the bundle's `reference`, the slowest stride. Strides are blended as joint
+angles at one phase, so the body height and pitch of the blend are
+whatever the blended joints give; each stride is inside its joint limits,
+and a blend of two in-limit poses is in limit.
+
+**Evidence.** Verified by running, per ADR-725 (no test added; the
+contracts the suites pin are unchanged). A scratch project,
+`~/cadex-projects/scratch-gaitsched` (orun9-quad's 12-joint QDD
+quadruped), builds a task over three rotary-gallop strides, 150 mm/s lag
+0.25 duty 0.65, 300 mm/s lag 0.15 duty 0.55, 500 mm/s lag 0.05 duty 0.45
+(stride 260 mm), with a speed goal 150–500 mm/s, `resample_seconds=2`,
+`ramp_seconds=1`, `sequence=[150, 500]`: 54 samples per stride, 162 start
+rows. The engine's `evaluate_episode` (seed 4242, a policy replaying
+`q_*_ref`, terminations off) reads the command 150 → 157 at step 100 →
+325 at 124 → 500 at 149; the clock's turn per step equals the blended
+turn to 3e-16 and rises 0.0185 → 0.0385 with no jump; the reference's RH
+touch-down lag per stride reads 0.26, 0.30 at 150 mm/s, 0.14 mid-ramp,
+0.077 and 0.074 at 500 mm/s. The trainer's numpy arithmetic on the same
+told, turned and origin equals the engine's exactly (300 × 22 channels);
+its MJX environment on CPU (16 envs, 160 steps) agrees with the engine's
+functions to 1.8e-5 on every continuous channel and on every foot flag,
+every start row is on the stride nearest its opening command, and its
+goal ramp reads the engine's values. A CPU smoke of `cadex_train.py`
+(2 iterations, 16 envs) trains and writes a policy whose witness agrees
+to 5.9e-8. `pixi run test-engine` 157 passed, 3 skipped;
+`CUDA_VISIBLE_DEVICES= pytest cli/tests` 53 passed; `training/` 44 passed.

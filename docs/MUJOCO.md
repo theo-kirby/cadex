@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-17
+Verified against source: 2026-10-18
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -1802,6 +1802,37 @@ dashboard's Activations editor does not rebuild a cadenced clock from a
 trace's time, so it shows those two inputs at the normaliser's mean. The
 reference family's `stride_frequency_ratio` is still against the clip's
 own frequency.
+
+**A speed schedule: a family of strides over the command (ADR-773).** A
+cadence quickens one stride; a real gait also lengthens it and changes its
+footfall timing with speed (a cat's rotary gallop: walk-like alternation,
+lead/trail lag ~0.25 of a stride, slow; almost a half-bound, lag ~0.05,
+at a sprint). `api.task(reference=[slow, ..., fast])` takes two to eight
+`api.gait` values, slowest first, on the same feet and spine and in one
+footfall order (`schedule_footfall_order` otherwise). The engine generates
+them at one sample count, the largest any takes at 50 Hz, so a phase is
+one row of every stride. Each control step the task's one `speed` goal
+`g` picks the bracketing strides `i, i+1` and a weight `w`; every channel
+after the clock is `(1-w) table_i + w table_{i+1}` read at the phase
+(a held foot flag thresholded after the blend), and the clock turns
+`(1-w) turn_i + w turn_{i+1}`, summed as a cadence's is, so a command that
+steps or ramps (`api.goal(ramp_seconds=)`) moves the gait and never the
+phase. The command is a goal channel: the policy reads it, so a deployed
+robot is told its speed, and a reward pays tracking of it, not top speed.
+Its `between` must lie inside the strides' speeds
+(`schedule_does_not_cover_command`). With `reference_start="random"` the
+start row is a random sample of the stride nearest the opening command
+(`reset_qpos` holds every stride's samples, stride by stride). The bundle
+keeps `reference` as the slowest stride (with the poses the dashboard
+plays), adds `reference_schedule` (every stride, no poses) and
+`tracking.schedule` (`speeds_mm_s`, `periods_s`, `turns_per_step`,
+`tables`, `rule`, `start_rule`). `CadexDynamics.tracking_turn`,
+`tracking_values`, `reference_start` and the trainer's `tracking_turn`,
+`tracking_vector`, `schedule_blend` and `schedule_nearest` are the two
+copies of the rule; an evaluation judges the gait against the stride
+nearest the settled command (`judged_reference`). It cannot be combined
+with `reference_cadence="speed"`, and a warm start onto a schedule is not
+a curriculum step (`reference` and `tracking` move).
 
 **Screening drives against it (ADR-710).** Before a design change is
 rebuilt or trained, `training/cadex_proxy.py` swaps datasheet drives, moves

@@ -8400,8 +8400,11 @@ MAXIMUM_OBSERVATION_CHANNELS = 128
 #: Reward terms, termination rules and randomisation entries. Each is a
 #: whitelisted expression or a field write evaluated once per control step,
 #: so the cost is real but small; these bound the *description* rather than
-#: the arithmetic.
-MAXIMUM_REWARD_TERMS = 16
+#: the arithmetic. 32 reward terms since ADR-773: nothing downstream sizes an
+#: array by it (the trainer and the evaluator loop over the bundle's list),
+#: and a speed-scheduled gallop task's reward -- tracking, command, posture,
+#: effort, contact and smoothness terms -- outgrew 16.
+MAXIMUM_REWARD_TERMS = 32
 MAXIMUM_TERMINATION_TERMS = 8
 MAXIMUM_RANDOMISATION_ENTRIES = 32
 
@@ -9423,6 +9426,17 @@ GOAL_WAYPOINT_ALGORITHM = (
     "read it in the base's heading frame -- name_x ahead and name_y to the "
     "left of xipos[body_id] along xmat[body_id]'s x axis projected on the "
     "ground (the world's x when that is vertical), in mm"
+)
+
+#: What a goal that ramps between segments adds to :data:`GOAL_ALGORITHM`
+#: (ADR-773), appended only to bundles whose goal carries ``ramp_steps``, so
+#: every earlier bundle keeps its algorithm and its digest. No draw is
+#: added: only what a step reads between two drawn segments changes.
+GOAL_RAMP_ALGORITHM = (
+    "; on a goal with ramp_steps r > 0, at control step s in segment k > 0, "
+    "with u = s - k * resample_steps, the value read is previous + (held - "
+    "previous) * min(1, (u + 1) / r), previous being segment k - 1's value "
+    "and held segment k's; segment 0 is held from the start"
 )
 
 #: Everything a reward or termination expression may name beyond the
@@ -11430,6 +11444,29 @@ def _goal_records(
                         observed={"goal": name, "sequence": [repr(v) for v in values]},
                     )
                 record["sequence"] = values
+            ramp = entry.get("ramp_seconds")
+            if ramp is not None:
+                # ADR-773: a straight line from one segment's value to the next.
+                exact = float(ramp) / interval
+                ramp_steps = int(round(exact))
+                if (kind not in ("value", "speed", "yaw_rate") or not steps
+                        or ramp_steps < 1 or abs(exact - ramp_steps) > 1.0e-6
+                        or ramp_steps > steps):
+                    raise DynamicsError(
+                        f"{what} ramps over {float(ramp):g} s, which is "
+                        f"{exact:.6g} control steps of {interval:g} s against "
+                        f"segments of {steps} steps.",
+                        reason="goal_ramp_malformed",
+                        correction=(
+                            "A ramp joins two segments of a value, a speed or a "
+                            "yaw rate: give the goal resample_seconds, and "
+                            "ramp_seconds a whole number of control intervals "
+                            f"({interval:g} s each) no longer than a segment."
+                        ),
+                        observed={"ramp_seconds": float(ramp), "resample_steps": steps,
+                                  "control_interval_s": interval},
+                    )
+                record["ramp_steps"] = ramp_steps
             records.append(record)
             continue
 
@@ -12331,12 +12368,63 @@ def _cadence_record(reference: Mapping[str, Any], declared: Mapping[str, Any],
             "exponent": float(declared["exponent"]), "rule": CADENCE_RULE}
 
 
+#: How a speed-scheduled reference is read (ADR-773). Stated in the bundle's
+#: ``tracking.schedule``, beside the tables it blends.
+SCHEDULE_RULE = (
+    "each control step, v = |g| clamped to [speeds_mm_s[0], speeds_mm_s[-1]], "
+    "g the speed goal's channel in force for that step (mm/s); i is the last "
+    "stride with speeds_mm_s[i] <= v, at most K - 2, and w = (v - "
+    "speeds_mm_s[i]) / (speeds_mm_s[i + 1] - speeds_mm_s[i]); the clock turns "
+    "(1 - w) * turns_per_step[i] + w * turns_per_step[i + 1] cycles, summed "
+    "from 0 at the reset and kept in [0, 1), and the phase is that sum plus "
+    "(origin mod samples) / samples; every channel after the clock is (1 - w) "
+    "* tables[i] + w * tables[i + 1], each table read at that phase linearly "
+    "between its two rows round the stride, and a held column reads 1 where "
+    "the blend is at least one half"
+)
+
+#: How an episode of a speed-scheduled task that starts at a random phase
+#: picks its start row (ADR-773), after :data:`REFERENCE_START_ALGORITHM`'s
+#: draw of ``sample``.
+SCHEDULE_START_RULE = (
+    "the start row is k * samples + sample, k the stride whose speeds_mm_s is "
+    "nearest |g| at control step 0 (the slower on a tie); reset_qpos and "
+    "reset_qvel hold every stride's samples in stride order"
+)
+
+
+def schedule_blend(schedule: Mapping[str, Any], speed: float) -> tuple[int, float]:
+    """The lower of the two strides a command lies between, and the weight
+    of the upper one (ADR-773, :data:`SCHEDULE_RULE`)."""
+
+    speeds = [float(value) for value in schedule["speeds_mm_s"]]
+    v = min(max(abs(float(speed)), speeds[0]), speeds[-1])
+    index = 0
+    while index < len(speeds) - 2 and speeds[index + 1] <= v:
+        index += 1
+    return index, (v - speeds[index]) / (speeds[index + 1] - speeds[index])
+
+
+def schedule_nearest(schedule: Mapping[str, Any], speed: float) -> int:
+    """The stride whose speed is nearest a command, the slower on a tie (ADR-773)."""
+
+    speeds = [float(value) for value in schedule["speeds_mm_s"]]
+    v = abs(float(speed))
+    return min(range(len(speeds)), key=lambda index: abs(speeds[index] - v))
+
+
 def tracking_turn(tracking: Mapping[str, Any], told: Mapping[str, float]) -> float:
     """Cycles the gait clock turns over one control step taken under the
     goal values ``told`` (ADR-752): the clip's own turn, scaled by the
-    commanded speed when the cadence follows it."""
+    commanded speed when the cadence follows it -- or, on a speed schedule
+    (ADR-773), the strides' turns blended at the command."""
 
     turn = float(tracking["turn_per_step"])
+    scheduled = tracking.get("schedule")
+    if scheduled:
+        index, weight = schedule_blend(scheduled, told[str(scheduled["channel"])])
+        turns = scheduled["turns_per_step"]
+        return (1.0 - weight) * float(turns[index]) + weight * float(turns[index + 1])
     cadence = tracking.get("cadence")
     if not cadence:
         return turn
@@ -12354,12 +12442,14 @@ def tracking_phase(tracking: Mapping[str, Any], step: int, origin: int = 0,
 
     turned = float(step) * float(tracking["turn_per_step"]) if turned is None else float(turned)
     if origin:
-        turned += float(origin) / float(tracking["samples"])
+        # ADR-773: a scheduled start row is stride * samples + sample.
+        turned += float(int(origin) % int(tracking["samples"])) / float(tracking["samples"])
     return turned - math.floor(turned)
 
 
 def tracking_values(task: Mapping[str, Any], step: int, origin: int = 0,
-                    turned: float | None = None) -> dict[str, float]:
+                    turned: float | None = None,
+                    told: Mapping[str, float] | None = None) -> dict[str, float]:
     """The tracking channels after ``step`` control steps (ADR-706) of an
     episode whose clock started at clip sample ``origin`` (ADR-709), or,
     on a speed cadence, after it has turned ``turned`` cycles (ADR-752).
@@ -12367,8 +12457,11 @@ def tracking_values(task: Mapping[str, Any], step: int, origin: int = 0,
     The clip is periodic over its ``samples`` rows, and a phase between two
     rows is read linearly between them. A ``held`` column -- a foot down or
     not -- reads 1 where that interpolation is at least one half, so it
-    switches at the midpoint between two samples. ``training/cadex_train.py``
-    writes the same arithmetic in ``jnp``, and a test holds them equal.
+    switches at the midpoint between two samples. On a speed schedule
+    (ADR-773) ``told`` is the goal values in force, and each column is the
+    two bracketing strides' readings blended at the command before a held
+    column is thresholded. ``training/cadex_train.py`` writes the same
+    arithmetic in ``jnp``.
     """
 
     tracking = task.get("tracking")
@@ -12384,7 +12477,23 @@ def tracking_values(task: Mapping[str, Any], step: int, origin: int = 0,
     names = [str(channel) for channel in tracking["channels"]]
     values = {names[0]: math.sin(2.0 * math.pi * phase),
               names[1]: math.cos(2.0 * math.pi * phase)}
-    low, high = tracking["table"][first], tracking["table"][after]
+    scheduled = tracking.get("schedule")
+    if scheduled:
+        if told is None:
+            raise DynamicsError(
+                "A speed-scheduled reference is read at the commanded speed, "
+                "and no goal values were given.",
+                reason="schedule_needs_command",
+                observed={"channel": str(scheduled["channel"])},
+            )
+        stride, share = schedule_blend(scheduled, told[str(scheduled["channel"])])
+        slow, fast = scheduled["tables"][stride], scheduled["tables"][stride + 1]
+        low = [(1.0 - share) * float(a) + share * float(b)
+               for a, b in zip(slow[first], fast[first], strict=True)]
+        high = [(1.0 - share) * float(a) + share * float(b)
+                for a, b in zip(slow[after], fast[after], strict=True)]
+    else:
+        low, high = tracking["table"][first], tracking["table"][after]
     for index, name in enumerate(names[2:]):
         value = float(low[index]) + weight * (float(high[index]) - float(low[index]))
         if tracking["held"][index]:
@@ -12451,7 +12560,8 @@ def _reference_start_records(mujoco: Any, model: Any, reference: Mapping[str, An
             "reset_qpos": qpos, "reset_qvel": qvel}
 
 
-def reference_start(task: Mapping[str, Any], rng: Any) -> int | None:
+def reference_start(task: Mapping[str, Any], rng: Any,
+                    told: Mapping[str, float] | None = None) -> int | None:
     """The clip sample a seeded episode starts at, or ``None`` (ADR-709).
 
     ``None`` for a task whose reference starts at phase 0, or an unseeded
@@ -12462,7 +12572,13 @@ def reference_start(task: Mapping[str, Any], rng: Any) -> int | None:
     tracking = task.get("tracking") or {}
     if rng is None or tracking.get("start") != "random":
         return None
-    return int(rng.randrange(int(tracking["samples"])))
+    sample = int(rng.randrange(int(tracking["samples"])))
+    scheduled = tracking.get("schedule")
+    if scheduled:
+        # ADR-773: the row of the stride nearest the opening command.
+        stride = schedule_nearest(scheduled, (told or {})[str(scheduled["channel"])])
+        return stride * int(tracking["samples"]) + sample
+    return sample
 
 
 def apply_reference_start(data: Any, task: Mapping[str, Any], origin: int | None) -> None:
@@ -12482,6 +12598,8 @@ def _reference_records(
     schedule: Mapping[str, Any],
     *,
     context: str,
+    samples: int | None = None,
+    poses: bool = True,
 ) -> dict[str, Any]:
     """A task's gait reference: one generated stride, played back as poses (ADR-703).
 
@@ -12516,7 +12634,7 @@ def _reference_records(
             pitch_amplitude_deg=declared.get("pitch_amplitude_deg"),
             spine_joint=declared.get("spine_joint"),
             spine_amplitude_deg=declared.get("spine_amplitude_deg"),
-            home_qpos=home, mujoco=mujoco,
+            samples=samples, home_qpos=home, mujoco=mujoco,
         )
     except CadexGait.GaitError as error:
         raise DynamicsError(
@@ -12535,8 +12653,166 @@ def _reference_records(
         # ADR-709: in the reference, so a task that starts elsewhere is another task.
         clip["start"] = "random"
     clip["reset_keyframe"] = str(schedule["reset_keyframe"]) if key >= 0 else None
-    clip["placements"] = CadexGait.placements(reloaded, clip, mujoco=mujoco)
+    if poses:
+        clip["placements"] = CadexGait.placements(reloaded, clip, mujoco=mujoco)
     return clip
+
+
+def judged_reference(task: Mapping[str, Any], command_mm_s: float | None) -> Any:
+    """The stride an evaluation judges a gait against (ADR-705, ADR-773).
+
+    The task's one reference; on a speed schedule, the stride whose speed is
+    nearest the settled command (the slowest when there is none).
+    """
+
+    strides = task.get("reference_schedule")
+    scheduled = (task.get("tracking") or {}).get("schedule")
+    if not strides or not scheduled or command_mm_s is None:
+        return task.get("reference")
+    return strides[schedule_nearest(scheduled, command_mm_s)]
+
+
+def _reference_schedule_records(
+    mujoco: Any,
+    reloaded: Any,
+    declared: Mapping[str, Any],
+    schedule: Mapping[str, Any],
+    *,
+    context: str,
+) -> list[dict[str, Any]]:
+    """A speed schedule's strides, on one phase grid (ADR-773).
+
+    Each stride is generated as :func:`_reference_records` generates one, at
+    the largest sample count any of them takes at its own rate, so one phase
+    is one row of every table. Only the slowest carries ``placements``: it is
+    the bundle's ``reference``, the one the dashboard plays. The strides must
+    rise in speed, pose the same joints and keep one footfall order, because
+    blending two strides at one phase is only a gait when the same foot is
+    landing in both.
+    """
+
+    strides = [{**dict(entry), **({"start": declared["start"]} if declared.get("start") else {})}
+               for entry in declared["schedule"]]
+    if declared.get("cadence"):
+        raise DynamicsError(
+            f"{context}: its gait reference is a speed schedule and also a "
+            "cadence; the schedule's clock is its own.",
+            reason="schedule_with_cadence",
+            correction="Drop reference_cadence='speed' when reference is a list of strides.",
+        )
+    speeds = [float(entry["speed_mm_s"]) for entry in strides]
+    if any(b <= a for a, b in zip(speeds, speeds[1:])):
+        raise DynamicsError(
+            f"{context}: its speed schedule's strides run at {speeds} mm/s.",
+            reason="schedule_speeds_not_rising",
+            correction="List the strides slowest first, each faster than the one before.",
+            observed={"speeds_mm_s": speeds},
+        )
+    named = [f"{context} (stride {index}, {entry.get('label') or entry.get('gait')}, "
+             f"{float(entry['speed_mm_s']):g} mm/s)" for index, entry in enumerate(strides)]
+    clips = [_reference_records(mujoco, reloaded, entry, schedule, context=where, poses=False)
+             for entry, where in zip(strides, named, strict=True)]
+    rows = max(int(clip["samples"]) for clip in clips)
+    clips = [clip if int(clip["samples"]) == rows else _reference_records(
+        mujoco, reloaded, entry, schedule, context=where, samples=rows, poses=False)
+        for clip, entry, where in zip(clips, strides, named, strict=True)]
+    clips[0]["placements"] = _clip_placements(reloaded, clips[0], mujoco)
+    for index, clip in enumerate(clips[1:], start=1):
+        if clip["joints"] != clips[0]["joints"]:
+            raise DynamicsError(
+                f"{context}: stride {index} of its speed schedule poses other "
+                "joints than stride 0.",
+                reason="schedule_joints_differ",
+                correction="Give every stride the same feet and the same spine.",
+                observed={"stride": index, "joints": clip["joints"],
+                          "first": clips[0]["joints"]},
+            )
+        before = clips[index - 1]["parameters"]["phase_offsets"]
+        after = clip["parameters"]["phase_offsets"]
+        crossed = sorted(
+            (a, b) for a in before for b in before
+            if float(before[a]) < float(before[b]) and float(after[a]) > float(after[b])
+        )
+        if crossed:
+            raise DynamicsError(
+                f"{context}: stride {index} of its speed schedule lands its feet "
+                f"in another order than stride {index - 1}: "
+                + ", ".join(f"{a} before {b}, then after" for a, b in crossed) + ".",
+                reason="schedule_footfall_order",
+                correction=(
+                    "A schedule blends two strides at one phase, so each foot "
+                    "must land in the same order in both; move a lead or a lag "
+                    "towards zero rather than past it. Write every stride's "
+                    "offsets from the same foot at 0."
+                ),
+                observed={"stride": index, "before": dict(before), "after": dict(after)},
+            )
+    return clips
+
+
+def _clip_placements(reloaded: Any, clip: Mapping[str, Any], mujoco: Any) -> Any:
+    """:func:`CadexGait.placements`, imported where the worker runs."""
+
+    import CadexGait  # noqa: PLC0415 - worker-only, like this module
+
+    return CadexGait.placements(reloaded, clip, mujoco=mujoco)
+
+
+def _schedule_record(
+    clips: Sequence[Mapping[str, Any]],
+    observations: Sequence[Mapping[str, Any]],
+    schedule: Mapping[str, Any],
+    goal: Sequence[Mapping[str, Any]],
+    *,
+    taken: Sequence[str],
+    context: str,
+) -> dict[str, Any]:
+    """The bundle's ``tracking.schedule`` (ADR-773): every stride's table on
+    one phase grid, its speed and its turn per step, and the speed goal that
+    picks between them."""
+
+    speeds_goal = [entry for entry in goal if str(entry.get("kind")) == "speed"]
+    if len(speeds_goal) != 1:
+        raise DynamicsError(
+            f"{context}: its speed schedule is blended at the commanded speed, "
+            f"and the task states {len(speeds_goal)} speed goals.",
+            reason="schedule_needs_one_speed_goal",
+            correction="Declare exactly one api.goal(kind='speed').",
+            observed={"speed_goals": [str(entry.get("name")) for entry in speeds_goal]},
+        )
+    command = speeds_goal[0]
+    speeds = [1000.0 * float(clip["parameters"]["speed_m_s"]) for clip in clips]
+    low, high = float(command["low"]), float(command["high"])
+    if low < speeds[0] - 1e-9 or high > speeds[-1] + 1e-9:
+        raise DynamicsError(
+            f"{context}: its speed goal {command['name']!r} draws from {low:g} to "
+            f"{high:g} mm/s, and its strides cover {speeds[0]:g} to {speeds[-1]:g}.",
+            reason="schedule_does_not_cover_command",
+            correction=(
+                "A command is never extrapolated past the strides. Add a slower "
+                "or faster stride, or narrow the goal's between."
+            ),
+            observed={"between": [low, high], "speeds_mm_s": speeds},
+        )
+    tables = []
+    reads = None
+    for clip in clips:
+        record = _tracking_records(clip, observations, schedule, taken=taken, context=context)
+        if reads is None:
+            reads = record["channels"]
+        tables.append(record["table"])
+    interval = float(schedule["control_interval_s"])
+    return {
+        "goal": str(command["name"]),
+        "channel": str(command["channels"][0]),
+        "labels": [str(clip.get("label") or clip["gait"]) for clip in clips],
+        "speeds_mm_s": speeds,
+        "periods_s": [float(clip["parameters"]["period_s"]) for clip in clips],
+        "turns_per_step": [interval / float(clip["parameters"]["period_s"]) for clip in clips],
+        "tables": tables,
+        "rule": SCHEDULE_RULE,
+        **({"start_rule": SCHEDULE_START_RULE} if clips[0].get("start") == "random" else {}),
+    }
 
 
 def _scan_records(
@@ -13206,15 +13482,32 @@ def task_records(
     # ADR-703: absent when the task declares no gait reference, and with it
     # ADR-706's tracking channels, against which the expressions compile.
     reference = tracking = None
+    strides: list[dict[str, Any]] = []
     if task.get("reference"):
-        reference = _reference_records(
-            mujoco, reloaded, task["reference"], schedule, context=context,
-        )
+        if task["reference"].get("schedule"):
+            # ADR-773: a family of strides blended at the commanded speed.
+            strides = _reference_schedule_records(
+                mujoco, reloaded, task["reference"], schedule, context=context,
+            )
+            reference = strides[0]
+        else:
+            reference = _reference_records(
+                mujoco, reloaded, task["reference"], schedule, context=context,
+            )
         tracking = _tracking_records(
             reference, observations, schedule, taken=taken, context=context,
         )
+        if strides:
+            tracking["schedule"] = _schedule_record(
+                strides, observations, schedule, goal, taken=taken, context=context)
         if reference.get("start") == "random":
-            tracking.update(_reference_start_records(mujoco, reloaded, reference))
+            if strides:
+                starts = [_reference_start_records(mujoco, reloaded, clip) for clip in strides]
+                tracking.update(starts[0])
+                tracking["reset_qpos"] = [row for start in starts for row in start["reset_qpos"]]
+                tracking["reset_qvel"] = [row for start in starts for row in start["reset_qvel"]]
+            else:
+                tracking.update(_reference_start_records(mujoco, reloaded, reference))
         if task["reference"].get("cadence"):
             tracking["cadence"] = _cadence_record(
                 reference, task["reference"]["cadence"], goal, context=context)
@@ -13253,6 +13546,9 @@ def task_records(
         ) + (
             GOAL_WAYPOINT_ALGORITHM
             if any(entry["kind"] == "waypoint" for entry in goal) else ""
+        ) + (
+            GOAL_RAMP_ALGORITHM
+            if any(entry.get("ramp_steps") for entry in goal) else ""
         )} if goal else {}),
         # ADR-696: absent when the task observes no command, so its bundle
         # and digest are the ones it always had.
@@ -13265,6 +13561,11 @@ def task_records(
         # it ADR-706's tracking channels.
         **({"reference": reference, "tracking": tracking}
            if reference is not None else {}),
+        # ADR-773: every stride of a speed schedule, the slowest first and
+        # without the poses only the bundle's ``reference`` carries.
+        **({"reference_schedule": [
+            {key: value for key, value in clip.items() if key != "placements"}
+            for clip in strides]} if strides else {}),
         **judged,
         # ADR-714: the declared course, so a trainer, a height scan and a
         # terrain predicate read it from the bundle rather than parsing the
@@ -14097,6 +14398,9 @@ def goal_schedule(
                     {"radians_per_step": float(entry["radians_per_step"])}
                     if entry["kind"] == "phase" else {}
                 ),
+                # ADR-773: how many steps a segment's value takes to arrive.
+                **({"ramp_steps": int(entry["ramp_steps"])}
+                   if entry.get("ramp_steps") else {}),
                 "segments": [
                     {
                         "start_step": start,
@@ -14130,10 +14434,17 @@ def goal_values(
     values: dict[str, float] = {}
     for entry in schedule:
         held = entry["segments"][0]
-        for segment in entry["segments"]:
+        index = 0
+        for position, segment in enumerate(entry["segments"]):
             if int(segment["start_step"]) <= int(step):
-                held = segment
+                held, index = segment, position
         told = [float(value) for value in held["values"]]
+        ramp = int(entry.get("ramp_steps") or 0)
+        if ramp and index > 0:
+            # ADR-773: from the segment before, in a straight line.
+            share = min(1.0, (int(step) - int(held["start_step"]) + 1) / ramp)
+            before = [float(value) for value in entry["segments"][index - 1]["values"]]
+            told = [b + (v - b) * share for b, v in zip(before, told, strict=True)]
         if entry.get("kind") == "phase":
             angle = told[0] + float(entry["radians_per_step"]) * (
                 int(step) - int(held["start_step"])
@@ -14434,7 +14745,7 @@ def evaluate_episode(
         if rng is not None and task.get("goal") else None,
     )
     # ADR-709: a task whose reference starts at a random phase draws it last.
-    origin = reference_start(task, rng)
+    origin = reference_start(task, rng, goal_values(goals, 0) if goals else None)
     mujoco.mj_resetDataKeyframe(model, data, key)
     apply_reference_start(data, task, origin)
     mujoco.mj_forward(model, data)
@@ -14448,7 +14759,8 @@ def evaluate_episode(
     # ADR-706: the reference on the gait clock, a function of the step alone
     # -- or, on a speed cadence (ADR-752), of the commands so far, summed.
     tracking = bool(task.get("tracking"))
-    cadenced = tracking and bool(task["tracking"].get("cadence"))
+    # ADR-773: a speed schedule's clock is summed the same way.
+    cadenced = tracking and bool(task["tracking"].get("cadence") or task["tracking"].get("schedule"))
     turned = 0.0 if cadenced else None
     # ADR-715: the ground the scans read is the elevation the model collides with.
     scanning = bool(task.get("scans"))
@@ -14499,7 +14811,7 @@ def evaluate_episode(
         if accelerating:
             observation.update(acceleration_values(task, data.qacc))
         if tracking:
-            observation.update(tracking_values(task, step, origin or 0, turned))
+            observation.update(tracking_values(task, step, origin or 0, turned, told))
         if scanning:
             observation.update(height_scan_values(task, data.xpos, data.xmat, elevation))
         if actions is None:
@@ -14546,7 +14858,7 @@ def evaluate_episode(
             if cadenced:
                 turned += tracking_turn(task["tracking"], told)
                 turned -= math.floor(turned)
-            landed.update(tracking_values(task, step + 1, origin or 0, turned))
+            landed.update(tracking_values(task, step + 1, origin or 0, turned, told))
         if scanning:
             # ADR-715: the ground under where the step landed.
             landed.update(height_scan_values(task, data.xpos, data.xmat, elevation))
@@ -16213,7 +16525,8 @@ def evaluate_success(
             command_mm_s=command, segments=segments,
             drives=CadexEvaluation.drive_series(run["frames"], run["actuator_channels"]),
             # ADR-705: the gait against the task's own reference, if it has one.
-            reference=task.get("reference"),
+            # ADR-773: on a speed schedule, the stride nearest the settled command.
+            reference=judged_reference(task, command),
             # ADR-718: the course this seed stood on, for the terrain family.
             terrain=course, ground=None if course is None else course_ground(course),
             commands=tracked, waypoints=waypoints,

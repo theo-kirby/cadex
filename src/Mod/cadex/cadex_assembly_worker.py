@@ -4211,6 +4211,12 @@ def _execute_task_bundle(
         if properties.get("reference_cadence") is not None:
             # ADR-752: the clock follows the task's one speed goal.
             declaration["reference"]["cadence"] = dict(properties["reference_cadence"])
+        if properties.get("reference_schedule"):
+            # ADR-773: the strides blended at the task's one speed goal.
+            declaration["reference"]["schedule"] = [
+                _gait_input(entry, component_outputs, joint_outputs)
+                for entry in properties["reference_schedule"]
+            ]
 
     if properties.get("body") is not None:
         # ADR-755: each slot's joint by output name; the engine resolves it.
@@ -5120,6 +5126,9 @@ def _goal_input(
         "kind": str(properties.get("kind")),
         "resample_seconds": properties.get("resample_seconds"),
     }
+    # ADR-773: present only on a goal that ramps between its segments.
+    if properties.get("ramp_seconds") is not None:
+        resolved["ramp_seconds"] = float(properties["ramp_seconds"])
     if properties.get("tip") is not None:
         resolved.update(
             tip=component_outputs[id(properties["tip"])],
