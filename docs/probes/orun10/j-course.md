@@ -97,6 +97,10 @@ What a J1 screen starts from: the setup is sound (no fall and no tip in the
 first second on any seed; the cat leaves the keyframe at the reference's
 1 m/s). But C1 meets the face at 1.2–1.6 m/s, not the commanded 2.5 m/s, and
 shows no leap: it pushes into the wall. A leap screen warm from C1 has to buy
-both the run-up speed and the leap. The J2 rungs and the J3 project
-(`orun10-j3`, still 1.2 m wide at `5da5d558`) take the 6 m width on their next
-build.
+both the run-up speed and the leap. The J2 rungs take the 6 m width on their next build.
+
+**J3 rebuilt at 6 m** (iteration 9): orun10-jump's wide script set on
+orun10-j3 (`cadex script --set`; `course` stays 14). Accepted revision
+`2f83301a`, model `a602322e`, spec still `j3_spec`. The four blocks read
+half-width 3 m (y ±3 m), centred at x 3.6 / 5.3 / 7.1 / 9.0 m, tops 300 / 600 / 400 /
+200 mm, the same places and heights as `5da5d558`.
