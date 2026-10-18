@@ -84,6 +84,9 @@ STEP_ADVANCE_HIP_HEIGHTS = 0.15
 #: read as gait (ADR-467: a robot holding its pose lands from a reset lift
 #: deeper than it ever stands).
 SETTLE_S = 1.0
+#: A sprint's top speed is its best mean over this window (ADR-771): long
+#: enough to hold several strides, so one lunge is not a top speed.
+SPRINT_WINDOW_S = 2.0
 #: Rest, for recovery from a shove: upright enough, slow enough, for long
 #: enough. Speed is in COM heights per second so one number fits any size.
 REST_TILT_DEG = 10.0
@@ -158,6 +161,7 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "final_drift_mm": ("posture", ("base",)),
     "mean_speed_mm_s": ("posture", ("base",)),
     "distance_made_good_mm": ("posture", ("base",)),
+    "max_forward_speed_2s_mm_s": ("posture", ("base",)),
     "max_drift_com_heights": ("posture", ("base", "floor")),
     "recovery_s_max": ("posture", ("base", "floor", "shove")),
     "mean_forward_speed_mm_s": ("gait", ("feet",)),
@@ -170,6 +174,10 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "duty_factor_min": ("gait", ("feet",)),
     "duty_factor_max": ("gait", ("feet",)),
     "foot_lowest_hip_heights_min": ("gait", ("feet",)),
+    "flight_stride_share": ("gait", ("feet",)),
+    "flight_s_median": ("gait", ("feet",)),
+    "stride_length_mm_median": ("gait", ("feet",)),
+    "stride_hz_median": ("gait", ("feet",)),
     "speed_error_rms_mm_s": ("tracking", ("base", "command")),
     "yaw_rate_error_rms_deg_s": ("tracking", ("base", "turn")),
     "reversal_heading_error_deg_max": ("tracking", ("base", "turn")),
@@ -192,6 +200,7 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "effort_rms_clamp_ratio_max": ("drive", ()),
     "effort_clamp_share_max": ("drive", ()),
     "effort_rms_rated_ratio_max": ("drive", ()),
+    "effort_peak_ratio_max": ("drive", ()),
     "cost_of_transport": ("drive", ("base",)),
     "footfall_phase_error_max": ("reference", ("feet", "reference")),
     "duty_factor_error_max": ("reference", ("feet", "reference")),
@@ -361,6 +370,7 @@ def posture(base: Mapping[str, Any], com_height_mm: float | None) -> dict[str, A
     """
 
     start = base["point"][0]
+    best = best_window_speed(base)
     drift = [math.hypot(p[0] - start[0], p[1] - start[1]) for p in base["point"]]
     speeds = [math.hypot(*v) for v in base["velocity"] if v is not None]
     ahead, end = base["forward"][0], base["point"][-1]
@@ -375,7 +385,31 @@ def posture(base: Mapping[str, Any], com_height_mm: float | None) -> dict[str, A
         "final_drift_mm": drift[-1],
         "max_drift_com_heights": max(drift) / com_height_mm if com_height_mm else None,
         "mean_speed_mm_s": (sum(speeds) / len(speeds)) if speeds else None,
+        "max_forward_speed_2s_mm_s": best,
     }
+
+
+def best_window_speed(base: Mapping[str, Any], window_s: float = SPRINT_WINDOW_S) -> float | None:
+    """The best mean speed over any ``window_s``, along the starting heading (ADR-771).
+
+    Plan travel along the heading the episode started on, over the window,
+    divided by it: a straight sprint's top speed, which a whole-episode mean
+    dilutes with the run-up. ``None`` when the episode is shorter than the
+    window.
+    """
+
+    times, points, ahead = base["time"], base["point"], base["forward"][0]
+    best, j = None, 0
+    for i, start in enumerate(times):
+        while j < len(times) and times[j] - start < window_s - _EPS:
+            j += 1
+        if j == len(times):
+            break
+        span = times[j] - start
+        along = ((points[j][0] - points[i][0]) * ahead[0]
+                 + (points[j][1] - points[i][1]) * ahead[1]) / span
+        best = along if best is None or along > best else best
+    return best
 
 
 def recovery(time, tilt, speed, shove_end_s: float, *, com_height_mm: float,
@@ -621,6 +655,61 @@ def gait_metrics(samples, rig: Mapping[str, Any], command_mm_s: float | None = N
         "duty_factor_max": worst("duty_factor", max),
         "foot_lowest_hip_heights_min": worst("settled_lowest_height_hip_heights", min),
         "feet": feet,
+    }
+
+
+def flight_metrics(samples, rig: Mapping[str, Any], *, settle_s: float = SETTLE_S,
+                   stance_mm: float = STANCE_MM, swing_min_s: float = SWING_MIN_S,
+                   step_advance_hip_heights: float = STEP_ADVANCE_HIP_HEIGHTS) -> dict[str, Any]:
+    """Flight, stride and footfall order, stride by stride (ADR-771).
+
+    The first named foot's settled landings are the clock: each pair of
+    them is one stride. A stride has flight when some frame in it has every
+    foot out of stance; ``flight_s`` is how long that lasts in all, its
+    length the base's travel along the starting heading over it, its order
+    the feet by their first landing inside it. ``flight_stride_share`` is the
+    share of strides with flight, so 1 is "a flight phase every stride". The
+    metrics are ``None`` when the clock foot strode fewer than twice.
+    """
+
+    names = list(rig["feet"])
+    base = base_series(samples, rig)
+    times, dt = base["time"], base["dt"]
+    ahead = base["forward"][0]
+    series = {name: foot_series(samples, name, geoms, rig["floor_mm"]) for name, geoms in rig["feet"].items()}
+    stance = {name: [h <= stance_mm for h in foot["height"]] for name, foot in series.items()}
+    clock = gait(times, series[names[0]], float(rig["hip_height_mm"]), settle_s=settle_s, stance_mm=stance_mm,
+                 swing_min_s=swing_min_s, step_advance_hip_heights=step_advance_hip_heights)
+    landings = [t for t in clock["touchdowns_s"] if t >= settle_s - _EPS]
+    index = {t: i for i, t in enumerate(times)}
+    strides = []
+    for a, b in zip(landings, landings[1:]):
+        i0, i1 = index[a], index[b]
+        airborne = sum(1 for i in range(i0, i1) if not any(stance[n][i] for n in names))
+        first = {}
+        for n in names:
+            for i in range(max(i0, 1), i1):
+                if stance[n][i] and not stance[n][i - 1]:
+                    first[n] = times[i]
+                    break
+        p0, p1 = base["point"][i0], base["point"][i1]
+        strides.append({
+            "start_s": a, "period_s": b - a, "flight_s": airborne * dt,
+            "length_mm": (p1[0] - p0[0]) * ahead[0] + (p1[1] - p0[1]) * ahead[1],
+            "order": [n for n, _ in sorted(first.items(), key=lambda item: item[1])],
+        })
+    orders: dict[str, int] = {}
+    for stride in strides:
+        key = "-".join(stride["order"])
+        orders[key] = orders.get(key, 0) + 1
+    return {
+        "flight_stride_share": (sum(1 for s in strides if s["flight_s"] > 0.0) / len(strides)
+                                if strides else None),
+        "flight_s_median": _median([s["flight_s"] for s in strides]),
+        "stride_length_mm_median": _median([s["length_mm"] for s in strides]),
+        "stride_hz_median": _median([1.0 / s["period_s"] for s in strides]),
+        "flight": {"clock": names[0], "strides": strides,
+                   "footfall_orders": dict(sorted(orders.items(), key=lambda item: -item[1]))},
     }
 
 
@@ -1344,6 +1433,7 @@ def drive_metrics(drives: Mapping[str, Any], *, weight_n: float | None = None,
     clamp_ratios: list[float] = []
     clamp_shares: list[float] = []
     rated_ratios: list[float] = []
+    peak_ratios: list[float] = []
     hf_power = total_power = 0.0
     dt = _frame_interval(times) if len(times) > 1 else 0.0
     cutoff = None if stride_hz is None or stride_hz <= 0.0 else high_frequency_multiple * stride_hz
@@ -1365,12 +1455,14 @@ def drive_metrics(drives: Mapping[str, Any], *, weight_n: float | None = None,
         low, high = channel.get("effort_low"), channel.get("effort_high")
         limit = max(abs(float(v)) for v in (low, high) if v is not None) if (
             low is not None or high is not None) else None
-        share = ratio = None
+        share = ratio = peak = None
         if limit and efforts:
             at = sum(1 for e in efforts
                      if (high is not None and e >= float(high) - clamp_tolerance * abs(float(high)))
                      or (low is not None and e <= float(low) + clamp_tolerance * abs(float(low))))
             share, ratio = at / len(efforts), effort_rms / limit
+            peak = max(abs(e) for e in efforts) / limit
+            peak_ratios.append(peak)
             clamp_shares.append(share)
             clamp_ratios.append(ratio)
         rated = channel.get("effort_rated")
@@ -1395,6 +1487,7 @@ def drive_metrics(drives: Mapping[str, Any], *, weight_n: float | None = None,
             "effort_limit": limit,
             "effort_rms_clamp_ratio": ratio,
             "effort_clamp_share": share,
+            "effort_peak_ratio": peak,
             "effort_rated": None if rated is None else float(rated),
             "effort_rms_rated_ratio": rated_ratio,
             "command_high_frequency_share": channel_hf,
@@ -1424,6 +1517,7 @@ def drive_metrics(drives: Mapping[str, Any], *, weight_n: float | None = None,
         "effort_rms_clamp_ratio_max": max(clamp_ratios) if clamp_ratios else None,
         "effort_clamp_share_max": max(clamp_shares) if clamp_shares else None,
         "effort_rms_rated_ratio_max": max(rated_ratios) if rated_ratios else None,
+        "effort_peak_ratio_max": max(peak_ratios) if peak_ratios else None,
         "cost_of_transport": cost,
         "drives": {"stride_hz": stride_hz, "high_frequency_hz": cutoff,
                    "mean_power_nmm_s": mean_power,
@@ -1808,6 +1902,7 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
             read.update(posture(base_series(samples, rig), None))
         if rig.get("feet"):
             read.update(gait_metrics(samples, rig, command_mm_s))
+            read.update(flight_metrics(samples, rig))
         read.update(terrain_metrics(samples, rig, terrain=terrain, ground=ground))
         if commands:
             read.update(tracking_metrics(samples, rig, commands))
@@ -1838,7 +1933,7 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     if reference is not None and read.get("feet"):
         read.update(reference_metrics(read["feet"], reference, drives=drives))
     for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives", "reference",
-                "terrain", "tracking", "appendage", "waypoints"):
+                "terrain", "tracking", "appendage", "waypoints", "flight"):
         if key in read:
             detail[key] = read[key]
     return {"metrics": {name: read[name] for name in METRICS if name in read},

@@ -44618,3 +44618,40 @@ horizontal overflow, Version under the 3D tab with its Play row, and the axes
 caret, a stat's tools, a chart's and a Network view's maximize each worked
 by a tap and a card moved by a touch drag; the Network's layers maximized to 829 of 845 px; the gizmo folded
 (`display: none`) and came back. No page errors.
+
+## ADR-771 — A sprint's top speed, its flight per stride, and the peak margin are metrics (2026-10-17, orun10)
+
+**Context.** orun10's S1 asks a straight sprint to hold 5 m/s averaged over a
+2 s window; S2 asks a flight phase every stride, with flight time, stride
+length and frequency and the footfall order; O3 asks every number to carry
+the worst drive's peak margin. The evaluation had none of them:
+`mean_forward_speed_mm_s` averages the whole settled episode, run-up
+included; `duty_factor_max` bounds one foot's stance share, which says
+nothing of all four being off at once; and the drive family read RMS
+against the clamp and the share of samples at it, never the largest effort.
+
+**Decision.** `CadexEvaluation` gains six metrics.
+
+- `max_forward_speed_2s_mm_s` (posture, a floating base): the best mean over
+  any 2 s window (`SPRINT_WINDOW_S`), as plan travel along the episode's
+  starting heading.
+- `flight_stride_share`, `flight_s_median`, `stride_length_mm_median`,
+  `stride_hz_median` (gait, `feet`): `flight_metrics` takes the first named
+  foot's settled landings (`gait`'s steps) as the stride clock; a stride has
+  flight when some frame in it has every foot out of stance (`STANCE_MM`).
+  The `flight` detail keeps each stride (period, flight time, length,
+  footfall order) and the orders counted.
+- `effort_peak_ratio_max` (drive): the worst drive's largest |effort| over its
+  clamp; 1 − it is the peak margin.
+
+They are read wherever their family already is, so every evaluation of a
+legged task now carries them; no predicate, protocol op or tool changes.
+
+**Consequences.** Contact is read from foot heights over the flat floor, as
+the gait family is, so on a course a foot standing on a box reads as in
+flight: the flight metrics are for flat ground (S1/S2), not the J courses.
+The clamp is exact in MuJoCo, so a drive at its peak reads 1.0, never more.
+
+**Evidence.** `pixi run test-engine`; orun10's sprint baselines in
+`docs/probes/orun10/sprint-baseline.md` read all six on real rollouts.
+
