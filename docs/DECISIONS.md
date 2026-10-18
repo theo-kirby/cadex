@@ -44618,3 +44618,103 @@ horizontal overflow, Version under the 3D tab with its Play row, and the axes
 caret, a stat's tools, a chart's and a Network view's maximize each worked
 by a tap and a card moved by a touch drag; the Network's layers maximized to 829 of 845 px; the gizmo folded
 (`display: none`) and came back. No page errors.
+
+## ADR-771 — A sprint's top speed, its flight per stride, and the peak margin are metrics (2026-10-17, orun10)
+
+**Context.** orun10's S1 asks a straight sprint to hold 5 m/s averaged over a
+2 s window; S2 asks a flight phase every stride, with flight time, stride
+length and frequency and the footfall order; O3 asks every number to carry
+the worst drive's peak margin. The evaluation had none of them:
+`mean_forward_speed_mm_s` averages the whole settled episode, run-up
+included; `duty_factor_max` bounds one foot's stance share, which says
+nothing of all four being off at once; and the drive family read RMS
+against the clamp and the share of samples at it, never the largest effort.
+
+**Decision.** `CadexEvaluation` gains six metrics.
+
+- `max_forward_speed_2s_mm_s` (posture, a floating base): the best mean over
+  any 2 s window (`SPRINT_WINDOW_S`), as plan travel along the episode's
+  starting heading.
+- `flight_stride_share`, `flight_s_median`, `stride_length_mm_median`,
+  `stride_hz_median` (gait, `feet`): `flight_metrics` takes the first named
+  foot's settled landings (`gait`'s steps) as the stride clock; a stride has
+  flight when some frame in it has every foot out of stance (`STANCE_MM`).
+  The `flight` detail keeps each stride (period, flight time, length,
+  footfall order) and the orders counted.
+- `effort_peak_ratio_max` (drive): the worst drive's largest |effort| over its
+  clamp; 1 − it is the peak margin.
+
+They are read wherever their family already is, so every evaluation of a
+legged task now carries them; no predicate, protocol op or tool changes.
+
+**Consequences.** Contact is read from foot heights over the flat floor, as
+the gait family is, so on a course a foot standing on a box reads as in
+flight: the flight metrics are for flat ground (S1/S2), not the J courses.
+The clamp is exact in MuJoCo, so a drive at its peak reads 1.0, never more.
+
+**Evidence.** `pixi run test-engine`; orun10's sprint baselines in
+`docs/probes/orun10/sprint-baseline.md` read all six on real rollouts.
+
+
+## ADR-772 — A leap is measured: gaps touched and cleared, the take-off and the rise (2026-10-18, orun10)
+
+**Context.** orun10's J1–J3 ask the cat to leap up onto a ledge (30 cm, then
+a 20–100 cm ladder), cross a platform, drop off it, and leap from platform
+to platform over gaps of at least 0.5 m "without touching the ground between
+them". J2 asks the take-off speed, the jump's peak height and the worst
+drive's peak margin at take-off. ADR-749's `platforms_crossed` says a
+platform was gone up, across and down, but nothing read where the feet came
+down, so a cat that stepped into a gap and climbed out read as having leapt
+it; and nothing read a take-off at all. ADR-771's flight metrics read
+contact against the flat floor, so a foot standing on a platform reads as in
+the air there.
+
+**Decision.** `CadexEvaluation.leap_metrics`, a new `leap` family read when
+a rig has `feet` and the course has platforms. A foot is in stance when its
+lowest point is within `STANCE_MM` of the **course's ground under it**
+(`course_ground`, the box tops included).
+
+- `platform_gaps`: for each platform, the next one along +x whose footprint
+  overlaps it across y; the open ground between them, when they do not
+  touch, is a gap (its x span and the shared y span).
+- `gap_touches`: feet's touch-downs whose lowest point lies inside a gap.
+- `gaps_cleared`, `widest_gap_cleared_mm`: gaps the centre of mass went from
+  before to beyond with no touch-down in them.
+- `highest_platform_reached_mm`: the tallest platform a foot stood on top
+  of. For it: take-off is the last frame, before the first foot lands on
+  the top, at which a foot stood off it; `leap_takeoff_speed_mm_s` is the
+  centre of mass's speed along +x over the 0.2 s up to it, and `leap_peak_mm`
+  its rise above its take-off height until every foot has stood on the top.
+- The `leap` detail keeps every gap with its touches and every platform's
+  leap: take-off time and level, speed, rise, the peak over the level leapt
+  from and over the top, and each drive's peak |effort| over its limit
+  across the 0.3 s before take-off (`LEAP_PUSH_S`), sorted, so a report can
+  name the leg drive that pushed hardest and leave the tail out.
+
+orun10's J courses are fixed `platform` features on a box course, 1.2 m wide
+with walls that meet the body (`collides_with: [1, 2]`), in
+`~/cadex-projects/orun10-jump` (the cat script's `course` 8–14): J1 a 300 mm
+ledge with a 1.5 m platform and a drop, 3 m of run-up; J2's rungs the same at
+200/400/600/800/1000 mm; J3 four platforms of 300/600/400/200 mm with gaps
+of 0.5, 0.6 and 0.7 m. Each has a `leap` task (the C1 actor with the height
+scan, held at 2.5 m/s) whose spec bounds `completed`, `falls`,
+`platforms_crossed` and travel past the drop, and on J3 `gap_touches ≤ 0`.
+
+**Consequences.** No protocol op, tool or trainer change; the vocabulary of
+predicates grows by six. The metrics are read from poses, so a body that
+passes through a wall (legs carry no collision shape but the paws,
+ADR-749) still counts; `falls` is what catches one sunk inside a platform.
+A foot over a platform's edge stands on the higher side, as `course_ground`
+does. The sprint's flight metrics still read the flat floor (ADR-771).
+
+**Evidence.** `pixi run test-engine` (157 passed, 3 skipped) and
+`CUDA_VISIBLE_DEVICES= pytest cli/tests` (53 passed). A synthetic trace over
+two platforms (300 and 500 mm, a 300 mm gap) reads 1 gap cleared and 0
+touches, and with one foot let down in the gap 1 touch and 0 cleared; the
+take-off reads the trace's 3.0 m/s and its 500 mm rise. On orun10-jump's
+accepted J1 model (`b693771f`, model `4f622c8a`), the cat dropped from its
+keyframe onto the ground and onto the 300 mm top in stock MuJoCo settles
+with every paw 0.13–0.24 mm into the ground under it (inside `STANCE_MM`),
+and `highest_platform_reached_mm` reads 0 and 300. Probe:
+`docs/probes/orun10/j-course.md`. Verified by running, per ADR-725; the
+suites hold no evaluation metric.

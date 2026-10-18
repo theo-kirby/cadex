@@ -417,7 +417,15 @@ base, and, on a declared course, `steps_crossed`, `slopes_crossed`,
 `platforms_crossed` and `highest_platform_crossed_mm`: a platform whose
 footprint the centre of mass was over and whose far end it ended beyond
 (ADR-749; before it, any course with a platform or rock patch failed these
-predicates with a `KeyError`). On a drawn box
+predicates with a `KeyError`). With named `feet`, a course of platforms is
+also read for leaps (ADR-772): `gap_touches`, `gaps_cleared` and
+`widest_gap_cleared_mm` (feet down between two platforms, and the gaps
+crossed without), and `highest_platform_reached_mm`,
+`leap_takeoff_speed_mm_s` and `leap_peak_mm` (the tallest top a foot stood
+on, the speed at take-off and the centre of mass's rise), with each drive's
+peak ratio over the push before take-off in the `leap` detail. A foot's
+stance there is read against the course's ground, not the flat floor the
+gait and flight families read. On a drawn box
 course `evaluate_success` plays each seed on its own course,
 `terrain_evaluation_course`: the pool's algorithm under the key
 `eval:<seed>:<n>`, the first draw whose boxes fit the model's slots, so no

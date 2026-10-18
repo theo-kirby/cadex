@@ -1,6 +1,6 @@
 # The cold-start recipe for a legged policy
 
-Verified against source: 2026-10-17. Provenance: `[Cadex-new]`. orun8's B1
+Verified against source: 2026-10-18. Provenance: `[Cadex-new]`. orun8's B1
 draft (`wild-forest-4815`), half proven: a cold quadruped that is not the cat
 followed it to its walk spec on 10/10 seeds by iteration 150 (orun9 `b1-q1`,
 `docs/probes/orun9/b1-quad.md`); the biped has not run (see *What is not
@@ -142,6 +142,10 @@ the engine's (`docs/MUJOCO.md`, `docs/XSCRIPT.md`).
    at 50 and 75). At 3e-5 sigma held and it walked 9/10 at 50 and 75
    (`b3-ftlr`, `docs/probes/orun9/b3-family.md`). Shown on one quadruped
    pair, base and v0; not yet on a cat-sized extrapolation or a biped.
+   The same holds for the cat's warm start onto a changed termination
+   (orun10 `j1-c2`): at 3e-4, σ went from 0.38 to 0.64 and the reward per
+   step from 8.31 to 3.27 on the first update. At 3e-5 (`j1-c3`) σ held
+   (`docs/probes/orun10/j1-c2-task.md`).
 
 ## 4. Budgets
 
