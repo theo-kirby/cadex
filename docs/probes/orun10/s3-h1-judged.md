@@ -61,4 +61,28 @@ The footfall order is unchanged: fl→fr, then fl→hl→hr. The median
   trained on purpose and measured, and it is slower than the in-line stride
   it came from. A longer run might recover the speed, but nothing in the
   curve shows it overtaking the in-line stride: the final is 0.18 m/s behind
-  with the offset still rising. Filming it (F1) is still to do.
+  with the offset still rising.
+
+## Filmed (orun10, iteration 15)
+
+Two films of seed 1001 put s1-g4's final (in-line hind) and s3-h1's final
+(outside hind) side by side. Each is drawn from the evaluation's own trace,
+with the evaluation film's stage (`cli/cadex_cli/film.py`): the accepted
+attempt's tessellation on the dark mat. The window follows the chest at a
+fixed size. The script is `~/orun10-progress/s12/film_side.py`. The films
+live outside the repo, beside it, and go on the run's page.
+
+- `s3-vs-s1-side.mp4` (20.1 s): side-on to +x at 12°. The whole 10 s
+  episode plays in real time at 25 fps, then 6.0–8.0 s plays at 0.2×.
+  Still: `s3-film-side.png`.
+- `s3-vs-s1-rear.mp4` (10.1 s): from behind at 35°, 6.0–8.0 s at 0.2×.
+  It shows the lateral offset the side view cannot. Still:
+  `s3-film-rear.png`, which shows s3-h1's hind feet set wider than
+  s1-g4's.
+
+The speed overlay is the chest's +x speed over the trailing 0.5 s. Seed
+1001's best 2 s window is 4.466 m/s for s1-g4 and 4.302 m/s for s3-h1, as
+`top_speed` records.
+
+![side-on](s3-film-side.png)
+![from behind](s3-film-rear.png)
