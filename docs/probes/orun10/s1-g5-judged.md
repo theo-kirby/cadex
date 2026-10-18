@@ -13,9 +13,9 @@ The trainer's reward per step peaked at 17.02 at iteration 13 and ended at
 |---|---|---|---|---|---|
 | s1-g4 final (start) | 0/10 | top_speed | 4.486 (4.466–4.498) | 1.50× | 0 |
 | best (it 13) | 0/10 | top_speed | 4.469 (4.464–4.476) | 1.50×, j_elbow_l | 0 |
-| 25 | 0/10 | top_speed | 4.391 (–4.399) | 1.49× | 0 |
-| 50 | 0/10 | top_speed | 4.258 (–4.270) | 1.47× | 0 |
-| 75 | 0/10 | top_speed | 4.271 (–4.287) | 1.46× | 0 |
+| 25 | 0/10 | top_speed | 4.391 (4.368–4.399) | 1.49× | 0 |
+| 50 | 0/10 | top_speed | 4.258 (4.241–4.270) | 1.47× | 0 |
+| 75 | 0/10 | top_speed | 4.271 (4.255–4.287) | 1.46× | 0 |
 | final (it 100) | 0/10 | top_speed; completes and upright 9/10 (seed 1006 tips, 32.1°) | 4.320 (3.430–4.334) | 1.64×, j_elbow_l on 9 seeds | 0 |
 
 None of the checkpoints passes the start. Every one keeps a flight on every
@@ -28,3 +28,6 @@ Next is **s1-g6**. orun10-cat was rebuilt with `gallop_hz=3.0` (revision
 A warm start may not move a reference clock, so s1-g6 trains cold: 200
 iterations, a checkpoint every 50, in scope `o10-s1-g6`. At 3.0 Hz, s1-g4's
 1.86 m cycle would make 5.6 m/s.
+
+s1-g6's first iterations match s1-g1's cold start: σ 46 at iteration 0, then
+0.87; the loss is 3.9e10 at iteration 0 (s1-g1: 324) and 87 by iteration 2.
