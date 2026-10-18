@@ -86,3 +86,24 @@ run before training.
   its own `systemd-run --user --scope -p MemoryMax=30G`.
 - Its checkpoints are judged on `gallop_spec` by a later iteration. That
   spec is unchanged; only the reward moved.
+
+## s1-g3 wiped; s1-g4 is the same screen at 3e-5
+
+s1-g3 ran at the trainer's default learning rate, 3e-4. Through its ten
+critic-only iterations it held reward/step at 16.4, and its episodes ran
+the full horizon. Its first actor update (iteration 11) wiped the policy,
+just as orun7–9 warned a warm start would be:
+
+- reward/step fell from 16.44 to 8.8–13.0;
+- σ rose from 0.416 to 0.52;
+- mean episode length fell to 30–450 steps.
+
+It was stopped at iteration 18. It wrote no checkpoint, so there is
+nothing of it to judge.
+
+**s1-g4** is s1-g3 unchanged except for `learning_rate` 3e-5. It runs
+warm from s1-g1 it 280, on the same task (revision `490e682f`), for 100
+iterations, with a checkpoint every 25. At iterations 11–15 reward/step
+climbs 16.44 → 16.49, σ stays at 0.417–0.418 and episodes still run long.
+The warm start survives. Its checkpoints are judged on `gallop_spec` by a
+later iteration.
