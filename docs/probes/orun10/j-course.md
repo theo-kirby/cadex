@@ -47,11 +47,10 @@ keyframe, 1 s; `gap_check.py` in the run's progress folder):
 | 5.3 m, 650 mm (600 top) | the same | 600 | 0 |
 | 7.1 m, 450 mm (400 top) | the same | 400 | 0 |
 | 9.0 m, 250 mm (200 top) | the same | 200 | 0 |
-| 8.05 m, 50 mm (in the 700 mm gap) | fore paws −0.1 mm on the gap's floor, hind 13 mm up (on the 400 block's edge) | 0 | 2, both in gap 3 |
+| 8.05 m, 50 mm (in the 700 mm gap) | fore paws −0.1 mm on the gap's floor, hind 13 mm above the gap's floor, so out of stance (what holds them up was not looked at) | 0 | 2, both in gap 3 |
 | 4.45 m, 50 mm (in the 500 mm gap) | the body overlaps both walls and is thrown clear | 0 | 0 |
 
-The cat (paw to paw about 0.8 m) does not fit in the 500 mm gap, so it can
-only cross it by leaping. The settled pose on the 300 mm top, carried rigidly
+The cat does not fit in the 500 mm gap: dropped into it, it is thrown clear. The settled pose on the 300 mm top, carried rigidly
 along +x over gap 1 onto the 600 mm top (a 450 mm arc), reads
 `gaps_cleared` 1, `widest_gap_cleared_mm` 500, `gap_touches` 0,
 `highest_platform_reached_mm` 600 and a rise of 610 mm. Its take-off speed reads
