@@ -4743,6 +4743,7 @@ class AssemblyDomainAPI:
         centre_mm: Sequence[float] | None = None,
         centre_axis: Sequence[float] | None = None,
         appendage: Sequence[DomainValue] = (),
+        heels: Sequence[DomainValue] = (),
         episode_seconds: float | None = None,
         randomisation: Sequence[DomainValue] | None = None,
         reset_variation: Sequence[DomainValue] | None = None,
@@ -4847,6 +4848,21 @@ class AssemblyDomainAPI:
           root's pitch and the pitch of the body it hangs from, after 1 s;
           and against a ``yaw_rate`` goal, ``appendage_yaw_turn_correlation``,
           |r| between the command and the chain's yaw relative to the base.
+        * ``heels`` with ``feet`` (ADR-774), over each heeled foot's settled
+          stance: ``heel_down_stance_share_min``, the share of it with the
+          heel within 1 mm of the floor; ``heel_down_at_toeoff_share_min``,
+          the share of its stances whose last 0.04 s had the heel down;
+          ``heel_stance_height_mm_max``, the heel's median height; and
+          ``heel_foot_flat_share_min``, the share with the line through the
+          foot's first two shapes' lowest points within 8° of level. Each is
+          the worst heeled foot.
+        * with ``feet`` and a task ``reference`` (ADR-774), by the
+          reference's leg labels: ``touchdown_rate_ratio_max`` and
+          ``_min``, every landing per settled second (a tap counts) over the
+          left hind's stride frequency; ``hind_overreach_mm_min``, the
+          worse hind's median landing ahead of the same side's last fore
+          print; and ``pair_lag_fore_median`` and ``pair_lag_hind_median``,
+          how far apart in cycles each pair lands, 0.5 alternating.
 
         ``feet`` names the ``api.component`` values that are feet; each
         needs a primitive collision shape, because a foot's height is its
@@ -4865,6 +4881,12 @@ class AssemblyDomainAPI:
         ``appendage`` names a chain hanging from the base that is not a leg
         -- a tail, a trunk -- root first, each component below the one
         before; at least one needs a primitive collision shape.
+
+        ``heels`` names, for some of the feet, the component above each
+        that should come down to the floor in stance -- a plantigrade hind
+        foot's hock case -- with a primitive collision shape; each heel's
+        foot is the one named foot below its leg (the heel, or the jointed
+        link it is welded to).
 
         ``seeds`` are the evaluation seeds, fixed in the script so that two
         evaluations of one policy are the same episodes. **They are never
@@ -5018,6 +5040,22 @@ class AssemblyDomainAPI:
             )
         if chain:
             properties["appendage"] = chain
+        # ADR-774: likewise absent when none is named.
+        heel_values = _values(
+            operation, "heels", heels, output_type="component_link", minimum=0
+        )
+        if len(heel_values) > _MAX_SUCCESS_FEET:
+            raise _error(
+                operation, "heels",
+                f"may name at most {_MAX_SUCCESS_FEET} components",
+            )
+        if heel_values and not foot_values:
+            raise _error(
+                operation, "heels",
+                "is the heel of a foot, and no feet are named",
+            )
+        if heel_values:
+            properties["heels"] = heel_values
         if tip is None:
             if tip_offset_mm is not None:
                 raise _error(
@@ -5532,6 +5570,10 @@ class AssemblyDomainAPI:
             named.extend(
                 (f"success.appendage[{index}]", entry)
                 for index, entry in enumerate(spec.properties.get("appendage") or ())
+            )
+            named.extend(
+                (f"success.heels[{index}]", entry)
+                for index, entry in enumerate(spec.properties.get("heels") or ())
             )
             for parameter in ("body", "centre"):
                 if spec.properties.get(parameter) is not None:

@@ -5204,6 +5204,11 @@ def _success_input(
         resolved["appendage"] = [
             component_outputs[id(link)] for link in properties["appendage"]
         ]
+    # ADR-774: likewise for heels.
+    if properties.get("heels"):
+        resolved["heels"] = [
+            component_outputs[id(heel)] for heel in properties["heels"]
+        ]
     # Absent unless the script named a body, so a spec without one is the
     # spec it always was (ADR-587).
     if properties.get("body") is not None:

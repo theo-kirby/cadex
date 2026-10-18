@@ -408,6 +408,19 @@ the command and the chain's yaw relative to the base: is it used in turns?).
 A contact share is only as true as the collision shapes: a link with none
 passes through the floor unseen.
 
+**Heel and footfall predicates (ADR-774, 2026-10-18).** `assembly.success(...,
+feet=[...], heels=[...])` names, for some feet, the body that should reach
+the floor in stance -- the hock case of a plantigrade hind foot -- on that
+foot's leg (above it, or welded to a link above it), with a primitive
+collision shape. The spec may then bound `heel_down_stance_share_min`,
+`heel_down_at_toeoff_share_min`, `heel_stance_height_mm_max` and
+`heel_foot_flat_share_min`. With a task `reference`, the leg labels also give
+`touchdown_rate_ratio_max`/`_min` (every landing, taps included, per left-hind
+stride), `hind_overreach_mm_min` and `pair_lag_fore_median`/`_hind_median`;
+each stride's lag is in the detail, so a speed ramp's lags can be read
+against speed. Probe: `docs/probes/orun11/footfall_probe.py` re-reads a
+judged evaluation's traces with them.
+
 **Terrain predicates, a held-out course per seed (ADR-718, 2026-10-16).**
 A success spec may bound `distance_made_good_mm` (net plan travel along the
 starting heading) and `falls` (the base tilted 60°, or its centre of mass

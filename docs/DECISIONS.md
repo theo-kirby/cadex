@@ -44820,3 +44820,65 @@ goal ramp reads the engine's values. A CPU smoke of `cadex_train.py`
 (2 iterations, 16 envs) trains and writes a policy whose witness agrees
 to 5.9e-8. `pixi run test-engine` 157 passed, 3 skipped;
 `CUDA_VISIBLE_DEVICES= pytest cli/tests` 53 passed; `training/` 44 passed.
+
+## ADR-774 — A heel's stance, every landing's rate, overreach and pair lag are metrics (2026-10-18, orun11)
+
+**Context.** orun11's P1 asks a plantigrade push-off: the hock drive's case
+on the floor for at least 40% of each hind paw's stance, and at toe-off or
+just before it. P2 asks each paw to land once per hind stride (t2-g4's fore
+paws tapped mid-swing at 4.74 Hz against 2.37), the hinds to land ahead of
+the fore prints, and W1 each pair's lag against speed. The owner measured
+these on t2-g1..g5 with session scripts that were never committed. The
+evaluation counted only *steps* (airborne ≥ 0.10 s, advance ≥ 0.15 hip
+heights), so a tap was invisible, and it read no body but the feet.
+
+**Decision.**
+- **`assembly.success(..., heels=[...])`** names, for some of the feet, the
+  body that should reach the floor in stance, with a primitive collision
+  shape. Its foot is the one named foot below its leg: the heel itself, or
+  the jointed link it is welded to, since the cat's hock case is a body
+  welded to the shin beside the chain to the paw. A heel with no or two feet
+  below its leg, a foot under two heels, and a heel with no or a mesh shape
+  are refused (`evaluation_heel_*`) when the bundle is built. `heels`
+  without `feet` is refused by the API. Absent from the spec, the bundle and
+  the evaluation when unnamed, so no earlier digest moves.
+- **The `heel` family** (`heel_metrics`, needs `feet` and `heel`), over each
+  heeled foot's settled stance frames (lowest point within `STANCE_MM`):
+  `heel_down_stance_share_min` (heel within `STANCE_MM` too),
+  `heel_down_at_toeoff_share_min` (the share of stances ending in a lift
+  with the heel down in the last `HEEL_TOEOFF_S` = 0.04 s, three frames at
+  50 Hz), `heel_stance_height_mm_max` (the heel's median height) and
+  `heel_foot_flat_share_min` (the line through the lowest points of the
+  foot's first two shapes within `FLAT_DEG` = 8° of level, M1's bound).
+  Worst heeled foot each; `detail.heels` keeps every foot's figures and its
+  median sole pitch.
+- **Footfalls by the reference's labels** (`footfall_metrics`, the
+  `reference` family, so `feet` and a task `reference`):
+  `touchdown_rate_ratio_max`/`_min`, every landing per settled second over
+  the left hind's step-landing stride frequency (`gait` now keeps
+  `landings_s`, `touchdown_hz` and each step's `touchdown_points_mm`);
+  `hind_overreach_mm_min`, the worse hind's median landing ahead, along the
+  starting heading, of its own side's last fore landing; and
+  `pair_lag_fore_median`/`_hind_median`, per stride of the pair's left foot
+  the share until the right lands, folded to `min(f, 1 − f)`. Each stride's
+  unfolded lag and start time are in `detail.footfall`, for W1's plot
+  against speed. A biped's labels give none of them.
+
+"On the floor" is the stance rule a foot is held to, 1 mm; the heel's
+median stance height is reported beside it, so a case hovering a few
+millimetres off reads as such rather than as a pass. Fore reach (P2's
+"ahead of the shoulder") and the rotary order's predicate are not here.
+
+**Consequences.** No protocol op, tool or trainer change; the vocabulary of
+predicates grows by nine. A heel is read from its collision shape, so a
+model whose case has none (t2-g4's) is refused; the probe can borrow the
+shape of a later model of the same bodies to read the case's height.
+
+**Evidence.** `pixi run test-engine` (157 passed, 3 skipped).
+`docs/probes/orun11/footfall_probe.py` re-reads judged traces; on
+`orun10-cat` t2-g5 at iteration 200 (medians over 10 seeds) the right
+hock's stance height is 85 mm and the left's 29 mm, down 0% and 9% of
+stance (the owner: never on the right, 10 of 60 frames on the left); RF
+lands at 3.1 Hz against a 2.38 Hz stride; t2-g4 at iteration 100 reads
+`touchdown_rate_ratio_max` 2.01 (the owner's 4.74 against 2.37) at
+3.79 m/s. Baseline: `docs/probes/orun11/baseline-t2.md`.

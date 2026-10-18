@@ -8540,6 +8540,10 @@ _SUCCESS_NEED_CORRECTIONS = {
         "Name the chain it reads, from the body nearest the base outward: "
         "assembly.success(..., appendage=[root, ..., last])."
     ),
+    "heel": (
+        "Name the component above each foot that should come down to the "
+        "floor in stance: assembly.success(..., feet=[...], heels=[...])."
+    ),
     "shove": (
         "Recovery is timed from the end of a shove, and the spec's "
         "conditions apply none. Give assembly.success (or the task it "
@@ -11802,6 +11806,7 @@ def _success_records(
     tip = spec.get("tip")
     body = spec.get("body")
     appendage = [str(name) for name in spec.get("appendage") or ()]
+    heels = [str(name) for name in spec.get("heels") or ()]
 
     goal_kinds = {str(entry.get("kind") or "") for entry in goal_entries}
     have = {
@@ -11809,6 +11814,8 @@ def _success_records(
         "tip": tip is not None,
         "body": body is not None,
         "appendage": bool(appendage),
+        # ADR-774: the heel family reads the heels the spec names.
+        "heel": bool(heels),
         "shove": any(not entry.get("sustained") for entry in disturbance_entries),
         # Read by kind: the commanded speed is the task's one speed goal and
         # the target its one point goal, and a task that states neither has
@@ -11989,6 +11996,7 @@ def _success_records(
         body=body,
         centre=spec.get("centre"),
         appendage=appendage,
+        heels=heels,
     )
     for need, present in (
         ("base", rig["base"] is not None),
@@ -12066,6 +12074,7 @@ def _success_records(
         ),
         # Absent unless the script named one (ADR-722), likewise.
         **({"appendage": appendage} if appendage else {}),
+        **({"heels": heels} if heels else {}),
         "episode": schedule,
         "randomisation": randomisation,
         "reset_variation": reset_variation,
@@ -13614,6 +13623,7 @@ def evaluation_rig(
     body: Mapping[str, Any] | None = None,
     centre: Mapping[str, Any] | None = None,
     appendage: Sequence[str] = (),
+    heels: Sequence[str] = (),
     keyframe: str = MJCF_KEYFRAME_NAME,
 ) -> dict[str, Any]:
     """The facts about one model that a rollout's metrics are scaled by.
@@ -13642,6 +13652,12 @@ def evaluation_rig(
     each body must hang from the one before it (the root from the base), at
     least one must have a primitive collision shape, and the rig records
     each body's primitives and the body the root hangs from.
+
+    ``heels`` names bodies that should come down to the floor in a foot's
+    stance (ADR-774): each must carry a primitive collision shape and have
+    exactly one named foot hanging below its leg -- the heel itself, or the
+    jointed link it is welded to (a drive case on the shank) -- and
+    ``rig["heels"]`` maps that foot to ``{"body", "geoms"}``.
 
     A grounded mechanism has no floating base, and ``base`` is then ``None``:
     an arm is still measured for reach. Two floating bases is a refusal,
@@ -13905,6 +13921,67 @@ def evaluation_rig(
             "parent": str(mujoco.mj_id2name(
                 model, mujoco.mjtObj.mjOBJ_BODY, int(model.body_parentid[ids[0]]))),
         }
+    if heels:
+        rig["heels"] = {}
+        for name in heels:
+            found = _body(name, "a heel")
+            # A heel welded to its leg -- a drive's case on the shank, beside
+            # the chain to the foot -- belongs to the link it is welded to.
+            leg = found
+            while leg not in (0, root) and not any(
+                int(model.jnt_bodyid[joint]) == leg for joint in range(model.njnt)
+            ):
+                leg = int(model.body_parentid[leg])
+            below = []
+            for foot in rig["feet"]:
+                link = _body(foot, "a foot")
+                while link not in (0, root):
+                    link = int(model.body_parentid[link])
+                    if link == leg:
+                        below.append(foot)
+                        break
+            if leg in (0, root) or len(below) != 1:
+                raise DynamicsError(
+                    f"Heel {name!r} has {len(below)} named feet below its leg; a "
+                    "heel is on one leg, above that leg's foot.",
+                    reason="evaluation_heel_needs_one_foot",
+                    correction="Name the heel of each foot, on the leg above it.",
+                    observed={"heel": str(name), "feet_below": below},
+                )
+            if below[0] in rig["heels"]:
+                raise DynamicsError(
+                    f"Foot {below[0]!r} is named under two heels.",
+                    reason="evaluation_heel_repeated",
+                    observed={"foot": below[0], "heel": str(name)},
+                )
+            geoms = []
+            for geom in range(model.ngeom):
+                if int(model.geom_bodyid[geom]) != found or not (
+                    model.geom_contype[geom] or model.geom_conaffinity[geom]
+                ):
+                    continue
+                kind = _geom_kind_name(mujoco, int(model.geom_type[geom]))
+                if kind not in _EVALUATION_FOOT_GEOMS:
+                    raise DynamicsError(
+                        f"Heel {name!r} collides as a {kind}, and a heel's "
+                        "height is read from a sphere, a capsule or a box.",
+                        reason="evaluation_heel_geom_unsupported",
+                        correction="Give the heel a primitive collision shape (api.collision).",
+                        observed={"heel": str(name), "geom": kind},
+                    )
+                geoms.append({
+                    "kind": kind,
+                    "size_mm": vector_mm(model.geom_size[geom]),
+                    "pos_mm": vector_mm(model.geom_pos[geom]),
+                    "quat_xyzw": quaternion_xyzw_from_wxyz(model.geom_quat[geom]),
+                })
+            if not geoms:
+                raise DynamicsError(
+                    f"Heel {name!r} has no collision geom, so it never touches the floor.",
+                    reason="evaluation_heel_has_no_geom",
+                    observed={"heel": str(name)},
+                )
+            rig["heels"][below[0]] = {"body": str(name), "geoms": geoms}
     return rig
 
 
@@ -16421,6 +16498,7 @@ def evaluate_success(
         compiled, feet=list(spec.get("feet") or ()), tip=spec.get("tip"),
         body=spec.get("body"), centre=spec.get("centre"),
         appendage=list(spec.get("appendage") or ()),
+        heels=list(spec.get("heels") or ()),
     )
     # A surface held off its geometry voids every seed alike: the episode
     # is played and measured, and none of it is a measurement of contact.
@@ -16432,6 +16510,8 @@ def evaluate_success(
     # ADR-722: an appendage is read from its links and the body it hangs from.
     if rig.get("appendage"):
         wanted += [*rig["appendage"]["bodies"], rig["appendage"]["parent"]]
+    # ADR-774: a heel is read from its own body's pose.
+    wanted += [heel["body"] for heel in (rig.get("heels") or {}).values()]
     # ADR-592: a target held in a body's frame is measured where that body was.
     wanted += [entry.get("frame") for entry in played.get("goal") or ()]
     names += [name for name in wanted if name is not None and name not in names]
@@ -16627,6 +16707,7 @@ def evaluate_success(
                 "predicates", "seeds", "feet", "tip", "episode",
                 "reset_variation", "disturbance", "scale")},
             **({"appendage": list(spec["appendage"])} if spec.get("appendage") else {}),
+            **({"heels": list(spec["heels"])} if spec.get("heels") else {}),
             "randomisation": [dict(entry) for entry in played["randomisation"]],
             **({"goal": [dict(entry) for entry in played["goal"]]}
                if played.get("goal") else {}),
