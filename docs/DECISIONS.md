@@ -45073,3 +45073,39 @@ pass M1), and the sole now stays within 2.5° of flat while the foot lays
 down (it was 8–11° toes-down at the sample before the hold). orun10-cat
 t2-g4's clip (no heels) regenerates byte-equal. `pixi run test-engine`:
 157 passed, 3 skipped.
+
+## ADR-779 — `joint_dynamics` declares a passive spring (2026-10-19)
+
+**Context.** orun11 coupled the cat's hind paw to its hock with a rod
+(ADR-775–778), and five screens never put both hocks down. The owner
+replaced it with a simpler foot (`~/cadex-projects/feline-v06`, built from
+`cat-foot-spring`). A rigid metatarsus runs from the hock drive to the ball,
+and the paw rides a hinge there with a torsion spring. The engine could
+declare a joint's damping, armature, friction and stops, but not a spring:
+MuJoCo's joint `stiffness` was always zero.
+
+**Decision.** `assembly.joint_dynamics` takes `spring_nmm_per_deg` with an
+optional `spring_rest_deg` for a hinge. A slide takes `spring_n_per_mm` and
+`spring_rest_mm`. Units are in the names, as for the other fields: the
+wrong pair is refused, and so is a rest position with no spring.
+CadexDynamics writes the spring to the MuJoCo joint's `stiffness` (the
+first entry of MuJoCo 3.10's three-vector) and the rest position to
+`springref`, in radians or metres from the build pose. The report's
+`declared` block names `spring` and `spring_rest` only when a spring is
+declared, so every existing report and bundle is byte-identical. MJX
+integrates joint stiffness as a passive force, so a trained policy sees the
+same spring.
+
+**Consequences.** feline v06's hind paw pins carry 3 N·mm per degree,
+resting at the standing angle (+36° left, −36° right), with 2 N·mm of
+bushing friction (it was 40 on the free pin). The spring is relaxed while
+the cat stands on its paws. It winds 60° (0.18 N·m) as the hock lays the
+metatarsus level for a plantigrade push-off, and 60° the other way at
+toe-off. No protocol, tool or trainer change.
+
+**Evidence.** The exported model carries
+`stiffness="0.171887"` (3 N·mm/° in N·m/rad) on `j_pawpin_l`. The
+posed renders, five positions from swing to toe-off, show the paw flat
+from standing (pin +36°) to plantigrade (pin +96°, hock −60°, the hock
+case's shoe on the floor with the knee at 0). `pixi run test-engine`: 157
+passed, 3 skipped.

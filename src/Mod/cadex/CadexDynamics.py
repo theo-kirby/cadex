@@ -3043,6 +3043,14 @@ def joint_dynamics_records(
             )
             or 0.0
         )
+        spring = float(
+            (entry.get("spring_nmm_per_deg") if angular else entry.get("spring_n_per_mm"))
+            or 0.0
+        )
+        spring_rest = float(
+            (entry.get("spring_rest_deg") if angular else entry.get("spring_rest_mm"))
+            or 0.0
+        )
         limit_time_constant = entry.get("limit_time_constant_s")
         limit_ratio = entry.get("limit_damping_ratio")
         limit_solref = None
@@ -3088,10 +3096,20 @@ def joint_dynamics_records(
                 "friction_loss_si": (
                     torque_nm(friction) if angular else float(friction)
                 ),
+                # ADR-779: a passive spring, MuJoCo's joint stiffness about
+                # springref (radians or metres from the build pose)
+                "spring_si": (
+                    stiffness_nm_per_rad(spring) if angular else stiffness_n_per_m(spring)
+                ),
+                "spring_rest_si": (
+                    math.radians(spring_rest) if angular else spring_rest / 1000.0
+                ),
                 "declared": {
                     "damping": damping,
                     "armature": armature,
                     "friction_loss": friction,
+                    # only a declared spring shows, so existing reports stay byte-identical
+                    **({"spring": spring, "spring_rest": spring_rest} if spring else {}),
                     "limit_time_constant_s": limit_time_constant,
                     "limit_damping_ratio": limit_ratio,
                 },
@@ -5455,6 +5473,12 @@ def build_model(
         native_joint.damping = [float(record["damping_si"]), 0.0, 0.0]
         native_joint.armature = float(record["armature_si"])
         native_joint.frictionloss = float(record["friction_loss_si"])
+        if record["spring_si"]:
+            # ``stiffness`` is a three-vector in MuJoCo 3.10 (its first entry
+            # is the linear spring); ``springref`` a scalar in the joint's
+            # coordinate
+            native_joint.stiffness = [float(record["spring_si"]), 0.0, 0.0]
+            native_joint.springref = float(record["spring_rest_si"])
         if record["limit_solref"] is not None:
             # MuJoCo's ``refsafe`` raises a time constant below two solver
             # steps to that floor and says nothing, so the stop would be
