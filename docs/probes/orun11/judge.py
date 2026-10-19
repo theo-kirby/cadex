@@ -133,6 +133,13 @@ def main() -> None:
     success = trained["success"]
     assert success["label"] == "gallop_spec" and success.get("heels"), "not ADR-774's gallop spec"
     state, _staging, _result = retained_attempt(root)
+    # The run's own record names the revision it trained on; the project may have
+    # moved on since (orun11 iteration 7: heel1-s1 on 07a92830, judged on ca32a9b4).
+    run_json = train.parent / "run.json"
+    trained_on = json.loads(run_json.read_text()).get("model", {}) if run_json.is_file() else {}
+    if trained_on.get("accepted_revision"):
+        state = {"accepted_revision": trained_on["accepted_revision"],
+                 "accepted_digest": trained_on.get("digest") or state.get("accepted_digest")}
     components = re.findall(r'<body[^>]*name="([^"]+)"', model.read_text())
     out = check_out(root, root / "evaluations" / name)
     out.mkdir(parents=True, exist_ok=True)
