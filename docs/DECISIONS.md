@@ -45109,3 +45109,115 @@ posed renders, five positions from swing to toe-off, show the paw flat
 from standing (pin +36°) to plantigrade (pin +96°, hock −60°, the hock
 case's shoe on the floor with the knee at 0). `pixi run test-engine`: 157
 passed, 3 skipped.
+
+## ADR-780 — A cat build stops paying for work it repeats or never reads (2026-10-19)
+
+**Context.** A feline-v07 build took about 9 minutes, and the script itself
+was 3 s of it. A cProfile of the accepted revision put 264 s into building
+part shapes (175 s of them the 23 skin panels) and 266 s into the assembly:
+the panel fit 111 s, 137 incremental solves 82 s, the joint sweeps 52 s. Two of
+the four builds before it ran the full 9 minutes and then refused a task
+spec (a reward naming an unobserved channel; 130 observation channels
+against 128). Re-running cold showed a worse case: an empty fit cache made
+the same build ~2,000 CPU-s, and the cache's key was the bytes of the whole
+9,600-line assembly worker. That file changed 24 times between 2026-10-13
+and today, so most days' first build of every project was the cold one.
+
+**Decision.** Five changes in `cadex_assembly_worker.py`, none to a
+published shape:
+
+1. **Joints are created without solving** (`SolveInJointCreation` off
+   around the loop, as publication's `_configure_joint` already did); the
+   one `assembly.solve` after the loop is the solve the build reports.
+2. **Panel normals are the facets' own.** `_panel_surface_samples`
+   projected each sample back onto its surface for `normalAt`: 28,800
+   `Surface.parameter` calls. `Face.tessellate` winds a reversed face's
+   triangles reversed, so the cross product points out; the two agree on
+   all but 2 of 166,581 facets of every feline-v07 output. A covered part
+   is sampled once per fit, not once per panel that covers it.
+3. **The fit is measured after the derived outputs** (MJCF, tasks,
+   policies, rollouts), which read none of it. A task the model cannot
+   carry is refused before the static fit, the panels and the sweeps. The
+   fit is advisory (`_check_fit` never refuses), so no verdict moves.
+4. **The fit cache is versioned on its measuring code**
+   (`_measuring_source`): the source of the functions that make or read a
+   cached number and of every definition they reach, walked on the syntax
+   tree across the engine's own modules, plus the kernel. Over October's 81
+   commits to those modules the whole-file key changed 49 times and this
+   one 9, each a fit, sweep or panel change; none since 2026-10-13.
+5. **A shell distance stops searching at the recheck distance.** At or
+   below `_SHELL_DISTANCE_RECHECK_MM` `_boundary_distance` measures the
+   solids exactly anyway, so the rest of the search was spent: a skin panel
+   wrapped on its link bounds every face pair at 0, and the humerus and its
+   outer panel measured 237 pairs for one 4e-14 mm reading. 22 s → 10 s,
+   the same number to the last bit.
+
+**Consequences.** (1) changes solved placements in the last digits on a
+closed chain. Of 12 projects rebuilt old and new, 7 digests are unchanged.
+Three differ by ≤3e-12 mm in a placement, the same pose (wave1-loader,
+wave3-stewart-sim, wave3-walking-excavator); a restore accepts them through
+the geometry check (ADR-389), measured on the loader. Two differ in the
+exported MJCF's keyframe: feline-v07's went from no `qpos` (every
+coordinate exactly zero) to an explicit all-zero one (1e-24 residues), and
+orun11-cat's the other way. A policy pinned by model digest is then refused
+(`policy_model_mismatch`) until it is retrained or re-pinned. The owner accepted that for the time. Snapping
+residues to zero would not have helped: 50 of the 56 existing MJCFs that
+write `qpos` already carry such residues. The first build of each project
+after this lands is cold once more, as the fit cache's roots changed.
+(2) keeps the samples whose projection used to raise and was skipped, so
+a panel's published points and gap percentiles move a little (orun11-cat:
+gap p90 32.1 → 31.3 mm on one panel); `fit.panels` is advisory.
+(3) measures the fit a little later in the run, so a cold build's sweep
+budget, which shrinks with the run's age, shrinks by the derived outputs'
+time, ~10 s on the cat. No protocol, tool or published-shape change.
+
+**Evidence.** Timings are on the shared 32-core box under load, so ±10%:
+feline-v07 cold, old 1,715 s and new 1,387 s wall. Warm, outside the joint
+sweeps (which a fresh fit key refills over several builds): old 519 s wall,
+605 CPU-s; new 368–415 s, 462–527 CPU-s. 12-project corpus, old and new engines, cold fit caches:
+digests as above. `pixi run test-engine`: 157 passed, 3 skipped; `pytest
+cli/tests`: 53 passed.
+
+## ADR-781 — A rebuild builds only the parts that changed (2026-10-19)
+
+**Context.** After ADR-780 a warm feline-v07 build still spent ~400 s
+outside its sweeps, most of it building part shapes again. The in-request
+memo (`cadex_part_worker._SHAPE_MEMO`) is cleared after every build on
+purpose: a memo that leaked between requests would return geometry for the
+previous parameter values under a self-consistent digest. So an edit to
+one paw rebuilt the skull (120 s), the chest and all 23 skin panels.
+
+**Decision.** `cadex_project_worker` keeps each part output in the
+project's `script_artifacts/part-cache/<fingerprint>/`: its BREP, its facts
+and operation diagnostics, and the skin forms its build noted. The key is
+the part's content identity (`_memo_key`, the memo's own key) and the facts'
+detail limit. The fingerprint is every `.py` and `.json` file of the engine
+(the worker bundle and the installed tree it imports the rest from), the
+kernel's and OCCT's versions and the Part library file's size and mtime, the
+attempt's assets and the request's inputs, so nothing a part build reads
+goes unkeyed. A different fingerprint starts a new folder and deletes the
+old ones, and the folder keeps 1 GB, least recently used first. A part
+holding a `cable`, `bundle` or `solder` is never kept, as its build writes
+the route and terminal registries that wiring reads. A hit copies the bytes
+the miss wrote, replays the skin forms for the form-containment measure,
+and seeds the memo with the BREP read back, which `copy()` hands out
+without its mesh as the memo's own hits do. It is a cache: unreadable or
+corrupt, it is a miss.
+
+**Consequences.** A project's second build of an unchanged part is a file
+copy. Reopening a project whose parts do not serialize reproducibly
+(`part.offset`, the cat's approximated skins) now matches byte for byte
+instead of through the geometry check (ADR-389);
+`test_an_offset_project_reopens_although_its_bytes_never_repeat` clears the
+cache before each reopen so it still proves that fallback, which a cold
+cache reaches after any engine change. Any engine edit makes the next build
+of every project cold once, as before this. No protocol, tool or
+published-shape change.
+
+**Evidence.** feline-v07, the same edits built with the cache and without
+it (an empty one), on the dev copy of this engine: the paw pad moved 1 mm
+gives digest `f84e3bed…` both ways, all 143 output files byte-equal, 105
+against 457 CPU-s; one skin made 2.8 mm thick gives `748fc327…` both ways,
+223 against 586 CPU-s. Unchanged, a second build hits every part: the
+same digest as the first, 100 CPU-s. `pixi run test-engine`: 157 passed,
+3 skipped; `pytest cli/tests`: 53 passed.

@@ -938,6 +938,187 @@ def _staged_globals(
     return globals_by_name, collector, nets, boards, mounts, cages
 
 
+#: Operations whose build writes a registry a later stage reads (routes,
+#: terminal sets): an output holding one is never kept between builds.
+_PART_CACHE_EXCLUDED = frozenset({"cable", "bundle", "solder"})
+#: The part cache's size, past which its least recently used entries go.
+_PART_CACHE_LIMIT_BYTES = 1024 * 1024 * 1024
+
+
+class _PartCache:
+    """Part outputs kept between builds, keyed by what built them (ADR-781).
+
+    The in-request memo (``cadex_part_worker._SHAPE_MEMO``) is cleared after
+    every build on purpose, so an edit to one foot rebuilt the skull, chest
+    and every skin panel too: 264 of a feline-v07 build's 550 s. This keeps
+    each part output's BREP, facts and diagnostics in the project's
+    ``script_artifacts/part-cache/<fingerprint>/``, keyed by the part's
+    content identity (``_memo_key``, the memo's own key) and the facts'
+    detail limit. The fingerprint is every file of the engine bundle, the
+    kernel's and OCCT's versions and the Part library's own file, the
+    attempt's assets and the request's inputs, so nothing a build reads goes
+    unkeyed: a changed engine or asset starts a new directory and the old
+    one is deleted. A hit writes the bytes the miss wrote, so the digest is
+    the one that build had; the skin forms its build noted are replayed, and
+    the memo is seeded with the BREP read back (``copy()`` drops its mesh, as
+    the memo's own hits do). Unreadable, it is a miss; it is never a source
+    of truth.
+    """
+
+    def __init__(self, directory: Path | None):
+        self.directory = directory
+        self.hits = self.misses = 0
+
+    @classmethod
+    def open(cls, root: Path, request: Mapping[str, Any]) -> "_PartCache":
+        try:
+            store = root.parent.parent
+            if not root.name.startswith("attempt-") or store.name != "script_artifacts":
+                return cls(None)
+            digest = hashlib.sha256()
+            # The bundle holds the workers; the rest of the engine (envelopes,
+            # panels, the catalog and its JSON) imports from the installed tree.
+            engine = {Path(__file__).resolve().parent}
+            for entry in sys.path:
+                folder = Path(entry or ".").resolve()
+                if (folder / "CadexCatalog.py").is_file():
+                    engine.add(folder)
+            for folder in sorted(engine):
+                for path in sorted(folder.glob("*")):
+                    if path.suffix in (".py", ".json") and path.is_file():
+                        digest.update(path.name.encode("utf-8") + b"\0" + path.read_bytes())
+            import FreeCAD as App
+            import Part
+            library = Path(getattr(Part, "__file__", "") or "")
+            stat = library.stat() if library.is_file() else None
+            digest.update(json.dumps([
+                [str(part) for part in App.Version()[:4]],
+                str(getattr(Part, "OCC_VERSION", "")),
+                [stat.st_size, stat.st_mtime_ns] if stat else None,
+                request.get("inputs"), request.get("document_objects"),
+            ], sort_keys=True, default=str).encode("utf-8"))
+            assets = root / "assets"
+            for path in sorted(assets.rglob("*")) if assets.is_dir() else ():
+                if path.is_file():
+                    digest.update(str(path.relative_to(assets)).encode("utf-8") + b"\0")
+                    digest.update(path.read_bytes())
+            parent = store / "part-cache"
+            directory = parent / digest.hexdigest()[:20]
+            directory.mkdir(parents=True, exist_ok=True)
+            # Another engine's parts are never read again.
+            import shutil
+            for stale in parent.iterdir():
+                if stale != directory and stale.is_dir():
+                    shutil.rmtree(stale, ignore_errors=True)
+            return cls(directory)
+        except Exception:
+            return cls(None)
+
+    def key(self, payload: Mapping[str, Any], max_subelements: int) -> str | None:
+        if self.directory is None:
+            return None
+        pending: list[Any] = [payload]
+        while pending:
+            value = pending.pop()
+            if isinstance(value, Mapping):
+                if str(value.get("operation") or "") in _PART_CACHE_EXCLUDED:
+                    return None
+                pending.extend(value.values())
+            elif isinstance(value, (list, tuple)):
+                pending.extend(value)
+        from cadex_part_worker import _memo_key
+
+        return f"{_memo_key(payload)}-{int(max_subelements)}"
+
+    def restore(self, key: str | None, target: Path) -> dict[str, Any] | None:
+        if key is None:
+            return None
+        try:
+            entry = json.loads((self.directory / f"{key}.json").read_text(encoding="utf-8"))
+            brep = self.directory / f"{key}.brep"
+            target.write_bytes(brep.read_bytes())
+            os.utime(brep)
+        except (OSError, ValueError):
+            self.misses += 1
+            return None
+        self.hits += 1
+        return entry
+
+    def store(self, key: str | None, source: Path, entry: Mapping[str, Any]) -> None:
+        if key is None:
+            return
+        try:
+            text = json.dumps(entry, allow_nan=False, separators=(",", ":"))
+            for suffix, data in ((".brep", source.read_bytes()), (".json", text.encode("utf-8"))):
+                temporary = self.directory / f"{key}{suffix}.{os.getpid()}.tmp"
+                temporary.write_bytes(data)
+                os.replace(temporary, self.directory / f"{key}{suffix}")
+        except (OSError, TypeError, ValueError):
+            return
+
+    def prune(self) -> None:
+        if self.directory is None:
+            return
+        try:
+            files = sorted((p.stat().st_mtime, p.stat().st_size, p) for p in self.directory.glob("*.brep"))
+            total = sum(size for _mtime, size, _path in files)
+            for _mtime, size, path in files:
+                if total <= _PART_CACHE_LIMIT_BYTES:
+                    break
+                path.unlink(missing_ok=True)
+                path.with_suffix(".json").unlink(missing_ok=True)
+                total -= size
+        except OSError:
+            return
+
+
+def _serialize_part_cached(
+    cache: _PartCache, root: Path, index: int, expected: dict[str, str], value: Any,
+    *, max_shape_subelements: int,
+) -> dict[str, Any]:
+    """``_serialize_output`` for a part, through the part cache (ADR-781)."""
+
+    from cadex_part_worker import _RUN_SKIN_FORMS, _SHAPE_MEMO, _SHAPE_MEMO_LIMIT, _SKIN_FORM_PAYLOADS
+
+    payload = _payload(value)
+    key = cache.key(payload, max_shape_subelements)
+    relative = Path("outputs") / f"output-{index:03d}.brep"
+    entry = cache.restore(key, root / relative)
+    if entry is not None and str(payload.get("output_type") or "") == expected["type"]:
+        item: dict[str, Any] = {
+            "name": expected["name"], "type": expected["type"], "definition": payload,
+            "artifact_kind": "brep", "artifact_path": str(relative), "facts": entry["facts"],
+        }
+        if entry.get("operation_diagnostics"):
+            item["operation_diagnostics"] = entry["operation_diagnostics"]
+        for form_key, form in dict(entry.get("skin_forms") or {}).items():
+            _SKIN_FORM_PAYLOADS.setdefault(form_key, form)
+            _RUN_SKIN_FORMS.add(form_key)
+        if len(_SHAPE_MEMO) < _SHAPE_MEMO_LIMIT:
+            import Part
+
+            shape = Part.Shape()
+            shape.importBrep(str(root / relative))
+            _SHAPE_MEMO[key.rsplit("-", 1)[0]] = (
+                shape, dict(entry.get("operation_diagnostics") or {}))
+        return item
+    noted_before = set(_RUN_SKIN_FORMS)
+    _RUN_SKIN_FORMS.clear()
+    try:
+        item = _serialize_output(root, index, expected, value,
+                                 max_shape_subelements=max_shape_subelements)
+        noted = set(_RUN_SKIN_FORMS)
+    finally:
+        _RUN_SKIN_FORMS.update(noted_before)
+    if item.get("artifact_kind") == "brep" and noted <= set(_SKIN_FORM_PAYLOADS):
+        cache.store(key, root / str(item["artifact_path"]), {
+            "facts": item["facts"],
+            "operation_diagnostics": item.get("operation_diagnostics") or {},
+            "skin_forms": {form_key: _SKIN_FORM_PAYLOADS[form_key] for form_key in sorted(noted)},
+        })
+    return item
+
+
 def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
     import FreeCAD as App
 
@@ -1006,6 +1187,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         outputs: list[dict[str, Any]] = []
         validations: dict[str, Any] = {}
         artifact_by_definition: dict[str, dict[str, Any]] = {}
+        part_cache = _PartCache.open(root, request)
         # validate_and_build_partdesign numbers its own artifacts 0..N-1;
         # start the shared counter after them so file names never collide.
         output_index = len(grouped["partdesign"])
@@ -1015,13 +1197,13 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             _SCRIPT_RUN["output"] = name
             cpu_stage(f"output {name}")
             payload = _payload(value)
-            item = _serialize_output(
-                root,
-                output_index,
-                {"name": name, "type": str(payload.get("output_type") or "")},
-                value,
-                max_shape_subelements=shape_detail_limit,
-            )
+            expected = {"name": name, "type": str(payload.get("output_type") or "")}
+            if domain == "part":
+                item = _serialize_part_cached(part_cache, root, output_index, expected, value,
+                                              max_shape_subelements=shape_detail_limit)
+            else:
+                item = _serialize_output(root, output_index, expected, value,
+                                         max_shape_subelements=shape_detail_limit)
             output_index += 1
             item["domain"] = domain
             return item
@@ -1128,6 +1310,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         _stamp_catalog_identity(outputs)
         _stamp_mounting(outputs)
         digest = compute_project_digest(root, outputs)
+        part_cache.prune()
         _attach_routes(outputs)
         display_request = validate_display_request(request.get("display"))
         if display_request is not None:
