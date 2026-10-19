@@ -128,6 +128,12 @@ BIPED_SOURCES = (
 #: IK acceptance: a foot further than this from its target is unreachable.
 TOLERANCE_M = 1e-3
 
+#: How much more a loop closure's row weighs in the solve than a foot's (ADR-776).
+CLOSURE_WEIGHT = 30.0
+
+#: Solver iterations per sample.
+IK_ITERATIONS = 400
+
 #: The largest joint step one IK iteration takes, rad.
 MAX_STEP_RAD = 0.05
 
@@ -294,10 +300,8 @@ def leg_chains(model: Any, legs: Mapping[str, str], *, mujoco: Any | None = None
     return {"chains": chains, "body_joints": shared}
 
 
-def _foot_point(model: Any, data: Any, body: int) -> Any:
-    """The foot's contact point in its body frame: its lowest collision geom's centre."""
-
-    import numpy as np  # noqa: PLC0415
+def _lowest_geom(model: Any, data: Any, body: int) -> int | None:
+    """The body's lowest collision geom at the current pose, or ``None``."""
 
     best = None
     for g in range(model.ngeom):
@@ -307,6 +311,15 @@ def _foot_point(model: Any, data: Any, body: int) -> Any:
             continue
         if best is None or data.geom_xpos[g][2] < data.geom_xpos[best][2]:
             best = g
+    return best
+
+
+def _foot_point(model: Any, data: Any, body: int) -> Any:
+    """The foot's contact point in its body frame: its lowest collision geom's centre."""
+
+    import numpy as np  # noqa: PLC0415
+
+    best = _lowest_geom(model, data, body)
     if best is None:
         return np.zeros(3)
     rot = data.xmat[body].reshape(3, 3)
@@ -328,11 +341,154 @@ def _pitch_quaternion(home: Any, pitch_rad: float) -> Any:
                      w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2])
 
 
+def _below_centre(model: Any, data: Any, geom: int, mj: Any) -> float:
+    """How far a collision geom reaches below its centre at the current pose, m (ADR-776)."""
+
+    import numpy as np  # noqa: PLC0415
+
+    kind, size = int(model.geom_type[geom]), model.geom_size[geom]
+    up = data.geom_xmat[geom].reshape(3, 3)[2]       # the world z of each geom axis
+    if kind == int(mj.mjtGeom.mjGEOM_SPHERE):
+        return float(size[0])
+    if kind == int(mj.mjtGeom.mjGEOM_CAPSULE):
+        return float(size[0] + size[1] * abs(up[2]))
+    if kind == int(mj.mjtGeom.mjGEOM_CYLINDER):
+        return float(size[0] * math.sqrt(max(0.0, 1.0 - up[2] ** 2)) + size[1] * abs(up[2]))
+    if kind == int(mj.mjtGeom.mjGEOM_BOX):
+        return float(np.sum(np.abs(up) * size[:3]))
+    if kind == int(mj.mjtGeom.mjGEOM_ELLIPSOID):
+        return float(np.sqrt(np.sum((up * size[:3]) ** 2)))
+    raise GaitError(f"geom {model.geom(geom).name!r} is a shape whose lowest point the generator "
+                    "does not read (a sphere, capsule, cylinder, box or ellipsoid is)",
+                    reason="heel_geom", geom=model.geom(geom).name)
+
+
+def _path_joints(model: Any, body: int, mj: Any) -> list[int]:
+    """Every hinge or slide joint between ``body`` and the world, root first."""
+
+    joints: list[int] = []
+    b = body
+    while b > 0:
+        start, count = int(model.body_jntadr[b]), int(model.body_jntnum[b])
+        for j in range(start + count - 1, start - 1, -1):
+            if int(model.jnt_type[j]) in (int(mj.mjtJoint.mjJNT_HINGE), int(mj.mjtJoint.mjJNT_SLIDE)):
+                joints.append(j)
+        b = int(model.body_parentid[b])
+    return joints[::-1]
+
+
+def leg_closures(model: Any, chains: Mapping[str, Sequence[int]], body_joints: Sequence[int], *,
+                 mujoco: Any | None = None) -> dict[str, dict[str, Any]]:
+    """Each leg's loop closures and joint couplings, and the joints they add (ADR-776).
+
+    An active ``equality/connect`` belongs to a leg when the joints between
+    its two anchors and the base are that leg's own, the body joints, and
+    joints no foot's path passes through (a rod's pins, hanging off the
+    leg). Those last are the leg's **passive** joints: the solver moves them
+    with the leg's, so the loop stays closed. An active ``equality/joint``
+    belongs to a leg when both its joints are the leg's own or passive. A
+    row that touches no leg (a tail's cable coupling) is left alone.
+    """
+
+    mj = _mujoco(mujoco)
+    legged = {j for joints in chains.values() for j in joints} | set(body_joints)
+    out: dict[str, dict[str, Any]] = {foot: {"connects": [], "couplings": [], "passive": []}
+                                      for foot in chains}
+    pending_joint_rows = []
+    for i in range(model.neq):
+        if not int(model.eq_active0[i]):
+            continue
+        kind = int(model.eq_type[i])
+        if kind == int(mj.mjtEq.mjEQ_CONNECT):
+            if int(model.eq_objtype[i]) == int(mj.mjtObj.mjOBJ_SITE):
+                bodies = [int(model.site_bodyid[model.eq_obj1id[i]]), int(model.site_bodyid[model.eq_obj2id[i]])]
+            else:
+                bodies = [int(model.eq_obj1id[i]), int(model.eq_obj2id[i])]
+            path = set(_path_joints(model, bodies[0], mj)) | set(_path_joints(model, bodies[1], mj))
+            for foot, joints in chains.items():
+                own = path & set(joints)
+                extra = path - legged
+                if own and not (path - set(joints) - set(body_joints) - extra):
+                    out[foot]["connects"].append(i)
+                    for j in sorted(extra):
+                        if j not in out[foot]["passive"]:
+                            out[foot]["passive"].append(j)
+        elif kind == int(mj.mjtEq.mjEQ_JOINT):
+            pending_joint_rows.append(i)
+    for i in pending_joint_rows:
+        j1, j2 = int(model.eq_obj1id[i]), int(model.eq_obj2id[i])
+        for foot, joints in chains.items():
+            variables = set(joints) | set(out[foot]["passive"])
+            if j1 in variables and (j2 < 0 or j2 in variables):
+                out[foot]["couplings"].append(i)
+    return out
+
+
+def _leg_rows(model: Any, data: Any, mj: Any, foot: str, target: Any, point: Any, body: int,
+              closure: Mapping[str, Any], jacp: Any, heel: int | None, ground: float) -> tuple[list, list]:
+    """One leg's residual rows and their Jacobians (ADR-776), at the current pose.
+
+    First the foot (3 rows), then, in stance with a heel, the heel's lowest
+    point against the ground (1), then each loop closure (3) and joint
+    coupling (1). ``jacp=None`` returns only the residuals.
+    """
+
+    import numpy as np  # noqa: PLC0415
+
+    errs, jacs = [target - point], []
+    want = jacp is not None
+    if want:
+        mj.mj_jac(model, data, jacp, None, point, body)
+        jacs.append(jacp.copy())
+    if heel is not None:
+        lowest = float(data.geom_xpos[heel][2] - _below_centre(model, data, heel, mj))
+        errs.append(np.array([ground - lowest]))
+        if want:
+            mj.mj_jac(model, data, jacp, None, data.geom_xpos[heel], int(model.geom_bodyid[heel]))
+            jacs.append(jacp[2:3].copy())
+    for i in closure["connects"]:
+        if int(model.eq_objtype[i]) == int(mj.mjtObj.mjOBJ_SITE):
+            s1, s2 = int(model.eq_obj1id[i]), int(model.eq_obj2id[i])
+            a, b = data.site_xpos[s1].copy(), data.site_xpos[s2].copy()
+            ba, bb = int(model.site_bodyid[s1]), int(model.site_bodyid[s2])
+        else:
+            ba, bb = int(model.eq_obj1id[i]), int(model.eq_obj2id[i])
+            a = data.xpos[ba] + data.xmat[ba].reshape(3, 3) @ model.eq_data[i][0:3]
+            b = data.xpos[bb] + data.xmat[bb].reshape(3, 3) @ model.eq_data[i][3:6]
+        errs.append(b - a)
+        if want:
+            mj.mj_jac(model, data, jacp, None, a, ba)
+            ja = jacp.copy()
+            mj.mj_jac(model, data, jacp, None, b, bb)
+            jacs.append(ja - jacp)
+    for i in closure["couplings"]:
+        j1, j2 = int(model.eq_obj1id[i]), int(model.eq_obj2id[i])
+        a1 = int(model.jnt_qposadr[j1])
+        q1 = float(data.qpos[a1] - model.qpos0[a1])
+        c = model.eq_data[i]
+        row = np.zeros((1, model.nv))
+        if j2 >= 0:
+            a2 = int(model.jnt_qposadr[j2])
+            q2 = float(data.qpos[a2] - model.qpos0[a2])
+            target2 = c[0] + c[1] * q2 + c[2] * q2 ** 2 + c[3] * q2 ** 3 + c[4] * q2 ** 4
+            row[0, int(model.jnt_dofadr[j2])] = -(c[1] + 2 * c[2] * q2 + 3 * c[3] * q2 ** 2 + 4 * c[4] * q2 ** 3)
+        else:
+            target2 = c[0]
+        row[0, int(model.jnt_dofadr[j1])] = 1.0
+        errs.append(np.array([target2 - q1]))
+        if want:
+            jacs.append(row)
+    return errs, jacs
+
+
 def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any], speed_m_s: float, *,
              stride_length_m: float | None = None, swing_height_m: float | None = None,
              pitch_amplitude_deg: float | None = None, spine_joint: str | None = None,
              spine_amplitude_deg: float | None = None, sample_hz: float = 50.0,
-             samples: int | None = None, home_qpos: Sequence[float] | None = None, mujoco: Any | None = None) -> dict[str, Any]:
+             samples: int | None = None, home_qpos: Sequence[float] | None = None,
+             heels: Mapping[str, str] | None = None, body_drop_m: float = 0.0,
+             body_pitch_deg: float = 0.0, stance_shift_m: Mapping[str, float] | None = None,
+             heel_from: float = 0.0, mujoco: Any | None = None) -> dict[str, Any]:
     """One stride of ``gait`` at ``speed_m_s`` on ``model``'s own legs, or a :class:`GaitError`.
 
     ``home_qpos`` is the standing pose the stride is built about (default:
@@ -341,6 +497,26 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
     the stride's sample count instead of ``sample_hz`` (ADR-773: the clips of
     a speed schedule share one phase grid). Returns a
     ``cadex-gait-clip-v1`` dictionary, plain JSON.
+
+    **Closed legs (ADR-776).** The model's loop closures and joint couplings
+    on a leg (:func:`leg_closures`) are held by the same solve: each is rows
+    beside the foot's, and a rod's own pins are solved with the leg's
+    joints, so a coupled paw takes the angle its linkage gives it. A loop
+    the solve cannot close is refused as a :class:`GaitUnreachable`.
+    ``heels`` maps a foot (``LH``, say) to a body above it; while that foot
+    is down, the heel body's lowest collision point is held on the ground
+    too: the plantigrade stance, the whole foot down to the heel. With
+    ``heel_from`` the heel is held down only from that share of the stance
+    to toe-off: the foot lands on its toes and lays down to push off.
+    ``body_drop_m`` lowers the trunk that far below its standing height for
+    the whole stride, and ``body_pitch_deg`` pitches it nose-up about the
+    base's origin by that much more than the stride's own pitch: the crouch,
+    and the lower hips, a foot laid flat to the heel needs.
+    ``stance_shift_m`` moves a foot's stance forward of its standing place
+    (``{"LH": 0.06}``): where a gallop's hind feet land, under the belly.
+    These plantigrade options are the generator's alone: ``assembly.gait``
+    does not pass them yet (``docs/probes/orun11/plantigrade_reach.py``
+    reads a leg's reach with them).
     """
 
     import numpy as np  # noqa: PLC0415
@@ -381,6 +557,30 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
 
     feet_body = {foot: mj.mj_name2id(model, mj.mjtObj.mjOBJ_BODY, legs[foot]) for foot in feet}
     point_local = {foot: _foot_point(model, data, feet_body[foot]) for foot in feet}
+    foot_geom = {foot: _lowest_geom(model, data, feet_body[foot]) for foot in feet}
+    # the ground under each foot: its lowest collision point, standing at home
+    ground = {foot: float(data.geom_xpos[foot_geom[foot]][2] - _below_centre(model, data, foot_geom[foot], mj))
+              if foot_geom[foot] is not None else 0.0 for foot in feet}
+    closures = leg_closures(model, chains, body_joints, mujoco=mj)
+    heel_geom: dict[str, int] = {}
+    for foot, name in dict(heels or {}).items():
+        if foot not in feet:
+            raise GaitError(f"heels names {foot!r}, which is not one of {feet}",
+                            reason="bad_heel", foot=foot)
+        body = mj.mj_name2id(model, mj.mjtObj.mjOBJ_BODY, str(name))
+        if body < 0:
+            raise GaitError(f"heel of {foot}: no body named {name!r}", reason="unknown_body",
+                            leg=foot, body=str(name))
+        allowed = set(chains[foot]) | set(body_joints) | set(closures[foot]["passive"])
+        if not set(_path_joints(model, body, mj)) <= allowed or not set(_path_joints(model, body, mj)) & set(chains[foot]):
+            raise GaitError(f"heel of {foot}: {name!r} is not carried by that leg",
+                            reason="bad_heel", leg=foot, body=str(name))
+        g = _lowest_geom(model, data, body)
+        if g is None:
+            raise GaitError(f"heel of {foot}: {name!r} has no collision geom to stand on",
+                            reason="bad_heel", leg=foot, body=str(name))
+        _below_centre(model, data, g, mj)
+        heel_geom[foot] = g
 
     def world_point(foot: str) -> Any:
         b = feet_body[foot]
@@ -389,6 +589,12 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
     base_home = home[:3].copy()
     quat_home = home[3:7].copy()
     foot_home = {foot: world_point(foot) - base_home for foot in feet}
+    shift = dict(stance_shift_m or {})
+    for foot, value in shift.items():
+        if foot not in feet:
+            raise GaitError(f"stance_shift_m names {foot!r}, which is not one of {feet}",
+                            reason="bad_stance_shift", foot=foot)
+        foot_home[foot] = foot_home[foot] + np.array([float(value), 0.0, 0.0])
     hips = {foot: float(data.xanchor[chains[foot][0]][2] - world_point(foot)[2]) for foot in feet}
     hip_height = float(np.mean(list(hips.values())))
 
@@ -400,18 +606,26 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
     dt = period / samples
 
     limits = {}
-    for joints in chains.values():
-        for j in joints:
+    for foot, joints in chains.items():
+        for j in list(joints) + closures[foot]["passive"]:
             lo, hi = model.jnt_range[j]
             limits[j] = (float(lo), float(hi)) if model.jnt_limited[j] else (-math.inf, math.inf)
 
     qpos = np.zeros((samples, model.nq))
     targets = {foot: np.zeros((samples, 3)) for foot in feet}
     residual = {foot: 0.0 for foot in feet}
+    closure_miss = {foot: 0.0 for foot in feet}
+    heel_height = {foot: np.zeros(samples) for foot in heel_geom}
     body_x = np.zeros(samples)
     body_z = np.zeros(samples)
     body_pitch = np.zeros(samples)
     contact = contact_schedule(offsets, duty, samples, feet)
+    if not 0.0 <= float(heel_from) < 1.0:
+        raise GaitError(f"heel_from is a share of the stance in [0, 1), got {heel_from}",
+                        reason="bad_heel_from", heel_from=heel_from)
+    heel_down = {foot: [int(bool(contact[foot][k]) and ((k / samples - offsets[foot]) % 1.0)
+                            >= float(heel_from) * duty - 1e-12) for k in range(samples)]
+                 for foot in heel_geom}
     q = home.copy()
     jacp = np.zeros((3, model.nv))
     damping, posture = 1e-6, 0.1
@@ -419,8 +633,8 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
         t = k * dt
         phase = k / samples
         x = speed_m_s * t
-        pitch = pitch_amp * math.sin(2.0 * math.pi * phase)
-        q[:3] = base_home + np.array([x, 0.0, 0.0])
+        pitch = math.radians(body_pitch_deg) + pitch_amp * math.sin(2.0 * math.pi * phase)
+        q[:3] = base_home + np.array([x, 0.0, -float(body_drop_m)])
         q[3:7] = _pitch_quaternion(quat_home, pitch)
         if spine is not None:
             q[model.jnt_qposadr[spine]] = home[model.jnt_qposadr[spine]] + spine_amp * math.sin(
@@ -434,27 +648,38 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
             target = base_home + foot_home[foot] + np.array([speed_m_s * centre_t + travel, 0.0, lift])
             targets[foot][k] = target
         # solve every leg against its own targets with the base and spine set
-        for _ in range(400):
+        for _ in range(IK_ITERATIONS):
             data.qpos[:] = q
             mj.mj_kinematics(model, data)
             mj.mj_comPos(model, data)
             worst = 0.0
             for foot in feet:
-                err = targets[foot][k] - world_point(foot)
+                rows_err, rows_jac = _leg_rows(model, data, mj, foot, targets[foot][k], world_point(foot),
+                                               feet_body[foot], closures[foot], jacp,
+                                               heel_geom.get(foot) if heel_down.get(foot, [0] * samples)[k] else None,
+                                               ground[foot])
+                err = np.concatenate(rows_err)
                 worst = max(worst, float(np.linalg.norm(err)))
+                n_loops = len(closures[foot]["connects"]) + len(closures[foot]["couplings"])
                 if np.linalg.norm(err) < 1e-6:
                     continue
-                b = feet_body[foot]
-                mj.mj_jac(model, data, jacp, None, world_point(foot), b)
-                joints = chains[foot]
+                joints = list(chains[foot]) + closures[foot]["passive"]
                 cols = [int(model.jnt_dofadr[j]) for j in joints]
                 adrs = [int(model.jnt_qposadr[j]) for j in joints]
+                # a loop is a hard constraint, the feet are targets: the closure
+                # rows weigh CLOSURE_WEIGHT times a foot's, so a foot the leg
+                # cannot reach is missed at the foot, not by opening the loop
+                weight = np.concatenate([np.full(len(e), CLOSURE_WEIGHT if n >= len(rows_err) - n_loops else 1.0)
+                                         for n, e in enumerate(rows_err)])
+                err = err * weight
+                full = np.vstack(rows_jac) * weight[:, None]
+                rows = len(err)
                 # an active set: a joint at a stop that the step would push
                 # further is taken out, and the rest re-solve without it
                 free = list(range(len(joints)))
                 for _pass in range(len(joints)):
-                    J = jacp[:, [cols[i] for i in free]]
-                    pinv = J.T @ np.linalg.inv(J @ J.T + damping * np.eye(3))
+                    J = full[:, [cols[i] for i in free]]
+                    pinv = J.T @ np.linalg.inv(J @ J.T + damping * np.eye(rows))
                     pull = posture * (home[[adrs[i] for i in free]] - q[[adrs[i] for i in free]])
                     # the error by damped least squares; the pull toward home only in
                     # the null space, so it never trades against the foot
@@ -480,7 +705,20 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
         data.qpos[:] = q
         mj.mj_kinematics(model, data)
         for foot in feet:
+            rows_err, _jac = _leg_rows(model, data, mj, foot, targets[foot][k], world_point(foot),
+                                       feet_body[foot], closures[foot], None,
+                                       heel_geom.get(foot) if heel_down.get(foot, [0] * samples)[k] else None,
+                                       ground[foot])
+            held = bool(heel_down.get(foot, [0] * samples)[k])
+            loop = float(max((np.max(np.abs(e)) for e in rows_err[1 + held:]), default=0.0))
+            closure_miss[foot] = max(closure_miss[foot], loop)
+            if foot in heel_geom:
+                g = heel_geom[foot]
+                heel_height[foot][k] = float(data.geom_xpos[g][2] - _below_centre(model, data, g, mj) - ground[foot])
             miss = float(np.linalg.norm(targets[foot][k] - world_point(foot)))
+            if held:
+                miss = max(miss, abs(float(heel_height[foot][k])))
+            miss = max(miss, loop)
             residual[foot] = max(residual[foot], miss)
             if miss > TOLERANCE_M:
                 stops = []
@@ -489,8 +727,11 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
                     v = q[model.jnt_qposadr[j]]
                     if v <= lo + 1e-6 or v >= hi - 1e-6:
                         stops.append(model.joint(j).name)
+                what = ("close its linkage" if loop > TOLERANCE_M else
+                        "put its heel down" if held and abs(float(heel_height[foot][k])) > TOLERANCE_M else
+                        f"reach its {('stance' if contact[foot][k] else 'swing')} target")
                 raise GaitUnreachable(
-                    f"leg {foot} cannot reach its {('stance' if contact[foot][k] else 'swing')} target "
+                    f"leg {foot} cannot {what} "
                     f"at {phase:.3f} of the stride: it misses by {1000 * miss:.1f} mm"
                     + (f" with {', '.join(stops)} at a stop" if stops else "")
                     + f" (stride {1000 * length:.0f} mm, swing {1000 * swing:.0f} mm)",
@@ -500,6 +741,7 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
         qpos[k] = q
         body_x[k], body_z[k], body_pitch[k] = q[0], q[2], pitch
 
+    # a rod's passive pins are in ``qpos`` and named under ``ik.closures``, not posed
     joint_ids = sorted({j for joints in chains.values() for j in joints} | set(body_joints))
     lo_nat, hi_nat = params["froude"]
     return {
@@ -515,6 +757,9 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
             "stride_length_source": "given" if stride_length_m is not None else "alexander_1976",
             "pitch_amplitude_deg": math.degrees(pitch_amp),
             "spine_joint": spine_joint, "spine_amplitude_deg": math.degrees(spine_amp),
+            **({"body_drop_m": float(body_drop_m)} if body_drop_m else {}),
+            **({"body_pitch_deg": float(body_pitch_deg)} if body_pitch_deg else {}),
+            **({"stance_shift_m": {foot: float(v) for foot, v in shift.items()}} if shift else {}),
         },
         "sources": list(BIPED_SOURCES if feet == BIPED_FEET else SOURCES),
         "sample_dt_s": dt,
@@ -532,7 +777,18 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
         "contact": contact,
         "body": {"x_m": body_x.tolist(), "z_m": body_z.tolist(),
                  "pitch_deg": [math.degrees(p) for p in body_pitch]},
-        "ik": {"tolerance_m": TOLERANCE_M, "max_miss_m": {foot: residual[foot] for foot in feet}},
+        "ik": {"tolerance_m": TOLERANCE_M, "max_miss_m": {foot: residual[foot] for foot in feet},
+               **({"closures": {foot: {
+                   "rows": [mj.mj_id2name(model, mj.mjtObj.mjOBJ_EQUALITY, i) or f"equality {i}"
+                            for i in closures[foot]["connects"] + closures[foot]["couplings"]],
+                   "passive_joints": [model.joint(j).name for j in closures[foot]["passive"]],
+                   "max_error": closure_miss[foot]}
+                   for foot in feet if closures[foot]["connects"] or closures[foot]["couplings"]}}
+                  if any(c["connects"] or c["couplings"] for c in closures.values()) else {})},
+        **({"heels": {foot: {"body": model.body(int(model.geom_bodyid[g])).name,
+                             "from_stance_share": float(heel_from), "down": heel_down[foot],
+                             "height_m": heel_height[foot].tolist()}
+                      for foot, g in heel_geom.items()}} if heel_geom else {}),
     }
 
 

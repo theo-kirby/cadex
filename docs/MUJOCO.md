@@ -1702,6 +1702,15 @@ schedule, and body height and pitch. No motion capture is involved.
 - **Refusal.** A foot that cannot be reached raises `GaitUnreachable`,
   naming the leg, the moment in the stride, the miss and the joints at a
   stop. It never clamps silently.
+- **Closed legs (ADR-776).** A leg's loop closures (`equality/connect`)
+  and joint couplings (`equality/joint`) are held in the same solve, with
+  a rod's own pins solved beside the leg's joints, so a coupled paw takes
+  the angle its linkage gives it. A loop that cannot close is refused. The
+  clip's `ik.closures` names each leg's rows and its worst closure error.
+  `heels=`, `heel_from=`, `body_drop_m=`, `body_pitch_deg=` and
+  `stance_shift_m=` ask for a plantigrade stance (a heel body's lowest
+  point held on the ground from a share of the stance to toe-off, under a
+  crouched trunk); they are the generator's only, not yet `assembly.gait`'s.
 - **Two feet (ADR-754).** `legs` keyed `L`, `R` builds a biped's stride:
   `walk` (duty 0.6) and `run` (duty 0.35), the feet half a stride apart and
   the left foot the phase reference (Alexander 1984). In a task,

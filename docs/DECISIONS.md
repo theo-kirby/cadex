@@ -44915,3 +44915,64 @@ exported model reloads with the loop closed to 0.0000 mm
 (`docs/probes/orun11/foot_static.py`). `pixi run test-engine`: 157 passed,
 3 skipped. After `pixi run build-engine`,
 `CUDA_VISIBLE_DEVICES= pytest cli/tests`: 53 passed.
+
+## ADR-776 — The gait generator holds a leg's loop closures, and can hold a heel down (2026-10-18, orun11)
+
+**Context.** orun11's coupled hind foot (rod A, ADR-775) closes a four-bar
+with an `equality/connect`, so the paw pin is a function of the hock. But
+`CadexGait.generate` solved each leg as an open chain: the paw pin was a
+free joint, set by the null-space pull toward home, and the clip's pin
+disagreed with the rod (orun11 rung 6). The charter's rung 6 also asks for
+a gait reference whose hind stance is plantigrade, with the hock case on
+the floor at push-off, which the generator could not express.
+
+**Decision.** In `CadexGait.generate`:
+
+- `leg_closures` finds each leg's active `equality/connect` rows (both
+  anchors carried by that leg, plus joints no foot's path passes through:
+  the rod's own pins, which become the leg's passive joints) and
+  `equality/joint` rows on its joints. The solve stacks them beside the
+  foot's rows, weighted 30 times a foot's (`CLOSURE_WEIGHT`), so a foot
+  the leg cannot reach is missed at the foot rather than by opening the
+  loop. A loop left open past the 1 mm tolerance is a `GaitUnreachable`.
+  The clip records `ik.closures` per leg: the rows, the passive joints and
+  the worst closure error. A model without such rows gives a byte-identical
+  clip (checked on `orun10-cat` t2-g4's model).
+- `heels` (foot → body), `heel_from`, `body_drop_m`, `body_pitch_deg` and
+  `stance_shift_m` express a plantigrade stance: from `heel_from` of the
+  stance to toe-off, the heel body's lowest collision point is held on the
+  ground the foot stands on, under a trunk lowered and pitched nose-up, with
+  the stance moved forward. The clip records each heel's height per sample.
+  These are **not** on `assembly.gait` yet: no plantigrade stance is
+  reachable on orun11-cat (below), and the script surface waits for the
+  first one that is.
+
+**Consequences.** A rebuilt `orun11-cat` bundle carries a new clip: its paw
+pin now follows the rod (slope −0.60 against the built −0.611). A policy
+trained on the old clip (rod1-s1) is not a warm start for it, because the
+trainer holds the reference byte-equal. Every model without leg closures
+builds the clip it built before. No protocol, tool or trainer change.
+
+**Evidence.** `docs/probes/orun11/plantigrade_reach.py` on rod1-s1's
+exported model:
+
+- The training clip, with the rod held, has the pin moving against the hock
+  at slope −0.604 (LH) and −0.594 (RH), with closure error 0.0005 mm.
+- **No plantigrade clip is reachable inside the joint limits:** 0 of 108,
+  over strides of 0.5–0.7 m, duties 0.2–0.25, the heel down from mid-stance,
+  trunk drops of 30–60 mm, pitches of 3–9° and hind shifts of 0–120 mm.
+  What binds: the knee stop with the heel down (52), the hock stop with the
+  heel down (3), the right fore's swing at its stops when crouched (19), and
+  the hind swing at the knee, hock or hip stops (34).
+- With the hind hip, knee and hock unlimited, 25 of the 108 are reachable.
+  The mildest is a 0.5 m stride at duty 0.2, with a 30 mm drop, 9° pitch
+  and a 60 mm shift. It needs the left hip at −44..+20° (stops −30..+40)
+  and the knee at −59..+50° (stops −40..+50), and the right similarly past
+  its stops. The rest fail at full reach.
+- **The static check stood the hip low.** `foot_static.py` put the floor
+  under the paw with the trunk level. In its passing poses the hip is
+  313–326 mm over the floor, against 396 mm standing. The M1 pose holds for
+  a cat crouched 70–84 mm at the hind, not for this cat standing.
+
+`pixi run test-engine`: 157 passed, 3 skipped. After `pixi run build-engine`,
+`CUDA_VISIBLE_DEVICES= pytest cli/tests`: 53 passed.

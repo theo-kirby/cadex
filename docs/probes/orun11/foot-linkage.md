@@ -227,5 +227,8 @@ measured).
 - The closure in training. The connect is soft, with a two-step time
   constant (ADR-593's measured opening grows with step² and speed²).
   `rod1-s1` is the first run on it, cold, on eq1-s1's task and clip.
-- `CadexGait.generate` still solves the paw pin as a free joint (rung 6).
+- `CadexGait.generate` solved the paw pin as a free joint; since ADR-776 it
+  holds the rod. Its plantigrade reach (`eq1-s1-judged.md`) shows the static
+  check's passing poses stand the hip 70–84 mm below standing: inside the
+  hind joint limits no plantigrade stance is reachable at the cat's height.
 
