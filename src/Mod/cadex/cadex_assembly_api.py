@@ -4617,6 +4617,11 @@ class AssemblyDomainAPI:
         pitch_amplitude_deg: float | None = None,
         spine: DomainValue | None = None,
         spine_amplitude_deg: float | None = None,
+        heels: Mapping[str, DomainValue] | None = None,
+        heel_from: float | None = None,
+        body_drop_mm: float | None = None,
+        body_pitch_deg: float | None = None,
+        stance_shift_mm: Mapping[str, float] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Declare a procedural gait reference for a legged task (ADR-702, ADR-703).
@@ -4641,6 +4646,16 @@ class AssemblyDomainAPI:
         into the task bundle, where the dashboard plays it as a kinematic
         rollout before anything trains. A stride the legs cannot reach is
         refused, naming the leg, the moment and the joints at a stop.
+
+        **A plantigrade stance (ADR-776, ADR-777).** ``heels`` maps some
+        feet (``{"LH": hock_l, "RH": hock_r}``) to a component above each
+        foot, carried by that leg; while the foot is down, that
+        component's lowest collision point is held on the ground too, from
+        ``heel_from`` (a share of the stance, default 0) to toe-off: the
+        whole foot laid down to the heel. ``body_drop_mm`` lowers the trunk
+        below its standing height and ``body_pitch_deg`` pitches it nose-up
+        for the whole stride; ``stance_shift_mm`` moves a foot's stance
+        forward of its standing place (``{"LH": 120, "RH": 120}``).
         """
 
         operation = "gait"
@@ -4725,6 +4740,45 @@ class AssemblyDomainAPI:
                 operation, "spine_amplitude_deg", spine_amplitude_deg,
                 minimum=0.0, maximum=60.0,
             )
+        for parameter, mapping in (("heels", heels), ("stance_shift_mm", stance_shift_mm)):
+            if mapping is None:
+                continue
+            if (not isinstance(mapping, Mapping) or not mapping
+                    or not set(mapping) <= set(labels)):
+                raise _error(
+                    operation, parameter,
+                    "expected a mapping from some of " + ", ".join(labels)
+                    + (" to a component above that foot" if parameter == "heels"
+                       else " to a forward shift in mm"), mapping,
+                )
+        if heels is not None:
+            properties["heels"] = {
+                foot: _domain_value(operation, f"heels[{foot!r}]", heels[foot],
+                                    output_type="component_link")
+                for foot in labels if foot in heels
+            }
+        if heel_from is not None:
+            if heels is None:
+                raise _error(operation, "heel_from",
+                             "is when a heel goes down: name the heels with heels=",
+                             heel_from)
+            properties["heel_from"] = _number(
+                operation, "heel_from", heel_from, minimum=0.0, maximum=0.99,
+            )
+        if body_drop_mm is not None:
+            properties["body_drop_mm"] = _number(
+                operation, "body_drop_mm", body_drop_mm, minimum=0.0, maximum=5000.0,
+            )
+        if body_pitch_deg is not None:
+            properties["body_pitch_deg"] = _number(
+                operation, "body_pitch_deg", body_pitch_deg, minimum=-45.0, maximum=45.0,
+            )
+        if stance_shift_mm is not None:
+            properties["stance_shift_mm"] = {
+                foot: _number(operation, f"stance_shift_mm[{foot!r}]", stance_shift_mm[foot],
+                              minimum=-5000.0, maximum=5000.0)
+                for foot in labels if foot in stance_shift_mm
+            }
         return self._value(
             operation, "gait", label=_label(operation, label), **properties
         )
@@ -4743,6 +4797,7 @@ class AssemblyDomainAPI:
         centre_mm: Sequence[float] | None = None,
         centre_axis: Sequence[float] | None = None,
         appendage: Sequence[DomainValue] = (),
+        heels: Sequence[DomainValue] = (),
         episode_seconds: float | None = None,
         randomisation: Sequence[DomainValue] | None = None,
         reset_variation: Sequence[DomainValue] | None = None,
@@ -4847,6 +4902,21 @@ class AssemblyDomainAPI:
           root's pitch and the pitch of the body it hangs from, after 1 s;
           and against a ``yaw_rate`` goal, ``appendage_yaw_turn_correlation``,
           |r| between the command and the chain's yaw relative to the base.
+        * ``heels`` with ``feet`` (ADR-774), over each heeled foot's settled
+          stance: ``heel_down_stance_share_min``, the share of it with the
+          heel within 1 mm of the floor; ``heel_down_at_toeoff_share_min``,
+          the share of its stances whose last 0.04 s had the heel down;
+          ``heel_stance_height_mm_max``, the heel's median height; and
+          ``heel_foot_flat_share_min``, the share with the line through the
+          foot's first two shapes' lowest points within 8° of level. Each is
+          the worst heeled foot.
+        * with ``feet`` and a task ``reference`` (ADR-774), by the
+          reference's leg labels: ``touchdown_rate_ratio_max`` and
+          ``_min``, every landing per settled second (a tap counts) over the
+          left hind's stride frequency; ``hind_overreach_mm_min``, the
+          worse hind's median landing ahead of the same side's last fore
+          print; and ``pair_lag_fore_median`` and ``pair_lag_hind_median``,
+          how far apart in cycles each pair lands, 0.5 alternating.
 
         ``feet`` names the ``api.component`` values that are feet; each
         needs a primitive collision shape, because a foot's height is its
@@ -4865,6 +4935,12 @@ class AssemblyDomainAPI:
         ``appendage`` names a chain hanging from the base that is not a leg
         -- a tail, a trunk -- root first, each component below the one
         before; at least one needs a primitive collision shape.
+
+        ``heels`` names, for some of the feet, the component above each
+        that should come down to the floor in stance -- a plantigrade hind
+        foot's hock case -- with a primitive collision shape; each heel's
+        foot is the one named foot below its leg (the heel, or the jointed
+        link it is welded to).
 
         ``seeds`` are the evaluation seeds, fixed in the script so that two
         evaluations of one policy are the same episodes. **They are never
@@ -5018,6 +5094,22 @@ class AssemblyDomainAPI:
             )
         if chain:
             properties["appendage"] = chain
+        # ADR-774: likewise absent when none is named.
+        heel_values = _values(
+            operation, "heels", heels, output_type="component_link", minimum=0
+        )
+        if len(heel_values) > _MAX_SUCCESS_FEET:
+            raise _error(
+                operation, "heels",
+                f"may name at most {_MAX_SUCCESS_FEET} components",
+            )
+        if heel_values and not foot_values:
+            raise _error(
+                operation, "heels",
+                "is the heel of a foot, and no feet are named",
+            )
+        if heel_values:
+            properties["heels"] = heel_values
         if tip is None:
             if tip_offset_mm is not None:
                 raise _error(
@@ -5533,6 +5625,10 @@ class AssemblyDomainAPI:
                 (f"success.appendage[{index}]", entry)
                 for index, entry in enumerate(spec.properties.get("appendage") or ())
             )
+            named.extend(
+                (f"success.heels[{index}]", entry)
+                for index, entry in enumerate(spec.properties.get("heels") or ())
+            )
             for parameter in ("body", "centre"):
                 if spec.properties.get(parameter) is not None:
                     named.append((f"success.{parameter}", spec.properties[parameter]))
@@ -5627,6 +5723,9 @@ class AssemblyDomainAPI:
             named_parts = [
                 (f"reference.feet[{index}]", entry)
                 for index, entry in enumerate(gait_value.properties.get("feet", ()))
+            ] + [
+                (f"reference.heels[{foot!r}]", entry)
+                for foot, entry in dict(gait_value.properties.get("heels") or {}).items()
             ]
             for where, component in named_parts:
                 if id(component) not in component_ids:

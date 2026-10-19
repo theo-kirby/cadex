@@ -139,6 +139,13 @@ LEAP_PUSH_S = 0.3
 #: where the reference puts it has missed that stride by this much: as far
 #: out of phase as a periodic event can be.
 FOOTFALL_MISSED = 0.5
+#: A heel is down at toe-off when it is down in some frame this close
+#: before its foot lifts (ADR-774): the lift's own frame and two before it
+#: at 50 Hz.
+HEEL_TOEOFF_S = 0.04
+#: A foot is flat when the line through its first two shapes' lowest points
+#: is within this of level (ADR-774): orun11's M1 bound on the sole.
+FLAT_DEG = 8.0
 
 #: Every metric a success predicate may bound, and what measuring it needs
 #: (ADR-456). This is the whole vocabulary of a success spec: a name that is
@@ -227,6 +234,15 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "highest_platform_reached_mm": ("leap", ("feet", "terrain")),
     "leap_takeoff_speed_mm_s": ("leap", ("feet", "terrain")),
     "leap_peak_mm": ("leap", ("feet", "terrain")),
+    "heel_down_stance_share_min": ("heel", ("feet", "heel")),
+    "heel_down_at_toeoff_share_min": ("heel", ("feet", "heel")),
+    "heel_stance_height_mm_max": ("heel", ("feet", "heel")),
+    "heel_foot_flat_share_min": ("heel", ("feet", "heel")),
+    "touchdown_rate_ratio_max": ("reference", ("feet", "reference")),
+    "touchdown_rate_ratio_min": ("reference", ("feet", "reference")),
+    "hind_overreach_mm_min": ("reference", ("feet", "reference")),
+    "pair_lag_fore_median": ("reference", ("feet", "reference")),
+    "pair_lag_hind_median": ("reference", ("feet", "reference")),
 }
 
 _EPS = 1.0e-9
@@ -558,6 +574,7 @@ def gait(time, foot: Mapping[str, Any], hip_height_mm: float, *,
             "advance_mm": math.hypot(point[end + 1][0] - point[start - 1][0],
                                      point[end + 1][1] - point[start - 1][1]),
             "path_mm": float(sum(segment[start - 1:end + 1])),
+            "land_point": point[end + 1],
         }
         swings.append(swing)
         if (swing["airborne_s"] >= swing_min_s - _EPS
@@ -588,6 +605,15 @@ def gait(time, foot: Mapping[str, Any], hip_height_mm: float, *,
         "duty_factor": (sum(settled) / len(settled)) if settled else None,
         # Each step's landing: the first stance frame after it (ADR-705).
         "touchdowns_s": [s["land_s"] for s in steps],
+        # ...and where, in plan (ADR-774).
+        "touchdown_points_mm": [list(s["land_point"]) for s in steps],
+        # Every landing, a tap after a short lift included, and their rate
+        # over the settled seconds (ADR-774).
+        "landings_s": [s["land_s"] for s in swings],
+        "touchdown_hz": (
+            sum(1 for s in swings if s["land_s"] >= settle_s - _EPS) / (time[-1] - settle_s)
+            if time[-1] - settle_s > _EPS else None
+        ),
         # The frame interval the landings lie on, so a timing read in
         # frames is whole frames (ADR-719).
         "frame_s": dt,
@@ -2007,6 +2033,178 @@ def leap_metrics(samples, rig: Mapping[str, Any], *, terrain: Mapping[str, Any],
     }
 
 
+def heel_metrics(samples, rig: Mapping[str, Any], *, settle_s: float = SETTLE_S,
+                 stance_mm: float = STANCE_MM, toeoff_s: float = HEEL_TOEOFF_S,
+                 flat_deg: float = FLAT_DEG) -> dict[str, Any]:
+    """Whether a heeled foot's heel comes down in its stance (ADR-774).
+
+    ``rig["heels"]`` maps a foot to the body above it that should reach the
+    floor while the foot stands -- a plantigrade hind foot's hock. Over the
+    foot's settled stance frames (its lowest point within ``stance_mm``):
+
+    * ``heel_down_stance_share_min``: the share with the heel's lowest point
+      within ``stance_mm`` of the floor too;
+    * ``heel_down_at_toeoff_share_min``: the share of settled stances, each
+      ending in a lift, whose last ``toeoff_s`` had the heel down in some
+      frame -- the push-off is through the heel;
+    * ``heel_stance_height_mm_max``: the heel's median height;
+    * ``heel_foot_flat_share_min``: the share with the line through the
+      lowest points of the foot's first two collision shapes within
+      ``flat_deg`` of level -- the sole lies flat. ``None`` for a foot with
+      one shape.
+
+    Each is the worst heeled foot; ``heels`` keeps each foot's figures. A
+    foot that never stood after the settle has nothing measured, ``None``.
+    """
+
+    times = [float(moment) for moment, _ in samples]
+    detail: dict[str, Any] = {}
+    for foot, heel in rig["heels"].items():
+        geoms = rig["feet"][foot]
+        sole = foot_series(samples, foot, geoms, rig["floor_mm"])
+        under = foot_series(samples, heel["body"], heel["geoms"], rig["floor_mm"])
+        stance = [h <= stance_mm for h in sole["height"]]
+        down = [h <= stance_mm for h in under["height"]]
+        settled = [i for i, moment in enumerate(times) if moment >= settle_s - _EPS and stance[i]]
+        pitch: list[float | None] = []
+        for i in settled:
+            if len(geoms) < 2:
+                pitch.append(None)
+                continue
+            rotation, origin = _pose(samples[i][1], foot)
+            a = _lowest(geoms[0], rotation, origin)[1]
+            b = _lowest(geoms[1], rotation, origin)[1]
+            run = math.hypot(b[0] - a[0], b[1] - a[1])
+            pitch.append(math.degrees(math.atan2(abs(b[2] - a[2]), run)))
+        pushes, through = 0, 0
+        for e in range(len(stance) - 1):
+            if not (stance[e] and not stance[e + 1]) or times[e] < settle_s - _EPS:
+                continue
+            pushes += 1
+            j = e
+            while j >= 0 and stance[j] and times[e] - times[j] <= toeoff_s + _EPS:
+                if down[j]:
+                    through += 1
+                    break
+                j -= 1
+        detail[foot] = {
+            "heel": heel["body"],
+            "stance_frames": len(settled),
+            "heel_down_share": (sum(1 for i in settled if down[i]) / len(settled)) if settled else None,
+            "heel_down_at_toeoff_share": (through / pushes) if pushes else None,
+            "toe_offs": pushes,
+            "heel_stance_height_mm": _median([under["height"][i] for i in settled]),
+            "flat_share": (
+                None if not settled or any(p is None for p in pitch)
+                else sum(1 for p in pitch if p <= flat_deg) / len(settled)
+            ),
+            "sole_pitch_deg_median": (
+                None if any(p is None for p in pitch) else _median(pitch)
+            ),
+        }
+
+    def worst(key: str, pick) -> float | None:
+        values = [row[key] for row in detail.values()]
+        return None if not values or any(v is None for v in values) else pick(values)
+
+    return {
+        "heel_down_stance_share_min": worst("heel_down_share", min),
+        "heel_down_at_toeoff_share_min": worst("heel_down_at_toeoff_share", min),
+        "heel_stance_height_mm_max": worst("heel_stance_height_mm", max),
+        "heel_foot_flat_share_min": worst("flat_share", min),
+        "heels": detail,
+    }
+
+
+def footfall_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[str, Any],
+                     ahead: Sequence[float], *, settle_s: float = SETTLE_S) -> dict[str, Any]:
+    """Each foot's landings against the others', by the reference's labels (ADR-774).
+
+    ``feet`` is :func:`gait_metrics`' per-foot detail and ``ahead`` the
+    plan direction the episode started along. The left hind's settled step
+    landings are the stride clock, as in :func:`reference_metrics`.
+
+    * ``touchdown_rate_ratio_max`` and ``_min``: each foot's landings per
+      settled second -- every landing, so a paw that taps the floor in mid
+      swing lands twice a stride -- over the clock's stride frequency. A
+      gait with one landing per foot per stride reads 1 on both;
+    * ``hind_overreach_mm_min``: for each hind foot, the median over its
+      settled step landings of how far ahead, along ``ahead``, it came down
+      of the same side's fore foot's last landing before it -- the hind
+      landing beyond the fore print; the worse hind;
+    * ``pair_lag_fore_median`` and ``pair_lag_hind_median``: for each
+      stride of the pair's left foot (consecutive step landings), the share
+      of it until the right foot's first landing, folded to ``min(f, 1 -
+      f)``: 0.5 is a pair alternating, 0 one landing together. The median
+      over strides; each stride's unfolded share is in the detail, so a
+      report can read it against speed.
+
+    A metric is ``None`` when its feet are not all labelled (a biped has no
+    fore and hind) or no stride was measured.
+    """
+
+    names = {label: str(leg["foot_body"]) for label, leg in reference["legs"].items()}
+    empty = {"touchdown_rate_ratio_max": None, "touchdown_rate_ratio_min": None,
+             "hind_overreach_mm_min": None, "pair_lag_fore_median": None,
+             "pair_lag_hind_median": None}
+    if any(name not in feet for name in names.values()) or REFERENCE_ANCHOR not in names:
+        return {**empty, "footfall": {"labels": names}}
+
+    def landed(label: str) -> list[tuple[float, Sequence[float]]]:
+        foot = feet[names[label]]
+        return [(t, p) for t, p in zip(foot["touchdowns_s"], foot["touchdown_points_mm"])]
+
+    clock = [t for t, _ in landed(REFERENCE_ANCHOR) if t >= settle_s - _EPS]
+    periods = [b - a for a, b in zip(clock, clock[1:]) if b - a > _EPS]
+    stride_hz = (1.0 / float(statistics.median(periods))) if periods else None
+    rates = {label: (None if stride_hz is None or feet[name].get("touchdown_hz") is None
+                     else feet[name]["touchdown_hz"] / stride_hz)
+             for label, name in names.items()}
+    detail: dict[str, Any] = {"labels": names, "stride_hz": stride_hz,
+                              "touchdown_hz": {label: feet[name].get("touchdown_hz")
+                                               for label, name in names.items()},
+                              "touchdown_rate_ratio": rates, "overreach_mm": {}, "pair_lag": {}}
+    read = dict(empty)
+    if stride_hz is not None and all(r is not None for r in rates.values()):
+        read["touchdown_rate_ratio_max"] = max(rates.values())
+        read["touchdown_rate_ratio_min"] = min(rates.values())
+
+    def along(point: Sequence[float]) -> float:
+        return point[0] * ahead[0] + point[1] * ahead[1]
+
+    reaches = []
+    for side in ("L", "R"):
+        hind, fore = side + "H", side + "F"
+        if hind not in names or fore not in names:
+            continue
+        prints = landed(fore)
+        ahead_of = []
+        for t, p in landed(hind):
+            last = [q for u, q in prints if u <= t + _EPS]
+            if t >= settle_s - _EPS and last:
+                ahead_of.append(along(p) - along(last[-1]))
+        detail["overreach_mm"][hind] = {"median": _median(ahead_of), "landings": len(ahead_of)}
+        reaches.append(_median(ahead_of))
+    if len(reaches) == 2 and all(r is not None for r in reaches):
+        read["hind_overreach_mm_min"] = min(reaches)
+
+    for pair, key in (("F", "pair_lag_fore_median"), ("H", "pair_lag_hind_median")):
+        left, right = "L" + pair, "R" + pair
+        if left not in names or right not in names:
+            continue
+        lead = [t for t, _ in landed(left) if t >= settle_s - _EPS]
+        trail = [t for t, _ in landed(right)]
+        strides = []
+        for a, b in zip(lead, lead[1:]):
+            first = next((t for t in trail if a - _EPS <= t < b - _EPS), None)
+            if first is not None and b - a > _EPS:
+                strides.append({"start_s": a, "lag": (first - a) / (b - a)})
+        folded = [min(row["lag"], 1.0 - row["lag"]) for row in strides]
+        detail["pair_lag"][pair] = {"median": _median(folded), "strides": strides}
+        read[key] = _median(folded)
+    return {**read, "footfall": detail}
+
+
 def episode_metrics(episode: Mapping[str, Any]) -> dict[str, Any]:
     """How the episode ended. ``completed`` is 1.0 only for a run to the horizon."""
 
@@ -2070,6 +2268,8 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
         if (rig.get("feet") and terrain is not None and ground is not None
                 and any(f["kind"] == "platform" for f in terrain.get("features") or ())):
             read.update(leap_metrics(samples, rig, terrain=terrain, ground=ground, drives=drives))
+        if rig.get("feet") and rig.get("heels"):
+            read.update(heel_metrics(samples, rig))
         if commands:
             read.update(tracking_metrics(samples, rig, commands))
         if waypoints:
@@ -2098,8 +2298,11 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
                                   stride_hz=stride))
     if reference is not None and read.get("feet"):
         read.update(reference_metrics(read["feet"], reference, drives=drives))
+        read.update(footfall_metrics(read["feet"], reference,
+                                     base_series(samples, rig)["forward"][0]))
     for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives", "reference",
-                "terrain", "tracking", "appendage", "waypoints", "flight", "leap"):
+                "terrain", "tracking", "appendage", "waypoints", "flight", "leap",
+                "heels", "footfall"):
         if key in read:
             detail[key] = read[key]
     return {"metrics": {name: read[name] for name in METRICS if name in read},

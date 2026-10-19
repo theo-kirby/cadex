@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-18
+Verified against source: 2026-10-19
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -195,6 +195,11 @@ refusal. Built live with four `revolute` pins and driven 225 °/s at
 circle intersection (0.0066 mm at its 120 mm tip); the worst closure
 residual was 0.0061 mm, and the dynamics evidence now carries it beside
 `closure_tolerance_mm` (0.01) and `closure_within_tolerance`.
+A closure's connect names two sites. The export's field check reads a
+site-typed equality through the same kept-site renumbering as the
+`site_*` fields (ADR-775), so a closed linkage can sit beside contact
+observations' touch sites. orun11-cat's rod-coupled hind feet are the
+first model with both.
 
 **Machine drives (ADR-640..645, 2026-10-10).** Four refusals that stopped
 a printer, a router, a loader and a tractor hitch are gone, each measured
@@ -407,6 +412,19 @@ against a `yaw_rate` goal, `appendage_yaw_turn_correlation` (|r| between
 the command and the chain's yaw relative to the base: is it used in turns?).
 A contact share is only as true as the collision shapes: a link with none
 passes through the floor unseen.
+
+**Heel and footfall predicates (ADR-774, 2026-10-18).** `assembly.success(...,
+feet=[...], heels=[...])` names, for some feet, the body that should reach
+the floor in stance -- the hock case of a plantigrade hind foot -- on that
+foot's leg (above it, or welded to a link above it), with a primitive
+collision shape. The spec may then bound `heel_down_stance_share_min`,
+`heel_down_at_toeoff_share_min`, `heel_stance_height_mm_max` and
+`heel_foot_flat_share_min`. With a task `reference`, the leg labels also give
+`touchdown_rate_ratio_max`/`_min` (every landing, taps included, per left-hind
+stride), `hind_overreach_mm_min` and `pair_lag_fore_median`/`_hind_median`;
+each stride's lag is in the detail, so a speed ramp's lags can be read
+against speed. Probe: `docs/probes/orun11/footfall_probe.py` re-reads a
+judged evaluation's traces with them.
 
 **Terrain predicates, a held-out course per seed (ADR-718, 2026-10-16).**
 A success spec may bound `distance_made_good_mm` (net plan travel along the
@@ -1684,6 +1702,19 @@ schedule, and body height and pitch. No motion capture is involved.
 - **Refusal.** A foot that cannot be reached raises `GaitUnreachable`,
   naming the leg, the moment in the stride, the miss and the joints at a
   stop. It never clamps silently.
+- **Closed legs (ADR-776).** A leg's loop closures (`equality/connect`)
+  and joint couplings (`equality/joint`) are held in the same solve, with
+  a rod's own pins solved beside the leg's joints, so a coupled paw takes
+  the angle its linkage gives it. A loop that cannot close is refused. The
+  clip's `ik.closures` names each leg's rows and its worst closure error.
+  `heels=`, `heel_from=`, `body_drop_m=`, `body_pitch_deg=` and
+  `stance_shift_m=` ask for a plantigrade stance (a heel body's lowest
+  point held on the ground from a share of the stance to toe-off, under a
+  crouched trunk); `assembly.gait` declares them as `heels=`, `heel_from=`,
+  `body_drop_mm=`, `body_pitch_deg=` and `stance_shift_mm=` (ADR-777).
+  The heel is eased, not stepped (ADR-778): from touchdown it falls
+  linearly to the first held sample, and after toe-off it rises over three
+  swing samples to the height a free swing gives it.
 - **Two feet (ADR-754).** `legs` keyed `L`, `R` builds a biped's stride:
   `walk` (duty 0.6) and `run` (duty 0.35), the feet half a stride apart and
   the left foot the phase reference (Alexander 1984). In a task,

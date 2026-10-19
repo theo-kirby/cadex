@@ -44820,3 +44820,256 @@ goal ramp reads the engine's values. A CPU smoke of `cadex_train.py`
 (2 iterations, 16 envs) trains and writes a policy whose witness agrees
 to 5.9e-8. `pixi run test-engine` 157 passed, 3 skipped;
 `CUDA_VISIBLE_DEVICES= pytest cli/tests` 53 passed; `training/` 44 passed.
+
+## ADR-774 — A heel's stance, every landing's rate, overreach and pair lag are metrics (2026-10-18, orun11)
+
+**Context.** orun11's P1 asks a plantigrade push-off: the hock drive's case
+on the floor for at least 40% of each hind paw's stance, and at toe-off or
+just before it. P2 asks each paw to land once per hind stride (t2-g4's fore
+paws tapped mid-swing at 4.74 Hz against 2.37), the hinds to land ahead of
+the fore prints, and W1 each pair's lag against speed. The owner measured
+these on t2-g1..g5 with session scripts that were never committed. The
+evaluation counted only *steps* (airborne ≥ 0.10 s, advance ≥ 0.15 hip
+heights), so a tap was invisible, and it read no body but the feet.
+
+**Decision.**
+- **`assembly.success(..., heels=[...])`** names, for some of the feet, the
+  body that should reach the floor in stance, with a primitive collision
+  shape. Its foot is the one named foot below its leg: the heel itself, or
+  the jointed link it is welded to, since the cat's hock case is a body
+  welded to the shin beside the chain to the paw. A heel with no or two feet
+  below its leg, a foot under two heels, and a heel with no or a mesh shape
+  are refused (`evaluation_heel_*`) when the bundle is built. `heels`
+  without `feet` is refused by the API. Absent from the spec, the bundle and
+  the evaluation when unnamed, so no earlier digest moves.
+- **The `heel` family** (`heel_metrics`, needs `feet` and `heel`), over each
+  heeled foot's settled stance frames (lowest point within `STANCE_MM`):
+  `heel_down_stance_share_min` (heel within `STANCE_MM` too),
+  `heel_down_at_toeoff_share_min` (the share of stances ending in a lift
+  with the heel down in the last `HEEL_TOEOFF_S` = 0.04 s, three frames at
+  50 Hz), `heel_stance_height_mm_max` (the heel's median height) and
+  `heel_foot_flat_share_min` (the line through the lowest points of the
+  foot's first two shapes within `FLAT_DEG` = 8° of level, M1's bound).
+  Worst heeled foot each; `detail.heels` keeps every foot's figures and its
+  median sole pitch.
+- **Footfalls by the reference's labels** (`footfall_metrics`, the
+  `reference` family, so `feet` and a task `reference`):
+  `touchdown_rate_ratio_max`/`_min`, every landing per settled second over
+  the left hind's step-landing stride frequency (`gait` now keeps
+  `landings_s`, `touchdown_hz` and each step's `touchdown_points_mm`);
+  `hind_overreach_mm_min`, the worse hind's median landing ahead, along the
+  starting heading, of its own side's last fore landing; and
+  `pair_lag_fore_median`/`_hind_median`, per stride of the pair's left foot
+  the share until the right lands, folded to `min(f, 1 − f)`. Each stride's
+  unfolded lag and start time are in `detail.footfall`, for W1's plot
+  against speed. A biped's labels give none of them.
+
+"On the floor" is the stance rule a foot is held to, 1 mm; the heel's
+median stance height is reported beside it, so a case hovering a few
+millimetres off reads as such rather than as a pass. Fore reach (P2's
+"ahead of the shoulder") and the rotary order's predicate are not here.
+
+**Consequences.** No protocol op, tool or trainer change; the vocabulary of
+predicates grows by nine. A heel is read from its collision shape, so a
+model whose case has none (t2-g4's) is refused; the probe can borrow the
+shape of a later model of the same bodies to read the case's height.
+
+**Evidence.** `pixi run test-engine` (157 passed, 3 skipped).
+`docs/probes/orun11/footfall_probe.py` re-reads judged traces; on
+`orun10-cat` t2-g5 at iteration 200 (medians over 10 seeds) the right
+hock's stance height is 85 mm and the left's 29 mm, down 0% and 9% of
+stance (the owner: never on the right, 10 of 60 frames on the left); RF
+lands at 3.1 Hz against a 2.38 Hz stride; t2-g4 at iteration 100 reads
+`touchdown_rate_ratio_max` 2.01 (the owner's 4.74 against 2.37) at
+3.79 m/s. Baseline: `docs/probes/orun11/baseline-t2.md`.
+
+## ADR-775 — A loop closure's sites survive the export check beside touch volumes (2026-10-18, orun11)
+
+**Context.** orun11 M1 builds the cat's coupled hind foot as a real
+four-bar: shin, metatarsus, paw and an M5 rod, four `revolute` pins
+(ADR-595). The dynamics tree closes each loop with an `equality/connect`
+between two **sites** (ADR-594). The cat also declares contact
+observations, and the export adds a touch-volume site for each one
+(ADR-698). Those sites are inserted into bodies ahead of the closure sites,
+so every later site index moves. `_verify_exported_fields` already read
+the `site_*` fields through the kept sites, but it compared `eq_obj1id` and
+`eq_obj2id` raw. So the first model with both a closed loop and a touch
+observation was refused: "changed eq_obj1id by 0.153846 relative". The
+orun5 four-bars had no observations and never met this.
+
+**Decision.** For an export that added sites, a site-typed equality row's
+`eq_obj1id`/`eq_obj2id` in the reload is renumbered through the same
+kept-site list before the comparison. Joint- and body-typed rows are
+compared as before. The model is unchanged; only the check reads it
+correctly.
+
+**Consequences.** A legged model may close a linkage and still carry contact
+observations. No protocol, tool or trainer change. No test is added: the
+engine suite carries no dynamics tests (ADR-725), and the check is proved
+by the build that it refused.
+
+**Evidence.** `~/cadex-projects/orun11-cat`, script `orun11-cat16`: refused
+with `mjcf_field_drift` on `eq_obj1id` before the change; accepted after it
+(revision `d3811fff`, then `4cd04aaf` with the corrected strap). Its
+exported model reloads with the loop closed to 0.0000 mm
+(`docs/probes/orun11/foot_static.py`). `pixi run test-engine`: 157 passed,
+3 skipped. After `pixi run build-engine`,
+`CUDA_VISIBLE_DEVICES= pytest cli/tests`: 53 passed.
+
+## ADR-776 — The gait generator holds a leg's loop closures, and can hold a heel down (2026-10-18, orun11)
+
+**Context.** orun11's coupled hind foot (rod A, ADR-775) closes a four-bar
+with an `equality/connect`, so the paw pin is a function of the hock. But
+`CadexGait.generate` solved each leg as an open chain: the paw pin was a
+free joint, set by the null-space pull toward home, and the clip's pin
+disagreed with the rod (orun11 rung 6). The charter's rung 6 also asks for
+a gait reference whose hind stance is plantigrade, with the hock case on
+the floor at push-off, which the generator could not express.
+
+**Decision.** In `CadexGait.generate`:
+
+- `leg_closures` finds each leg's active `equality/connect` rows (both
+  anchors carried by that leg, plus joints no foot's path passes through:
+  the rod's own pins, which become the leg's passive joints) and
+  `equality/joint` rows on its joints. The solve stacks them beside the
+  foot's rows, weighted 30 times a foot's (`CLOSURE_WEIGHT`), so a foot
+  the leg cannot reach is missed at the foot rather than by opening the
+  loop. A loop left open past the 1 mm tolerance is a `GaitUnreachable`.
+  The clip records `ik.closures` per leg: the rows, the passive joints and
+  the worst closure error. A model without such rows gives a byte-identical
+  clip (checked on `orun10-cat` t2-g4's model).
+- `heels` (foot → body), `heel_from`, `body_drop_m`, `body_pitch_deg` and
+  `stance_shift_m` express a plantigrade stance: from `heel_from` of the
+  stance to toe-off, the heel body's lowest collision point is held on the
+  ground the foot stands on, under a trunk lowered and pitched nose-up, with
+  the stance moved forward. The clip records each heel's height per sample.
+  These are **not** on `assembly.gait` yet: no plantigrade stance is
+  reachable on orun11-cat (below), and the script surface waits for the
+  first one that is.
+
+**Consequences.** A rebuilt `orun11-cat` bundle carries a new clip: its paw
+pin now follows the rod (slope −0.60 against the built −0.611). A policy
+trained on the old clip (rod1-s1) is not a warm start for it, because the
+trainer holds the reference byte-equal. Every model without leg closures
+builds the clip it built before. No protocol, tool or trainer change.
+
+**Evidence.** `docs/probes/orun11/plantigrade_reach.py` on rod1-s1's
+exported model:
+
+- The training clip, with the rod held, has the pin moving against the hock
+  at slope −0.604 (LH) and −0.594 (RH), with closure error 0.0005 mm.
+- **No plantigrade clip is reachable inside the joint limits:** 0 of 108,
+  over strides of 0.5–0.7 m, duties 0.2–0.25, the heel down from mid-stance,
+  trunk drops of 30–60 mm, pitches of 3–9° and hind shifts of 0–120 mm.
+  What binds: the knee stop with the heel down (52), the hock stop with the
+  heel down (3), the right fore's swing at its stops when crouched (19), and
+  the hind swing at the knee, hock or hip stops (34).
+- With the hind hip, knee and hock unlimited, 25 of the 108 are reachable.
+  The mildest is a 0.5 m stride at duty 0.2, with a 30 mm drop, 9° pitch
+  and a 60 mm shift. It needs the left hip at −44..+20° (stops −30..+40)
+  and the knee at −59..+50° (stops −40..+50), and the right similarly past
+  its stops. The rest fail at full reach.
+- **The static check stood the hip low.** `foot_static.py` put the floor
+  under the paw with the trunk level. In its passing poses the hip is
+  313–326 mm over the floor, against 396 mm standing. The M1 pose holds for
+  a cat crouched 70–84 mm at the hind, not for this cat standing.
+
+`pixi run test-engine`: 157 passed, 3 skipped. After `pixi run build-engine`,
+`CUDA_VISIBLE_DEVICES= pytest cli/tests`: 53 passed.
+
+## ADR-777 — `assembly.gait` declares a plantigrade stance (2026-10-18, orun11)
+
+**Context.** ADR-776 gave `CadexGait.generate` a plantigrade stance
+(`heels`, `heel_from`, `body_drop_m`, `body_pitch_deg`, `stance_shift_m`)
+but left it off the script surface until a stance was reachable. orun11
+rung 7 widened orun11-cat's hind hip and knee stops (d6fe5680), and
+`docs/probes/orun11/hind_range.py` found a 0.7 m plantigrade clip inside
+them. A task can only train on it if the script can declare it.
+
+**Decision.** `assembly.gait` takes, all optional:
+
+- `heels`: a mapping from some of the gait's foot labels (`LH`, `RH`, ...)
+  to a component above that foot, carried by that leg (the generator
+  refuses one that is not);
+- `heel_from`: the share of the stance, in [0, 0.99], from which the heel
+  is held down to toe-off; it needs `heels`;
+- `body_drop_mm` (≥ 0) and `body_pitch_deg` (±45): the trunk lowered and
+  pitched nose-up for the whole stride;
+- `stance_shift_mm`: a mapping from foot labels to a forward shift of that
+  foot's stance, ±5,000 mm.
+
+`assembly.task(reference=...)` checks each heel is a listed component, as it
+does the feet. The worker resolves the heels to body names and passes the
+lengths in mm; CadexDynamics converts them to the generator's metres. A gait
+that declares none of them resolves to the dictionary it always did, so
+every existing bundle and clip is byte-identical.
+
+**Consequences.** orun11-cat's `gallop_heel` parameter (default 1 from
+rung 8) declares its gallop clip with the hock cases as heels from half the
+stance, the trunk 60 mm down and 6° nose-up, the hind stance 120 mm forward,
+duty 0.2 (its own `heel_duty`), swing 40 mm. The project stores
+`gallop_duty` at 0.25, which overrides a script default, and at duty 0.25
+no plantigrade clip is reachable: two builds were refused for it ("leg RH
+cannot reach its swing target at 0.952 of the stride ... j_knee_r, j_hock_r
+at a stop"), so the plantigrade clip takes a parameter of its own. No
+protocol, tool or trainer change.
+
+**Evidence.** On the training bundle's model (07a92830), at 0.7 m and duty
+0.2, 106 of 432 settings are reachable (swing 30–50 mm, pitch amplitude
+0/2°, drop 50–80 mm, pitch 4–8°, shift 100–140 mm, heel from 0.5/0.6). All
+but four have a hind joint at a stop somewhere in the stride; the best
+margin is 0.3°. `docs/probes/orun11/plantigrade-clip.md` has the clip, its
+static check (hock case 0.0 mm at push-off, sole 9.1° and 10.3° toes-up
+against M1's 8°), and the first screen on it. `pixi run test-engine`: 157
+passed, 3 skipped. After `pixi run build-engine`, `CUDA_VISIBLE_DEVICES=
+pytest cli/tests`: 53 passed.
+
+## ADR-778 — The gait generator eases a heel into and out of its hold (2026-10-19, orun11)
+
+**Context.** ADR-776's plantigrade stance holds a heel on the ground from
+`heel_from` of the stance to toe-off, and leaves it free elsewhere. On
+orun11-cat's gallop clip (duty 0.2, 21 samples a stride) a hind stance is
+four or five samples, so the heel drops 31–42 mm to the floor in one 19.8 ms
+sample and lifts 66 mm in the next after toe-off; the hip, knee and hock
+step 23–46° at once (1,100–2,300 °/s). orun11 iteration 8 found the hock
+servo saturates after 17° of error, so the policy is asked to track a pose
+no drive can follow (`docs/probes/orun11/hind-asymmetry.md`).
+
+**Decision.** `CadexGait.generate` solves a clip with heels in two passes.
+The first holds only the down samples, as before. The second gives each
+heel a target height on the samples around its hold (`_eased_heels`): from
+the stance's first sample, where the heel is free, the target falls
+linearly to the first held sample; after the last held sample it rises
+linearly over `HEEL_EASE_SAMPLES` (3) swing samples to the first pass's
+free height there. The heel row is the same row, aimed at a height instead
+of the ground; a target the leg cannot reach is a `GaitUnreachable` naming
+the heel, as a missed hold is. Each heel in the clip now records
+`target_m` per sample (null where free) beside `down` and `height_m`. A
+clip with no held heel is solved once, as before. With `heel_from` 0 there
+is no fall (the heel is held from touchdown) but the rise still applies.
+
+**Consequences.** Every clip with a held heel changes: today only
+orun11-cat's. A policy trained on the stepped clip is not a warm start for
+the eased one (the trainer holds the reference byte-equal). The held
+samples, and so M1's push-off pose, are unchanged. No protocol, tool,
+script-surface or trainer change.
+
+**Evidence.** `docs/probes/orun11/heel_ease.py` regenerates hock80-s1's
+bundle clip (orun11-cat 2c5a51e6) on its exported model; with ADR-777's
+code it is byte-equal to the bundle. Eased, against stepped:
+
+| | LH stepped | LH eased | RH stepped | RH eased |
+|---|---|---|---|---|
+| heel over floor through stance and lift-off (mm) | 25 33 42 **0 0** 66 81 91 | 25 17 8 **0 0** 25 50 75 | 31 39 **0 0** 66 79 | 31 15 **0 0** 25 50 |
+| hip, largest step (deg) | 24.8 | 9.6 | 25.2 | 10.5 |
+| knee, largest step (deg) | 43.2 | 20.9 | 45.8 | 23.7 |
+| hock, largest step (deg) | 24.7 | 15.1 | 22.6 | 17.1 |
+
+Ease lengths of 1, 2, 3 and 4 swing samples gave a largest knee step of
+30.7/24.5/20.9/18.5° (LH); 3 was kept, past which the knee's toe-off step
+(the foot's own swing lift) dominates. `clip_static.py` on the eased clip:
+push-off unchanged (LH sole +6.2°, case 0.0 mm; RH +5.1°, 0.0 mm, both
+pass M1), and the sole now stays within 2.5° of flat while the foot lays
+down (it was 8–11° toes-down at the sample before the hold). orun10-cat
+t2-g4's clip (no heels) regenerates byte-equal. `pixi run test-engine`:
+157 passed, 3 skipped.
