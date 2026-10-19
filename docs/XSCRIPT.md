@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-18
+Verified against source: 2026-10-19
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -355,6 +355,14 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   The fit sweep moves every coordinate a coupling ties to the swept joint
   -- an unlimited motor, pulley or screw follows, a limited joint holds --
   and reports those followers `passive`.
+- **Passive springs** (ADR-779). `assembly.joint_dynamics(joint,
+  spring_nmm_per_deg=, spring_rest_deg=)` (a slide: `spring_n_per_mm=`,
+  `spring_rest_mm=`) puts a spring across the joint: a torsion spring on a
+  hinge pin, a compression spring on a slide. It pushes back in proportion to
+  the joint's distance from its rest position, in the joint's own coordinate
+  (0, the build pose, by default), and becomes MuJoCo's joint `stiffness`
+  and `springref`. It is a part, not an actuator: nothing commands it. A
+  rest position with no spring is refused.
 - **Tool points** (ADR-645). `assembly.tool(component, origin_mm=,
   axis=, work_area_mm=[[x0,y0,z0],[x1,y1,z1]], work_frame=None)` in
   `assembly.assembly(..., tools=[...])` makes every build sample the

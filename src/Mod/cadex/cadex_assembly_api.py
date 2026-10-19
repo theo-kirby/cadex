@@ -2642,6 +2642,10 @@ class AssemblyDomainAPI:
         armature_kg: float | None = None,
         friction_loss_nmm: float | None = None,
         friction_loss_n: float | None = None,
+        spring_nmm_per_deg: float | None = None,
+        spring_n_per_mm: float | None = None,
+        spring_rest_deg: float | None = None,
+        spring_rest_mm: float | None = None,
         limit_time_constant_s: float | None = None,
         limit_damping_ratio: float | None = None,
         label: str = "",
@@ -2665,6 +2669,13 @@ class AssemblyDomainAPI:
         is dry friction: a constant resisting effort that does not care how
         fast the joint moves, and it is what makes a joint stay where it is
         left.
+
+        ``spring_*`` is a passive spring across the joint -- a torsion spring
+        on a hinge pin, a compression spring on a slide -- that pushes back
+        in proportion to how far the joint is from ``spring_rest_*``, its
+        free position in the joint's own coordinate (0, the build pose, by
+        default). It is a part, not an actuator: nothing commands it and it
+        draws no power (ADR-779).
 
         **Units are in the names and the wrong one is a refusal.** A joint
         that turns takes ``damping_nmms_per_deg``, ``armature_kgmm2`` and
@@ -2709,6 +2720,26 @@ class AssemblyDomainAPI:
             ("friction_loss_nmm", friction_loss_nmm),
             ("friction_loss_n", friction_loss_n),
         )
+        spring = _unit_pair(
+            operation,
+            coordinate,
+            ("spring_nmm_per_deg", spring_nmm_per_deg),
+            ("spring_n_per_mm", spring_n_per_mm),
+        )
+        spring_rest = _unit_pair(
+            operation,
+            coordinate,
+            ("spring_rest_deg", spring_rest_deg),
+            ("spring_rest_mm", spring_rest_mm),
+            minimum=-1.0e9,
+        )
+        if spring_rest is not None and spring is None:
+            raise _error(
+                operation,
+                "spring_rest",
+                "names a spring's rest position but no spring: give "
+                "spring_nmm_per_deg or spring_n_per_mm with it",
+            )
         limit_time_constant = (
             None
             if limit_time_constant_s is None
@@ -2737,6 +2768,7 @@ class AssemblyDomainAPI:
             damping is None
             and armature is None
             and friction_loss is None
+            and spring is None
             and limit_time_constant is None
             and limit_ratio is None
         ):
@@ -2744,7 +2776,7 @@ class AssemblyDomainAPI:
                 operation,
                 "damping/armature/friction_loss/limit",
                 "declares nothing: give at least one of damping, armature, "
-                "friction loss or a limit stiffness, or leave the joint out "
+                "friction loss, a spring or a limit stiffness, or leave the joint out "
                 "entirely. An empty "
                 "joint_dynamics reads like a joint that was configured and is "
                 "a joint that was not",
@@ -2757,10 +2789,14 @@ class AssemblyDomainAPI:
             "armature_kg": None,
             "friction_loss_nmm": None,
             "friction_loss_n": None,
+            "spring_nmm_per_deg": None,
+            "spring_n_per_mm": None,
+            "spring_rest_deg": None,
+            "spring_rest_mm": None,
             "limit_time_constant_s": limit_time_constant,
             "limit_damping_ratio": limit_ratio,
         }
-        for entry in (damping, armature, friction_loss):
+        for entry in (damping, armature, friction_loss, spring, spring_rest):
             if entry is not None:
                 properties[entry[0]] = entry[1]
         return self._value(
