@@ -44882,3 +44882,36 @@ stance (the owner: never on the right, 10 of 60 frames on the left); RF
 lands at 3.1 Hz against a 2.38 Hz stride; t2-g4 at iteration 100 reads
 `touchdown_rate_ratio_max` 2.01 (the owner's 4.74 against 2.37) at
 3.79 m/s. Baseline: `docs/probes/orun11/baseline-t2.md`.
+
+## ADR-775 — A loop closure's sites survive the export check beside touch volumes (2026-10-18, orun11)
+
+**Context.** orun11 M1 builds the cat's coupled hind foot as a real
+four-bar: shin, metatarsus, paw and an M5 rod, four `revolute` pins
+(ADR-595). The dynamics tree closes each loop with an `equality/connect`
+between two **sites** (ADR-594). The cat also declares contact
+observations, and the export adds a touch-volume site for each one
+(ADR-698). Those sites are inserted into bodies ahead of the closure sites,
+so every later site index moves. `_verify_exported_fields` already read
+the `site_*` fields through the kept sites, but it compared `eq_obj1id` and
+`eq_obj2id` raw. So the first model with both a closed loop and a touch
+observation was refused: "changed eq_obj1id by 0.153846 relative". The
+orun5 four-bars had no observations and never met this.
+
+**Decision.** For an export that added sites, a site-typed equality row's
+`eq_obj1id`/`eq_obj2id` in the reload is renumbered through the same
+kept-site list before the comparison. Joint- and body-typed rows are
+compared as before. The model is unchanged; only the check reads it
+correctly.
+
+**Consequences.** A legged model may close a linkage and still carry contact
+observations. No protocol, tool or trainer change. No test is added: the
+engine suite carries no dynamics tests (ADR-725), and the check is proved
+by the build that it refused.
+
+**Evidence.** `~/cadex-projects/orun11-cat`, script `orun11-cat16`: refused
+with `mjcf_field_drift` on `eq_obj1id` before the change; accepted after it
+(revision `d3811fff`, then `4cd04aaf` with the corrected strap). Its
+exported model reloads with the loop closed to 0.0000 mm
+(`docs/probes/orun11/foot_static.py`). `pixi run test-engine`: 157 passed,
+3 skipped. After `pixi run build-engine`,
+`CUDA_VISIBLE_DEVICES= pytest cli/tests`: 53 passed.

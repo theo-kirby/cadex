@@ -195,6 +195,11 @@ refusal. Built live with four `revolute` pins and driven 225 °/s at
 circle intersection (0.0066 mm at its 120 mm tip); the worst closure
 residual was 0.0061 mm, and the dynamics evidence now carries it beside
 `closure_tolerance_mm` (0.01) and `closure_within_tolerance`.
+A closure's connect names two sites. The export's field check reads a
+site-typed equality through the same kept-site renumbering as the
+`site_*` fields (ADR-775), so a closed linkage can sit beside contact
+observations' touch sites. orun11-cat's rod-coupled hind feet are the
+first model with both.
 
 **Machine drives (ADR-640..645, 2026-10-10).** Four refusals that stopped
 a printer, a router, a loader and a tractor hitch are gone, each measured

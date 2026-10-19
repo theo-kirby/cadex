@@ -77,9 +77,11 @@ fallback.
 
 - **Upper rod end:** a lug on the inboard face of the shin plate, 20.5 mm
   from the hock axis. In the build pose it is at (−248.3, 150.1), behind
-  and above the axis. The rod runs in the plane y ≈ 55–62, inboard of the
-  shin plate (y 63–71), so it never meets the drive case or the
-  metatarsus plate.
+  and above the axis. The rod runs in a plane inboard of the shin plate,
+  so it never meets the drive case or the metatarsus plate. (This study
+  put the plate at y 63–71, which is the AK70 knee's. The cat has the
+  AK10-9 knee, so the plate is at y 51.5–59.5. As built, the rod's plane
+  is at y 37.5; see below.)
 - **Lower rod end:** a horn on the paw's inboard side, 32 mm from the
   pin. In the build pose it is at (−227.7, 83.5), reaching from the pad's
   inboard wall (y 80) in to the rod's plane.
@@ -92,7 +94,7 @@ fallback.
   on the 5 mm pin is 25 MPa.
 
 The fit and sweep checks, the link loads in the built geometry and the
-static check are M1's build, not this study's.
+static check are M1's build, not this study's (below).
 
 ## What the study does not settle
 
@@ -120,3 +122,110 @@ The scratch copy `~/cadex-projects/orun11-cat-eq` (script
 The coupling is an `equality/joint` row with no physical part. **It is a
 screen of the ratio, not the design** (O2). Everything else, including the
 task, the clip and the 17 terms, is orun11-cat's.
+
+## As built: orun11-cat revision 4cd04aaf (script `orun11-cat16`)
+
+```
+pixi run python docs/probes/orun11/foot_static.py <cat_model-model.xml> [--side l|r] [--png foot-built.png]
+```
+
+![paw against hock, as built](foot-built.png)
+
+Rod A, as parts, in each hind leg (`COUPLED_FOOT` in the script):
+
+- **The lug** is a 6 mm 6061 strap at y 41–47. The AK60's 57 mm rear boss
+  stands through the shin plate to y 47.5, inside the rod end's
+  20.5 mm radius. So the strap spans the boss's rear face 0.5 mm off it.
+  It runs from the rod end's bushing boss up the shin to a foot bolted to
+  solid plate 40 mm from the hock axis. The first two builds put a lug
+  there: one floated in the drive's opening, the next cut 581 mm³ into
+  the drive.
+- **The rod** is two M5 steel spherical rod ends (eye 18 mm, housing 6 mm,
+  at y 34.5–40.5), M5 LH/RH studs and a 20 mm turnbuckle, 95.67 mm
+  between centres, one steel component.
+- **The horn** is a 5.5 mm 6061 plate beside the rod end, from the eye
+  (32 mm from the paw pin) down to a 9 mm standoff. The standoff runs out
+  through the pad's inboard wall.
+- **Each pin** is an M5 shoulder bolt in a flanged bronze bushing (5 × 7
+  mm), with 0.5 mm between each rod end and its flange. The paw pin keeps
+  its M4 bolt and bushings, and loses its stops: the rod sets it.
+- **The paw is re-seated** on the curve at the build pose (hock 0: pin
+  +65.5 of the old seat, so `PAW_SEAT` = +29.55).
+- **The loop:** shin, metatarsus, paw and rod form a planar four-pin
+  four-bar (ADR-595). The model closes it at the rod's lower pin with an
+  `equality/connect`. The export check misread that connect beside the
+  cat's touch sites, which ADR-775 fixes.
+
+**The turnbuckle seat** is 95.67 mm, against the study's 92.29. It moves
+the plantigrade band toward the shin pitch the gallop stands at. With
+the metatarsus level, the sole is 7.2° toes-down at the build pitch and
+7.4° toes-up at −24° (t2-g5's left median). At 92.29 those were 0 and
+−13.7.
+
+**Verdicts** on 4cd04aaf:
+
+- fit **pass**: 7,626 pairs, none failing;
+- sweep **pass**: 36 of 36 limited joints swept, no failing pair, the
+  hock's whole −60..+40° with the loop re-closed at every sample;
+- panels: 0 failing of 45, the same 12 advisory `egg` rows as before;
+- mounting **pass**: 30 of 30 purchased parts held.
+
+The 31 welds reported "not touching" are the design's existing gaps (the
+drives seat 0.5 mm off their housings, as in earlier revisions).
+
+**The coupling curve** is the left leg, from the exported model, with
+the loop closed by least squares (residual 0.0000 mm). The right is the
+mirror, with the same numbers.
+
+| hock | −60 | −40 | −20 | 0 | +20 | +40 |
+|---|---|---|---|---|---|---|
+| paw pin, from the build pose | +37.7 | +25.6 | +12.7 | 0.0 | −11.7 | −21.5 |
+| sole from flat, shin at build (+ toes-down) | +7.2 | +15.2 | +22.3 | +29.6 | +37.8 | +48.0 |
+| rod lever about the pin, mm | 25.9 | 29.4 | 31.4 | 32.0 | 31.3 | 30.1 |
+
+The least-squares line is pin = +0.8 − 0.611 · hock (rms 0.65°), the
+study's slope.
+
+**The static check (M1).** The trunk is level and the floor is under the
+paw. At each shin pitch the hock lays down, to its −60° stop at most,
+until the case's 40 mm collision sphere meets the floor:
+
+| shin pitch | 0 | −2 | −6 | −10 | −14 | −18 | −20 | −22 | −24 |
+|---|---|---|---|---|---|---|---|---|---|
+| hock | −60 (stop) | −60 (stop) | −60 | −55.8 | −52.3 | −48.8 | −47.0 | −45.3 | −43.3 |
+| sole from the floor | +7.2 | +5.2 | +1.2 | −0.9 | −3.5 | −6.1 | −7.4 | −8.8 | −10.0 |
+| case over the floor, mm | 11.1 | 7.4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| sole ≤ 8°, case ≤ 10 mm | fail | pass | pass | pass | pass | pass | pass | fail | fail |
+
+So the foot meets M1's pose, sole flat and case down, **for a push-off
+shin pitch of −2° to −20°**. M1 asks for the check in the gait
+reference's stance pose, and that reference is rung 6, not yet written.
+The plantigrade clip must put the hind push-off in this band, about −11°
+being the middle. A shin at its build pitch leaves the case 11 mm up
+against the hock's stop. A shin past −20° tips the sole toes-up, and the
+turnbuckle moves the band about 2.1° per mm of rod (3.38 mm moved it 7.2°).
+
+**The link loads at a 3× body-weight push** (3 × 309 N, the built
+model's 31.5 kg). The load is on the toes, at the toe sphere's lowest
+point or 30 mm ahead of the pin, whichever is further, so the pin moment
+is 27.8 N·m:
+
+| hock | −60 | −40 | −20 | 0 | +20 | +40 |
+|---|---|---|---|---|---|---|
+| rod force, N (compression) | 1073 | 947 | 884 | 869 | 888 | 923 |
+| M5 pin, double shear, MPa | 27.3 | 24.1 | 22.5 | 22.1 | 22.6 | 23.5 |
+| rod Euler margin (4.13 mm root, 95.7 mm, steel) | 2.9× | 3.3× | 3.5× | 3.6× | 3.5× | 3.4× |
+
+The worst is at the plantigrade stop, where the rod's lever is shortest
+(25.9 mm): 1.07 kN, 2.9× under the rod's buckling load. The rod ends
+bought must be rated above 1.1 kN static, with margin for impact (not yet
+measured).
+
+**What this does not settle.**
+
+- The plantigrade clip, and whether its push-off lands in the band.
+- The closure in training. The connect is soft, with a two-step time
+  constant (ADR-593's measured opening grows with step² and speed²).
+  `rod1-s1` is the first run on it, cold, on eq1-s1's task and clip.
+- `CadexGait.generate` still solves the paw pin as a free joint (rung 6).
+

@@ -7826,6 +7826,14 @@ def _verify_exported_fields(
         there = getattr(reloaded, field)
         if added_sites and field.startswith("site_"):
             there = there[kept_sites]
+        if added_sites and field in ("eq_obj1id", "eq_obj2id"):
+            # ADR-775: a loop closure's connect names two sites, and the touch
+            # volumes the export added shift every later site's index, so a
+            # site-typed row is read through the same kept-site renumbering.
+            renumber = {index: position for position, index in enumerate(kept_sites)}
+            site = int(_mujoco_module().mjtObj.mjOBJ_SITE)
+            there = [renumber.get(int(value), int(value)) if int(kind) == site else int(value)
+                     for value, kind in zip(there, reloaded.eq_objtype)]
         drift = _field_drift(getattr(model, field), there)
         if drift > worst:
             worst, worst_field = drift, field
