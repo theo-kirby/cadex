@@ -95,3 +95,23 @@ about 30 s an iteration. The trainer's ETA at iteration 10 was 5,837 s more,
 so the run should end about 6,400 s after its start, inside the budget.
 Iteration 10's reward/step is 10.65 and its episode 128 steps, against
 rod1-s1's 10.71 and 101. Unjudged.
+
+## The tail joints, swept without the 90 s bound
+
+The engine's sweep child (`cadex_assembly_worker._sweep_child`) was rerun
+for `j_tail1`–`j_tail7` in `FreeCADCmd`. Its inputs were copied from
+07a92830's own build while that build ran (an attempt does not keep them),
+with the input's `seconds` raised from 90 to 3,600. Each joint takes 117–128
+s, so 90 s was not enough.
+
+| joint | range (deg) | poses | moving pairs measured | max common volume | closest |
+|---|---|---|---|---|---|
+| j_tail1 | −30..+35 | 8 | 34 | 0 mm³ | 0.0 mm: `c_qdd_tail1` touches its own `c_tail1_link` at −30° |
+| j_tail2–j_tail7 | −25..+25 | 6 | 50 each | 0 mm³ | 0.30 mm, each link against the next cross |
+
+**Every tail pair is clear.** No pair has a common volume. The one contact
+is a drive case against the link it drives, touching at the joint's stop.
+With the 29 joints the build swept, all 36 limited joints of 07a92830 are
+swept with no interfering pair. **The engine's own verdict still says
+incomplete:** this is its sweep code run outside the build with a longer
+bound, not a verdict the build recorded.
