@@ -1,251 +1,240 @@
-# Goal: The cat's plantigrade gallop, from walk to full speed
+# Goal: feline v07, as fast as it can gallop, plantigrade and cat-like
 
-Verified against source: 2026-10-18. Operator charter for orun11, following
-orun10 (`.ouroboros/history/orun10.md`, merged at `59aebab9`) and the
-owner's interactive session of 2026-10-18 on `orun10-cat` (runs t2-g1 to
-t2-g5, notes below). The human owns this file; unattended roles never edit
-it.
+Verified against source: 2026-10-19. Operator charter for orun12. It follows
+orun11 (`.ouroboros/history/orun11.md`, merged at `1f0ab418`) and the owner's
+session of 2026-10-19, which locked the cat as feline v06 (ADR-779) and then
+redesigned its legs as **feline v07**. The human owns this file; unattended
+roles never edit it.
 
 ## Mission
 
-The cat's hind foot is a paw **plus the metatarsus**, all the way up to
-the hock. At speed a real cat lays that whole length on the ground, with
-the hock drive itself on the floor behind the paw, and pushes off through
-it. The slot in the back of the paw is there so the foot can lie flat. The
-owner wants the cat to gallop like that, as fast as it can, and to get
-there from a walk.
+Make **feline v07** run **as fast as it can** with a gallop that looks like
+a real cat's: plantigrade at the hind, rotary footfalls, a long fore reach,
+the hinds landing ahead of the fore prints, a flight phase, no taps, and
+both sides alike. The robot is designed. This run designs the **policy**:
+the reference clip, the task, the rewards, the training, and the tuning
+parameters.
 
-1. **The foot (M).** Replace the free paw pin with a **coupled linkage**:
-   a rod or link that ties the paw's angle to the hock's, so the paw and
-   metatarsus lie flat as the hock comes down for stance, and roll onto
-   the toes at toe-off. The policy should get the plantigrade pose from
-   the mechanism and the hock drive alone, not have to find a 96° fold of
-   a free pin. On t2-g5 the hock case never reached the floor on the right
-   leg and on 10 of 60 stance frames on the left.
-2. **The policy design (P).** Show the policy the gait it should run,
-   instead of describing it with rewards that fight the clip:
-   - a reference gallop whose hind stance is plantigrade, with the hock on
-     the floor at push-off;
-   - front paws that reach forward and touch down once per stride, at the
-     same cadence as the hind;
-   - hind paws that land ahead of the front prints (the feline gallop);
-   - the fewest reward terms that hold these, each one measured to pay
-     for itself.
-3. **Speed (S).** That gallop at **5 m/s or more**.
-4. **Walk to gallop (W).** One policy that goes from an obvious
-   alternating walk to the near-synchronous gallop as the speed command
-   rises, always a rotary sequence, using ADR-773's speed-scheduled
-   reference.
+If the loop achieves only one thing, it is **one policy that passes
+`gallop_spec`'s form on both hind legs at the highest speed this cat can
+hold**, judged by the engine and filmed.
 
-If the loop achieves one thing, it is **a plantigrade gallop: the whole
-hind foot flat on the ground with the hock drive down at push-off, on both
-legs, every stride**, measured and filmed.
+## The robot (locked)
 
-## Reference project
+- **The project is `~/cadex-projects/feline-v07`**, starting at revision
+  `9eaff867`. It is this run's project. Every other project in
+  `~/cadex-projects` is read-only.
+- **Hind leg.**
+  - The hock drive, an AK80-9, sits at the knee, coaxial and inboard of the
+    shin.
+  - A crank and a 5.5 mm push-rod form a 35 mm parallelogram to a horn on
+    the metatarsus, so the crank angle equals the hock angle.
+  - The hock is a slim pin.
+  - A slim PU heel sits under the metatarsus. In the plantigrade pose its
+    sole is 6 mm under the paw's sole line.
+  - The paw is v06's paw on its sprung hinge.
+- **Front leg.**
+  - The wrist drive, an AK60-6, sits at the elbow on a 5 mm spacer.
+  - A 28 mm parallelogram push-rod drives the paw.
+  - The front foot is always just the paw.
+- **Joint names.**
 
-- `~/cadex-projects/orun10-cat` at `2729c141` (the owner session's
-  `cat14.py`) is the source:
-  - the faceted-soft head;
-  - AK60-6 front wrists;
-  - thicker pads with round backs;
-  - the free plantigrade pin (−24..+100°);
-  - hock and metatarsus floor contacts;
-  - the 17-term gallop task (`fore_tap`, `plantigrade`, `fore_reach`,
-    `hind_overreach`, `fore_sync`, `hind_flat` and the rest).
+  | Joint | What it is |
+  |---|---|
+  | `hock_*`, `wrist_*` | the drives, acting on the cranks |
+  | `ankle_*`, `carpus_*` | the pins |
+  | `rodtop/rodbot_*`, `frodtop/frodbot_*` | the rod ends, closed as `equality/connect` |
+  | `REF_OF` | maps each drive to the reference of the pin it moves |
 
-  Copy it to `~/cadex-projects/orun11-cat` and work there. Earlier
-  projects are read-only.
-- **Runs t2-g1 to t2-g5** in `orun10-cat/runs/` are the baseline. The
-  owner's measurement scripts live in the session scratchpad and are not
-  committed; rebuild what you need as engine predicates or as scripts
-  under `docs/probes/orun11/`. Their measures:
-  - hind flat share and pin-at-stop;
-  - hock-down share of hind stance;
-  - touchdowns per second per paw;
-  - hind overreach of the fore prints.
-- **Speed records:**
-  - **4.64 m/s:** t1-g3 iteration 75, on the cat before the paw changes.
-  - **4.49 m/s:** orun10's s1-g4.
-  - **3.79 m/s:** t2-g4.
-  - **3.20 m/s:** t2-g5.
-- ADR-773 (`36653832`) gives the speed-scheduled gait: `assembly.goal(kind="speed", ...)` and `assembly.task(..., reference=[slowest, ..., fastest])`. It has been tested only on a scratch project.
-- `training/RECIPE.md` is the cold-start recipe.
+- **The task.**
+  - The gallop task is orun11's 17-term plantigrade clip on this cat.
+  - The heels are `c_heel_h*`.
+  - The tail's ct3/ct4 contacts are dropped to fit the 128-channel cap.
+- **The first run is `v07-g1`**, registered in `runs/v07-g1`. It trains
+  from scratch for 300 iterations, with a checkpoint every 25, and started
+  before this run did. It is the baseline.
 
 ## Owner decisions
 
-- **O1. Order:** M, then P and S together, then W.
-  - CPU work for a later item (clips, specs, the W schedule) may proceed
-    while a run trains.
-  - The gallop is not done until it is plantigrade (P1). A faster gallop
-    on its toes does not count.
-- **O2. The foot is a coupled linkage.**
-  - One link, rod or four-bar ties the paw to the shank or the hock, so
-    the hock drive alone sets the foot's pose. A compliant element is
-    allowed if a measurement shows it is needed: a spring in the rod, or a
-    little lost motion at toe-off.
-  - It is a real, buildable part:
-    - bearings or bushings at every pin;
-    - rods and links sized for the push-off load;
-    - every part through fit, mounting, panels and sweep.
-  - An `equality/joint` coupling with no physical part is a modelling
-    shortcut, not the design. Use one only to screen a ratio before the
-    part exists, and say so.
-- **O3. Redesign scope: the legs and the spine.**
-  - Anything in the four legs or the spine that a measurement says limits
-    the gallop may change: geometry, drives, gear ratios, pads.
-  - orun10 found the spine at its 22 N·m peak in 37% of frames at a
-    3.0 Hz clock.
-  - The head, tail and body shell stay unless a leg change forces a
-    mounting change.
-  - Every drive is one that is sold.
-- **O4. Torque.** Drives never exceed peak. Rated RMS is **reported, not
-  enforced**. Every number reported carries the worst drive's RMS over
-  rated and its peak margin.
-- **O5. Track, don't describe.** The reference clip carries the gait:
-  - plantigrade hind stance;
-  - fore reach;
-  - hind overreach;
-  - matched fore and hind cadence;
-  - the rotary lag.
-
-  Rewards back the clip up; they do not argue with it. t2-g5 showed a
-  `plantigrade` term (w4) losing to a tiptoe clip tracked at w10. Before
-  adding a term, evaluate it per step on the accepted bundle (the gait
-  against its absence). Keep a term only if a judged run shows it moved
-  its measure.
-- **O6. Straight lines, flat ground.** No turning, leaping or terrain this
-  run.
+- **O1. Policy only.**
+  - **The loop may change:**
+    - the reference clip and the gait generator's settings;
+    - the observations, rewards, terminations, curricula, commands and
+      disturbances;
+    - the trainer's settings;
+    - the declared tuning parameters: springs, damping, friction, joint
+      stops, the pad and heel material, the action filter, and a joint's
+      position limits.
+  - **The loop may not change:** the mechanism's geometry, the drives, the
+    gear ratios, the linkages, the part shapes, or the masses beyond a
+    material density.
+  - **If a measurement shows the mechanism limits speed or form**, record
+    it with numbers in R1 and go on with the policy. The owner decides
+    hardware.
+- **O2. Plantigrade, or it doesn't count.** A fast gallop on the toes is not
+  the goal. On each hind leg, the heel (`c_heel_h*`) must be down for at
+  least 40% of that paw's stance, and at toe-off (`gallop_spec`'s
+  `hock_down` and `hock_at_toeoff`).
+- **O3. Both sides alike.**
+  - The owner saw the left hind do far better than the right on v06-g1.
+  - Every judged result reports left and right separately.
+  - Before a hardware or reward explanation, check asymmetry with:
+    - a mirror test of the model;
+    - a symmetric clip, with no hind lead;
+    - mirrored seeds.
+  - orun11 skipped this check and spent a drive swap.
+- **O4. Torque.** Drives never exceed peak. Rated RMS is reported, not
+  enforced. Every number reported carries the worst drive's RMS over rated
+  and its peak margin.
+- **O5. Track, don't describe.**
+  - The clip carries the gait: plantigrade stance, fore reach, hind
+    overreach, matched cadence, rotary lag and flight.
+  - Rewards back the clip up.
+  - Before adding a term, evaluate it per step on the accepted bundle.
+  - Keep a term only if a judged run shows it moved its measure.
+  - orun10 and orun11 measured every added rule costing speed.
+- **O6. Straight lines, flat ground.** No turning, leaping or terrain.
 - **O7. Short screens, many of them.**
-  - A screen is 100–150 iterations.
-  - A full run is 200–300.
-  - Warm-start where the actor's inputs allow; a mechanism change trains
-    cold.
-  - Extend only while the curve climbs.
+  - A screen is 100–150 iterations. A full run is 200–300.
+  - Warm-start with a critic warm-up where the actor's inputs allow.
+  - After a task change that undoes a habit, train cold.
+  - Extend a run only while its curve climbs.
   - Judge every checkpoint a run leaves.
-- **O8. Size the budget to the model.** t2-g5 ran out of its 7200 s at
-  iteration 235 of 300, because the new floor contacts slowed each step.
-  Time the first ten iterations of each new bundle, then set `budget_s` to
-  cover the iterations asked for, plus a margin.
+- **O8. Size the budget to the model.**
+  - The linkage cat steps more slowly than v06: time the first ten
+    iterations of each new bundle.
+  - Set `budget_s` to cover the iterations asked for, plus 20%.
+- **O9. A clean simulation.**
+  - The owner saw the sim "breaking" and parts passing through each other
+    on v06.
+  - **A judged policy shows:**
+    - no NaN or blow-up;
+    - push-rod loops closed within 2 mm;
+    - no real-mesh interpenetration deeper than 5 mm between parts that
+      do not touch in the build pose, on the evaluation traces.
+  - **Tools:** the owner's offboard checks (`replay_check.py`, `meshcheck.py`,
+    `selfcontact2.py`, `standtest.py`, `render_poses.py`, `render_fore.py`)
+    are copied to `~/orun12-owner-scripts/`, outside the repo. Rebuild what
+    you need under `docs/probes/orun12/`.
 
 ## Done criteria
 
-Every criterion is measured on 10 frozen seeds with the engine's
-evaluation, not the trainer's numbers. Drives always stay under peak (O4).
-Stance and contact shares are measured over the evaluation window and
-exclude the first second.
+Every criterion is measured with the engine's evaluation on `gallop_spec`'s
+10 frozen seeds, not with the trainer's numbers. Stance and contact shares
+exclude the first second. Drives always stay under peak (O4).
 
-- [ ] **M1. The coupled foot is built.**
-  - On `orun11-cat`, the hind paw is driven by a coupled linkage (O2).
-  - It passes fit, mounting, panels and sweep across the hock's whole
-    range.
-  - **A static check** in the gait reference's stance pose, with the cat
-    standing on flat ground, shows that at push-off:
-    - the paw sole is flat (pitch within 8° of the floor);
-    - the hock drive's case is within 10 mm of the floor.
-  - The report gives:
-    - the paw-to-hock coupling curve (paw angle against hock angle) over
-      the full range;
-    - the link loads at a 3× body-weight push.
-- [ ] **P1. Plantigrade push-off, every stride.** On the fastest
-  plantigrade gallop policy, on at least 8 of 10 seeds, for **each** hind
-  leg:
-  - the hock drive's case is on the floor for at least 40% of that paw's
-    stance;
-  - it is on the floor at the moment of toe-off or just before it.
-
-  Measure this with an engine predicate (a new ADR if one is needed), not
-  only an offboard script. Report the share and the hock case's median
-  stance height for each leg.
-- [ ] **P2. The feline gallop's form.** On the same policy, on 8 of 10
-  seeds:
-  - each front paw touches down at the hind paws' stride frequency,
-    within 10%: no mid-swing tap (t2-g4 tapped at 4.74 Hz against 2.37);
-  - each front paw touches down ahead of the shoulder by a measured reach;
-  - the hind paws land ahead of the front paw prints, with the median
-    overreach reported;
-  - the footfall order is rotary.
+- [ ] **B1. The baseline is judged.**
+  - Every v07-g1 checkpoint is evaluated on `gallop_spec`.
+  - Its report gives:
+    - each predicate's pass count and median;
+    - each predicate's value per hind leg;
+    - the top speed;
+    - the torque margins.
+  - It is compared with v06-g1's final numbers:
+    - 0/10 pass;
+    - 3.72 m/s best, at iteration 150;
+    - a hock-down share of at most 0.12;
+    - an overreach of 355–474 mm.
+- [ ] **P1. Plantigrade, both legs.**
+  - On one policy, on at least 8 of 10 seeds, `hock_down` and
+    `hock_at_toeoff` pass for **each** hind leg.
+  - The report gives the heel's stance share and median stance height per
+    leg.
+  - A still or trace frames show both heels on the floor.
+- [ ] **P2. The feline gallop's form.** On the same policy, on at least 8
+  of 10 seeds:
+  - `no_tap`, `every_stride` and `overreach` pass;
+  - the footfall order is rotary;
+  - each stride has a flight phase, a measured time with no paw on the
+    floor;
+  - the median overreach, fore reach and flight time are reported.
+- [ ] **Q1. Symmetric.**
+  - On the P1/P2 policy, the left and right hind legs' values are within
+    20% of each other for:
+    - heel stance share;
+    - stride length;
+    - touchdown rate.
+  - Any asymmetry found on the way is traced to its cause, with O3's
+    checks.
+- [ ] **Q2. Clean simulation.** The P1/P2 policy's evaluation traces pass
+  O9:
+  - no blow-up;
+  - loops closed within 2 mm;
+  - no new mesh interpenetration deeper than 5 mm.
 - [ ] **S1. 5 m/s, plantigrade.**
-  - A straight-line sprint that holds at least **5 m/s** over a 2 s window
-    on at least 8 of 10 seeds, without falling, by a policy that also
-    passes P1.
+  - A straight-line sprint holds at least **5 m/s** over a 2 s window on
+    at least 8 of 10 seeds, without falling, by a policy that also passes
+    P1, P2 and Q2. That is `gallop_spec` in full.
   - The report gives:
     - the highest 2 s average on any seed;
     - the median over the 10 seeds;
-    - stride length, stride frequency and flight time per stride.
-  - Falling short is recorded honestly, with what binds: which drive,
-    which phase of the stride, and by what margin.
-- [ ] **W1. Walk to gallop.**
-  - **The task:** one policy, trained on an ADR-773 speed-scheduled
-    reference of three or more strides, from a walk of about 0.5 m/s to
-    the fastest gallop that passes P1.
-  - **The test:** a command ramp from the walk to that gallop, on 8 of 10
-    seeds, without falling. The policy tracks the command within 15% once
-    it has settled, at every step of the schedule.
-  - **The gait:**
-    - the footfall order stays rotary throughout;
-    - the lag within each pair falls steadily, from about 0.5 of the
-      cycle at the walk (plainly alternating) to 0.15 or less at the
-      gallop (nearly together);
-    - the report plots each pair's lag against speed.
+    - stride length, stride frequency and flight time;
+    - what binds (drive, stride phase, margin) if it falls short.
+- [ ] **S2. As fast as it goes.**
+  - Past 5 m/s, keep raising the clip's speed while P1, P2 and Q2 still
+    hold.
+  - The run's top passing speed is recorded with what stopped the next
+    step: a drive at peak, the clip failing to generate, or form lost.
 - [ ] **F1. The films**, on the run's page:
-  - the plantigrade gallop, side-on and close on a hind foot, at full
-    speed and in slow motion;
-  - the walk-to-gallop ramp, side-on;
-  - the coupled foot's mechanism through its range.
-- [ ] **R1. The closing report.** `docs/probes/orun11/REPORT.md` gives:
+  - the fastest passing gallop, side-on, at full speed and in slow motion;
+  - a hind foot close up through a stride, with the heel down at
+    push-off;
+  - left and right side views of the same policy.
+- [ ] **R1. The closing report.** `docs/probes/orun12/REPORT.md` gives:
   - each criterion with its numbers;
-  - the foot's design and why;
-  - which reward terms earned their place, and which were cut;
+  - the clip and reward design, and why;
+  - the terms that earned their place, and the terms that were cut;
   - what limits speed, drive by drive;
-  - what the next run should try.
+  - any hardware change the numbers argue for (O1), for the owner.
 
 ## Later criteria
 
-Not this run's; for when the frontier above is empty:
-- The walk-to-gallop policy also decelerates back to a walk, still rotary.
+Not this run's. They are for when the frontier above is empty:
+- Walk to gallop: one policy on an ADR-773 speed-scheduled reference, from
+  a walk of about 0.5 m/s to the fastest passing gallop, staying rotary,
+  with each pair's lag falling from about 0.5 to 0.15 or less.
+- The same policy decelerates back to a walk.
 - The plantigrade gallop at 5.5 m/s or more.
-- The coupled foot used for a standing leap (orun10's J1 ledge).
 
 ## Horizon ladder
 
 - **short-term:**
-  1. Copy `orun10-cat` to `orun11-cat`.
-  2. Turn the owner session's measures into engine predicates for a flat
-     sprint spec:
-     - hock-down share of stance;
-     - paw flatness;
-     - touchdown rate per paw;
-     - hind overreach;
-     - pair lag.
-  3. Judge t2-g4 and t2-g5 on that spec as the baseline.
-  4. Sketch two or three coupled-foot linkages on paper or in a scratch
-     project: a rod from the shank, a four-bar off the hock housing, a
-     tendon-like link. Check each one's coupling curve against the
-     plantigrade pose: paw pin about +96° at metatarsus −60°, and on the
-     toes at toe-off.
-  5. Build the best linkage on `orun11-cat`, through every verdict and
-     M1's static check.
-  6. Write a gallop reference whose hind stance is plantigrade, which the
-     generator can reach. Fix the generator if it cannot express the
-     pose, under an ADR.
+  1. Judge v07-g1's checkpoints (B1) as they land, once the run has
+     ended. Do not stop it.
+  2. Rebuild the owner's offboard checks as committed probe scripts under
+     `docs/probes/orun12/`:
+     - real-mesh replay of the evaluation traces, for interpenetration and
+       floor sinking;
+     - per-leg heel share;
+     - loop gap;
+     - flight time.
+  3. Run O3's asymmetry checks on v07-g1's best checkpoint:
+     - left vs right per predicate;
+     - a mirror test of the model and the clip.
+  4. Read the clip itself:
+     - the heel share, overreach, flight and lag it asks for, per leg;
+     - whether the generator can express a longer stride and flight.
+  5. Launch the next screen before analysing the last.
 - **medium-term:**
-  1. Cold screens on the coupled foot with the plantigrade clip, using the
-     smallest reward set that holds the form. Cut terms that fail O5's
-     test.
-  2. Close P1 and P2, then push the speed command upward for S1.
-  3. Measure what binds at speed (O8 of orun10: stride length against
-     frequency, flight, drives at peak by phase). Change a leg or spine
-     drive or ratio only when a measurement names it (O3).
-  4. W1:
-     - a slow walk clip and a canter clip on the same legs;
-     - the speed schedule;
-     - a cold run;
-     - the ramp spec.
+  1. Close P1 and Q1, using the clip, the tracking weights, the heel and
+     pin parameters and terminations, cold where a habit must be undone.
+  2. Close P2:
+     - fore cadence without taps;
+     - overreach;
+     - flight.
+  3. Raise the speed command and clip to 5 m/s (S1), then beyond (S2).
+     Measure what binds at each step: stride length against frequency,
+     flight, and drives at peak by phase.
+  4. Close Q2 on the passing policy. Fix the model's dynamics parameters
+     only (O1) if the sim misbehaves.
 - **long-term:**
-  1. F1's films and R1's report, kept current as criteria close.
+  1. F1's films and R1's report, kept current as each criterion closes.
   2. The later criteria.
-  3. Fold what this run proves into `training/RECIPE.md`: the plantigrade
-     clip, budget sizing, and a reward set that does not fight its clip.
+  3. Fold what this run proves into `training/RECIPE.md`:
+     - a plantigrade clip on a linkage leg;
+     - budget sizing;
+     - a reward set that does not fight its clip;
+     - the asymmetry checks.
   4. Keep every gate green, every doc true, `STATE.md` folded, and R1
      current.
 
@@ -253,8 +242,7 @@ Not this run's; for when the frontier above is empty:
 
 **Standing:**
 - Obey AGENTS.md, the licensing rules and the process boundaries.
-  - The repository carries no GPL or AGPL code. A fetched model or image
-    lives outside the repo and is never vendored.
+  - The repository carries no GPL or AGPL code.
   - Training stays offboard in `training/`, whose `cadex_train.py` imports
     only the standard library at module scope.
   - `CadexDynamics.py` stays unreachable from `cadexd` (ADR-102).
@@ -265,29 +253,36 @@ Not this run's; for when the frontier above is empty:
   - policy binaries, checkpoints or rollout traces;
   - fetched third-party files.
 - Do not hand-edit `STATE.md`, `PLAN.md` or state claims.
-- **Keep earlier projects read-only:** every project in `~/cadex-projects`
-  except `orun11-*`, which are this run's.
 
 **This run:**
+- **The mechanism is locked (O1).** In `feline-v07/script.py`, edit only:
+  - the task, clip, reward, observation and success sections;
+  - the declared parameters' values;
+  - joint dynamics;
+  - materials' densities, friction and contact parameters.
+
+  Never edit the part geometry, the drives or the joint layout.
 - **One training run at a time on the 5090.** The machine lock is the
-  arbiter. The CLI suite runs with the GPU hidden
-  (`CUDA_VISIBLE_DEVICES=`).
+  arbiter. The CLI suite runs with the GPU hidden (`CUDA_VISIBLE_DEVICES=`).
+- **v07-g1 belongs to the owner.** Never stop it. Wait for it to finish
+  before training, and use its checkpoints.
 - **Long training does not block an iteration.**
-  - Start a run detached through `cadex_cli.loop` (`register`,
-    `retain_training_view`, `launch`), so the dashboard follows it, and
+  - Start runs detached through `cadex_cli.loop` (`register`,
+    `retain_training_view`, `launch`), so the dashboard follows them, and
     end the iteration. A later iteration reads the result.
-  - Each run goes in a scope of its own
+  - Each run gets its own scope
     (`systemd-run --user --scope -p MemoryMax=30G ...`). Never use a
     transient service: it kills the trainer.
 - **Keep the GPU busy.** Launch the next screen before a long rebuild,
-  analysis or write-up, not after. orun10 sat idle for 35 minutes between
-  judgments.
-- **The protocol and tool surface stay a contract** (AGENTS.md's rules).
+  analysis or write-up.
+- **The protocol and tool surface stay a contract** (AGENTS.md).
+  - An engine change (a predicate, a generator option) gets an ADR from
+    ADR-780, and the engine and CLI suites.
 - **The dashboard stays read-only.** The actor may serve it on 127.0.0.1
   for its own tests. It never runs `tailscale serve` and never binds a
   public address.
-- Committed images are PNG, ≤ 300 KB each, under `docs/probes/orun11/`,
-  on the dark floor. Films live outside the repo and on the run's page.
+- Committed images are PNG, ≤ 300 KB each, under `docs/probes/orun12/`, on
+  the dark floor. Films live outside the repo and on the run's page.
 - No role starts, stops or restarts the loop or signals its process. Kill
   stray engine processes by PID, never with a broad `pkill` pattern.
 
@@ -295,58 +290,54 @@ Not this run's; for when the frontier above is empty:
 
 - **The run's page is the owner's view.** The scribe keeps it. Each
   iteration it shows:
-  - each criterion's latest judged numbers: hock-down share per leg,
-    touchdown rates, the top speed so far;
+  - each criterion's latest judged numbers, left and right;
+  - the top speed so far;
   - training curves;
-  - the newest films or stills, copied into the page's assets and never
-    committed.
+  - the newest films or stills.
 
-  Every training run is also registered on the dashboard, with its
-  checkpoint rollouts.
+  Every training run is registered on the dashboard.
 - **Gates run in the foreground** and finish within the shell's 10-minute
-  limit. A rebuild that does not goes to the background.
+  limit. A rebuild takes 12–15 minutes and goes to the background.
 - **Lean suites (ADR-725).** Add a test only for a contract or a regression
   that actually happened.
-- **What the owner session of 2026-10-18 learned** (t2-g1 to t2-g5):
-  - A free paw pin lets the paw lie flat, but the policy uses it only half
-    the time and parks it at its stops 30–90% of stance. Range is not the
-    same as the pose.
-  - The hock never touched the floor until floor contacts were declared on
-    the hock case and metatarsus, and even then it did so on one leg only.
-  - Front paws tapped once mid-swing every stride, after lifting only
-    10–20 mm. A contact-timing weight of 10 did not stop it. A penalty on
-    fore contact while the clip says swing (w8) brought one paw to the
-    clip's 2.37 Hz; the other stayed at 3.2 Hz.
-  - Each rule added made the gallop slower (4.21 → 3.79 → 3.20 m/s). That
-    argues for O5: put the form in the clip.
-  - **Engine caps:**
-    - 32 reward terms (ADR-773);
-    - 128 observation channels (`MAXIMUM_OBSERVATION_CHANNELS`);
-    - 512 nodes per reward expression.
+- **What came before:**
+  - **v06-g1** (rigid metatarsus, sprung paw, PU shoe under the hock):
+    - 0/10 pass;
+    - 3.72 m/s best;
+    - hock-down share at most 0.12, and 0 at the end;
+    - only the left hind ever put its hock down;
+    - the paw pin flapped at 900°/s;
+    - the claws sank 8–16 mm into the floor;
+    - the left hind paw passed through the left forearm.
 
-    t2-g5 dropped the tail-link contacts to fit 128.
-  - `./cadex params` takes a repeated `--set k=v`, not a comma list.
-- **What orun7 to orun10 learned:**
-  - The trainer's reward is not a pass. Judge checkpoints with the engine.
-  - Warm-start with a critic warm-up (`--critic-warmup`, ADR-740). A
-    fine-tune from another policy needs a low learning rate (about 3e-5).
-  - Removing a blocker does not undo a habit the policy has converged on.
-    After a task or mechanism fix, train cold.
-  - Speed is set by the clip's clock and stride length; the spine binds as
-    the clock rises.
-  - Write each criterion's closing note when it closes, not at the end.
+    v07 adds paw damping, capsules for every limb and no hind lead in the
+    clip.
+  - **orun11 (rod-coupled foot):**
+    - 5 screens, P1 0/10;
+    - one leg lay down and the other never did;
+    - fore taps at about 2x the hind stride on every heel clip.
+  - **orun10 and orun11 together:** every reward rule added cost speed
+    (4.21 → 3.20 m/s). The best speed on any cat was 4.64 m/s, on its toes.
+  - **The trainer's reward is not a pass.** Judge with the engine.
+  - **Warm starts:** use `--critic-warmup` (ADR-740), and about 3e-5 for a
+    fine-tune.
+- **Engine caps:**
+  - 32 reward terms;
+  - 128 observation channels;
+  - 512 nodes per reward expression.
+
+  The heel gait reference needs `heels` to point to bodies with their own
+  collision geoms.
+- `./cadex params` takes a repeated `--set k=v`.
 
 ## Question policy
 
 - Resolve reversible choices autonomously, with the smallest measured step
-  towards the highest-ranked open criterion (O1).
-- **Is it real hardware?** A sensor no one sells is privileged; a drive no
-  one sells is refused. A linkage part must be makeable: printed, machined
-  or bought.
-- If the coupled foot cannot reach both the plantigrade pose and toe-off,
-  pick the linkage that gets the plantigrade push-off right (P1) and record
-  what toe-off costs.
-- Where O1–O8 and a measurement disagree, record both and follow O1–O8.
+  towards the highest-ranked open criterion. The order is B1, P1, Q1, P2,
+  Q2, S1, S2.
+- If the mechanism seems to be the limit, record the evidence and keep
+  working the policy (O1). Never change hardware.
+- Where O1–O9 and a measurement disagree, record both and follow O1–O9.
 - Code and accepted artifacts outrank docs.
 - A pre-existing test failure is recorded and left alone, unless the unit's
   own change touches it.
@@ -357,11 +348,11 @@ Not this run's; for when the frontier above is empty:
 ## Exhaustion policy
 
 `report_done`.
-- Once M1, P1, P2, S1, W1, F1 and R1 have evidence, write the closing
-  report and claim done. Two consecutive critic acceptances stop the run.
+- Once B1, P1, P2, Q1, Q2, S1, S2, F1 and R1 have evidence, write the
+  closing report and claim done. Two consecutive critic acceptances stop
+  the run.
 - Until then, work the highest-ranked open criterion, then the later
-  criteria. Past S1, keep pushing the top speed while it climbs and P1
-  holds.
+  criteria. Past S1, keep pushing speed while P1, P2 and Q2 hold.
 - If the stop arrives first, report how far each criterion got. Do not
   redefine success.
 
@@ -373,21 +364,19 @@ Not this run's; for when the frontier above is empty:
   - for `training/` changes, its tests from `~/cadex-train-venv`.
 - Python changes under `src/Mod/cadex/` need `pixi run build-engine` before
   the CLI's engine-needing tests count.
-- Every new channel, predicate, joint kind, generator change and trainer
-  change has an ADR, starting at ADR-774 (check `docs/DECISIONS.md`).
 - A judged run is reported with:
   - each spec's pass count;
   - the failing predicate's median;
-  - the hock-down share per hind leg;
-  - the fore and hind touchdown rates;
+  - per-leg heel share;
+  - fore and hind touchdown rates;
   - the top speed;
   - the worst drive's RMS over rated and its peak margin;
   - the checkpoint it started from.
-- **The critic checks numbers at their source.** For every judged training
-  run, the critic opens at least one `evaluation.json` the report cites,
-  and checks its pass counts and medians against the report.
-- **The critic checks the foot on film or in the trace.** A P1 claim cites
-  the trace frames, or a still, showing the hock case on the floor.
+- **The critic checks numbers at their source.** For every judged run, it
+  opens at least one cited `evaluation.json` and checks the report against
+  it.
+- **The critic checks the heel on film or in a trace.** A P1 claim cites
+  trace frames or a still that show both heels down.
 
 ## Reconcile
 
@@ -397,6 +386,6 @@ Not this run's; for when the frontier above is empty:
   - statuses set with evidence;
   - `STATE.md` rendered;
   - `ouroboros mem check` clean.
-- orun10's open S1, S2, J1–J3, F1 and R1 claims stay open and untouched:
-  this run's S1 supersedes orun10's S1 in the report only.
+- orun10's and orun11's open claims stay open and untouched. This run's
+  S1 supersedes theirs in the report only.
 - Unattended roles never edit this charter.
