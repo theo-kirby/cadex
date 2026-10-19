@@ -12652,6 +12652,12 @@ def _reference_records(
             spine_joint=declared.get("spine_joint"),
             spine_amplitude_deg=declared.get("spine_amplitude_deg"),
             samples=samples, home_qpos=home, mujoco=mujoco,
+            # ADR-777: the plantigrade stance ADR-776 gave the generator.
+            heels=declared.get("heels"), heel_from=float(declared.get("heel_from") or 0.0),
+            body_drop_m=mm("body_drop_mm") or 0.0,
+            body_pitch_deg=float(declared.get("body_pitch_deg") or 0.0),
+            stance_shift_m={foot: float(v) / 1000.0
+                            for foot, v in dict(declared.get("stance_shift_mm") or {}).items()} or None,
         )
     except CadexGait.GaitError as error:
         raise DynamicsError(

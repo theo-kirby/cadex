@@ -4617,6 +4617,11 @@ class AssemblyDomainAPI:
         pitch_amplitude_deg: float | None = None,
         spine: DomainValue | None = None,
         spine_amplitude_deg: float | None = None,
+        heels: Mapping[str, DomainValue] | None = None,
+        heel_from: float | None = None,
+        body_drop_mm: float | None = None,
+        body_pitch_deg: float | None = None,
+        stance_shift_mm: Mapping[str, float] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Declare a procedural gait reference for a legged task (ADR-702, ADR-703).
@@ -4641,6 +4646,16 @@ class AssemblyDomainAPI:
         into the task bundle, where the dashboard plays it as a kinematic
         rollout before anything trains. A stride the legs cannot reach is
         refused, naming the leg, the moment and the joints at a stop.
+
+        **A plantigrade stance (ADR-776, ADR-777).** ``heels`` maps some
+        feet (``{"LH": hock_l, "RH": hock_r}``) to a component above each
+        foot, carried by that leg; while the foot is down, that
+        component's lowest collision point is held on the ground too, from
+        ``heel_from`` (a share of the stance, default 0) to toe-off: the
+        whole foot laid down to the heel. ``body_drop_mm`` lowers the trunk
+        below its standing height and ``body_pitch_deg`` pitches it nose-up
+        for the whole stride; ``stance_shift_mm`` moves a foot's stance
+        forward of its standing place (``{"LH": 120, "RH": 120}``).
         """
 
         operation = "gait"
@@ -4725,6 +4740,45 @@ class AssemblyDomainAPI:
                 operation, "spine_amplitude_deg", spine_amplitude_deg,
                 minimum=0.0, maximum=60.0,
             )
+        for parameter, mapping in (("heels", heels), ("stance_shift_mm", stance_shift_mm)):
+            if mapping is None:
+                continue
+            if (not isinstance(mapping, Mapping) or not mapping
+                    or not set(mapping) <= set(labels)):
+                raise _error(
+                    operation, parameter,
+                    "expected a mapping from some of " + ", ".join(labels)
+                    + (" to a component above that foot" if parameter == "heels"
+                       else " to a forward shift in mm"), mapping,
+                )
+        if heels is not None:
+            properties["heels"] = {
+                foot: _domain_value(operation, f"heels[{foot!r}]", heels[foot],
+                                    output_type="component_link")
+                for foot in labels if foot in heels
+            }
+        if heel_from is not None:
+            if heels is None:
+                raise _error(operation, "heel_from",
+                             "is when a heel goes down: name the heels with heels=",
+                             heel_from)
+            properties["heel_from"] = _number(
+                operation, "heel_from", heel_from, minimum=0.0, maximum=0.99,
+            )
+        if body_drop_mm is not None:
+            properties["body_drop_mm"] = _number(
+                operation, "body_drop_mm", body_drop_mm, minimum=0.0, maximum=5000.0,
+            )
+        if body_pitch_deg is not None:
+            properties["body_pitch_deg"] = _number(
+                operation, "body_pitch_deg", body_pitch_deg, minimum=-45.0, maximum=45.0,
+            )
+        if stance_shift_mm is not None:
+            properties["stance_shift_mm"] = {
+                foot: _number(operation, f"stance_shift_mm[{foot!r}]", stance_shift_mm[foot],
+                              minimum=-5000.0, maximum=5000.0)
+                for foot in labels if foot in stance_shift_mm
+            }
         return self._value(
             operation, "gait", label=_label(operation, label), **properties
         )
@@ -5669,6 +5723,9 @@ class AssemblyDomainAPI:
             named_parts = [
                 (f"reference.feet[{index}]", entry)
                 for index, entry in enumerate(gait_value.properties.get("feet", ()))
+            ] + [
+                (f"reference.heels[{foot!r}]", entry)
+                for foot, entry in dict(gait_value.properties.get("heels") or {}).items()
             ]
             for where, component in named_parts:
                 if id(component) not in component_ids:

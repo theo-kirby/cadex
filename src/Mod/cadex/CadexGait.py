@@ -514,9 +514,8 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
     and the lower hips, a foot laid flat to the heel needs.
     ``stance_shift_m`` moves a foot's stance forward of its standing place
     (``{"LH": 0.06}``): where a gallop's hind feet land, under the belly.
-    These plantigrade options are the generator's alone: ``assembly.gait``
-    does not pass them yet (``docs/probes/orun11/plantigrade_reach.py``
-    reads a leg's reach with them).
+    ``assembly.gait`` passes them as ``heels``, ``heel_from``,
+    ``body_drop_mm``, ``body_pitch_deg`` and ``stance_shift_mm`` (ADR-777).
     """
 
     import numpy as np  # noqa: PLC0415

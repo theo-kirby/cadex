@@ -5106,6 +5106,16 @@ def _gait_input(
             resolved[name] = float(properties[name])
     if properties.get("spine") is not None:
         resolved["spine_joint"] = joint_outputs[id(properties["spine"])]
+    # ADR-777: a plantigrade stance, absent unless declared, so a clip stays the one it was.
+    if properties.get("heels"):
+        resolved["heels"] = {foot: component_outputs[id(value)]
+                             for foot, value in dict(properties["heels"]).items()}
+    for name in ("heel_from", "body_drop_mm", "body_pitch_deg"):
+        if properties.get(name) is not None:
+            resolved[name] = float(properties[name])
+    if properties.get("stance_shift_mm"):
+        resolved["stance_shift_mm"] = {foot: float(v)
+                                       for foot, v in dict(properties["stance_shift_mm"]).items()}
     return resolved
 
 

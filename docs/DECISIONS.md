@@ -44976,3 +44976,50 @@ exported model:
 
 `pixi run test-engine`: 157 passed, 3 skipped. After `pixi run build-engine`,
 `CUDA_VISIBLE_DEVICES= pytest cli/tests`: 53 passed.
+
+## ADR-777 — `assembly.gait` declares a plantigrade stance (2026-10-18, orun11)
+
+**Context.** ADR-776 gave `CadexGait.generate` a plantigrade stance
+(`heels`, `heel_from`, `body_drop_m`, `body_pitch_deg`, `stance_shift_m`)
+but left it off the script surface until a stance was reachable. orun11
+rung 7 widened orun11-cat's hind hip and knee stops (d6fe5680), and
+`docs/probes/orun11/hind_range.py` found a 0.7 m plantigrade clip inside
+them. A task can only train on it if the script can declare it.
+
+**Decision.** `assembly.gait` takes, all optional:
+
+- `heels`: a mapping from some of the gait's foot labels (`LH`, `RH`, ...)
+  to a component above that foot, carried by that leg (the generator
+  refuses one that is not);
+- `heel_from`: the share of the stance, in [0, 0.99], from which the heel
+  is held down to toe-off; it needs `heels`;
+- `body_drop_mm` (≥ 0) and `body_pitch_deg` (±45): the trunk lowered and
+  pitched nose-up for the whole stride;
+- `stance_shift_mm`: a mapping from foot labels to a forward shift of that
+  foot's stance, ±5,000 mm.
+
+`assembly.task(reference=...)` checks each heel is a listed component, as it
+does the feet. The worker resolves the heels to body names and passes the
+lengths in mm; CadexDynamics converts them to the generator's metres. A gait
+that declares none of them resolves to the dictionary it always did, so
+every existing bundle and clip is byte-identical.
+
+**Consequences.** orun11-cat's `gallop_heel` parameter (default 1 from
+rung 8) declares its gallop clip with the hock cases as heels from half the
+stance, the trunk 60 mm down and 6° nose-up, the hind stance 120 mm forward,
+duty 0.2 (its own `heel_duty`), swing 40 mm. The project stores
+`gallop_duty` at 0.25, which overrides a script default, and at duty 0.25
+no plantigrade clip is reachable: two builds were refused for it ("leg RH
+cannot reach its swing target at 0.952 of the stride ... j_knee_r, j_hock_r
+at a stop"), so the plantigrade clip takes a parameter of its own. No
+protocol, tool or trainer change.
+
+**Evidence.** On the training bundle's model (07a92830), at 0.7 m and duty
+0.2, 106 of 432 settings are reachable (swing 30–50 mm, pitch amplitude
+0/2°, drop 50–80 mm, pitch 4–8°, shift 100–140 mm, heel from 0.5/0.6). All
+but four have a hind joint at a stop somewhere in the stride; the best
+margin is 0.3°. `docs/probes/orun11/plantigrade-clip.md` has the clip, its
+static check (hock case 0.0 mm at push-off, sole 9.1° and 10.3° toes-up
+against M1's 8°), and the first screen on it. `pixi run test-engine`: 157
+passed, 3 skipped. After `pixi run build-engine`, `CUDA_VISIBLE_DEVICES=
+pytest cli/tests`: 53 passed.

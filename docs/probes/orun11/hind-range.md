@@ -17,8 +17,10 @@ PYTHONPATH=cli pixi run python docs/probes/orun11/judge.py \
 
 The reports are `orun11-cat/evaluations/rod1-s1-<checkpoint>/evaluation.json`.
 The evaluation reads the model and task from the run's bundle (4cd04aaf).
-The `accepted_revision` field names the project's head when it was judged,
-which is the range change below.
+The `accepted_revision` field names the project's head when it was judged:
+64da27fd for checkpoints 25–125 and 1cb71c3e for best and final, both
+intermediate revisions of the range change below, not its accepted
+d6fe5680.
 
 | checkpoint | pass | failing (median, seeds passing) | top 2 s m/s min / med / max | hock down LH / RH | hock at toe-off LH / RH | hock stance height LH / RH mm | sole LH / RH deg | touchdown Hz LF RF LH RH | stride Hz | worst RMS/rated | peak ratio | stride | rod closure LH, RH: median / max mm |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
