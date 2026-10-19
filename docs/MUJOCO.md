@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-18
+Verified against source: 2026-10-19
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -1710,7 +1710,11 @@ schedule, and body height and pitch. No motion capture is involved.
   `heels=`, `heel_from=`, `body_drop_m=`, `body_pitch_deg=` and
   `stance_shift_m=` ask for a plantigrade stance (a heel body's lowest
   point held on the ground from a share of the stance to toe-off, under a
-  crouched trunk); they are the generator's only, not yet `assembly.gait`'s.
+  crouched trunk); `assembly.gait` declares them as `heels=`, `heel_from=`,
+  `body_drop_mm=`, `body_pitch_deg=` and `stance_shift_mm=` (ADR-777).
+  The heel is eased, not stepped (ADR-778): from touchdown it falls
+  linearly to the first held sample, and after toe-off it rises over three
+  swing samples to the height a free swing gives it.
 - **Two feet (ADR-754).** `legs` keyed `L`, `R` builds a biped's stride:
   `walk` (duty 0.6) and `run` (duty 0.35), the feet half a stride apart and
   the left foot the phase reference (Alexander 1984). In a task,

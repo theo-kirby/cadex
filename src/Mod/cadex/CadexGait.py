@@ -137,6 +137,9 @@ IK_ITERATIONS = 400
 #: The largest joint step one IK iteration takes, rad.
 MAX_STEP_RAD = 0.05
 
+#: Swing samples over which a held heel is eased back up (ADR-778).
+HEEL_EASE_SAMPLES = 3
+
 
 class GaitError(ValueError):
     """A gait request that cannot be honoured, with a machine-readable reason."""
@@ -481,6 +484,48 @@ def _leg_rows(model: Any, data: Any, mj: Any, foot: str, target: Any, point: Any
     return errs, jacs
 
 
+def _held(heel_target: Mapping[str, Sequence[float | None]], foot: str, k: int, default: Any = None) -> Any:
+    """Whether ``foot``'s heel has a target at sample ``k`` (no default), or that target."""
+
+    value = heel_target[foot][k] if foot in heel_target else None
+    if default is None:
+        return value is not None
+    return default if value is None else value
+
+
+def _eased_heels(heel_down: Mapping[str, Sequence[int]], contact: Mapping[str, Sequence[int]],
+                 free: Mapping[str, Any]) -> dict[str, list[float | None]]:
+    """Each heel's target height per sample, eased into and out of its hold (ADR-778).
+
+    ``free`` is the heel heights of a solve that holds only the down samples.
+    From the stance's first sample, where the heel is free, the target falls
+    linearly to the first held sample; after the last held sample it rises
+    linearly over :data:`HEEL_EASE_SAMPLES` swing samples to the free height
+    there. Without the ease a duty-0.2 stance drops the heel ~40 mm and lifts
+    it ~65 mm in one sample, and the hind joints step 22-46 deg.
+    """
+
+    out: dict[str, list[float | None]] = {}
+    for foot, down in heel_down.items():
+        n = len(down)
+        target: list[float | None] = [0.0 if d else None for d in down]
+        swing = sum(1 for c in contact[foot] if not c)
+        for k in range(n):
+            if down[k] and not down[k - 1]:
+                first = k  # back to the touchdown, the stance's first sample
+                while contact[foot][(first - 1) % n] and not down[(first - 1) % n] and k - first < n:
+                    first -= 1
+                for i in range(1, k - first):
+                    target[(first + i) % n] = float(free[foot][first % n]) * (1.0 - i / (k - first))
+            if down[k] and not down[(k + 1) % n]:
+                ease = min(HEEL_EASE_SAMPLES, swing - 1)
+                top = float(free[foot][(k + ease + 1) % n])
+                for i in range(1, ease + 1):
+                    target[(k + i) % n] = top * i / (ease + 1)
+        out[foot] = target
+    return out
+
+
 def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any], speed_m_s: float, *,
              stride_length_m: float | None = None, swing_height_m: float | None = None,
              pitch_amplitude_deg: float | None = None, spine_joint: str | None = None,
@@ -625,120 +670,128 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
     heel_down = {foot: [int(bool(contact[foot][k]) and ((k / samples - offsets[foot]) % 1.0)
                             >= float(heel_from) * duty - 1e-12) for k in range(samples)]
                  for foot in heel_geom}
-    q = home.copy()
+    # the heel's height over its ground per sample, or None where it is free:
+    # 0 while held; the first pass solves only those, the second eases the
+    # heel down from touchdown and back up after toe-off (ADR-778)
+    heel_target = {foot: [0.0 if d else None for d in heel_down[foot]] for foot in heel_geom}
     jacp = np.zeros((3, model.nv))
     damping, posture = 1e-6, 0.1
-    for k in range(samples):
-        t = k * dt
-        phase = k / samples
-        x = speed_m_s * t
-        pitch = math.radians(body_pitch_deg) + pitch_amp * math.sin(2.0 * math.pi * phase)
-        q[:3] = base_home + np.array([x, 0.0, -float(body_drop_m)])
-        q[3:7] = _pitch_quaternion(quat_home, pitch)
-        if spine is not None:
-            q[model.jnt_qposadr[spine]] = home[model.jnt_qposadr[spine]] + spine_amp * math.sin(
-                2.0 * math.pi * phase)
-        for foot in feet:
-            travel, lift, _down = foot_path(phase, offsets[foot], duty, length, swing)
-            # the stance this foot is in (or swinging from) began at its offset;
-            # its centre is duty/2 later, and the foot sat at home under the body then
-            since = (phase - offsets[foot]) % 1.0
-            centre_t = t - since * period + 0.5 * duty * period
-            target = base_home + foot_home[foot] + np.array([speed_m_s * centre_t + travel, 0.0, lift])
-            targets[foot][k] = target
-        # solve every leg against its own targets with the base and spine set
-        for _ in range(IK_ITERATIONS):
-            data.qpos[:] = q
-            mj.mj_kinematics(model, data)
-            mj.mj_comPos(model, data)
-            worst = 0.0
+    for attempt in range(2 if any(any(h) for h in heel_down.values()) else 1):
+        if attempt:
+            heel_target = _eased_heels(heel_down, contact, heel_height)
+        q = home.copy()
+        for k in range(samples):
+            t = k * dt
+            phase = k / samples
+            x = speed_m_s * t
+            pitch = math.radians(body_pitch_deg) + pitch_amp * math.sin(2.0 * math.pi * phase)
+            q[:3] = base_home + np.array([x, 0.0, -float(body_drop_m)])
+            q[3:7] = _pitch_quaternion(quat_home, pitch)
+            if spine is not None:
+                q[model.jnt_qposadr[spine]] = home[model.jnt_qposadr[spine]] + spine_amp * math.sin(
+                    2.0 * math.pi * phase)
             for foot in feet:
-                rows_err, rows_jac = _leg_rows(model, data, mj, foot, targets[foot][k], world_point(foot),
-                                               feet_body[foot], closures[foot], jacp,
-                                               heel_geom.get(foot) if heel_down.get(foot, [0] * samples)[k] else None,
-                                               ground[foot])
-                err = np.concatenate(rows_err)
-                worst = max(worst, float(np.linalg.norm(err)))
-                n_loops = len(closures[foot]["connects"]) + len(closures[foot]["couplings"])
-                if np.linalg.norm(err) < 1e-6:
-                    continue
-                joints = list(chains[foot]) + closures[foot]["passive"]
-                cols = [int(model.jnt_dofadr[j]) for j in joints]
-                adrs = [int(model.jnt_qposadr[j]) for j in joints]
-                # a loop is a hard constraint, the feet are targets: the closure
-                # rows weigh CLOSURE_WEIGHT times a foot's, so a foot the leg
-                # cannot reach is missed at the foot, not by opening the loop
-                weight = np.concatenate([np.full(len(e), CLOSURE_WEIGHT if n >= len(rows_err) - n_loops else 1.0)
-                                         for n, e in enumerate(rows_err)])
-                err = err * weight
-                full = np.vstack(rows_jac) * weight[:, None]
-                rows = len(err)
-                # an active set: a joint at a stop that the step would push
-                # further is taken out, and the rest re-solve without it
-                free = list(range(len(joints)))
-                for _pass in range(len(joints)):
-                    J = full[:, [cols[i] for i in free]]
-                    pinv = J.T @ np.linalg.inv(J @ J.T + damping * np.eye(rows))
-                    pull = posture * (home[[adrs[i] for i in free]] - q[[adrs[i] for i in free]])
-                    # the error by damped least squares; the pull toward home only in
-                    # the null space, so it never trades against the foot
-                    dq = pinv @ err + (np.eye(len(free)) - pinv @ J) @ pull
-                    pinned = []
+                travel, lift, _down = foot_path(phase, offsets[foot], duty, length, swing)
+                # the stance this foot is in (or swinging from) began at its offset;
+                # its centre is duty/2 later, and the foot sat at home under the body then
+                since = (phase - offsets[foot]) % 1.0
+                centre_t = t - since * period + 0.5 * duty * period
+                target = base_home + foot_home[foot] + np.array([speed_m_s * centre_t + travel, 0.0, lift])
+                targets[foot][k] = target
+            # solve every leg against its own targets with the base and spine set
+            for _ in range(IK_ITERATIONS):
+                data.qpos[:] = q
+                mj.mj_kinematics(model, data)
+                mj.mj_comPos(model, data)
+                worst = 0.0
+                for foot in feet:
+                    rows_err, rows_jac = _leg_rows(model, data, mj, foot, targets[foot][k], world_point(foot),
+                                                   feet_body[foot], closures[foot], jacp,
+                                                   heel_geom.get(foot) if _held(heel_target, foot, k) else None,
+                                                   ground[foot] + _held(heel_target, foot, k, 0.0))
+                    err = np.concatenate(rows_err)
+                    worst = max(worst, float(np.linalg.norm(err)))
+                    n_loops = len(closures[foot]["connects"]) + len(closures[foot]["couplings"])
+                    if np.linalg.norm(err) < 1e-6:
+                        continue
+                    joints = list(chains[foot]) + closures[foot]["passive"]
+                    cols = [int(model.jnt_dofadr[j]) for j in joints]
+                    adrs = [int(model.jnt_qposadr[j]) for j in joints]
+                    # a loop is a hard constraint, the feet are targets: the closure
+                    # rows weigh CLOSURE_WEIGHT times a foot's, so a foot the leg
+                    # cannot reach is missed at the foot, not by opening the loop
+                    weight = np.concatenate([np.full(len(e), CLOSURE_WEIGHT if n >= len(rows_err) - n_loops else 1.0)
+                                             for n, e in enumerate(rows_err)])
+                    err = err * weight
+                    full = np.vstack(rows_jac) * weight[:, None]
+                    rows = len(err)
+                    # an active set: a joint at a stop that the step would push
+                    # further is taken out, and the rest re-solve without it
+                    free = list(range(len(joints)))
+                    for _pass in range(len(joints)):
+                        J = full[:, [cols[i] for i in free]]
+                        pinv = J.T @ np.linalg.inv(J @ J.T + damping * np.eye(rows))
+                        pull = posture * (home[[adrs[i] for i in free]] - q[[adrs[i] for i in free]])
+                        # the error by damped least squares; the pull toward home only in
+                        # the null space, so it never trades against the foot
+                        dq = pinv @ err + (np.eye(len(free)) - pinv @ J) @ pull
+                        pinned = []
+                        for n, i in enumerate(free):
+                            lo, hi = limits[joints[i]]
+                            v = q[adrs[i]]
+                            if (v <= lo + 1e-9 and dq[n] < 0.0) or (v >= hi - 1e-9 and dq[n] > 0.0):
+                                pinned.append(i)
+                        if not pinned or len(free) - len(pinned) < 1:
+                            break
+                        free = [i for i in free if i not in pinned]
+                    # a trust region: a long step overshoots into the stops
+                    biggest = float(np.max(np.abs(dq))) if len(dq) else 0.0
+                    if biggest > MAX_STEP_RAD:
+                        dq = dq * (MAX_STEP_RAD / biggest)
                     for n, i in enumerate(free):
                         lo, hi = limits[joints[i]]
-                        v = q[adrs[i]]
-                        if (v <= lo + 1e-9 and dq[n] < 0.0) or (v >= hi - 1e-9 and dq[n] > 0.0):
-                            pinned.append(i)
-                    if not pinned or len(free) - len(pinned) < 1:
-                        break
-                    free = [i for i in free if i not in pinned]
-                # a trust region: a long step overshoots into the stops
-                biggest = float(np.max(np.abs(dq))) if len(dq) else 0.0
-                if biggest > MAX_STEP_RAD:
-                    dq = dq * (MAX_STEP_RAD / biggest)
-                for n, i in enumerate(free):
-                    lo, hi = limits[joints[i]]
-                    q[adrs[i]] = min(hi, max(lo, q[adrs[i]] + dq[n]))
-            if worst < 1e-5:
-                break
-        data.qpos[:] = q
-        mj.mj_kinematics(model, data)
-        for foot in feet:
-            rows_err, _jac = _leg_rows(model, data, mj, foot, targets[foot][k], world_point(foot),
-                                       feet_body[foot], closures[foot], None,
-                                       heel_geom.get(foot) if heel_down.get(foot, [0] * samples)[k] else None,
-                                       ground[foot])
-            held = bool(heel_down.get(foot, [0] * samples)[k])
-            loop = float(max((np.max(np.abs(e)) for e in rows_err[1 + held:]), default=0.0))
-            closure_miss[foot] = max(closure_miss[foot], loop)
-            if foot in heel_geom:
-                g = heel_geom[foot]
-                heel_height[foot][k] = float(data.geom_xpos[g][2] - _below_centre(model, data, g, mj) - ground[foot])
-            miss = float(np.linalg.norm(targets[foot][k] - world_point(foot)))
-            if held:
-                miss = max(miss, abs(float(heel_height[foot][k])))
-            miss = max(miss, loop)
-            residual[foot] = max(residual[foot], miss)
-            if miss > TOLERANCE_M:
-                stops = []
-                for j in chains[foot]:
-                    lo, hi = limits[j]
-                    v = q[model.jnt_qposadr[j]]
-                    if v <= lo + 1e-6 or v >= hi - 1e-6:
-                        stops.append(model.joint(j).name)
-                what = ("close its linkage" if loop > TOLERANCE_M else
-                        "put its heel down" if held and abs(float(heel_height[foot][k])) > TOLERANCE_M else
-                        f"reach its {('stance' if contact[foot][k] else 'swing')} target")
-                raise GaitUnreachable(
-                    f"leg {foot} cannot {what} "
-                    f"at {phase:.3f} of the stride: it misses by {1000 * miss:.1f} mm"
-                    + (f" with {', '.join(stops)} at a stop" if stops else "")
-                    + f" (stride {1000 * length:.0f} mm, swing {1000 * swing:.0f} mm)",
-                    reason="unreachable", leg=foot, phase=phase, miss_mm=1000 * miss,
-                    joints_at_stop=stops, stride_length_m=length, swing_height_m=swing,
-                    target_m=[float(v) for v in targets[foot][k]])
-        qpos[k] = q
-        body_x[k], body_z[k], body_pitch[k] = q[0], q[2], pitch
+                        q[adrs[i]] = min(hi, max(lo, q[adrs[i]] + dq[n]))
+                if worst < 1e-5:
+                    break
+            data.qpos[:] = q
+            mj.mj_kinematics(model, data)
+            for foot in feet:
+                rows_err, _jac = _leg_rows(model, data, mj, foot, targets[foot][k], world_point(foot),
+                                           feet_body[foot], closures[foot], None,
+                                           heel_geom.get(foot) if _held(heel_target, foot, k) else None,
+                                           ground[foot] + _held(heel_target, foot, k, 0.0))
+                held = _held(heel_target, foot, k)
+                loop = float(max((np.max(np.abs(e)) for e in rows_err[1 + held:]), default=0.0))
+                closure_miss[foot] = max(closure_miss[foot], loop)
+                if foot in heel_geom:
+                    g = heel_geom[foot]
+                    heel_height[foot][k] = float(data.geom_xpos[g][2] - _below_centre(model, data, g, mj) - ground[foot])
+                miss = float(np.linalg.norm(targets[foot][k] - world_point(foot)))
+                if held:
+                    miss = max(miss, abs(float(heel_height[foot][k]) - heel_target[foot][k]))
+                miss = max(miss, loop)
+                residual[foot] = max(residual[foot], miss)
+                if miss > TOLERANCE_M:
+                    stops = []
+                    for j in chains[foot]:
+                        lo, hi = limits[j]
+                        v = q[model.jnt_qposadr[j]]
+                        if v <= lo + 1e-6 or v >= hi - 1e-6:
+                            stops.append(model.joint(j).name)
+                    what = ("close its linkage" if loop > TOLERANCE_M else
+                            "put its heel down" if held and abs(float(heel_height[foot][k]) - heel_target[foot][k])
+                            > TOLERANCE_M else
+                            f"reach its {('stance' if contact[foot][k] else 'swing')} target")
+                    raise GaitUnreachable(
+                        f"leg {foot} cannot {what} "
+                        f"at {phase:.3f} of the stride: it misses by {1000 * miss:.1f} mm"
+                        + (f" with {', '.join(stops)} at a stop" if stops else "")
+                        + f" (stride {1000 * length:.0f} mm, swing {1000 * swing:.0f} mm)",
+                        reason="unreachable", leg=foot, phase=phase, miss_mm=1000 * miss,
+                        joints_at_stop=stops, stride_length_m=length, swing_height_m=swing,
+                        target_m=[float(v) for v in targets[foot][k]])
+            qpos[k] = q
+            body_x[k], body_z[k], body_pitch[k] = q[0], q[2], pitch
 
     # a rod's passive pins are in ``qpos`` and named under ``ik.closures``, not posed
     joint_ids = sorted({j for joints in chains.values() for j in joints} | set(body_joints))
@@ -786,7 +839,7 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
                   if any(c["connects"] or c["couplings"] for c in closures.values()) else {})},
         **({"heels": {foot: {"body": model.body(int(model.geom_bodyid[g])).name,
                              "from_stance_share": float(heel_from), "down": heel_down[foot],
-                             "height_m": heel_height[foot].tolist()}
+                             "height_m": heel_height[foot].tolist(), "target_m": heel_target[foot]}
                       for foot, g in heel_geom.items()}} if heel_geom else {}),
     }
 

@@ -45023,3 +45023,53 @@ static check (hock case 0.0 mm at push-off, sole 9.1° and 10.3° toes-up
 against M1's 8°), and the first screen on it. `pixi run test-engine`: 157
 passed, 3 skipped. After `pixi run build-engine`, `CUDA_VISIBLE_DEVICES=
 pytest cli/tests`: 53 passed.
+
+## ADR-778 — The gait generator eases a heel into and out of its hold (2026-10-19, orun11)
+
+**Context.** ADR-776's plantigrade stance holds a heel on the ground from
+`heel_from` of the stance to toe-off, and leaves it free elsewhere. On
+orun11-cat's gallop clip (duty 0.2, 21 samples a stride) a hind stance is
+four or five samples, so the heel drops 31–42 mm to the floor in one 19.8 ms
+sample and lifts 66 mm in the next after toe-off; the hip, knee and hock
+step 23–46° at once (1,100–2,300 °/s). orun11 iteration 8 found the hock
+servo saturates after 17° of error, so the policy is asked to track a pose
+no drive can follow (`docs/probes/orun11/hind-asymmetry.md`).
+
+**Decision.** `CadexGait.generate` solves a clip with heels in two passes.
+The first holds only the down samples, as before. The second gives each
+heel a target height on the samples around its hold (`_eased_heels`): from
+the stance's first sample, where the heel is free, the target falls
+linearly to the first held sample; after the last held sample it rises
+linearly over `HEEL_EASE_SAMPLES` (3) swing samples to the first pass's
+free height there. The heel row is the same row, aimed at a height instead
+of the ground; a target the leg cannot reach is a `GaitUnreachable` naming
+the heel, as a missed hold is. Each heel in the clip now records
+`target_m` per sample (null where free) beside `down` and `height_m`. A
+clip with no held heel is solved once, as before. With `heel_from` 0 there
+is no fall (the heel is held from touchdown) but the rise still applies.
+
+**Consequences.** Every clip with a held heel changes: today only
+orun11-cat's. A policy trained on the stepped clip is not a warm start for
+the eased one (the trainer holds the reference byte-equal). The held
+samples, and so M1's push-off pose, are unchanged. No protocol, tool,
+script-surface or trainer change.
+
+**Evidence.** `docs/probes/orun11/heel_ease.py` regenerates hock80-s1's
+bundle clip (orun11-cat 2c5a51e6) on its exported model; with ADR-777's
+code it is byte-equal to the bundle. Eased, against stepped:
+
+| | LH stepped | LH eased | RH stepped | RH eased |
+|---|---|---|---|---|
+| heel over floor through stance and lift-off (mm) | 25 33 42 **0 0** 66 81 91 | 25 17 8 **0 0** 25 50 75 | 31 39 **0 0** 66 79 | 31 15 **0 0** 25 50 |
+| hip, largest step (deg) | 24.8 | 9.6 | 25.2 | 10.5 |
+| knee, largest step (deg) | 43.2 | 20.9 | 45.8 | 23.7 |
+| hock, largest step (deg) | 24.7 | 15.1 | 22.6 | 17.1 |
+
+Ease lengths of 1, 2, 3 and 4 swing samples gave a largest knee step of
+30.7/24.5/20.9/18.5° (LH); 3 was kept, past which the knee's toe-off step
+(the foot's own swing lift) dominates. `clip_static.py` on the eased clip:
+push-off unchanged (LH sole +6.2°, case 0.0 mm; RH +5.1°, 0.0 mm, both
+pass M1), and the sole now stays within 2.5° of flat while the foot lays
+down (it was 8–11° toes-down at the sample before the hold). orun10-cat
+t2-g4's clip (no heels) regenerates byte-equal. `pixi run test-engine`:
+157 passed, 3 skipped.
