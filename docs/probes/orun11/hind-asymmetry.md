@@ -69,11 +69,14 @@ Bold samples are the clip's heel-down ones.
 2. **The hock drive cannot carry a stance through the paw.** With the
    toes 77–81 mm ahead of the hock axis at toe-off, the AK60-6's 9 N·m
    peak resists only **about 110–120 N at the paw**. One hind
-   paw's load in this gallop is far larger: the hinds carry their stride's
-   share of 308 N body weight in 0.10–0.12 s of a 0.42 s stride, about
-   0.5 × 308 × 0.42 / 0.11 ≈ 590 N averaged over stance (an estimate from
-   the duty, not a measured force: the traces carry no contact forces),
-   about 5× what the hock holds. M1's 3× body-weight case asks more again.
+   paw's load in this gallop is larger: the hind pair carries about half
+   of the 308 N body weight over a stride, so each hind paw carries about
+   a quarter, in 0.10–0.12 s of a 0.42 s stride: 0.25 × 308 × 0.42 / 0.11
+   ≈ 295 N averaged over stance (an estimate from the duty, not a measured
+   force: the traces carry no contact forces), about 2.5× what the hock
+   holds. M1's 3× body-weight case asks more again. (The first version of
+   this note gave 590 N: it put the pair's half on one paw, 2× too high.
+   Corrected in orun11 iteration 9.)
 3. **The leg that stays up stands with its foot reversed.** At its
    toe-off the toes are 42–72 mm *behind* the hock axis: the hock is
    carried forward over the paw, so the load's moment about the hock has
@@ -112,9 +115,10 @@ more peak, from the catalog: the AK80-9 V3 (22 N·m peak, 490 g against
 the AK60-6's 380 g; holds about 280 N at a 78 mm lever) or the AK70-10
 (24.8 N·m, 621 g; about 320 N). The hip and knee's AK10-9 (53 N·m) would
 hold about 680 N but is the heaviest tier, far out on the leg. The
-lighter two do not reach the ~590 N estimate through the toes alone, so
-the screen also measures whether the case on the floor at push-off (the
-plantigrade load path the down leg uses now) carries the rest: what it
+AK80-9's ~280 N is about 95% of the ~295 N estimate through the toes
+alone, and the AK70-10's ~320 N covers it; the screen also measures whether
+the case on the floor at push-off (the plantigrade load path the down leg
+uses now) carries the rest: what it
 tests is a hock that holds the foot until the case lands, on both legs,
 rather than collapsing past the clip on one and reversing on the other.
 A second, smaller change for the same screen or the one after: smooth the clip's heel-down so it moves
