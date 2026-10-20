@@ -3085,7 +3085,12 @@ or unsupported geometry, limited joints of any other kind (cylindrical included)
 flexible components, coupled/static-joint graphs, and unsolved
 assemblies produce explicit `incomplete` coverage and a reason.
 
-**A rebuild measures only what changed** (ADR-622). Every exact static pair
+**A rebuild builds and measures only what changed** (ADR-622, ADR-782).
+Each part output's BREP and facts are kept in
+`script_artifacts/part-cache/` by the part's content identity and the
+engine's fingerprint, so an edit to one foot rebuilds that foot (and what
+is built from it) and reads every other part back, byte for byte; a part
+holding a `cable`, `bundle` or `solder` is always rebuilt. Every exact static pair
 and every swept pair is kept in the project's `script_artifacts/fit-cache/`,
 keyed by the SHA-256 of both world solids' BREPs (placement included), the
 pair's motion at every sample, and the engine's measuring code and kernel

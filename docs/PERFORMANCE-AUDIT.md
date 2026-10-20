@@ -1,6 +1,6 @@
 # PERFORMANCE-AUDIT.md — Build cost on large creature assemblies
 
-Verified against source: 2026-10-16
+Verified against source: 2026-10-19
 
 What this is: a measured audit of where the time goes when an agent builds
 and reads a large catalog assembly through `cadex mcp`, done after the
@@ -167,7 +167,9 @@ only the pairs it measured and counts the rest); R2 as ADR-690 (the pair
 budget counts the pairs the boxes leave near, and a longer run sweeps for
 longer); R4 in part as ADR-686 (a sample is measured only where a lower
 bound cannot settle it); R9 in part as ADR-689 (`cadex mcp` opens
-unrestored). ADR-685 holds `cadex mcp`'s engine open three times as long as
+unrestored). On 2026-10-19, R3 and R5 landed as ADR-781, and the parts
+themselves are now kept between builds (ADR-782); §7 has that profile.
+ADR-685 holds `cadex mcp`'s engine open three times as long as
 opening it took, which bears on R10. The table is the audit as written; it
 is not re-measured. A related open item: `cadex smoke`'s exact-geometry pass
 times out on a ~100-part model (`docs/ROADMAP.md`, the frontier after
@@ -197,3 +199,44 @@ directory, `--cold` deletes the fit cache, `--keep-sweeps` keeps each sweep
 child's input), `profile_sweep.py` (one child under cProfile, optionally
 pinned to one CPU), `report_stats.py` (§2). The Codex timeline came from
 `~/.codex/sessions/2026/10/09/rollout-…-01a12197…jsonl`.
+
+## 7. A creature with skins: feline-v07 (2026-10-19)
+
+The owner's cat (~140 components, 23 skin panels, 50 joints) took ~9 minutes
+a build. A cProfile of its accepted revision, warm fit cache (550 s wall;
+the script itself 3 s):
+
+| phase | seconds | what |
+|---|---|---|
+| part shapes | 264 | skin plans (`build_skin_plan`, 23) 175, formers 36, frames ~50 |
+| panel fit (`_measure_panels`) | 111 | `Surface.parameter` for each sample's normal 50, gap statistics 34 |
+| joint creation | 82 | 137 incremental `assembly.solve()` (R5) |
+| joint sweeps | 52 | waiting on the four sweep children |
+| display tessellation | 8 | |
+
+A cold fit cache made the same build ~2,000 CPU-s: some static pairs (a
+humerus and the panel wrapped on it, 112-149 CPU-s) measured every face
+pair with overlapping boxes after a 4e-14 mm reading. The cache's key was
+the whole assembly worker (R3), which changed 24 times in the six days
+before, so a cold build was most days' first.
+
+What landed: ADR-781 (one solve after joint creation; facet normals; the
+fit after the derived outputs, so a bad task is refused ~170 s sooner; the
+fit cache keyed on its measuring code; a shell search that stops at the
+recheck distance) and ADR-782 (part outputs kept by content). Measured on
+the same revision, outside the sweeps:
+
+| build | wall | CPU |
+|---|---|---|
+| before, warm | 519 s | 605 s |
+| ADR-781, warm | 368-415 s | 462-527 s |
+| ADR-782, one paw edited | 108 s | 105 s |
+| ADR-782, one skin's thickness edited | 158 s | 223 s |
+
+What remains: the joint sweeps, ~60 s warm, and after a fit-code change
+several builds to refill (the tail joints each meet their 90 s budget under
+load); the skin plans whenever a skin or what it wraps is edited; the panel
+gap statistics (`CadexPanels._closest_on_triangles`, all samples against all
+near triangles, ~30 s); and the 24,600 per-operation `isValid` checks in
+`_build_part_shape_checked` (~30 s, on a cold part only now).
+

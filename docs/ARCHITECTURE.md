@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-10-18
+Verified against source: 2026-10-19
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -310,8 +310,13 @@ macOS). Layout:
                                 that attempt dir is pinned, Phase 5.2),
                                 latest candidate
   script_artifacts/fit-cache/   exact fit measurements by part geometry and
-                                relative placement, one file per engine
-                                version; a cache, never read as truth (ADR-622)
+                                relative placement, one file per version of
+                                the measuring code; a cache, never read as
+                                truth (ADR-622, ADR-781)
+  script_artifacts/part-cache/  each part output's BREP, facts and skin forms
+                                by content identity, one folder per engine
+                                fingerprint; a rebuild builds only the parts
+                                that changed (ADR-782)
   script_artifacts/<revision>/  staged worker attempts + serialized outputs
                                 (+ display/ tessellation buffers when
                                 requested). Retained artifacts live under

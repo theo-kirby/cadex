@@ -6354,15 +6354,102 @@ def _relative_key(placements) -> str:
     return hashlib.sha256(json.dumps(rows).encode()).hexdigest()
 
 
+#: What makes or reads a cached fit number; the version hashes these and all
+#: they reach (``_measuring_source``).
+_FIT_CACHE_ROOTS = (
+    "_FitCache", "_relative_key", "_fit_cache_version", "_measuring_source",
+    "_measure_clearance", "_measure_samples", "_sweep_payload_components",
+    "_sweep_child", "_measure_joint_sweeps",
+)
+
+
+def _measuring_source() -> bytes:
+    """The source of the fit cache's roots and of every definition they reach.
+
+    Walked on the syntax tree: a module-level function, class or constant a
+    reached body names is reached, and so is a name imported from another
+    engine module, walked in that module wherever the import would find it
+    (the worker bundle, or the installed tree for what the bundle omits). The fit cache was versioned on
+    this whole file, so each of its ~3 edits a day re-measured every project
+    from nothing: feline-v07 went from 600 to 2,000 CPU-seconds (ADR-781).
+    """
+
+    import ast
+    import importlib.util
+
+    trees: dict[str, tuple[str, dict[str, Any], dict[str, tuple[str, str]]]] = {}
+    origins: dict[str, Path | None] = {}
+
+    def origin(name: str) -> Path | None:
+        # Only the engine's own modules: FreeCAD, numpy and the standard
+        # library are the kernel's version, already in the key.
+        if name not in origins:
+            found = None
+            if name.startswith(("Cadex", "cadex_")):
+                try:
+                    spec = importlib.util.find_spec(name)
+                except (ImportError, ValueError):
+                    spec = None
+                if spec is not None and spec.origin and spec.origin.endswith(".py"):
+                    found = Path(spec.origin)
+            origins[name] = found
+        return origins[name]
+
+    def module(name: str):
+        if name not in trees:
+            path = Path(__file__) if name == Path(__file__).stem else origin(name)
+            text = path.read_text(encoding="utf-8") if path is not None and path.is_file() else ""
+            definitions: dict[str, Any] = {}
+            imported: dict[str, tuple[str, str]] = {}
+            for node in ast.parse(text).body if text else ():
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    definitions[node.name] = node
+                elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                    for target in node.targets if isinstance(node, ast.Assign) else [node.target]:
+                        if isinstance(target, ast.Name):
+                            definitions[target.id] = node
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    for alias in node.names:
+                        imported[alias.asname or alias.name] = (node.module, alias.name)
+            trees[name] = (text, definitions, imported)
+        return trees[name]
+
+    own = Path(__file__).stem
+    seen: set[tuple[str, str]] = set()
+    pending = [(own, name) for name in _FIT_CACHE_ROOTS]
+    parts: list[str] = []
+    while pending:
+        key = pending.pop()
+        if key in seen:
+            continue
+        seen.add(key)
+        text, definitions, imported = module(key[0])
+        if key[1] in imported:
+            pending.append(imported[key[1]])
+            continue
+        node = definitions.get(key[1])
+        if node is None:
+            continue
+        parts.append(f"{key[0]}.{key[1]}\n{ast.get_source_segment(text, node)}")
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Name):
+                pending.append((key[0], inner.id))
+            elif isinstance(inner, ast.ImportFrom) and inner.module:
+                pending.extend((inner.module, alias.name) for alias in inner.names)
+            elif (isinstance(inner, ast.Attribute) and isinstance(inner.value, ast.Name)
+                  and origin(inner.value.id) is not None):
+                pending.append((inner.value.id, inner.attr))
+    return "\n".join(sorted(parts)).encode("utf-8")
+
+
 def _fit_cache_version() -> str:
-    """What a cached measurement was made with: this module's bytes and the kernel's version."""
+    """What a cached measurement was made with: the measuring code and the kernel's version."""
     try:
         import FreeCAD as App
         kernel = ".".join(str(part) for part in App.Version()[:4])
     except Exception:
         kernel = "unknown"
-    source = Path(__file__).read_bytes()
-    return hashlib.sha256(source + kernel.encode("utf-8")).hexdigest()[:20]
+    return hashlib.sha256(_measuring_source() + kernel.encode("utf-8")).hexdigest()[:20]
 
 
 def _measure_clearance(
@@ -6795,7 +6882,9 @@ def _shell_distance(first, second, boxes=None, face_boxes=None):
     whole panel, B-spline skin and all. The panel's boss against the frame
     face it is cast onto now proves the 0.0 alone. The search ends when the
     least bound is not below the least distance measured, which is then the
-    shells' distance. Every box here is the geometry's
+    shells' distance, or when one reads at or below
+    :data:`_SHELL_DISTANCE_RECHECK_MM`, which the caller re-measures on the
+    solids. Every box here is the geometry's
     (:func:`_face_boxes`), not the toleranced one, which is unbounded around
     a seam of vast tolerance.
 
@@ -6833,7 +6922,11 @@ def _shell_distance(first, second, boxes=None, face_boxes=None):
     queue = [(_box_gap(found, box), 0, size(found), index, -1) for index, found in enumerate(face_box)]
     heapq.heapify(queue)
     best = math.inf
-    while queue and queue[0][0] < best:
+    # Past a reading at or below the recheck distance the caller measures the
+    # solids exactly anyway (_boundary_distance), so the rest of the search
+    # is spent: a panel wrapped on its link has every face pair bounded at 0,
+    # and feline-v07's humerus measured 237 of them, 22 s, for that one 4e-14.
+    while queue and queue[0][0] < best and best > _SHELL_DISTANCE_RECHECK_MM:
         lower, stage, extent, index, other = heapq.heappop(queue)
         if stage == 0:
             heapq.heappush(queue, (max(lower, float(faces[index].distToShape(bound)[0])), 1, extent, index, -1))
@@ -8237,9 +8330,13 @@ _PANEL_SEAM_SAMPLES = 3000
 
 def _panel_surface_samples(shape, limit):
     """Points spread over a shape's faces by area, their outward normals, and
-    the area each stands for."""
+    the area each stands for.
 
-    import FreeCAD as App
+    The normal is the facet's own: ``Face.tessellate`` winds a reversed face's
+    triangles reversed, so the cross product points out. Projecting each
+    centre back onto its surface for ``normalAt`` cost 28,800 calls and 50 s
+    of a feline-v07 build; the two agree on all but 2 of 166,581 facets.
+    """
 
     triangles = []
     for face in shape.Faces:
@@ -8249,24 +8346,20 @@ def _panel_surface_samples(shape, limit):
             continue
         for i, j, k in facets:
             a, b, c = points[i], points[j], points[k]
-            area = (b - a).cross(c - a).Length / 2.0
+            cross = (b - a).cross(c - a)
+            area = cross.Length / 2.0
             if area > 1e-9:
-                triangles.append((area, face, (a + b + c) * (1.0 / 3.0)))
+                triangles.append((area, cross * (0.5 / area), (a + b + c) * (1.0 / 3.0)))
     if not triangles:
         return [], [], 0.0
     total = sum(row[0] for row in triangles)
     step = total / float(limit)
     samples, normals = [], []
     carried = step / 2.0
-    for area, face, centre in triangles:
+    for area, normal, centre in triangles:
         carried += area
         while carried >= step:
             carried -= step
-            try:
-                u, v = face.Surface.parameter(App.Vector(centre))
-                normal = face.normalAt(u, v)
-            except Exception:
-                continue
             samples.append([centre.x, centre.y, centre.z])
             normals.append([normal.x, normal.y, normal.z])
     return samples, normals, total / float(max(len(samples), 1))
@@ -8322,7 +8415,7 @@ def _measure_panels(components, properties, component_outputs, solved, joint_dat
         welded.setdefault(first, set()).add(second)
         welded.setdefault(second, set()).add(first)
     panel_names = {name for name, _covers, _closes in panels}
-    shapes, meshes = {}, {}
+    shapes, meshes, cover_samples = {}, {}, {}
 
     def world_shape(name):
         if name not in shapes:
@@ -8408,8 +8501,10 @@ def _measure_panels(components, properties, component_outputs, solved, joint_dat
             others = near(list(covers) + holders, low, high)
             outward = hidden = 0
             for cover in covers:
-                points, directions, _ = _panel_surface_samples(world_shape(cover),
-                                                               _PANEL_COVER_SAMPLES)
+                if cover not in cover_samples:
+                    cover_samples[cover] = _panel_surface_samples(world_shape(cover),
+                                                                  _PANEL_COVER_SAMPLES)
+                points, directions, _ = cover_samples[cover]
                 if not points:
                     continue
                 O, D = np.asarray(points, dtype=float), np.asarray(directions, dtype=float)
@@ -8961,147 +9056,159 @@ def validate_and_solve_assembly(
 
     joint_data: dict[str, dict[str, Any]] = {}
     joint_objects: dict[str, Any] = {}
-    for index, value in enumerate(joint_values):
-        output_name = joint_outputs[id(value)]
-        if value.operation != "joint" or len(value.arguments) != 2:
-            raise AssemblyCandidateError(
-                f"Joint output {output_name!r} must come from api.joint."
-            )
-        properties = _properties(value, "joint")
-        kind = str(properties.get("kind") or "")
-        native_type = _JOINT_NATIVE.get(kind)
-        if native_type is None or native_type not in list(JointObject.JointTypes):
-            raise AssemblyCandidateError(
-                f"Joint output {output_name!r} requests unsupported type {kind!r}.",
-                details={
-                    "stage": "joint_type",
-                    "requested_type": kind,
-                    "native_supported_types": list(JointObject.JointTypes),
-                },
-            )
-        connectors = [
-            _resolve_connector(
-                connector,
-                component_outputs=component_outputs,
-                components=components,
-                component_sources=component_sources,
-                component_reconstructions=component_reconstructions,
-                context=f"joint output {output_name!r} connector {connector_index}",
-            )
-            for connector_index, connector in enumerate(value.arguments, start=1)
-        ]
-        if connectors[0]["component_output"] == connectors[1]["component_output"]:
-            raise AssemblyCandidateError(
-                f"Joint output {output_name!r} connects a component to itself."
-            )
-        compatibility = _compatibility(kind, connectors)
-        if not compatibility["ok"]:
-            raise AssemblyCandidateError(
-                f"Joint output {output_name!r} has connector geometry incompatible "
-                f"with a {kind} joint: {compatibility['criteria']}.",
-                details={
-                    "stage": "joint_compatibility",
-                    "joint_output": output_name,
-                    "compatibility": compatibility,
-                },
-            )
-        joint = joint_group.newObject("App::FeaturePython", f"CandidateJoint{index}")
-        JointObject.Joint(joint, list(JointObject.JointTypes).index(native_type))
-        joint_objects[output_name] = joint
-        joint.Label = str(properties.get("label") or output_name)
-        _apply_joint_properties(joint, properties)
-        joint.Offset1 = connectors[0]["offset"]
-        joint.Offset2 = connectors[1]["offset"]
-        references = [
-            [
-                item["component"],
-                [item["native_element"], item["native_anchor"]],
-            ]
-            for item in connectors
-        ]
-        try:
-            joint.Proxy.setJointConnectors(joint, references)
-        except Exception as exc:
-            raise AssemblyCandidateError(
-                f"FreeCAD could not derive connector frames for joint output "
-                f"{output_name!r}: {exc}",
-                details={
-                    "stage": "native_connector_frames",
-                    "joint_output": output_name,
-                    "joint_type": kind,
-                    "references": [
-                        {
-                            "component_output": item["component_output"],
-                            "selection": item["selection"],
-                            "element": item["element"],
-                            "anchor": item["anchor"],
-                            "occurrence_path": item["occurrence_path"],
-                            "native_element": item["native_element"],
-                            "native_anchor": item["native_anchor"],
-                            "geometry_type": item["geometry_type"],
-                        }
-                        for item in connectors
-                    ],
-                },
-            ) from exc
-        if hasattr(joint, "Suppressed"):
-            joint.Suppressed = bool(properties.get("suppressed"))
-        frames = []
-        native_sides = _native_connector_sides(
-            joint, connectors, output_name=output_name
-        )
-        for connector_index, (connector, native_side) in enumerate(
-            zip(connectors, native_sides), start=1
-        ):
-            native_reference = getattr(joint, f"Reference{native_side}")
-            local_frame = getattr(joint, f"Placement{native_side}")
-            try:
-                global_frame = UtilsAssembly.getJcsGlobalPlc(
-                    local_frame,
-                    native_reference,
+    # Each setJointConnectors solved the whole assembly again (FreeCAD's
+    # SolveInJointCreation): 137 solves and 82 s of a feline-v07 build, all
+    # superseded by the one solve below. Publication suspends it the same way
+    # (CadexScriptedDomainPublication._configure_joint).
+    import Preferences
+
+    preferences = Preferences.preferences()
+    solve_in_creation = bool(preferences.GetBool("SolveInJointCreation", True))
+    preferences.SetBool("SolveInJointCreation", False)
+    try:
+        for index, value in enumerate(joint_values):
+            output_name = joint_outputs[id(value)]
+            if value.operation != "joint" or len(value.arguments) != 2:
+                raise AssemblyCandidateError(
+                    f"Joint output {output_name!r} must come from api.joint."
                 )
+            properties = _properties(value, "joint")
+            kind = str(properties.get("kind") or "")
+            native_type = _JOINT_NATIVE.get(kind)
+            if native_type is None or native_type not in list(JointObject.JointTypes):
+                raise AssemblyCandidateError(
+                    f"Joint output {output_name!r} requests unsupported type {kind!r}.",
+                    details={
+                        "stage": "joint_type",
+                        "requested_type": kind,
+                        "native_supported_types": list(JointObject.JointTypes),
+                    },
+                )
+            connectors = [
+                _resolve_connector(
+                    connector,
+                    component_outputs=component_outputs,
+                    components=components,
+                    component_sources=component_sources,
+                    component_reconstructions=component_reconstructions,
+                    context=f"joint output {output_name!r} connector {connector_index}",
+                )
+                for connector_index, connector in enumerate(value.arguments, start=1)
+            ]
+            if connectors[0]["component_output"] == connectors[1]["component_output"]:
+                raise AssemblyCandidateError(
+                    f"Joint output {output_name!r} connects a component to itself."
+                )
+            compatibility = _compatibility(kind, connectors)
+            if not compatibility["ok"]:
+                raise AssemblyCandidateError(
+                    f"Joint output {output_name!r} has connector geometry incompatible "
+                    f"with a {kind} joint: {compatibility['criteria']}.",
+                    details={
+                        "stage": "joint_compatibility",
+                        "joint_output": output_name,
+                        "compatibility": compatibility,
+                    },
+                )
+            joint = joint_group.newObject("App::FeaturePython", f"CandidateJoint{index}")
+            JointObject.Joint(joint, list(JointObject.JointTypes).index(native_type))
+            joint_objects[output_name] = joint
+            joint.Label = str(properties.get("label") or output_name)
+            _apply_joint_properties(joint, properties)
+            joint.Offset1 = connectors[0]["offset"]
+            joint.Offset2 = connectors[1]["offset"]
+            references = [
+                [
+                    item["component"],
+                    [item["native_element"], item["native_anchor"]],
+                ]
+                for item in connectors
+            ]
+            try:
+                joint.Proxy.setJointConnectors(joint, references)
             except Exception as exc:
                 raise AssemblyCandidateError(
-                    f"FreeCAD could not resolve the global connector frame for joint "
-                    f"output {output_name!r} connector {connector_index}: {exc}",
+                    f"FreeCAD could not derive connector frames for joint output "
+                    f"{output_name!r}: {exc}",
                     details={
                         "stage": "native_connector_frames",
                         "joint_output": output_name,
-                        "connector_index": connector_index,
+                        "joint_type": kind,
+                        "references": [
+                            {
+                                "component_output": item["component_output"],
+                                "selection": item["selection"],
+                                "element": item["element"],
+                                "anchor": item["anchor"],
+                                "occurrence_path": item["occurrence_path"],
+                                "native_element": item["native_element"],
+                                "native_anchor": item["native_anchor"],
+                                "geometry_type": item["geometry_type"],
+                            }
+                            for item in connectors
+                        ],
                     },
                 ) from exc
-            frames.append(
-                {
-                    "index": connector_index,
-                    "component_output": connector["component_output"],
-                    "selection": connector["selection"],
-                    "semantic_selection": connector["semantic_selection"],
-                    "element": connector["element"],
-                    "anchor": connector["anchor"],
-                    "occurrence_path": connector["occurrence_path"],
-                    "geometry_type": connector["geometry_type"],
-                    "native_target_mode": connector["native_target_mode"],
-                    "native_hierarchy_chain": connector[
-                        "native_hierarchy_chain"
-                    ],
-                    "native_reference": _native_reference(native_reference),
-                    "offset": _placement_fact(connector["offset"]),
-                    "local_frame": _placement_fact(local_frame),
-                    "global_frame": _placement_fact(global_frame),
-                }
+            if hasattr(joint, "Suppressed"):
+                joint.Suppressed = bool(properties.get("suppressed"))
+            frames = []
+            native_sides = _native_connector_sides(
+                joint, connectors, output_name=output_name
             )
-        joint_data[output_name] = {
-            "assembly_output": assembly_output,
-            "kind": kind,
-            "native_type": native_type,
-            "parameters": dict(properties.get("parameters") or {}),
-            "length_limits_mm": properties.get("length_limits_mm"),
-            "angle_limits_degrees": properties.get("angle_limits_degrees"),
-            "suppressed": bool(properties.get("suppressed")),
-            "compatibility": compatibility,
-            "connectors": frames,
-            "native_readback": _joint_readback(joint, kind),
-        }
+            for connector_index, (connector, native_side) in enumerate(
+                zip(connectors, native_sides), start=1
+            ):
+                native_reference = getattr(joint, f"Reference{native_side}")
+                local_frame = getattr(joint, f"Placement{native_side}")
+                try:
+                    global_frame = UtilsAssembly.getJcsGlobalPlc(
+                        local_frame,
+                        native_reference,
+                    )
+                except Exception as exc:
+                    raise AssemblyCandidateError(
+                        f"FreeCAD could not resolve the global connector frame for joint "
+                        f"output {output_name!r} connector {connector_index}: {exc}",
+                        details={
+                            "stage": "native_connector_frames",
+                            "joint_output": output_name,
+                            "connector_index": connector_index,
+                        },
+                    ) from exc
+                frames.append(
+                    {
+                        "index": connector_index,
+                        "component_output": connector["component_output"],
+                        "selection": connector["selection"],
+                        "semantic_selection": connector["semantic_selection"],
+                        "element": connector["element"],
+                        "anchor": connector["anchor"],
+                        "occurrence_path": connector["occurrence_path"],
+                        "geometry_type": connector["geometry_type"],
+                        "native_target_mode": connector["native_target_mode"],
+                        "native_hierarchy_chain": connector[
+                            "native_hierarchy_chain"
+                        ],
+                        "native_reference": _native_reference(native_reference),
+                        "offset": _placement_fact(connector["offset"]),
+                        "local_frame": _placement_fact(local_frame),
+                        "global_frame": _placement_fact(global_frame),
+                    }
+                )
+            joint_data[output_name] = {
+                "assembly_output": assembly_output,
+                "kind": kind,
+                "native_type": native_type,
+                "parameters": dict(properties.get("parameters") or {}),
+                "length_limits_mm": properties.get("length_limits_mm"),
+                "angle_limits_degrees": properties.get("angle_limits_degrees"),
+                "suppressed": bool(properties.get("suppressed")),
+                "compatibility": compatibility,
+                "connectors": frames,
+                "native_readback": _joint_readback(joint, kind),
+            }
+    finally:
+        preferences.SetBool("SolveInJointCreation", solve_in_creation)
 
     joint_dependency_issues = _coupled_joint_issues(joint_data)
     if require_solved and joint_dependency_issues:
@@ -9208,67 +9315,6 @@ def validate_and_solve_assembly(
                      **diagnostics},
         )
 
-    if skip_derived or skip_fit:
-        # Fit is derived too, and advisory (_check_fit never refuses), so it
-        # can neither move a solved placement nor decline a preview. It was
-        # 0.72 s of a 0.77 s warm preview on the latency bar's part: exact
-        # bounding boxes and a boolean common over BREP the preview never
-        # returns (ADR-527). The accepting run measures it, as it always did.
-        clearance = world_geometry = attachments = clearance_sweep = panel_rows = None
-        form_containment = None
-    else:
-        _cpu_stage("assembly static fit")
-        fit_cache = _FitCache.open()
-        clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved",
-                                       floors=_declared_floors(assembly_properties, component_outputs),
-                                       cache=fit_cache)
-        world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs,
-                                    raw_result, joint_data, assembly_output)
-        attachments = _check_attachments(clearance, joint_data, assembly_output)
-        # What each declared panel does to what it covers (ADR-634). The
-        # measuring never refuses a build; fit.panels judges the numbers.
-        _cpu_stage("assembly panels")
-        try:
-            panel_rows = _measure_panels(components, assembly_properties, component_outputs,
-                                         diagnostics["status"] == "solved", joint_data,
-                                         assembly_output)
-        except Exception as exc:
-            panel_rows = [{"component": "", "error": str(exc)}]
-        # How much of the mechanism stands outside the skins' forms (ADR-687).
-        try:
-            form_containment = _measure_form_containment(
-                components, assembly_properties, component_outputs,
-                diagnostics["status"] == "solved")
-        except Exception as exc:
-            form_containment = {"error": str(exc)}
-        sweep_steps = {key: assembly_properties[key] for key in ("sweep_step_degrees", "sweep_step_mm")
-                       if assembly_properties.get(key) is not None}
-        # Coverage is reported even when neither step is declared (ADR-367).
-        # The per-joint loop already names a limited joint whose kind's step
-        # is missing, so the assembly that declares nothing learns *which*
-        # joints went unswept instead of only that a sweep is absent. It
-        # costs nothing: with no step to sweep at, every joint short-circuits
-        # before any geometry call, and an assembly with no limited joint
-        # reports complete coverage of an empty set.
-        _cpu_stage("assembly swept fit")
-        clearance_sweep = _measure_joint_sweeps(
-            components, component_data, joint_data, clearance,
-            sweep_steps, diagnostics["status"] == "solved", cache=fit_cache,
-            couplings=coupling_entries(assembly_properties, joint_outputs))
-        fit_cache.save()
-    # The anatomy graph (ADR-614): graph facts only, so a preview pays for
-    # it too and it costs nothing a person would notice.
-    world_flags = {component_outputs[id(value)] for value in component_values
-                   if value.properties.get("world")}
-    anatomy_root = next((name for name in grounded_outputs if name not in world_flags),
-                        free_base or next((component_outputs[id(value)] for value in component_values
-                                           if component_outputs[id(value)] not in world_flags), None))
-    anatomy = _anatomy_stamp(raw_result, assembly_properties, component_outputs, joint_outputs,
-                             joint_data, assembly_output, root=anatomy_root,
-                             world_geometry=world_geometry,
-                             initial={name: data.get("initial_placement")
-                                      for name, data in component_data.items()},
-                             solved=component_placements)
     _cpu_stage("assembly derived outputs")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None
@@ -9524,6 +9570,71 @@ def validate_and_solve_assembly(
         )
     if exploded_view_summaries:
         diagnostics["exploded_views"] = exploded_view_summaries
+    # Measured after the derived outputs (MJCF, tasks, policies), which read
+    # none of it: a task the model cannot carry is refused before ~170 s of
+    # fit on a feline-v07 build rather than after it. Nothing above moves a
+    # placement for good (_execute_native_simulation restores its own).
+    if skip_derived or skip_fit:
+        # Fit is derived too, and advisory (_check_fit never refuses), so it
+        # can neither move a solved placement nor decline a preview. It was
+        # 0.72 s of a 0.77 s warm preview on the latency bar's part: exact
+        # bounding boxes and a boolean common over BREP the preview never
+        # returns (ADR-527). The accepting run measures it, as it always did.
+        clearance = world_geometry = attachments = clearance_sweep = panel_rows = None
+        form_containment = None
+    else:
+        _cpu_stage("assembly static fit")
+        fit_cache = _FitCache.open()
+        clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved",
+                                       floors=_declared_floors(assembly_properties, component_outputs),
+                                       cache=fit_cache)
+        world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs,
+                                    raw_result, joint_data, assembly_output)
+        attachments = _check_attachments(clearance, joint_data, assembly_output)
+        # What each declared panel does to what it covers (ADR-634). The
+        # measuring never refuses a build; fit.panels judges the numbers.
+        _cpu_stage("assembly panels")
+        try:
+            panel_rows = _measure_panels(components, assembly_properties, component_outputs,
+                                         diagnostics["status"] == "solved", joint_data,
+                                         assembly_output)
+        except Exception as exc:
+            panel_rows = [{"component": "", "error": str(exc)}]
+        # How much of the mechanism stands outside the skins' forms (ADR-687).
+        try:
+            form_containment = _measure_form_containment(
+                components, assembly_properties, component_outputs,
+                diagnostics["status"] == "solved")
+        except Exception as exc:
+            form_containment = {"error": str(exc)}
+        sweep_steps = {key: assembly_properties[key] for key in ("sweep_step_degrees", "sweep_step_mm")
+                       if assembly_properties.get(key) is not None}
+        # Coverage is reported even when neither step is declared (ADR-367).
+        # The per-joint loop already names a limited joint whose kind's step
+        # is missing, so the assembly that declares nothing learns *which*
+        # joints went unswept instead of only that a sweep is absent. It
+        # costs nothing: with no step to sweep at, every joint short-circuits
+        # before any geometry call, and an assembly with no limited joint
+        # reports complete coverage of an empty set.
+        _cpu_stage("assembly swept fit")
+        clearance_sweep = _measure_joint_sweeps(
+            components, component_data, joint_data, clearance,
+            sweep_steps, diagnostics["status"] == "solved", cache=fit_cache,
+            couplings=coupling_entries(assembly_properties, joint_outputs))
+        fit_cache.save()
+    # The anatomy graph (ADR-614): graph facts only, so a preview pays for
+    # it too and it costs nothing a person would notice.
+    world_flags = {component_outputs[id(value)] for value in component_values
+                   if value.properties.get("world")}
+    anatomy_root = next((name for name in grounded_outputs if name not in world_flags),
+                        free_base or next((component_outputs[id(value)] for value in component_values
+                                           if component_outputs[id(value)] not in world_flags), None))
+    anatomy = _anatomy_stamp(raw_result, assembly_properties, component_outputs, joint_outputs,
+                             joint_data, assembly_output, root=anatomy_root,
+                             world_geometry=world_geometry,
+                             initial={name: data.get("initial_placement")
+                                      for name, data in component_data.items()},
+                             solved=component_placements)
     by_name[assembly_output]["clearance_sweep"] = clearance_sweep
     by_name[assembly_output]["clearance"] = clearance
     by_name[assembly_output]["world_geometry"] = world_geometry
