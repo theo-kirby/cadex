@@ -12,6 +12,10 @@ heel down. The hock drives the ankle pin 1:1 through the push-rod
 parallelogram (``track_pose`` reads ``q_hock - q_ankle_ref``), so the two
 compare directly. The right leg's sign is folded onto the left's.
 
+Superseded (orun12 iteration 9, ``heel5-pitch.md``): only 29-67% of the
+lowest-quarter frames are the engine's stance frames, and on those the
+hock sits past the clip's angle, not short of it. Use ``stance_pose.py``.
+
 A trace's ``joint_positions`` are the actuated joints, in degrees, in the
 order of its ``actuator_channels``. Standard library only.
 """
