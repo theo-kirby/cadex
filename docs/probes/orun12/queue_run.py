@@ -2,12 +2,12 @@
 
     systemd-run --user --scope -p MemoryMax=30G \
       env PYTHONPATH=cli pixi run python docs/probes/orun12/queue_run.py \
-        PROJECT RUN BUDGET_S ITERATIONS "REASON" [--expect-revision SHA] [--seed N] [--task gallop]
+        PROJECT RUN BUDGET_S ITERATIONS "REASON" [--expect-revision SHA] [--seed N] [--task gallop] [--envs N]
 
 Waits until the project has no live run and the machine's training slot is
 free, then does what an iteration would by hand through ``cadex_cli.loop``:
-``register`` (8192 envs, unroll 20, a checkpoint every 25, the given seed and
-iterations, cold), ``retain_training_view`` so the dashboard follows it, and
+``register`` (8192 envs unless ``--envs``, which O2a allows a heel screen;
+unroll 20, a checkpoint every 25, the given seed and iterations, cold), ``retain_training_view`` so the dashboard follows it, and
 ``launch``. Launched from a ``systemd-run --scope``, the supervisor and the
 trainer stay in that scope (a transient service would kill the trainer).
 
@@ -47,6 +47,7 @@ def main(argv):
     ap.add_argument("--expect-revision", default="")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--task", default="gallop")
+    ap.add_argument("--envs", type=int, default=8192)
     args = ap.parse_args(argv)
     root = Path(args.project).expanduser().resolve()
     print(f"{time.strftime('%F %T')} queued {args.run}", flush=True)
@@ -57,7 +58,7 @@ def main(argv):
         print(f"accepted revision {revision[:8]} is not the queued {args.expect_revision}; not registering",
               file=sys.stderr)
         return 1
-    settings = {"iterations": args.iterations, "envs": 8192, "seed": args.seed, "unroll": 20,
+    settings = {"iterations": args.iterations, "envs": args.envs, "seed": args.seed, "unroll": 20,
                 "checkpoint_every": 25, "label": f"{args.run}: {args.reason[:80]}"}
     try:
         run_dir = loop.register(root, run=args.run, budget_s=args.budget_s, reason=args.reason,
