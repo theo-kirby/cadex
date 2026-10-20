@@ -26,6 +26,6 @@ Every Ouroboros run against this repo. Generated from `.ouroboros/history/*.md` 
 | [orun9](history/orun9.md) | 2026-10-17 | sb1x | 23 | 37 | 0 of 10 | 10.4 | `bdaf363e` |
 | [orun10](history/orun10.md) | 2026-10-17 | sb1x | 18 | 27 | 0 of 8 | 9.3 | `59aebab9` |
 | [orun11](history/orun11.md) | 2026-10-18 | sb1x | 10 | 15 | 0 of 7 | 8.2 | `1f0ab418` |
-| [orun12](history/orun12.md) | 2026-10-19 | sb1x | 21 | 30 | 0 of 9 | 10.9 | no |
+| [orun12](history/orun12.md) | 2026-10-19 | sb1x | 21 | 31 | 0 of 9 | 10.9 | `da86f5c8` |
 
-Written 2026-10-20T07:44.
+Written 2026-10-20T08:09.

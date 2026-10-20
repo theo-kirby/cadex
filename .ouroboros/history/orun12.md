@@ -6,11 +6,11 @@ ended: 2026-10-20T11:44:35+00:00
 hours: 10.9
 state: killed
 iterations: 21
-commits: 30
+commits: 31
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 9
-merged: no
+merged: da86f5c88270cab40fed96b0edec754bb313d677
 branch: ouroboros/orun12
 memory: governor
 actor: claude:claude-opus-5-5
@@ -18,14 +18,14 @@ actor: claude:claude-opus-5-5
 
 # Run orun12
 
-21 iterations in 10.9h on `sb1x`, killed (-). Branch `ouroboros/orun12`, not merged.
+21 iterations in 10.9h on `sb1x`, killed (-). Branch `ouroboros/orun12`, merged as `da86f5c8`.
 
 ## The numbers
 
 | | |
 |---|---|
 | iterations | 21 (changed 21, recorded 0) |
-| commits | 30 — 51 files changed, 4890 insertions(+), 23 deletions(-) |
+| commits | 31 — 52 files changed, 4965 insertions(+), 24 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 9 checked at the tip |
 | reverts | 0 |
 | verdicts | continue 21 |
@@ -35,6 +35,7 @@ actor: claude:claude-opus-5-5
 
 ## What landed
 
+- orun12: owner-stopped at iteration 22; digest and operator notes
 - orun12 P2: every rotary count so far read the engine's tie-break (910cdb5a: 173/208 strides land a pair in one 20 ms frame); on the heel5 clip no_tap 1.03, every_stride 0.98, overreach 279 mm, flight 0.26 s already pass 10/10; the clip's 21 ms fore lag and zero hind lag cannot read rotary; 2/21 on both pairs is refused at 0.70 m (RH knee/ankle at a stop) and reachable at 0.65 m; legs.py counts tied strides; p2_lag.py, clip_lag.py
 - orun12 Q2/O3: the right hind paw in the right forearm swaps sides under the mirror (8.5 mm R -> 8.3 mm L; every >5 mm pair swaps), so it is the policy's; fore-rod solref is already 2x timestep, nothing stiffer; heel7-s1 at 25: heels 0.10/0.13, pin snaps 0.2%/0.7% (was ~10%); q2a-s1 (heel5c task, pin_damp 3.0, forearm panel capsules, 7ccbf80f) queued cold for 200
 - orun12 Q2/O9: the P1 policy 910cdb5a fails Q2 — fore rod loops 2.71/2.86 mm, 6 real-mesh pairs over 5 mm (right hind paw 8.5 mm into the right forearm panel on 10/10 seeds; wrist in chest 6.3 mm, was 18.4); no blow-up; a warm dynamics fine-tune is refused by the trainer (ADR-736)
