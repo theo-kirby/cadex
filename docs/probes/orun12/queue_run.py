@@ -2,13 +2,17 @@
 
     systemd-run --user --scope -p MemoryMax=30G \
       env PYTHONPATH=cli pixi run python docs/probes/orun12/queue_run.py \
-        PROJECT RUN BUDGET_S ITERATIONS "REASON" [--expect-revision SHA] [--seed N] [--task gallop] [--envs N]
+        PROJECT RUN BUDGET_S ITERATIONS "REASON" [--expect-revision SHA] [--seed N] [--task gallop] [--envs N] \
+        [--init-from POLICY --critic-warmup N [--learning-rate LR]]
 
 Waits until the project has no live run and the machine's training slot is
 free, then does what an iteration would by hand through ``cadex_cli.loop``:
 ``register`` (8192 envs unless ``--envs``, which O2a allows a heel screen;
 unroll 20, a checkpoint every 25, the given seed and iterations, cold), ``retain_training_view`` so the dashboard follows it, and
-``launch``. Launched from a ``systemd-run --scope``, the supervisor and the
+``launch``. ``--init-from`` continues a policy on the same task bundle (the
+trainer refuses one whose task or model digest differs), with
+``--critic-warmup`` iterations of critic-only training first (ADR-740).
+Launched from a ``systemd-run --scope``, the supervisor and the
 trainer stay in that scope (a transient service would kill the trainer).
 
 ``--expect-revision`` refuses to register if the project's accepted revision
@@ -48,6 +52,9 @@ def main(argv):
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--task", default="gallop")
     ap.add_argument("--envs", type=int, default=8192)
+    ap.add_argument("--init-from", default="")
+    ap.add_argument("--critic-warmup", type=int, default=0)
+    ap.add_argument("--learning-rate", type=float, default=None)
     args = ap.parse_args(argv)
     root = Path(args.project).expanduser().resolve()
     print(f"{time.strftime('%F %T')} queued {args.run}", flush=True)
@@ -60,6 +67,10 @@ def main(argv):
         return 1
     settings = {"iterations": args.iterations, "envs": args.envs, "seed": args.seed, "unroll": 20,
                 "checkpoint_every": 25, "label": f"{args.run}: {args.reason[:80]}"}
+    if args.init_from:
+        settings.update(init_from=args.init_from, critic_warmup=args.critic_warmup)
+    if args.learning_rate is not None:
+        settings["learning_rate"] = args.learning_rate
     try:
         run_dir = loop.register(root, run=args.run, budget_s=args.budget_s, reason=args.reason,
                                settings=settings, task_name=args.task)
