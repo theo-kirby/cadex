@@ -27,7 +27,11 @@ A stride's footfall order is the four paws by first landing inside it
 hind pair, it is **rotary** when the fore that follows the leading hind is
 on the leading hind's side (LH RH RF LF) and **transverse** when it is on
 the other side (LH RH LF RF). A stride where a paw did not land is not
-counted. Stance and contact shares already exclude the first second (the
+counted, and neither is a **tied** stride: two paws whose first landings in
+it fall in the same 20 ms frame (read from each paw's ``touchdowns_s``).
+The engine lists a tie in its spec's foot order (LF before RF, LH before
+RH), so a tied stride's order is that tie-break, not the gait (orun12
+iteration 21: 173 of 208 strides on 910cdb5a were tied). Stance and contact shares already exclude the first second (the
 engine's settle). Standard library only.
 """
 
@@ -74,6 +78,26 @@ def footfall_kind(order):
     return None
 
 
+def stride_kind(stride, feet):
+    """'rotary', 'transverse', 'tied' or None, for one ``flight_metrics`` stride.
+
+    'tied' when every paw has a step landing in the stride and two of the
+    first ones share a frame; otherwise :func:`footfall_kind` of the
+    engine's order.
+    """
+
+    a, b = stride["start_s"], stride["start_s"] + stride["period_s"]
+    first = []
+    for paw in SIDE:
+        times = [t for t in feet.get(paw, {}).get("touchdowns_s", []) if a - 1e-9 <= t < b - 1e-9]
+        if times:
+            first.append(times[0])
+    first.sort()
+    if len(first) == 4 and any(y - x < 1e-6 for x, y in zip(first, first[1:])):
+        return "tied"
+    return footfall_kind(stride["order"])
+
+
 def stride_length(foot):
     points = [p for t, p in zip(foot.get("touchdowns_s", []), foot.get("touchdown_points_mm", []))
               if t >= SETTLE_S]
@@ -117,8 +141,8 @@ def legs_row(name, seeds):
 def gait_row(name, report, seeds):
     speed = sorted(s["metrics"]["max_forward_speed_2s_mm_s"] / 1000.0 for s in seeds
                    if s["metrics"].get("max_forward_speed_2s_mm_s") is not None)
-    strides = [st for s in seeds for st in s["detail"].get("flight", {}).get("strides", [])]
-    kinds = collections.Counter(footfall_kind(st["order"]) for st in strides)
+    strides = [(st, s["detail"]["feet"]) for s in seeds for st in s["detail"].get("flight", {}).get("strides", [])]
+    kinds = collections.Counter(stride_kind(st, feet) for st, feet in strides)
     ordered = kinds["rotary"] + kinds["transverse"]
     worst, names = [], collections.Counter()
     for s in seeds:
@@ -133,7 +157,7 @@ def gait_row(name, report, seeds):
             f"{speed[0]:.2f} / {statistics.median(speed):.2f} / {speed[-1]:.2f}" if speed else "–",
             fmt(med([s["metrics"].get("flight_stride_share") for s in seeds])),
             fmt(med([s["metrics"].get("flight_s_median") for s in seeds]), "%.3f"),
-            f"{kinds['rotary']}/{ordered} ({len(strides) - ordered} unordered)" if strides else "–",
+            f"{kinds['rotary']}/{ordered} ({kinds['tied']} tied, {len(strides) - ordered - kinds['tied']} unordered)" if strides else "–",
             fmt(med([s["metrics"].get("stride_hz_median") for s in seeds])),
             f"{fmt(med(worst))} ({names.most_common(1)[0][0]})",
             fmt(None if peak is None else 1.0 - peak),
