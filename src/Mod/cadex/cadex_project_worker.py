@@ -946,7 +946,7 @@ _PART_CACHE_LIMIT_BYTES = 1024 * 1024 * 1024
 
 
 class _PartCache:
-    """Part outputs kept between builds, keyed by what built them (ADR-781).
+    """Part outputs kept between builds, keyed by what built them (ADR-782).
 
     The in-request memo (``cadex_part_worker._SHAPE_MEMO``) is cleared after
     every build on purpose, so an edit to one foot rebuilt the skull, chest
@@ -1076,7 +1076,7 @@ def _serialize_part_cached(
     cache: _PartCache, root: Path, index: int, expected: dict[str, str], value: Any,
     *, max_shape_subelements: int,
 ) -> dict[str, Any]:
-    """``_serialize_output`` for a part, through the part cache (ADR-781)."""
+    """``_serialize_output`` for a part, through the part cache (ADR-782)."""
 
     from cadex_part_worker import _RUN_SKIN_FORMS, _SHAPE_MEMO, _SHAPE_MEMO_LIMIT, _SKIN_FORM_PAYLOADS
 

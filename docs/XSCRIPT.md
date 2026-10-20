@@ -3085,7 +3085,7 @@ or unsupported geometry, limited joints of any other kind (cylindrical included)
 flexible components, coupled/static-joint graphs, and unsolved
 assemblies produce explicit `incomplete` coverage and a reason.
 
-**A rebuild builds and measures only what changed** (ADR-622, ADR-781).
+**A rebuild builds and measures only what changed** (ADR-622, ADR-782).
 Each part output's BREP and facts are kept in
 `script_artifacts/part-cache/` by the part's content identity and the
 engine's fingerprint, so an edit to one foot rebuilds that foot (and what

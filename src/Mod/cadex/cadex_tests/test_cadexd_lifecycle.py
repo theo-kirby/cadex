@@ -2331,7 +2331,7 @@ def test_an_offset_project_reopens_although_its_bytes_never_repeat(tmp_path):
         # evidence and display buffers, not just a cached geometry digest.
         for _ in range(5):
             _stop(client)
-            # A kept part replays its bytes (ADR-781), so the drift path is
+            # A kept part replays its bytes (ADR-782), so the drift path is
             # only reached as it is after an engine change: with none kept.
             shutil.rmtree(root / "script_artifacts" / "part-cache", ignore_errors=True)
             client = _spawn_cadexd()

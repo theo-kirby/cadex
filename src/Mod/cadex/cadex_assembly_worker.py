@@ -6369,7 +6369,7 @@ def _measuring_source() -> bytes:
     engine module, walked in that module wherever the import would find it
     (the worker bundle, or the installed tree for what the bundle omits). The fit cache was versioned on
     this whole file, so each of its ~3 edits a day re-measured every project
-    from nothing: feline-v07 went from 600 to 2,000 CPU-seconds (ADR-780).
+    from nothing: feline-v07 went from 600 to 2,000 CPU-seconds (ADR-781).
     """
 
     import ast

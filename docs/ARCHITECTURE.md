@@ -312,11 +312,11 @@ macOS). Layout:
   script_artifacts/fit-cache/   exact fit measurements by part geometry and
                                 relative placement, one file per version of
                                 the measuring code; a cache, never read as
-                                truth (ADR-622, ADR-780)
+                                truth (ADR-622, ADR-781)
   script_artifacts/part-cache/  each part output's BREP, facts and skin forms
                                 by content identity, one folder per engine
                                 fingerprint; a rebuild builds only the parts
-                                that changed (ADR-781)
+                                that changed (ADR-782)
   script_artifacts/<revision>/  staged worker attempts + serialized outputs
                                 (+ display/ tessellation buffers when
                                 requested). Retained artifacts live under

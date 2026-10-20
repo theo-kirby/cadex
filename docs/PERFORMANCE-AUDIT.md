@@ -167,8 +167,8 @@ only the pairs it measured and counts the rest); R2 as ADR-690 (the pair
 budget counts the pairs the boxes leave near, and a longer run sweeps for
 longer); R4 in part as ADR-686 (a sample is measured only where a lower
 bound cannot settle it); R9 in part as ADR-689 (`cadex mcp` opens
-unrestored). On 2026-10-19, R3 and R5 landed as ADR-780, and the parts
-themselves are now kept between builds (ADR-781); §7 has that profile.
+unrestored). On 2026-10-19, R3 and R5 landed as ADR-781, and the parts
+themselves are now kept between builds (ADR-782); §7 has that profile.
 ADR-685 holds `cadex mcp`'s engine open three times as long as
 opening it took, which bears on R10. The table is the audit as written; it
 is not re-measured. A related open item: `cadex smoke`'s exact-geometry pass
@@ -220,18 +220,18 @@ pair with overlapping boxes after a 4e-14 mm reading. The cache's key was
 the whole assembly worker (R3), which changed 24 times in the six days
 before, so a cold build was most days' first.
 
-What landed: ADR-780 (one solve after joint creation; facet normals; the
+What landed: ADR-781 (one solve after joint creation; facet normals; the
 fit after the derived outputs, so a bad task is refused ~170 s sooner; the
 fit cache keyed on its measuring code; a shell search that stops at the
-recheck distance) and ADR-781 (part outputs kept by content). Measured on
+recheck distance) and ADR-782 (part outputs kept by content). Measured on
 the same revision, outside the sweeps:
 
 | build | wall | CPU |
 |---|---|---|
 | before, warm | 519 s | 605 s |
-| ADR-780, warm | 368-415 s | 462-527 s |
-| ADR-781, one paw edited | 108 s | 105 s |
-| ADR-781, one skin's thickness edited | 158 s | 223 s |
+| ADR-781, warm | 368-415 s | 462-527 s |
+| ADR-782, one paw edited | 108 s | 105 s |
+| ADR-782, one skin's thickness edited | 158 s | 223 s |
 
 What remains: the joint sweeps, ~60 s warm, and after a fit-code change
 several builds to refill (the tail joints each meet their 90 s budget under

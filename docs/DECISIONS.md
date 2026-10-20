@@ -45110,7 +45110,7 @@ from standing (pin +36°) to plantigrade (pin +96°, hock −60°, the hock
 case's shoe on the floor with the knee at 0). `pixi run test-engine`: 157
 passed, 3 skipped.
 
-## ADR-780 — A cat build stops paying for work it repeats or never reads (2026-10-19)
+## ADR-781 — A cat build stops paying for work it repeats or never reads (2026-10-19)
 
 **Context.** A feline-v07 build took about 9 minutes, and the script itself
 was 3 s of it. A cProfile of the accepted revision put 264 s into building
@@ -45178,9 +45178,9 @@ sweeps (which a fresh fit key refills over several builds): old 519 s wall,
 digests as above. `pixi run test-engine`: 157 passed, 3 skipped; `pytest
 cli/tests`: 53 passed.
 
-## ADR-781 — A rebuild builds only the parts that changed (2026-10-19)
+## ADR-782 — A rebuild builds only the parts that changed (2026-10-19)
 
-**Context.** After ADR-780 a warm feline-v07 build still spent ~400 s
+**Context.** After ADR-781 a warm feline-v07 build still spent ~400 s
 outside its sweeps, most of it building part shapes again. The in-request
 memo (`cadex_part_worker._SHAPE_MEMO`) is cleared after every build on
 purpose: a memo that leaked between requests would return geometry for the
