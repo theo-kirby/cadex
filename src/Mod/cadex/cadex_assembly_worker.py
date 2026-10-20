@@ -5113,6 +5113,8 @@ def _gait_input(
     for name in ("heel_from", "body_drop_mm", "body_pitch_deg"):
         if properties.get(name) is not None:
             resolved[name] = float(properties[name])
+    if properties.get("flat_feet"):
+        resolved["flat_feet"] = True  # ADR-780, absent unless declared
     if properties.get("stance_shift_mm"):
         resolved["stance_shift_mm"] = {foot: float(v)
                                        for foot, v in dict(properties["stance_shift_mm"]).items()}

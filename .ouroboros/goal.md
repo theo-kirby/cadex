@@ -75,6 +75,36 @@ hold**, judged by the engine and filmed.
   the goal. On each hind leg, the heel (`c_heel_h*`) must be down for at
   least 40% of that paw's stance, and at toe-off (`gallop_spec`'s
   `hock_down` and `hock_at_toeoff`).
+- **O2a. The heel comes first (owner, 2026-10-19, after iteration 6).**
+  - Two runs have shown the clip alone does not put the heel down:
+    - v07-g1 at 100: heel down 0.00 on both legs, hovering 31 / 75 mm
+      above the floor;
+    - heel2-s1 at 50, on a clip holding the heel for 0.8 of stance: 0.03
+      and 0.11.
+  - So O5's "track, don't describe" is relaxed **for the heel**. The loop
+    may add whatever makes both hind heels take weight in stance:
+    - a heel-contact reward, paid while the clip says the heel is down;
+    - a penalty on heel height in that phase;
+    - a termination for a stance that never lays the heel down;
+    - a curriculum, for example heel first at a lower speed, then raising
+      speed;
+    - a stronger tracking weight on the ankle pin.
+  - Keep a term only if a judged run shows it moved the heel share.
+  - **Until P1 passes, speed comes second.** A slower plantigrade gallop
+    beats a faster one on the toes. Do not push the speed command up
+    while the heel is still off the floor.
+  - **Left/right symmetry work** (a mirror-symmetry term and the like)
+    waits until at least one policy puts both heels down. The unfinished
+    iteration-7 symmetry term is saved at
+    `.ouroboros/runs/orun12/reverted/iter7-symmetry-term-wip.patch`
+    (and in `git stash`) for then.
+  - **Screens are slow** (about 131 s an iteration at 8192 envs). Heel
+    screens may use fewer envs or fewer iterations (60–100) to get
+    answers sooner, and a run that clearly is not laying the heel down by
+    its first judged checkpoints may be stopped early with `train_stop`
+    or the loop's stop, recorded as a dead end.
+  - The queued o9-s1 run (chest box only, no heel change) was cancelled by
+    the owner. Fold the chest-box fix into the next heel screen instead.
 - **O3. Both sides alike.**
   - The owner saw the left hind do far better than the right on v06-g1.
   - Every judged result reports left and right separately.
@@ -333,8 +363,8 @@ Not this run's. They are for when the frontier above is empty:
 ## Question policy
 
 - Resolve reversible choices autonomously, with the smallest measured step
-  towards the highest-ranked open criterion. The order is B1, P1, Q1, P2,
-  Q2, S1, S2.
+  towards the highest-ranked open criterion. The order is B1, **P1 (the
+  heel, O2a)**, Q2, P2, Q1, S1, S2.
 - If the mechanism seems to be the limit, record the evidence and keep
   working the policy (O1). Never change hardware.
 - Where O1–O9 and a measurement disagree, record both and follow O1–O9.

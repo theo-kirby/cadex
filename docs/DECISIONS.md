@@ -45109,3 +45109,39 @@ posed renders, five positions from swing to toe-off, show the paw flat
 from standing (pin +36°) to plantigrade (pin +96°, hock −60°, the hock
 case's shoe on the floor with the knee at 0). `pixi run test-engine`: 157
 passed, 3 skipped.
+
+## ADR-780 — The gait generator can lay a foot flat while its heel is held (2026-10-20, orun12)
+
+**Context.** orun12's heel screens on feline v07 never put both hind heels
+down (P1, O2a). On the engine's own stance frames, the heel is down only
+while the metatarsus's world pitch is under about 15°: 0.72 of frames at
+5–10°, 0.28 at 10–15°, none above 15° (`docs/probes/orun12/heel5-pitch.md`).
+The plantigrade clip (ADR-776–778) held the heel down with the metatarsus
+at 18–22°. The hind paw rides a sprung pin that is in the leg's chain, and
+nothing in the solve set its angle except the pull toward home, so the clip
+stood the paw 52–62° toes-up on its rear pad. In simulation the floor lays
+that paw flat. A policy that tracks the clip therefore holds a pose where
+the heel cannot touch.
+
+**Decision.** `CadexGait.generate` takes `flat_feet`. When it is true, a
+foot whose heel is held gets one more row in the leg's solve: the foot
+body's pitch about the world's lateral axis, held at the pitch it stands at
+in the home pose. A sample the solve cannot lay flat within 0.5° is refused
+as `GaitUnreachable` ("lay its foot flat"). `flat_feet` with no heels is
+refused. `assembly.gait(..., flat_feet=True)` declares it, the worker
+resolves it, and `CadexDynamics` passes it to the generator. The clip's
+`heels` block records each flat foot's `flat_pitch_deg`. When the option is
+not declared, nothing is written, so every existing clip and bundle is
+byte-identical. This was checked by regenerating heel5-s1's bundled clip
+and comparing `qpos` exactly.
+
+**Consequences.** On feline v07's heel5 bundle at the same settings (0.7 m,
+duty 0.2, `heel_from` 0.2, a 60 mm drop, 6° pitch, a 120 mm shift), the
+heel-down samples have the paw pin at +57° and the metatarsus at 7.5° on
+both legs, against −13° and 18–22° before. Every `heel_from` from 0 to 0.5
+is still reachable. The paw pin steps up to 58° between samples at the
+hold's ends. The pin is passive and no reward tracks it, so a policy is not
+paid to follow that step. No protocol, tool surface or trainer change.
+
+**Evidence.** `docs/probes/orun12/heel6-flat.md`. `pixi run test-engine`:
+157 passed, 3 skipped.
