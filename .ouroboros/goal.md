@@ -1,15 +1,15 @@
-# Goal: leo v03, a fast, cat-like gallop
+# Goal: leo v04, a fast, cat-like gallop
 
-Verified against source: 2026-10-21. Operator charter for orun14. It follows
-orun13 (`.ouroboros/history/orun13.md`, merged at `4800b745`), which the owner
-stopped at iteration 16 to give leo's hind paw a free pin: **leo v03**. It
-keeps orun13's charter, plus two owner goals of 2026-10-21: the foot's posture
-and the rotary lag both change with speed (O2a, O3a). The human owns this file; unattended roles
-never edit it.
+Verified against source: 2026-10-21. Operator charter for orun15. It follows
+orun14 (`.ouroboros/history/orun14.md`, merged at `95a3c2a1`), which the owner
+stopped at 7.6 h: on leo v03's free paw pin every fast policy folded the paw
+toes-up of the floor in stance. The owner's answer is an easy return spring
+on the pin: **leo v04**. It keeps orun14's charter and its two speed goals
+(O2a, O3a). The human owns this file; unattended roles never edit it.
 
 ## Mission
 
-Train **leo v03** to **gallop**: as fast as it can hold, with a gait that
+Train **leo v04** to **gallop**: as fast as it can hold, with a gait that
 reads as a real cat's:
 - **its posture follows its speed:** digitigrade (on the toes, heels up)
   when slow, and closer to plantigrade (the whole foot flat in stance) the
@@ -25,7 +25,7 @@ The robot is designed, but **the loop may change it** when a measurement
 shows the change makes the gallop faster or better (O1).
 
 If the loop achieves only one thing, it is **one policy that passes P1 and P2
-on leo v03 (or a measured successor) at the highest speed it can hold**,
+on leo v04 (or a measured successor) at the highest speed it can hold**,
 judged by the engine and filmed. Next comes **one policy that runs across
 speeds**: digitigrade and clearly rotary when slow, plantigrade with a
 tighter rotary lag when fast (SG, RL).
@@ -33,7 +33,7 @@ tighter rotary lag when fast (SG, RL).
 ## The robot
 
 - **The project is `~/cadex-projects/leo`**, starting at the revision tagged
-  `leo-v03` in its own git. It is this run's project. Every other project in
+  `leo-v04` in its own git. It is this run's project. Every other project in
   `~/cadex-projects` is read-only.
 - **Spine (new in v02).**
   - Two pitch joints on one AK80-9 pitch drive:
@@ -50,44 +50,64 @@ tighter rotary lag when fast (SG, RL).
   - The thigh, knee and shin are feline v07's.
   - The hock drive works through a parallelogram push-rod to the
     metatarsus.
-  - **The paw turns on a free pin (new in v03, owner 2026-10-21).**
-    - `j_pawpin_*` is a plain hinge: no spring, no motor, damping 3.0
-      N·mm·s/deg and 5 N·mm of friction.
+  - **The paw turns on a pin with an easy return spring (v04, owner
+    2026-10-21).**
+    - `j_pawpin_*` is a hinge with no motor: damping 3.0 N·mm·s/deg, 5 N·mm
+      of friction, and a torsion coil of **4 N·mm/deg** (`PAW_K`) resting
+      **10° toes-down past the flat stop** (`PAW_PRELOAD`). At flat it
+      presses the paw onto its stop with 40 N·mm, about the paw's own
+      weight (~36 N·mm); at 30° toes-up it pulls back with 160 N·mm, a
+      small share of a stance push at the pad. It is meant to give the
+      fold a cost and return the paw in swing, not to hold the paw
+      against the floor.
+    - v03 had the same pin with no spring. orun14 found every fast policy
+      folded the paw 20–45° toes-up of the floor in stance (U 0.34–0.86),
+      even after ADR-785 kept the clip's swing pin under 8.4°
+      (`docs/probes/orun14/tr-sole.md`).
     - It is seated so that the sole is flat at hock -60° with the pin at
       0.
     - It has 60° of toes-up travel relative to the metatarsus, so the heel
       can lift while the paw stays flat at push-off.
     - It stops at flat toes-down. The pad sits behind the pin, so its load
-      lays the paw flat, and nothing holds it folded toes-up.
+      lays the paw flat.
     - The heel (`c_heel_h*`) is welded to the metatarsus, its front
       trimmed 3 mm clear of the pad.
-  - The gallop clip does not use `flat_feet` (ADR-780). It would hold the
-    paw at its home-pose pitch, 60° toes-down at leo's hock-0 home. The
-    solve's pull to pin 0 lays the paw flat when the metatarsus is
-    level.
+  - **The gallop task as orun14 left it** (the leo project's `script.py` at
+    `leo-v04`; it was tr-sole's task):
+    - the clip uses `flat_feet="sole"` (ADR-784) and `trail_feet` (ADR-785):
+      heel, pad and toe on the floor in stance, and the paw trailing flat
+      in swing (pin ≤ 8.4°);
+    - the actor reads both paw pins on encoders (`q_pawpin_*`,
+      `dq_pawpin_*`);
+    - `heel_pitch` is a cubic peaked on the metatarsus at +6°, and
+      `paw_flat` (w10) pays the paw's floor pitch within 15° of flat;
+    - `roll_brake` is off on the pin; orun14's untrained `paw_fold` term is
+      not in the task.
   - The claws are retracted inside the toe bulbs. At hock 0 to -40 the toe
     bulbs are the lowest point; at -60, heel, pad and toes are within 2 mm.
 - **Front leg.** feline v07's wrist drive at the elbow, a 28 mm parallelogram
   push-rod to the paw, and the paw. Its toes are 7 mm shorter.
-- **Not yet measured on v03:**
-  - `scan_stand` (-25.2, re-measured on v02 by orun13) and the stand
-    with the free paw;
-  - the paw pin's speed in swing (on v06 a sprung pin flapped at
-    900°/s);
-  - the trainer's seconds per iteration;
-  - whether the trot and bound clips still generate;
-  - in plantigrade stance, the body pitches about 11° unless knee or hip
-    take it up.
+- **Measured on v03 by orun14:** about 70 s per iteration at 4096 envs;
+  the pin's p95 rate 250–670°/s with no flapping; the right hind steps short
+  and twice as often (the policy's, by mirror test, `rh-mirror.md`); the
+  front carpus stop yields up to 26° in stance (`wrist-peak.md`); the
+  front push-rod loops open up to 3.2 mm (Q2).
+- **Not yet measured on v04:**
+  - the stand with the spring, and the paw's seat on its stop;
+  - whether the spring takes the fold out of a fast policy (U), and what
+    it costs in speed and heel share;
+  - the pin's speed in swing with the spring (on v06 a stiffer sprung pin
+    flapped at 900°/s; v04's is half as stiff and damped).
 - **Known clearance at the start.**
-  - The joint sweep fails 12–13 pairs, all of them front-leg parts against
+  - The joint sweep fails 12 pairs, all of them front-leg parts against
     the chest through the shoulder and scapula.
-  - 16 static pairs fail: heel/metatarsus and front crank/rod.
-  - These are leo's baseline. A change may not add to them.
-  - The v03 build's verdicts are recorded with its tag.
-- **orun13's policies were trained on the welded paw.** Their observations
-  and actions are unchanged, because the pin is passive and not observed,
-  so a warm start is possible. But their habits were learned on a
-  different foot: judge before trusting one.
+  - 14 static pairs fail: heel/metatarsus, front crank/rod and the hind
+    rod's ends.
+  - These are leo's baseline (v03's, and v04's build adds none). A change
+    may not add to them.
+- **orun14's policies were trained on the unsprung pin.** Their inputs and
+  outputs match v04's, so a warm start is possible, but they learned to
+  fold: judge before trusting one.
 
 ## Owner decisions
 
@@ -103,14 +123,16 @@ tighter rotary lag when fast (SG, RL).
     - is written up before the build, giving the measurement and the
       expected effect;
     - rebuilds clean: every gate the build runs passes or is no worse
-      than leo-v03's baseline above, and no new clearance pair fails;
-    - is committed to the project's git and tagged `leo-v03.N`;
+      than leo-v04's baseline above, and no new clearance pair fails;
+    - is committed to the project's git and tagged `leo-v04.N`;
     - is judged afterwards with the same screen it was meant to fix, and
       kept only if that screen moved.
   - **Keep the owner's choices unless the numbers argue hard against
     them:**
     - linkage legs, fore and hind;
-    - the plantigrade hind foot with its free, unsprung paw pin;
+    - the plantigrade hind foot with its paw pin and easy return spring
+      (the spring's rate and preload may be tuned under O1, kept easy:
+      it must not hold the paw off the floor or stop the heel lifting);
     - the two-joint spine on one drive;
     - the face, the panel style and the paws' look.
 
@@ -121,7 +143,11 @@ tighter rotary lag when fast (SG, RL).
     40% of that paw's stance, and at toe-off (`gallop_spec`'s `hock_down`
     and `hock_at_toeoff`).
   - In stance the foot is flat, toes down: no paw folded toes-up behind a
-    heel. orun12's "passing" policy did exactly that.
+    heel. orun12's "passing" policy did exactly that, and so did every fast
+    orun14 policy on the unsprung pin.
+  - **Measure it as U**: the share of each hind paw's on-ground frames with
+    the paw toes-up **of the floor** past 5° (`docs/probes/orun14/paw_floor.py`).
+    P1 needs U under 0.2 on each leg.
   - At push-off the heel may lift while the paw stays flat on the floor
     (the paw turning toes-up of the metatarsus on its pin). That is the
     roll the pin is for, not a fault. A fault is a paw toes-up **of the
@@ -133,7 +159,7 @@ tighter rotary lag when fast (SG, RL).
 - **O2a. Posture follows speed (owner, 2026-10-21).**
   - **Slow: digitigrade.** The hind feet stand on the toe bulbs and the
     paw pads, heels up. The paw pin turns toes-up of the metatarsus, which
-    v03's 60° of travel allows.
+    v04's 60° of travel allows against the easy spring.
   - **Fast: closer to plantigrade.** The heel comes down for a growing
     share of stance, reaching P1's 0.4 at the top passing speed.
   - The heel's stance share rises with the commanded speed, not in one
@@ -142,7 +168,7 @@ tighter rotary lag when fast (SG, RL).
     across speeds): heel hold (`heels`, `heel_from`), body drop and
     stance shift grow with speed, and the speed is a command the policy
     observes. The actor may extend the generator or the task, with an ADR
-    from ADR-784.
+    from ADR-786.
 - **O3. Real rotary lag.**
   - Each pair's paws land at least 40 ms apart, so the engine's 20 ms
     frame resolves the order.
@@ -210,7 +236,10 @@ tighter rotary lag when fast (SG, RL).
   - orun12's checks (`replay_check.py`, `meshcheck.py`, `selfcontact2.py`,
     `standtest.py`, `render_poses.py`, `render_fore.py`) are in
     `~/orun12-owner-scripts/`, with probe versions in
-    `docs/probes/orun12/`. Put this run's under `docs/probes/orun14/`.
+    `docs/probes/orun12/`; orun13's and orun14's are in
+    `docs/probes/orun13/` and `docs/probes/orun14/` (`paw_floor.py`,
+    `p2_lag.py`, `spine_foot.py`, `fold_term.py`, `lead_order.py`). Put
+    this run's under `docs/probes/orun15/`.
 - **O10. Straight lines, flat ground.** No turning, leaping or terrain.
 
 ## Done criteria
@@ -220,23 +249,26 @@ Every criterion is measured with the engine's evaluation on `gallop_spec`'s
 exclude the first second. Drives always stay under peak (O6).
 
 - [ ] **B1. Ready to train.**
-  - The gallop bundle builds on leo-v02.
-  - `scan_stand` and the stand parameters are re-measured on v02.
-  - The gallop clip's `j_spine2` follows `j_spine`, checked in the
-    bundled clip.
+  - The gallop bundle builds on leo-v04.
+  - The stand is checked with the spring: the paws seat on their flat
+    stops, and the pin's spring torque is in the bundle.
   - The seconds per iteration are timed.
-  - A first screen is judged and reported against:
-    - orun13's g4-peak-50 on the welded paw: soles flat, heels 0.44 /
-      0.22, 2.43 m/s;
-    - orun13's g7-hock75: heels 0.46 / 0.41, `hock_down` 6 / 10, 2.60
-      m/s;
+  - A first screen (tr-sole's task on v04, cold) is judged at 25 and 50
+    and reported against:
+    - orun14's tr-sole-50 on the unsprung pin: 2.40 m/s, heels 0.34 /
+      0.19, U 0.34 / 0.63, rotary 0 / 10;
+    - orun14's p1-flat-50: 1.46 m/s, heels 0.31 / 0.52, U 0.22 / 0.38,
+      rotary 10 / 10;
+    - orun13's g7-hock75 on the welded paw: heels 0.46 / 0.41,
+      `hock_down` 6 / 10, 2.60 m/s;
     - orun12's heel5c-s1 on feline v07: P1 8 / 10, heels 0.60 / 0.61,
       2.91 m/s.
 - [ ] **P1. Plantigrade and flat, both legs (O2).**
   - On one policy, on at least 8 of 10 seeds, `hock_down` and
     `hock_at_toeoff` pass for **each** hind leg.
-  - The report gives the heel's stance share and median stance height per
-    leg.
+  - U (O2) is under 0.2 on each hind leg.
+  - The report gives the heel's stance share, U and median stance height
+    per leg.
   - A still or trace frames show both feet flat, heel and toes down.
 - [ ] **P2. The feline gallop's form.** On the same policy, on at least 8
   of 10 seeds:
@@ -286,7 +318,7 @@ exclude the first second. Drives always stay under peak (O6).
   - the SG policy at its slowest and fastest, side by side: the toes
     against the flat foot, and the rotary lag tightening;
   - left and right side views.
-- [ ] **R1. The closing report.** `docs/probes/orun14/REPORT.md` gives:
+- [ ] **R1. The closing report.** `docs/probes/orun15/REPORT.md` gives:
   - each criterion with its numbers;
   - the clip and reward design;
   - the terms kept and cut;
@@ -307,18 +339,16 @@ Not this run's. They are for when the frontier above is empty:
 - **short-term:**
   1. B1:
      - build the bundle;
-     - check the clip's paw pin and spine coupling;
-     - check the stand on the free paw;
+     - check the stand with the spring;
      - time ten iterations.
-  2. Launch the first screen (40–60 iterations) before anything else that
-     is slow. Use orun13's best task (g4-peak's, with heel5's stored
-     settings and the 62.5 ms rotary clip). Train it cold, or warm from
-     g4-peak-50 if the actor can say why.
-  3. Adapt orun13's probes (`docs/probes/orun13/`: `foot_frames.py`,
-     `lh_roll.py`, `stance_gate.py`, `hind_reach.py`, `p2_lag.py`,
-     `spine_foot.py`) to the paw pin: the paw's pitch relative to the
-     floor and to the metatarsus, the roll at toe-off, and the pin's speed.
-     Put new ones under `docs/probes/orun14/`.
+  2. Launch the first screen (50 iterations, 4096 envs) before anything
+     else that is slow: tr-sole's task on v04, cold, so the spring is the
+     one change. Judge it at 25 and 50 with `paw_floor.py`: did U fall
+     under 0.2 at speed, and what did it cost in speed and heel share?
+  3. If U stays high, the next levers in order: the spring's rate or
+     preload (O1, still easy), then a contact-gated fold term
+     (`fold_term.py`'s `fold`, scored per step first). If U falls, close
+     the heel share and the rotary order (tr-sole-50 lost rotary: 0 / 10).
   4. Read the clip:
      - the heel share, lag, flight, overreach and spine range it asks for;
      - whether the generator reaches a 40 ms pair lag and a longer stride.
@@ -347,7 +377,7 @@ Not this run's. They are for when the frontier above is empty:
   1. F1's films and R1's report, kept current as each criterion closes.
   2. The later criteria.
   3. Fold what this run proves into `training/RECIPE.md`:
-     - a plantigrade gallop on a free paw pin;
+     - a plantigrade gallop on a sprung paw pin;
      - a coupled spine;
      - the short-screen-then-long-run budget.
   4. Keep every gate green, every doc true, `STATE.md` folded, and R1
@@ -372,8 +402,8 @@ Not this run's. They are for when the frontier above is empty:
 **This run:**
 - **The only project the run writes is `~/cadex-projects/leo`.**
   - Model edits follow O1.
-  - The `leo-v02` and `leo-v03` tags are never moved or deleted. Model
-    changes are tagged `leo-v03.N`.
+  - The `leo-v02`, `leo-v03` and `leo-v04` tags are never moved or
+    deleted. Model changes are tagged `leo-v04.N`.
 - **One training run at a time on the 5090.** The machine lock is the
   arbiter. The CLI suite runs with the GPU hidden (`CUDA_VISIBLE_DEVICES=`).
 - **Long training does not block an iteration.**
@@ -390,11 +420,11 @@ Not this run's. They are for when the frontier above is empty:
   - A direct `FreeCADCmd` runs under `ulimit -v 16000000`.
 - **The protocol and tool surface stay a contract** (AGENTS.md).
   - An engine change (a predicate, a generator option) gets an ADR from
-    ADR-784, and the engine and CLI suites.
+    ADR-786, and the engine and CLI suites.
 - **The dashboard stays read-only.** The actor may serve it on 127.0.0.1
   for its own tests. It never runs `tailscale serve` and never binds a
   public address.
-- Committed images are PNG, ≤ 300 KB each, under `docs/probes/orun14/`, on
+- Committed images are PNG, ≤ 300 KB each, under `docs/probes/orun15/`, on
   the dark floor. Films live outside the repo and on the run's page.
 - No role starts, stops or restarts the loop or signals its process. Kill
   stray engine processes by PID, never with a broad `pkill` pattern.
@@ -430,6 +460,12 @@ Not this run's. They are for when the frontier above is empty:
       nothing.
 
     The hock-stop change (leo-v02.1) was judged and not kept. The paw pin
+    was the owner's answer.
+  - **orun14 on leo v03 (unsprung pin), 7.6 h, P1 open.** Slow policies
+    stood flat; every fast one (2.2–2.9 m/s) folded the paw toes-up of the
+    floor in stance. Fixing the clip (ADR-784 sole, ADR-785 trailing paw)
+    cut the fold, not most of it: tr-sole-50 U 0.34 / 0.63 at 2.40 m/s.
+    `paw_flat` pays nothing past 15° and gives no slope back. The spring
     is the owner's answer.
   - **Speed:**
     - the best on any cat was 4.64 m/s, on its toes (orun10);
