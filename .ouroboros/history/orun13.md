@@ -6,11 +6,11 @@ ended: 2026-10-21T09:11:25+00:00
 hours: 8.2
 state: killed
 iterations: 15
-commits: 21
+commits: 23
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 10
-merged: no
+merged: 4800b7457b01267f98e91e18cb6a39bfc65f88ec
 branch: ouroboros/orun13
 memory: governor
 actor: claude:claude-opus-5-5
@@ -18,14 +18,14 @@ actor: claude:claude-opus-5-5
 
 # Run orun13
 
-15 iterations in 8.2h on `sb1x`, killed (-). Branch `ouroboros/orun13`, not merged.
+15 iterations in 8.2h on `sb1x`, killed (-). Branch `ouroboros/orun13`, merged as `4800b745`.
 
 ## The numbers
 
 | | |
 |---|---|
 | iterations | 15 (changed 15, recorded 0) |
-| commits | 21 — 36 files changed, 4216 insertions(+), 10 deletions(-) |
+| commits | 23 — 38 files changed, 4292 insertions(+), 11 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 10 checked at the tip |
 | reverts | 0 |
 | verdicts | continue 15 |
