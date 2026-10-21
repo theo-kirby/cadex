@@ -166,3 +166,6 @@ for the hind that lands first.
 - **The judging:** at 25 against ps-sole-25 (heels 0.03 / 0.17, U 0.18 /
   0.38). It answers whether the heel weight moves the heel share, and
   whether it moves it on a flat paw (U under 0.2) or a folded one.
+- **Timing (O8):** iteration 10 landed at 11:31:30, about 985 s after
+  launch with the compile included (ps-sole: 983 s). Checkpoint 25 falls
+  near 11:50, and 50 iterations end near 12:21, inside the 4,800 s budget.
