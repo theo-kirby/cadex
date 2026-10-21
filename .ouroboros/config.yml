@@ -1,4 +1,4 @@
-run: orun12
+run: orun13
 goal: .ouroboros/goal.md
 memory: auto            # -> governor (.flywheel/ + CLI present, ADR-672)
 backend: headless       # tmux: one streaming window per harness call in the run session
@@ -16,7 +16,7 @@ critic: agent           # rules: the deterministic fallback only, no model call
 scribe: agent           # rules: the loop writes the record itself
 idle_interval: 30m
 roles:
-  # Owner-directed launch (ot11, kept for orun1 through orun12): Opus 5.5 for every role, with no fallback.
+  # Owner-directed launch (ot11, kept for orun1 through orun13): Opus 5.5 for every role, with no fallback.
   actor:
     harness: claude
     model: claude-opus-5-5
@@ -35,14 +35,14 @@ roles:
     model: claude-opus-5-5
     timeout: 10m
 git:
-  branch: null            # -> ouroboros/orun12
+  branch: null            # -> ouroboros/orun13
   tag_on_accept: true
   revert_on_reject: false # fix forward: the charter forbids reverting this run's own
                           # commits. A rejected commit stays, gets no ok tag, and the
                           # critic's fix is the top of the next actor prompt.
   allow_dirty: false
 stop:
-  after: 24h              # owner: 24h, orun12 (2026-10-19); on_done_accepted below is the other way out
+  after: 12h              # owner: 12h, orun13 (2026-10-20); on_done_accepted below is the other way out
   max_iterations: null
   max_cost_usd: null      # subscriptions; nothing here is billed per call
   max_usage: null         # a window crossing a line must not end the run: the
@@ -75,7 +75,7 @@ report:                   # the reporter: an observer outside the loop (ouroboro
                           # It reads this run directory and never the loop, so nothing it
                           # does reaches the run. `ouroboros run` starts it beside the loop.
   notify: auto            # pushover when PO_USER and PO_TOKEN are set; off, and says so, otherwise
-  every: 4h               # a model-written digest this often. A 24h run unattended is six of
+  every: 4h               # a model-written digest this often. A 12h run unattended is three of
                           # them, which is a phone worth reading rather than one worth muting.
   on:                     # the fixed-text alerts, sent the moment the files say so and with
                           # no model involved -- when usage runs out, a model cannot report it
@@ -93,4 +93,4 @@ report:                   # the reporter: an observer outside the loop (ouroboro
   silent_after: 150m      # the actor's timeout is 120m, so quiet for longer than that is a call
                           # that outlived its own kill, not a long iteration
   poll: 30s
-  max_chars: 1000         # one notification; the whole digest is kept in runs/orun12/reports/
+  max_chars: 1000         # one notification; the whole digest is kept in runs/orun13/reports/
