@@ -1698,7 +1698,9 @@ schedule, and body height and pitch. No motion capture is involved.
   `stride_length_m=` overrides it.
 - **IK.** Each leg is solved by damped least squares within its joint
   limits. A joint that more than one leg passes through is a body joint
-  (`spine_joint=`).
+  (`spine_joint=`). A body joint coupled to the spine joint by an
+  `equality/joint` (a cable-driven second spine joint) follows it by its
+  polynomial (ADR-783).
 - **Refusal.** A foot that cannot be reached raises `GaitUnreachable`,
   naming the leg, the moment in the stride, the miss and the joints at a
   stop. It never clamps silently.

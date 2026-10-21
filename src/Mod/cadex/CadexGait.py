@@ -495,6 +495,33 @@ def _leg_rows(model: Any, data: Any, mj: Any, foot: str, target: Any, point: Any
     return errs, jacs
 
 
+def _follow_spine(model: Any, mj: Any, q: Any, spine: int, body_joints: Sequence[int]) -> None:
+    """Set the body joints coupled to the spine joint (a cable-driven second spine joint).
+
+    An active ``equality/joint`` row whose leader is the spine, or a joint that
+    follows it, and whose follower is a body joint, sets the follower from its
+    polynomial about ``qpos0``, as the constraint will; chains are followed.
+    """
+    led = {int(spine)}
+    for _ in range(len(body_joints)):
+        moved = False
+        for i in range(model.neq):
+            if (not int(model.eq_active0[i]) or int(model.eq_type[i]) != int(mj.mjtEq.mjEQ_JOINT)
+                    or int(model.eq_obj2id[i]) not in led):
+                continue
+            follower, leader = int(model.eq_obj1id[i]), int(model.eq_obj2id[i])
+            if follower in led or follower not in body_joints:
+                continue
+            x = q[model.jnt_qposadr[leader]] - model.qpos0[model.jnt_qposadr[leader]]
+            c = model.eq_data[i][:5]
+            q[model.jnt_qposadr[follower]] = model.qpos0[model.jnt_qposadr[follower]] + sum(
+                float(c[n]) * x ** n for n in range(5))
+            led.add(follower)
+            moved = True
+        if not moved:
+            return
+
+
 def _body_pitch(data: Any, body: int) -> float:
     """A body's pitch about the world's lateral axis (rad, its x axis turned nose-down positive)."""
 
@@ -721,6 +748,7 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
             if spine is not None:
                 q[model.jnt_qposadr[spine]] = home[model.jnt_qposadr[spine]] + spine_amp * math.sin(
                     2.0 * math.pi * phase)
+                _follow_spine(model, mj, q, spine, body_joints)
             for foot in feet:
                 travel, lift, _down = foot_path(phase, offsets[foot], duty, length, swing)
                 # the stance this foot is in (or swinging from) began at its offset;

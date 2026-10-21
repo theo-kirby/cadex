@@ -45257,3 +45257,28 @@ against 457 CPU-s; one skin made 2.8 mm thick gives `748fc327…` both ways,
 223 against 586 CPU-s. Unchanged, a second build hits every part: the
 same digest as the first, 100 CPU-s. `pixi run test-engine`: 157 passed,
 3 skipped; `pytest cli/tests`: 53 passed.
+
+## ADR-783 — A gait reference bends a coupled spine joint with the spine (2026-10-20, leo v02)
+
+**Context.** leo v02 bends its spine over two pitch joints, `j_spine` and a
+lumbar `j_spine2`, which a crossed cable couples 1:1 (`assembly.coupling`,
+an `equality/joint`). `CadexGait.generate` set only the named
+`spine_joint` along its sine. Every other body joint stayed at home, so
+the clip held `j_spine2` at 0 while the constraint, in simulation, turns it
+with the spine. The clip described a body the model cannot take.
+
+**Decision.** After setting the spine joint on each sample, the generator
+sets every body joint that an active `equality/joint` row ties to it, or to
+a joint that already follows it, from that row's polynomial about `qpos0`,
+as the constraint will. Leg joints are left to the leg's solve, as
+ADR-776 already handles them. A model with no such coupling is untouched,
+so its clips are unchanged.
+
+**Consequences.** leo v02's clips bend both spine joints together. The
+total bend doubles for the same `spine_amplitude_deg`. The rotary gallop's
+default (10° a joint, 20° in all) leaves leo's left hind heel 2.1 mm off
+the floor at a knee stop, so leo's gallop declares 7° (14° in all). No
+protocol, tool surface or trainer change.
+
+**Evidence.** On leo-spine-b's model, `j_spine` at 0.3 rad sets
+`j_spine2` to 0.3 rad. `pixi run test-engine`: 157 passed, 3 skipped.
