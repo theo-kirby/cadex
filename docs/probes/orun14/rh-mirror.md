@@ -73,7 +73,7 @@ not a side's.
 g1-free-50, and 1.16 and 0.50 on the mirror. `overreach` passes 10/10
 (47.1 mm), against 7/10 (36.7 mm).
 
-- **The stride clock:** `CadexEvaluation.reference_footfall` clocks the
+- **The stride clock:** `CadexEvaluation.footfall_metrics` clocks the
   stride on the left hind's landings (`REFERENCE_ANCHOR = "LH"`, ADR-774).
   - With the double contact on RH, the clock is LH's 2.44 Hz. RH reads
     2.25× it, which fails `no_tap`.
