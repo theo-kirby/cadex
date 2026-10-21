@@ -99,8 +99,8 @@ pin were clamped):
   three swing samples. A 30° stop leaves no reachable pose there, and the
   generator refuses the clip.
 - **What it means.** The policies' fold sits on the same 56–60° the clip
-  reaches at every lift-off. Tracking pays for that angle in swing, and
-  the policies carry it into stance. A shorter stop is not buildable until
+  reaches at every lift-off. A hypothesis, not yet measured: tracking pays
+  for that angle in swing, and the policies carry it into stance. A shorter stop is not buildable until
   the reference keeps its swing pin under the stop: a generator change
   (ADR from ADR-784) that lets the paw trail toes-down in swing, or a
   clip whose swing does not hold the paw level. That is a policy-side
@@ -110,6 +110,7 @@ pin were clamped):
 ## For the owner (R1)
 
 The charter names the free, unsprung paw pin as the owner's choice. This
-keeps the pin free and unsprung and changes only its toes-up travel, 60° →
-30°. The numbers: five screens at 2.2 m/s or more stood with the pin on its
+change would have kept the pin free and unsprung and changed only its
+toes-up travel, 60° → 30°. It was written up and refused at build by the
+gallop clip, so leo is still at its v03 pin. The numbers: five screens at 2.2 m/s or more stood with the pin on its
 60° stop through most of stance (above), and that fold is O2's fault.
