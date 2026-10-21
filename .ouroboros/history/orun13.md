@@ -55,4 +55,20 @@ actor: claude:claude-opus-5-5
 
 ## What this taught
 
-(unwritten)
+The owner stopped orun13 at iteration 16 (8.2 h of 12) to put a free paw pin back on leo's hind foot. Every P1 screen on the welded paw failed at the toe-off.
+
+- **The best screens:**
+  - g4-peak, with `heel_pitch` peaked on the flat sole, laid both soles flat at 2.43 m/s;
+  - g7-hock75, with the hock stop widened to -75, reached heels 0.46/0.41 and passed `hock_down` on 6 of 10 seeds. Its model change was judged and not kept.
+- **Why the rigid foot failed at toe-off:**
+  - the hock drive sat at peak, driving the heel up through stance (`hock-drive.md`, `hind_reach.py`);
+  - LH rolled onto its toes for three or more frames on half its toe-offs (`lh_roll.py`);
+  - RH lifted off outside the clip's stance, where `heel_pitch` pays nothing (`stance_gate.py`).
+
+  A welded paw makes the hock do the whole push-off.
+- **Asymmetry was the policy's, not the robot's,** again: the mirror tests settled it in one iteration.
+- **Setup lessons:**
+  - leo's task needed heel5's stored task settings; the script's defaults shuffled in place;
+  - the clip needs real pair lag (62.5 ms);
+  - the trainer runs at about 63 s per iteration.
+- **The O1 process worked:** a model change was written up, built, tagged, screened, rejected and restored cleanly.
