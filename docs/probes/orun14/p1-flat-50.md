@@ -92,3 +92,12 @@ Between 25 and 50 the paw did not go toes-up the way g1-free's did (U
 - **If it moves the heel:** the next screen puts the sole clip under
   p1-flat's task. p1-flat-50's pin channels and `paw_flat` held the paw
   flatter than any earlier screen.
+
+**Built and launched:** the build accepted `d5192106` (project git `22b5e19`)
+at 09:05:06, and s1-sole launched at 09:05:09. `clip_pad.py` on the run's
+own bundle (`runs/s1-sole/train/gallop-task.json`) reads:
+- heel, pad and toe at 0.0 mm on every heel-held sample;
+- `_META` +5.8 and the pin +3.8° toes-up;
+- `flat_pitch_deg` −61.90 on both legs.
+
+The model is 4c9de98d's. Only the clip changed.
