@@ -4658,7 +4658,7 @@ class AssemblyDomainAPI:
         body_drop_mm: float | None = None,
         body_pitch_deg: float | None = None,
         stance_shift_mm: Mapping[str, float] | None = None,
-        flat_feet: bool | None = None,
+        flat_feet: bool | str | None = None,
         label: str = "",
     ) -> DomainValue:
         """Declare a procedural gait reference for a legged task (ADR-702, ADR-703).
@@ -4695,7 +4695,9 @@ class AssemblyDomainAPI:
         forward of its standing place (``{"LH": 120, "RH": 120}``).
         ``flat_feet=True`` (ADR-780) keeps each such foot at its standing
         pitch while its heel is held, so a paw on a passive pin lies flat
-        rather than rolling onto its rear pad.
+        rather than rolling onto its rear pad. ``flat_feet="sole"`` (ADR-784)
+        holds it instead at the pitch where its collision geoms reach the
+        floor together: the sole flat, whatever pitch the foot stands at.
         """
 
         operation = "gait"
@@ -4806,14 +4808,14 @@ class AssemblyDomainAPI:
                 operation, "heel_from", heel_from, minimum=0.0, maximum=0.99,
             )
         if flat_feet is not None:
-            if not isinstance(flat_feet, bool):
-                raise _error(operation, "flat_feet", "expected True or False", flat_feet)
+            if not isinstance(flat_feet, bool) and flat_feet != "sole":
+                raise _error(operation, "flat_feet", "expected True, False or 'sole'", flat_feet)
             if flat_feet and heels is None:
                 raise _error(operation, "flat_feet",
                              "lays a foot flat while its heel is held: name the heels with heels=",
                              flat_feet)
             if flat_feet:
-                properties["flat_feet"] = True
+                properties["flat_feet"] = flat_feet
         if body_drop_mm is not None:
             properties["body_drop_mm"] = _number(
                 operation, "body_drop_mm", body_drop_mm, minimum=0.0, maximum=5000.0,

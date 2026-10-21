@@ -45282,3 +45282,39 @@ protocol, tool surface or trainer change.
 
 **Evidence.** On leo-spine-b's model, `j_spine` at 0.3 rad sets
 `j_spine2` to 0.3 rad. `pixi run test-engine`: 157 passed, 3 skipped.
+
+## ADR-784 — The gait generator can lay a foot at its sole's level pitch (2026-10-21, orun14, leo v03)
+
+**Context.** leo v03's hind paw turns on a free pin. Its gallop clip holds
+the heel and the toe on the floor in stance, and nothing in the solve sets
+the pin, so the clip folds the paw 12–32° toes-up of the metatarsus. The
+pad, between heel and toe, then sits 3.7–13.3 mm inside the floor, and the
+metatarsus stands 3–11° heel-up of flat (`docs/probes/orun14/p1-flat-25.md`,
+`clip_pad.py`). `track_pose` pays that pose, which no simulated foot can
+take, and it pulls against the heel. ADR-780's `flat_feet=True` holds
+the paw's home pitch instead. At leo's home keyframe the paw stands on its
+toe, 62° toes-down of level, so that is no fix. Of 27 offline
+regenerations over body drop, body pitch and stance shift, 26 are refused.
+
+**Decision.** `flat_feet` also takes `"sole"`. A foot whose heel is held
+is then held at the pitch where its collision geoms reach the floor
+together, in place of its home pitch. The generator finds that pitch by
+turning the foot body about the world's lateral axis, within a quarter
+turn of home, to where the spread of its geoms' lowest points is least.
+It is the same row, tolerance and refusal as ADR-780's. A foot with fewer
+than two collision geoms is refused (`bad_flat_feet`).
+`assembly.gait(..., flat_feet="sole")` declares it, the worker resolves
+it, and `CadexDynamics` passes it on. `True` and the undeclared default are
+unchanged, so every existing clip and bundle is byte-identical.
+
+**Consequences.** On leo v03's p1-flat bundle (4c9de98d), at its own
+settings, both hind paws' sole pitch is −61.90°, the level pitch
+`clip_pad.py` read. On every heel-held sample, heel, pad and toe are
+0.0 mm above the ground, `_META` is +5.8 (v03's flat is +6), and the pin
+is 3.8° toes-up. The largest IK miss is 0.12 mm. The pin steps up to
+57.5° between samples at the hold's ends, as under ADR-780. It is passive
+and no reward tracks it. No protocol, tool surface or trainer change.
+
+**Evidence.** `docs/probes/orun14/clip_sole.py` regenerates the bundled
+clip exactly before it changes the option. `pixi run test-engine` and the
+CLI suite are in the commit.

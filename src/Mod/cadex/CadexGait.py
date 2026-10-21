@@ -346,13 +346,16 @@ def _pitch_quaternion(home: Any, pitch_rad: float) -> Any:
                      w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2])
 
 
-def _below_centre(model: Any, data: Any, geom: int, mj: Any) -> float:
-    """How far a collision geom reaches below its centre at the current pose, m (ADR-776)."""
+def _below_centre(model: Any, data: Any, geom: int, mj: Any, xmat: Any = None) -> float:
+    """How far a collision geom reaches below its centre at the current pose, m (ADR-776).
+
+    ``xmat`` is the geom's world rotation to read instead of the pose's.
+    """
 
     import numpy as np  # noqa: PLC0415
 
     kind, size = int(model.geom_type[geom]), model.geom_size[geom]
-    up = data.geom_xmat[geom].reshape(3, 3)[2]       # the world z of each geom axis
+    up = (data.geom_xmat[geom] if xmat is None else xmat).reshape(3, 3)[2]  # the world z of each geom axis
     if kind == int(mj.mjtGeom.mjGEOM_SPHERE):
         return float(size[0])
     if kind == int(mj.mjtGeom.mjGEOM_CAPSULE):
@@ -529,6 +532,45 @@ def _body_pitch(data: Any, body: int) -> float:
     return math.atan2(-float(x[2]), float(x[0]))
 
 
+def _sole_pitch(model: Any, data: Any, body: int, mj: Any) -> float:
+    """The pitch at which ``body``'s collision geoms reach the floor together (rad, ADR-784).
+
+    The body is turned about the world's lateral axis through its origin,
+    within a quarter turn of its pitch at the current pose, to where the
+    spread of its geoms' lowest points is least: a paw's pad and toes level,
+    its sole flat. A body with fewer than two collision geoms has no sole
+    to level, and is refused.
+    """
+
+    import numpy as np  # noqa: PLC0415
+
+    geoms = [g for g in range(model.ngeom) if int(model.geom_bodyid[g]) == body
+             and (int(model.geom_contype[g]) or int(model.geom_conaffinity[g]))]
+    if len(geoms) < 2:
+        raise GaitError(f"flat_feet='sole' levels a foot's collision geoms, and "
+                        f"{model.body(body).name!r} has {len(geoms)}",
+                        reason="bad_flat_feet", body=model.body(body).name)
+    origin = data.xpos[body]
+    centre = {g: data.geom_xpos[g] - origin for g in geoms}
+    home = _body_pitch(data, body)
+
+    def spread(delta: float) -> float:
+        c, s = math.cos(delta), math.sin(delta)
+        turn = np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
+        low = [float((turn @ centre[g])[2])
+               - _below_centre(model, data, g, mj, turn @ data.geom_xmat[g].reshape(3, 3)) for g in geoms]
+        return max(low) - min(low)
+
+    # a grid, then two finer grids about its best: the spread is piecewise
+    # smooth, with its least where two geoms cross
+    step = math.radians(0.5)
+    grid = [step * n for n in range(-180, 181)]
+    best = min(grid, key=lambda a: (spread(a), abs(a)))
+    for fine in (step / 20.0, step / 400.0):
+        best = min((best + fine * n for n in range(-20, 21)), key=lambda a: (spread(a), abs(a)))
+    return home + best
+
+
 def _held(heel_target: Mapping[str, Sequence[float | None]], foot: str, k: int, default: Any = None) -> Any:
     """Whether ``foot``'s heel has a target at sample ``k`` (no default), or that target."""
 
@@ -578,7 +620,7 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
              samples: int | None = None, home_qpos: Sequence[float] | None = None,
              heels: Mapping[str, str] | None = None, body_drop_m: float = 0.0,
              body_pitch_deg: float = 0.0, stance_shift_m: Mapping[str, float] | None = None,
-             heel_from: float = 0.0, flat_feet: bool = False,
+             heel_from: float = 0.0, flat_feet: bool | str = False,
              mujoco: Any | None = None) -> dict[str, Any]:
     """One stride of ``gait`` at ``speed_m_s`` on ``model``'s own legs, or a :class:`GaitError`.
 
@@ -605,6 +647,9 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
     pin to its pull toward home, and a feline-v07 hind paw stood 52-62 deg
     toes-up with the metatarsus at 18-22 deg, a pose its heel cannot reach
     in simulation (docs/probes/orun12/heel6-flat.md).
+    ``flat_feet="sole"`` (ADR-784) holds the pitch at which the foot's
+    collision geoms reach the floor together (:func:`_sole_pitch`) instead
+    of its home pitch: the sole flat whatever pitch the foot stands at.
     ``body_drop_m`` lowers the trunk that far below its standing height for
     the whole stride, and ``body_pitch_deg`` pitches it nose-up about the
     base's origin by that much more than the stride's own pitch: the crouch,
@@ -678,11 +723,15 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
                             reason="bad_heel", leg=foot, body=str(name))
         _below_centre(model, data, g, mj)
         heel_geom[foot] = g
+    if flat_feet not in (False, True, "sole"):
+        raise GaitError(f"flat_feet is True, False or 'sole', got {flat_feet!r}",
+                        reason="bad_flat_feet")
     if flat_feet and not heel_geom:
         raise GaitError("flat_feet lays a foot flat while its heel is held: name the heels",
                         reason="bad_flat_feet")
-    # ADR-780: each flat foot's standing pitch, at home
-    flat = {foot: _body_pitch(data, feet_body[foot]) for foot in heel_geom} if flat_feet else {}
+    # ADR-780: each flat foot's standing pitch, at home; ADR-784: its sole's level pitch
+    flat = {foot: (_sole_pitch(model, data, feet_body[foot], mj) if flat_feet == "sole"
+                   else _body_pitch(data, feet_body[foot])) for foot in heel_geom} if flat_feet else {}
 
     def world_point(foot: str) -> Any:
         b = feet_body[foot]

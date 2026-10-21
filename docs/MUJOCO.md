@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-20
+Verified against source: 2026-10-21
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -1719,7 +1719,9 @@ schedule, and body height and pitch. No motion capture is involved.
   swing samples to the height a free swing gives it. `flat_feet=True`
   (ADR-780) also holds each such foot at the pitch it stands at while its
   heel is held, so a paw on a passive pin lies flat instead of rolling
-  onto its rear pad.
+  onto its rear pad. `flat_feet="sole"` (ADR-784) holds it instead at the
+  pitch where its collision geoms reach the floor together: a paw whose
+  home pose stands on its toe still lies with its sole flat.
 - **Two feet (ADR-754).** `legs` keyed `L`, `R` builds a biped's stride:
   `walk` (duty 0.6) and `run` (duty 0.35), the feet half a stride apart and
   the left foot the phase reference (Alexander 1984). In a task,
