@@ -108,7 +108,13 @@ def floor_pitch(placements, body, pad, toe):
 
     a, b = world(placements, body, pad["pos_mm"]), world(placements, body, toe["pos_mm"])
     rot, _ = E._pose(placements, body)
-    fwd = (rot[0][0], rot[1][0])
+    # Forward is the horizontal normal to the pin's axis (the paw's local y, its
+    # sagittal plane's normal), signed to world +x (straight runs, O10). The paw's
+    # local x, used before 2026-10-21, pitches with the paw: at a pin of ~45 deg
+    # toes-up its horizontal part is short and turns, and g1-free-50 read +146 / +78.
+    fwd = (rot[1][1], -rot[0][1])
+    if fwd[0] < 0:
+        fwd = (-fwd[0], -fwd[1])
     norm = math.hypot(*fwd) or 1.0
     d = [b[i] - a[i] for i in range(3)]
     along = (d[0] * fwd[0] + d[1] * fwd[1]) / norm
