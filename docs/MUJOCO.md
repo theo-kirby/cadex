@@ -1722,6 +1722,10 @@ schedule, and body height and pitch. No motion capture is involved.
   onto its rear pad. `flat_feet="sole"` (ADR-784) holds it instead at the
   pitch where its collision geoms reach the floor together: a paw whose
   home pose stands on its toe still lies with its sole flat.
+  `trail_feet=True` (ADR-785) lays a flat foot flat only while it is down,
+  so through the heel's ease after toe-off the paw trails the leg instead
+  of staying level, which on leo v03 turned its free pin to 56–58° in
+  early swing.
 - **Two feet (ADR-754).** `legs` keyed `L`, `R` builds a biped's stride:
   `walk` (duty 0.6) and `run` (duty 0.35), the feet half a stride apart and
   the left foot the phase reference (Alexander 1984). In a task,

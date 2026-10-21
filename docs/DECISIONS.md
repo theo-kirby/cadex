@@ -45318,3 +45318,36 @@ and no reward tracks it. No protocol, tool surface or trainer change.
 **Evidence.** `docs/probes/orun14/clip_sole.py` regenerates the bundled
 clip exactly before it changes the option. `pixi run test-engine` and the
 CLI suite are in the commit.
+
+## ADR-785 — A flat foot can trail after toe-off (2026-10-21, orun14, leo v03)
+
+**Context.** ADR-778 eases a held heel up over three swing samples after
+toe-off, and ADR-780 / ADR-784 hold a flat foot's pitch on every sample
+whose heel has a target, so through that ease the paw stays level while
+the heel rises. On leo v03's free paw pin that walks the pin from 2–4°
+in stance to 56–58° toes-up of the metatarsus in the first three swing
+samples, within 2–4° of its 60° stop, in one 54–58° step back at the next
+sample (`docs/probes/orun14/leo-v03.1.md`). Every v03 policy at 2.2 m/s or
+more stood with the pin past 30° on 0.63–0.97 of stance (`pin_cap.py`),
+and a 30° stop (leo-v03.1) was refused at build because the clip itself
+needs 56°.
+
+**Decision.** `generate(..., trail_feet=True)` lays a flat foot flat only
+on the samples it is down. In swing the pitch row is dropped, and the heel
+ease and the foot target stay, so the paw trails the leg at the pitch the
+solve's null-space pull toward home gives it. It needs `flat_feet`
+(`bad_flat_feet` otherwise). `assembly.gait(..., trail_feet=True)`
+declares it, the worker resolves it, and `CadexDynamics` passes it on. A
+trailing clip's `heels` entries carry `"trails": true`. Undeclared, every
+clip and bundle is byte-identical.
+
+**Consequences.** On ps-sole's bundle (leo v03, `9820961f`) the clip
+regenerated with it holds the same stance (pin 0–3.8°, four heel-down
+samples a leg) and its swing pin peaks at 8.4° (LH) and 7.4° (RH), down
+from 57.7° and 56.0°. The largest pin step between samples is 7.2°, down
+from 57.5°. The largest IK miss is 0.12 mm. A 30° toes-up stop is now
+reachable by the clip. No protocol, tool surface or trainer change.
+
+**Evidence.** `docs/probes/orun14/clip_trail.py` regenerates the bundled
+clip exactly before it turns the option on. `pixi run test-engine` and the
+CLI suite are in the commit.

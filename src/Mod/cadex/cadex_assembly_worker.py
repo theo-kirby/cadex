@@ -5116,6 +5116,8 @@ def _gait_input(
     if properties.get("flat_feet"):
         # ADR-780 (True), ADR-784 ("sole"); absent unless declared
         resolved["flat_feet"] = "sole" if properties["flat_feet"] == "sole" else True
+    if properties.get("trail_feet"):
+        resolved["trail_feet"] = True  # ADR-785; absent unless declared
     if properties.get("stance_shift_mm"):
         resolved["stance_shift_mm"] = {foot: float(v)
                                        for foot, v in dict(properties["stance_shift_mm"]).items()}

@@ -4659,6 +4659,7 @@ class AssemblyDomainAPI:
         body_pitch_deg: float | None = None,
         stance_shift_mm: Mapping[str, float] | None = None,
         flat_feet: bool | str | None = None,
+        trail_feet: bool | None = None,
         label: str = "",
     ) -> DomainValue:
         """Declare a procedural gait reference for a legged task (ADR-702, ADR-703).
@@ -4698,6 +4699,9 @@ class AssemblyDomainAPI:
         rather than rolling onto its rear pad. ``flat_feet="sole"`` (ADR-784)
         holds it instead at the pitch where its collision geoms reach the
         floor together: the sole flat, whatever pitch the foot stands at.
+        ``trail_feet=True`` (ADR-785) lays a flat foot flat only while it is
+        down, so after toe-off it trails the leg instead of staying level
+        while its heel rises.
         """
 
         operation = "gait"
@@ -4816,6 +4820,14 @@ class AssemblyDomainAPI:
                              flat_feet)
             if flat_feet:
                 properties["flat_feet"] = flat_feet
+        if trail_feet is not None:
+            if not isinstance(trail_feet, bool):
+                raise _error(operation, "trail_feet", "expected True or False", trail_feet)
+            if trail_feet and not flat_feet:
+                raise _error(operation, "trail_feet",
+                             "lets a flat foot trail after toe-off: ask for flat_feet=", trail_feet)
+            if trail_feet:
+                properties["trail_feet"] = True
         if body_drop_mm is not None:
             properties["body_drop_mm"] = _number(
                 operation, "body_drop_mm", body_drop_mm, minimum=0.0, maximum=5000.0,
