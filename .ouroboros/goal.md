@@ -1,14 +1,16 @@
 # Goal: leo v05, a cat-like gallop across speeds
 
-Verified against source: 2026-10-22. Operator charter for orun16. It follows
-orun15 (`.ouroboros/history/orun15.md`, merged at `1d0f289c`), which ran its
-12 h: a 12 N·mm/deg paw-pin spring (leo-v04.3) took the stance fold out
-(hk12-s1-50: U 0.16 / 0.01, 2.40 m/s, rotary 10 / 10), but no criterion
-closed, the third leo run in a row. Owner decisions of 2026-10-22: keep the
-spring, add pin damping (**leo v05**), drop `hock_at_toeoff` on the pinned
-foot (it fails by design), let each criterion close on its own best policy,
-and work the speed goals (SG, RL) first. The human owns this file;
-unattended roles never edit it.
+Verified against source: 2026-10-22. Operator charter for orun17, a 24 h
+run. It follows orun16 (`.ouroboros/history/orun16.md`, merged at
+`47896944`), which the owner stopped at 10.3 h with no criterion ticked.
+orun16 showed a speed-commanded policy works on leo (sg-s4 tracked
+1.0–2.4 m/s commands, rotary 10 / 10 above the slow end), but five stance
+heel terms, each a warm screen judged at 25, piled habits up instead of
+scheduling the heel. The one cold 0.7–2.4 m/s screen (sg-s9) was the first
+with the shape asked for. Owner decisions of 2026-10-22: **the speed goals
+stay first, trained cold and long** (O8 rewritten); **the 1 ms solver step
+for Q2 is deferred**; the model stays **leo v05**. The human owns this
+file; unattended roles never edit it.
 
 ## Mission
 
@@ -28,15 +30,16 @@ The robot is designed, but **the loop may change it** when a measurement
 shows the change makes the gallop faster or better (O1).
 
 If the loop achieves only one thing, it is **one speed-commanded policy on
-leo v05 that runs across speeds**: digitigrade and clearly rotary when slow,
+leo v05, trained cold and long, that runs across speeds**: digitigrade and clearly rotary when slow,
 closer to plantigrade with a tighter rotary lag when fast (SG, RL), judged
 by the engine and filmed. Next comes a policy passing P1 and P2 at the
 highest speed it can hold.
 
 ## The robot
 
-- **The project is `~/cadex-projects/leo`**, starting at the revision tagged
-  `leo-v05` in its own git. It is this run's project. Every other project in
+- **The project is `~/cadex-projects/leo`**, starting at its git head
+  `d916102` (leo-v05's model with orun16's `gallop_sg` task, sg-s9's
+  script). It is this run's project. Every other project in
   `~/cadex-projects` is read-only.
 - **Spine (new in v02).**
   - Two pitch joints on one AK80-9 pitch drive:
@@ -75,17 +78,20 @@ highest speed it can hold.
       lays the paw flat.
     - The heel (`c_heel_h*`) is welded to the metatarsus, its front
       trimmed 3 mm clear of the pad.
-  - **The gallop task is hk12-s1's** (the leo project's `script.py` at
-    `leo-v05`; orun15's best, built on tr-sole's):
-    - the clip uses `flat_feet="sole"` (ADR-784) and `trail_feet` (ADR-785):
-      heel, pad and toe on the floor in stance, and the paw trailing flat
-      in swing (pin ≤ 8.4°);
-    - the actor reads both paw pins on encoders (`q_pawpin_*`,
-      `dq_pawpin_*`);
-    - `heel_pitch` is a cubic peaked on the metatarsus at +6°, and
-      `paw_flat` (w10) pays the paw's floor pitch within 15° of flat;
-    - `roll_brake` is off on the pin; `paw_fold` is not in the task;
-    - `gallop_spec` has no `hock_at_toeoff` on the pinned foot (v05, O2).
+  - **The tasks as orun16 left them** (the leo project's `script.py` at
+    `d916102`):
+    - `gallop` is hk12-s1's task: the clip uses `flat_feet="sole"`
+      (ADR-784) and `trail_feet` (ADR-785); the actor reads both paw pins
+      on encoders; `heel_pitch` (cubic at +6°), `paw_flat` (w10), and
+      **`paw_fold` (w −10) are in it** (orun15/16's charters said
+      `paw_fold` was out; it never was); `roll_brake` is off; no
+      `hock_at_toeoff` on the pinned foot (v05, O2);
+    - `gallop_sg` is sg-s9's task: a speed command the actor reads, a
+      speed-scheduled reference from 0.7 to 2.4 m/s (heel hold 0 → 0.8,
+      pair lag about 0.35 → 0.15 of the stride), `track_speed` a linear
+      tent, `overrun` (w −10), `heel_sched` gated on paw contact,
+      `hind_scuff` (w −8), and everything above
+      (`docs/probes/orun16/sg-task.md`, `sg-schedule.md`, `sg-s8-25.md`).
   - The claws are retracted inside the toe bulbs. At hock 0 to -40 the toe
     bulbs are the lowest point; at -60, heel, pad and toes are within 2 mm.
 - **Front leg.** feline v07's wrist drive at the elbow, a 28 mm parallelogram
@@ -97,15 +103,23 @@ highest speed it can hold.
   3.2–4.3 mm (Q2); spreading the hinds 40 ms apart brought LH's fold back
   on the 8 N·mm/deg spring (`orun15/hlk8-sole.md`, the fold follows the
   second hind to land).
-- **The best policies so far** (both leo-v04.3, cold 50 + warm 50, not
-  re-trainable warm on v05: the trainer refuses a warm start across a
-  robot change):
-  - hk12-s1-50: 2.40 m/s, heels 0.32 / 0.35, U 0.16 / 0.01, rotary 10 / 10,
-    flight 0.16 s, overreach 1 / 10, straight 10 / 10;
-  - hk12-s1x-50: 2.49 m/s, heels 0.33 / 0.24, U 0.15 / 0.03, rotary
-    10 / 10, flight 0.08 s, overreach 0 / 10.
-- **Not yet measured on v05:** the pin's rate with damping 5, and what it
-  costs in speed or heel share.
+- **The best policies so far:**
+  - single speed, hk12-s1-50 (leo-v04.3): 2.40 m/s, heels 0.32 / 0.35,
+    U 0.16 / 0.01, rotary 10 / 10; on v05, v05-s1-50: 2.39 m/s, heels
+    0.40 / 0.35, U 0.25 / 0.01 (LH's is a touch-down fold), pins 741 / 380
+    °/s p95;
+  - speed-commanded, sg-s4-50 (warm chain): 1.19 / 2.13 / 2.78 m/s at
+    1.0 / 1.7 / 2.4 commanded, slow heel low (LH 0.05), fore lag
+    0.320 → 0.211 → 0.179, rotary 10 / 10 at 1.7 and 2.4 but 0 / 10 at
+    1.0 (LH taps mid-swing); the heel not scheduled on RH;
+  - sg-s9 (cold, 0.7–2.4) at 25: heels 0.01 / 0.00 at 0.7 rising to
+    0.11 / 0.38 at 2.4, but 1.08–1.15 m/s at every command and tipped on
+    8 / 10 slow seeds. **It was still training (80 iterations) at the
+    stop**; its 50 and 80 checkpoints are in `runs/sg-s9/train/`.
+- **What orun16 found about the reference:** the generator lays a paw flat
+  only where its heel is held, so a heels-up slow stride stands the paw on
+  the toe bulbs, and the slow clip lands toes-first with the heel 30–44 mm
+  up (`sg-reference.md`, `sg-s7-25.md`).
 - **Known clearance at the start.**
   - The joint sweep fails 12 pairs, all of them front-leg parts against
     the chest through the shoulder and scapula.
@@ -217,27 +231,30 @@ highest speed it can hold.
   - Evaluate a term per step on the bundle before adding it, and keep it
     only if a judged run shows it moved its measure.
   - In orun10 and orun11, every added rule cost speed.
-- **O8. Short GPU runs to learn, then longer runs once confident (owner).**
-  - **Learning phase:** screens of 30–80 iterations, with fewer envs
-    (2048–4096) where that still answers the question. Each screen asks
-    one question, and is judged on the engine at its checkpoints. A
-    screen that clearly is not moving its measure by its first judged
-    checkpoint is stopped early and recorded as a dead end.
-  - **When confident:** a long run of 200–400 iterations, warm-started
-    where the inputs allow (`--critic-warmup`; about 3e-5 for a
-    fine-tune).
-    - **Confident means:** the actor can name which lever moves which
-      measure, from judged screens, and a screen's curve is still
-      climbing with P1 holding.
-    - The record of the long run says why it is warranted.
-  - **Sizing:**
-    - Time the first ten iterations of every new bundle, and set
-      `budget_s` to the iterations asked for plus 20%.
-    - feline v07 ran at about 67 s per iteration at 4096–8192 envs; leo's
-      extra spine constraint may change that.
-    - Extend a run only while its curve climbs.
-  - **Keep the GPU busy.** Launch the next screen before a rebuild, an
-    analysis or a write-up.
+- **O8. Cold and long (owner, 2026-10-22; replaces orun13–16's short
+  screens).** orun16's warm chain of 25-iteration reward screens carried
+  each screen's habits into the next and never settled the heel.
+  - **No warm chains across task changes.** A changed task trains cold.
+    Warm starts only extend the same task (`--critic-warmup`, about 3e-5).
+  - **Screens are 100–150 iterations**, judged at 50 and at the end, at
+    three or more commanded speeds. A cold run at 25 is a shuffle: judge
+    nothing at 25 except a crash or a fall-over on every seed.
+  - **Long runs are 200–400 iterations** once a screen shows the shape (the
+    heel rising with speed, rotary at the slow end, tracking the command),
+    warm from that screen on the same task.
+  - **Cut before adding.** Before a new reward term, try removing one: a
+    task that carries terms no screen showed working (`paw_fold`,
+    `heel_tail`, `hock_land`, and any other) is trimmed first, and the
+    trim is judged.
+  - **Fix the reference before the reward.** When the policy's posture
+    differs from the clip's, read the clip first. A generator option (an
+    ADR from ADR-786) beats a new reward term.
+  - **Sizing:** time the first ten iterations of every new bundle (leo
+    runs 69–90 s per iteration at 4096 envs) and set `budget_s` to the
+    iterations asked for plus 20%. Extend a run only while its curve
+    climbs.
+  - **Keep the GPU busy.** Launch the next run before a rebuild, an
+    analysis or a write-up; one trainer at a time.
 - **O9. A clean simulation.**
   - A judged policy shows:
     - no NaN or blow-up;
@@ -252,8 +269,10 @@ highest speed it can hold.
     `docs/probes/orun12/`; orun13–15's are in `docs/probes/orun13/`,
     `orun14/` (`paw_floor.py`, `fold_term.py`, `lead_order.py`) and
     `orun15/` (`clip_read.py`, `hind_step.py`, `lag_term.py`,
-    `place_term.py`); `orun13/p2_lag.py` and `orun13/spine_foot.py`. Put
-    this run's under `docs/probes/orun16/`.
+    `place_term.py`); `orun13/p2_lag.py` and `orun13/spine_foot.py`;
+    orun16's `sg_judge.py` (judging `gallop_sg` at held commands),
+    `sg_lag.py`, `hind_rhythm.py`, `sg_clip.py` and `heel_gate.py`. Put
+    this run's under `docs/probes/orun17/`.
 - **O10. Straight lines, flat ground.** No turning, leaping or terrain.
 
 ## Done criteria
@@ -268,12 +287,13 @@ on the sprinting policy. Tick a criterion as soon as a judged policy meets
 it, citing the evaluation.
 
 - [ ] **B1. Ready to train.**
-  - The gallop bundle builds on leo-v05, without `hock_at_toeoff`.
-  - The seconds per iteration are timed.
-  - The pin's rate is measured on a first screen (hk12-s1's task on v05,
-    cold, 50 iterations), judged at 25 and 50 and reported against
-    hk12-s1-50 and hk12-s1x-50 (above): did damping 5 bring the pin under
-    900°/s p95, and at what cost?
+  - sg-s9 (cold, still training at the stop) is judged at 50 and 80 at
+    0.7 / 1.55 / 2.4 m/s commanded, against sg-s4-50 and sg-s9-25 above.
+  - The `gallop_sg` reference's slow end is read: where the paw and heel
+    are at touchdown and in stance, and whether a generator option can
+    stand the slow paw on its pad with the heel up.
+  - A trimmed `gallop_sg` task (terms with no judged effect cut) is written
+    and its first cold screen launched.
 - [ ] **P1. Plantigrade and flat, both legs (O2).**
   - On one policy, on at least 8 of 10 seeds, `hock_down` passes for
     **each** hind leg.
@@ -314,7 +334,10 @@ it, citing the evaluation.
   legs' heel stance share, stride length and touchdown rate are within 20%
   of each other.
 - [ ] **Q2. Clean simulation.** A P1 or P2 policy's traces pass O9 (the
-  front push-rod loops within 2 mm is the open item).
+  front push-rod loops within 2 mm is the open item). **The 1 ms solver
+  step that closes them is deferred by the owner** (it costs 1.8× an
+  iteration and a cold restart): not this run, unless every other open
+  criterion above Q2 is closed.
 - [ ] **S1. 5 m/s, plantigrade.**
   - A sprint holds at least **5 m/s** over a 2 s window on at least 8 of
     10 seeds, by a policy that also passes P1, P2 and Q2. That is
@@ -331,7 +354,7 @@ it, citing the evaluation.
   - the SG policy at its slowest and fastest, side by side: the toes
     against the flat foot, and the rotary lag tightening;
   - left and right side views.
-- [ ] **R1. The closing report.** `docs/probes/orun16/REPORT.md` gives:
+- [ ] **R1. The closing report.** `docs/probes/orun17/REPORT.md` gives:
   - each criterion with its numbers;
   - the clip and reward design;
   - the terms kept and cut;
@@ -350,33 +373,26 @@ Not this run's. They are for when the frontier above is empty:
 ## Horizon ladder
 
 - **short-term:**
-  1. B1: build the bundle on leo-v05, time ten iterations, and launch the
-     first screen (hk12-s1's task, cold, 50 iterations) before anything
-     else that is slow. Judge it at 25 and 50 with `paw_floor.py`,
-     `p2_lag.py` and `legs.py`.
-  2. While it trains, on the CPU: read the gait generator's speed schedule
-     (ADR-773). Can one reference carry the heel hold, body drop, stance
-     shift and pair lag as functions of speed? What does a speed command
-     add to the task (an actor input, the clip's speed range)?
-  3. Build the SG task: hk12-s1's terms on a speed-scheduled reference
-     with a speed command, from the slowest gallop it can hold to about
-     2.5 m/s. Judge the reference first: at its slow end heels up and lag
-     about 0.25–0.5; at its fast end heels down 0.4+ and lag about
-     0.1–0.15, never under 40 ms.
-  4. Launch the first SG screen cold; judge it at three or more commanded
-     speeds.
+  1. B1: judge sg-s9 at 50 and 80 (it holds the GPU at the start; do the
+     CPU work meanwhile).
+  2. Read the slow reference (O8: the reference before the reward). If
+     the clip stands the slow paw on its toe bulbs or lands toes-first
+     with the heel high, write the generator option first.
+  3. Trim `gallop_sg`: cut `paw_fold`, `heel_tail`, `hock_land` and any
+     term with no judged effect; keep tracking, overrun, the heel schedule
+     and the lag reference.
+  4. Launch the trimmed task cold, 100–150 iterations, before anything
+     slow. Judge at 50 and at the end, at three or more speeds.
 - **medium-term:**
-  1. Close SG and RL with short screens, then a long run once confident
-     (O8). Check the fold (U) at every speed: the spring's job holds or
-     fails across speeds.
-  2. Close P1 (heel share 0.4 at speed) and P2 (overreach, `no_tap`) on
-     whichever policy gets there: the SG policy at its top speed, or a
-     single-speed screen.
-  3. Q2's front push-rod loop gap (3.2–4.3 mm against 2): a model or
-     solver change under O1.
-  4. Then raise the speed toward S1 and S2, measuring what binds at each
-     step.
-  5. SP and Q1 on the best policies.
+  1. Once a cold screen shows the shape, a long run (200–400 iterations)
+     warm on the same task. Close SG and RL on it.
+  2. Check the fold (U) and the pin rate at every speed on every judged
+     run.
+  3. P1 (heel share 0.4 at speed) and P2 (overreach, `no_tap`) on the SG
+     policy's top speed, or a single-speed `gallop` run if the SG policy
+     cannot reach them.
+  4. Widen the SG range upward toward S1, measuring what binds.
+  5. SP and Q1 on the best policies; F1's films of the slow and fast ends.
 - **long-term:**
   1. F1's films and R1's report, kept current as each criterion closes.
   2. The later criteria.
@@ -429,7 +445,7 @@ Not this run's. They are for when the frontier above is empty:
 - **The dashboard stays read-only.** The actor may serve it on 127.0.0.1
   for its own tests. It never runs `tailscale serve` and never binds a
   public address.
-- Committed images are PNG, ≤ 300 KB each, under `docs/probes/orun16/`, on
+- Committed images are PNG, ≤ 300 KB each, under `docs/probes/orun17/`, on
   the dark floor. Films live outside the repo and on the run's page.
 - No role starts, stops or restarts the loop or signals its process. Kill
   stray engine processes by PID, never with a broad `pkill` pattern.
@@ -477,6 +493,10 @@ Not this run's. They are for when the frontier above is empty:
     rotary 10 / 10, hk12-s1-50). Heel share stalled at ~0.32 and
     `hock_at_toeoff` at 0, which the owner judged a spec at odds with the
     pin. SG and RL were never reached behind P1.
+  - **orun16 on leo v05, 10.3 h, 0 ticked.** A speed-commanded gallop
+    tracks its command (sg-s4); five stance heel terms on a warm chain of
+    25-iteration screens failed to schedule the heel; the cold 0.7–2.4
+    screen sg-s9 had the shape at 25 but neither tracked nor stood.
   - **Speed:**
     - the best on any cat was 4.64 m/s, on its toes (orun10);
     - every reward rule added cost speed;
