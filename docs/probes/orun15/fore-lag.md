@@ -104,3 +104,16 @@ CUDA_VISIBLE_DEVICES= pixi run python docs/probes/orun15/lag_term.py $R/gallop-t
   21:10). Its queue log is `~/orun15-queue/fl-sole.log`; the launch line
   goes to an unlinked copy, so read `runs/fl-sole/registration.json` for
   it.
+
+## Timed (iteration 11)
+
+- fl-sole launched from the queue at 21:07:12 when hlk8-sole finished;
+  its tenth iteration ended at 21:22:47, 15.6 minutes in (about 93 s an
+  iteration with start-up, hlk8-sole's 16.8). The trainer's ETA then was
+  3,422 s more, so about 4,350 s in all, inside the 4,600 s budget; +25
+  falls near 21:45 and 50 near 22:20.
+- hlk8-sole-50, its like-for-like, is judged in `hlk8-sole.md`: U 0.29 /
+  0.02, hinds 40 ms apart on 10/10, fore pair 40 ms apart at the median
+  and in one frame on 0.20 of strides, LF tapping on 0.50 of its steps
+  (`no-tap.md`), 2.17 m/s. fl-sole's 25 and 50 add LF's and RF's taps a
+  step (`fore_tap.py`) to the keep rule's readings.
