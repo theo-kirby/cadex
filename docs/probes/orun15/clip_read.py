@@ -13,7 +13,8 @@ range; and the speed ``track_speed`` pays up to.
 second): for every LH touchdown, the signed time to the nearest touchdown
 of each other paw (within half a stride), median over touchdowns and
 seeds, and the share of LH touchdowns RH lands in the same 20 ms frame
-as (``together``); the engine's stride rate. Standard library only.
+as (``together``); the engine's stride rate. A seed whose LH took too few
+settled steps for a stride rate is skipped and counted. Standard library only.
 """
 
 from __future__ import annotations
@@ -81,11 +82,14 @@ def nearest(t0, times, half):
 def evaluation(path: Path, asked):
     e = json.loads((path / "evaluation.json").read_text())
     rows, together, n_lh = {k: [] for k in asked}, 0, 0
-    rates = []
+    rates, unclocked = [], 0
     for s in e["seeds"]:
         d = s["detail"]
         feet = d["feet"]
-        hz = d["footfall"]["stride_hz"]
+        hz = d["footfall"].get("stride_hz")
+        if not hz:  # LH took fewer than two settled steps: no stride clock, no window
+            unclocked += 1
+            continue
         rates.append(hz)
         half = 0.5 / hz
         lh = [t for t in feet[PAW["LH"]]["touchdowns_s"] if t >= SETTLE_S]
@@ -101,11 +105,16 @@ def evaluation(path: Path, asked):
     print("| paw | clip ms after LH | policy median ms (q1 / q3) | LH touchdowns matched |")
     print("|---|---|---|---|")
     for k, v in rows.items():
+        if not v:
+            print(f"| {k} | {asked[k] * 1000:+.0f} | – | 0 / {n_lh} |")
+            continue
         q = statistics.quantiles(v, n=4) if len(v) > 1 else [math.nan] * 3
         print(f"| {k} | {asked[k] * 1000:+.0f} | {statistics.median(v) * 1000:+.0f} ({q[0] * 1000:+.0f} / "
               f"{q[2] * 1000:+.0f}) | {len(v)} / {n_lh} |")
     print(f"\nRH in the same 20 ms frame as LH on {together} / {n_lh} LH touchdowns "
-          f"({together / max(n_lh, 1):.2f}); stride rate median {statistics.median(rates):.2f} Hz\n")
+          f"({together / max(n_lh, 1):.2f}); stride rate median "
+          + (f"{statistics.median(rates):.2f} Hz" if rates else "none")
+          + (f"; {unclocked} seed(s) with no stride rate skipped" if unclocked else "") + "\n")
 
 
 def main(argv):
