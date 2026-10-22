@@ -37,3 +37,9 @@ each pair's lag at least 40 ms (taps counted) and the fore and hind lag
 shares fall from 1000 to 2400. Extend warm (O8) only if SG's holds; the tap
 lever (`hind_scuff` stronger, scored separately) is the next screen if RL's
 alone fails.
+
+**Launched** (recorded after the rules above were committed in `8bfda766`):
+queued 15:02:44, built 15:06:27 as leo revision **`6dba5e5e`** (leo commit
+`7c946c4`, model `59bc5407` unchanged, digest `c0cec791`), launched
+15:06:30 (`~/orun16-queue/sg-s7.log`). Its `gallop_sg-task.json` against
+sg-s6's: 24 terms each, only `heel_sched` differs; every other key equal.
