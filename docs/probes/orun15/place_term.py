@@ -44,6 +44,7 @@ from paw_floor import E, LEGS, paw_capsules, seed_series  # noqa: E402
 STAND_MM = 311.0
 REACH_MM = 150.0
 SLOPE_MM = 50.0
+STILT_DEG = 30.0
 
 
 def com_x(model, placements, root=1):
@@ -83,7 +84,7 @@ def main(argv):
     for arg in argv[1:]:
         out = Path(arg)
         rig = json.loads((out / "evaluation.json").read_text())["rig"]
-        acc = {leg: {"td": [], "U": [], "FR": [], "term": [], "termU": 0.0, "n": 0} for leg, *_ in LEGS}
+        acc = {leg: {"td": [], "U": [], "FR": [], "term": [], "termU": 0.0, "n": 0, "stilt": [], "nstilt": 0, "ndown": 0} for leg, *_ in LEGS}
         for path in sorted(out.glob("seed-*-trace.json")):
             trace = json.loads(path.read_text())
             frames = [f for f in trace["frames"] if f.get("component_placements")]
@@ -109,10 +110,15 @@ def main(argv):
                     if mark == "U":
                         a["termU"] += v
                     a["n"] += 1
+                    over = max(0.0, -s["pitch"][i] - STILT_DEG) if down else 0.0
+                    a["stilt"].append(over / STILT_DEG)
+                    a["ndown"] += down
+                    a["nstilt"] += over > 0
         print(f"\n## {out.name}\n")
         print("| leg | place at touch-down mm (median, p90) | place on U frames | on F/R frames "
-              f"| hind_place a step (D {REACH_MM:.0f}, S {SLOPE_MM:.0f}) | its share on U frames |")
-        print("|---|---|---|---|---|---|")
+              f"| hind_place a step (D {REACH_MM:.0f}, S {SLOPE_MM:.0f}) | its share on U frames "
+              f"| paw-down frames past {STILT_DEG:.0f} deg toes-down | stilt charge a step |")
+        print("|---|---|---|---|---|---|---|---|")
         both = []
         for leg, *_ in LEGS:
             a = acc[leg]
@@ -121,7 +127,8 @@ def main(argv):
             total = sum(a["term"])
             both.append(statistics.fmean(a["term"]) if a["term"] else 0.0)
             print(f"| {leg} | {med(td):+.0f} ({p90:+.0f}) | {med(a['U']):+.0f} ({len(a['U'])}) "
-                  f"| {med(a['FR']):+.0f} ({len(a['FR'])}) | {both[-1]:.3f} | {a['termU'] / total if total else 0:.2f} |")
+                  f"| {med(a['FR']):+.0f} ({len(a['FR'])}) | {both[-1]:.3f} | {a['termU'] / total if total else 0:.2f} "
+                  f"| {a['nstilt'] / max(a['ndown'], 1):.2f} | {statistics.fmean(a['stilt']) if a['stilt'] else 0:.3f} |")
         print(f"\nhind_place, both legs averaged: {statistics.fmean(both):.3f} a step.")
     return 0
 
