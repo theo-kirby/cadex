@@ -9,8 +9,8 @@ numbers.
 | criterion | state | evidence |
 |---|---|---|
 | B1 | met | `b1-ready.md`, `v05-s1.md`: v05-s1-50 (`41693803`, rev `15d9feb4`), pins p95 741 / 380 °/s at 2.39 m/s, heels 0.40 / 0.35, U 0.25 / 0.01 |
-| SG, RL | strides judged offline, task not built | `sg-schedule.md`, `sg-reference.md`: sg0–sg3, 1.00–2.40 m/s, clip heel 0 → 0.8, lag 0.30 → 0.15 (150 → 50 ms) |
-| P1 | open; v05-s1x (warm +50) training | `v05-s1.md`, `sg-reference.md` |
+| SG, RL | task built (`gallop_sg`, leo rev `721d10da`), its strides equal to the judged ones; sg-s1 (cold, 80 it) training | `sg-schedule.md`, `sg-reference.md`, `sg-task.md`: sg0–sg3, 1.00–2.40 m/s, clip heel 0 → 0.8, lag 0.30 → 0.15 (150 → 50 ms) |
+| P1 | open; v05-s1x (warm) stopped at +25 under O8, a dead end: RH heel 0.35 → 0.15, LH U 0.25 → 0.28, 2.27 m/s | `v05-s1.md`, `sg-task.md` |
 | P2, SP, Q1, Q2, S1, S2, F1 | open | – |
 
 ## Notes for the owner
