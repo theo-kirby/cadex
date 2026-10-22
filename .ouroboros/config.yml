@@ -1,4 +1,4 @@
-run: orun15
+run: orun16
 goal: .ouroboros/goal.md
 memory: auto            # -> governor (.flywheel/ + CLI present, ADR-672)
 backend: headless       # tmux: one streaming window per harness call in the run session
@@ -16,7 +16,7 @@ critic: agent           # rules: the deterministic fallback only, no model call
 scribe: agent           # rules: the loop writes the record itself
 idle_interval: 30m
 roles:
-  # Owner-directed launch (ot11, kept for orun1 through orun15): Opus 5.5 for every role, with no fallback.
+  # Owner-directed launch (ot11, kept for orun1 through orun16): Opus 5.5 for every role, with no fallback.
   actor:
     harness: claude
     model: claude-opus-5-5
@@ -35,14 +35,14 @@ roles:
     model: claude-opus-5-5
     timeout: 10m
 git:
-  branch: null            # -> ouroboros/orun15
+  branch: null            # -> ouroboros/orun16
   tag_on_accept: true
   revert_on_reject: false # fix forward: the charter forbids reverting this run's own
                           # commits. A rejected commit stays, gets no ok tag, and the
                           # critic's fix is the top of the next actor prompt.
   allow_dirty: false
 stop:
-  after: 12h              # owner: 12h, orun15 (2026-10-21); on_done_accepted below is the other way out
+  after: 12h              # owner: 12h, orun16 (2026-10-22); on_done_accepted below is the other way out
   max_iterations: null
   max_cost_usd: null      # subscriptions; nothing here is billed per call
   max_usage: null         # a window crossing a line must not end the run: the
@@ -93,4 +93,4 @@ report:                   # the reporter: an observer outside the loop (ouroboro
   silent_after: 150m      # the actor's timeout is 120m, so quiet for longer than that is a call
                           # that outlived its own kill, not a long iteration
   poll: 30s
-  max_chars: 1000         # one notification; the whole digest is kept in runs/orun15/reports/
+  max_chars: 1000         # one notification; the whole digest is kept in runs/orun16/reports/
