@@ -31,10 +31,10 @@ python3 docs/probes/orun13/p2_lag.py $R/gallop-task.json $E/hlk8-sole-25
 | evaluation | pass | top 2 s m/s min / med / max | hock_down LH / RH | at toe-off LH / RH | **U LH / RH** | stride mm LH / RH | flight s | hind lag / hinds together | fore lag / fores together | **rotary seeds** | worst RMS/rated | peak margin | loop gap max mm |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | hl-sole-25 (v04) | 0/10 | 0.51 / 0.76 / 0.85 | 0.02 / 0.23 | 0.00 / 0.07 | 0.05 / 0.19 | 122 / 115 | 0.000 | 0.405 / 0.00 | 0.143 / 0.19 | 9/10 | 2.09 (j_spine) | 0.00 | 2.0 |
-| k8-sole-25 (v04.2) | 0/10 | 0.65 / 1.00 / 1.43 | 0.05 / 0.07 | 0.03 / 0.00 | 0.01 / 0.05 | 247 / 174 | 0.000 | 0.000* / 0.17* | – | 0/10 | 1.93 (j_spine) | 0.00 | 3.0 |
+| k8-sole-25 (v04.2) | 0/10 | 0.65 / 1.00 / 1.43 | 0.05 / 0.07 | 0.03 / 0.00 | 0.01 / 0.05 | 247 / 174 | 0.000 | 0.211* / 0.17* | – | 0/10 | 1.93 (j_spine) | 0.00 | 3.0 |
 | **hlk8-sole-25 (v04.2)** | 0/10 | 0.48 / 0.69 / 0.85 | 0.13 / 0.35 | 0.00 / 0.05 | **0.01 / 0.19** | 93 / 131 | 0.000 | **0.333 / 0.00** | 0.204 / 0.00 | **9/10** | 2.13 (j_spine) | 0.00 | 2.0 |
 
-\* `k8-sole.md`'s hind lag 0.211 folded; legs.py reads 14 tied of 61.
+\* from `k8-sole.md` (`p2_lag.py`); `legs.py` reads 14 tied of 61 strides.
 
 - **The hinds split on v04.2 as on v04**: together on 0.00 of strides,
   hind lag 0.333 of the stride, 9 of 10 seeds rotary (`legs.py`: 110 of
