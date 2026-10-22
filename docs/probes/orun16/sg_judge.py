@@ -1,7 +1,7 @@
 """Judge one gallop_sg checkpoint on sg_spec at one or more held speed commands (orun16 SG, RL).
 
 usage: CUDA_VISIBLE_DEVICES= PYTHONPATH=cli pixi run python docs/probes/orun16/sg_judge.py \
-           PROJECT RUN_TRAIN_DIR POLICY OUT_NAME [--cmd 1000 1700 2400] [--seeds 1001 ...]
+           PROJECT RUN_TRAIN_DIR POLICY OUT_NAME [--cmd 1000 1700 2400] [--seeds 1001 ...] [--outside]
 
 ``orun11/judge.py`` for the speed-commanded task. The bundle is
 ``gallop_sg-task.json``; its success spec is ``sg_spec``, ``gallop_spec``'s
@@ -14,7 +14,10 @@ judged copy of the bundle only, and writes
 bundle, its digest and the policy are checked as judge.py checks them; the
 spec is outside the task's semantic digest, so the swap does not change
 what the policy was trained on. ``--seeds`` judges a subset of the spec's
-frozen seeds (a quick check; a judged result uses all ten).
+frozen seeds (a quick check; a judged result uses all ten). ``--outside``
+lets a command fall outside the goal's trained range (the policy then
+extrapolates its command input); such an evaluation records
+``judged_outside_goal`` and is a probe, not a judged SG speed.
 
 The traces then read with the orun12-16 probes as any gallop evaluation
 (``legs.py``, ``paw_floor.py``, ``p2_lag.py``, ``pin_rate.py``). Each
@@ -77,7 +80,8 @@ def main() -> None:
                  "accepted_digest": trained_on.get("digest") or state.get("accepted_digest")}
     components = re.findall(r'<body[^>]*name="([^"]+)"', model.read_text())
     for cmd in commands:
-        assert low <= cmd <= high, f"command {cmd} outside the goal's {low:g}-{high:g} mm/s"
+        outside = not low <= cmd <= high
+        assert not outside or "--outside" in sys.argv, f"command {cmd} outside the goal's {low:g}-{high:g} mm/s"
         judged_task = json.loads(json.dumps(trained))
         for goal in judged_task["success"]["goal"]:
             if goal["name"] == "cmd":
@@ -97,6 +101,8 @@ def main() -> None:
         report = run_evaluation(resolve_engine(), inputs, out)
         report["judged_spec_task"] = "sg_spec"
         report["judged_command_mm_s"] = cmd
+        if outside:
+            report["judged_outside_goal"] = [low, high]
         report["judged_policy"] = str(policy)
         report["closure"] = J.closure(model, out)
         (out / "evaluation.json").write_text(json.dumps(report, indent=2) + "\n")
