@@ -96,3 +96,33 @@ a dead end cold and warm) and `leo-v04.2.md` (the 4 → 8 step, kept).
   0.05; ≥ 2.0 m/s; the hinds ≥ 40 ms apart on ≥ 5 seeds; the heel's
   stance share ≥ 0.3 each leg; pins p95 under 900 °/s, no flapping in
   swing; the heel at toe-off reported against hlk8-sole-50's 0.18 / 0.72.
+
+## Built (after the write-up above)
+
+- **The build:** `cadex script --set` from `queue_run.py --after hlk8-sole
+  --build`, project commit `3ae1853`, accepted revision **`7a69ad4a`**,
+  3.6 min (23:59:12 → 00:02:46).
+  - Every verdict in the attempt's `result.json` equals v04.2's revision
+    `29298667` (ss-sole's; 560 verdict fields compared, 0 differ).
+  - The bundled `cat_model-model.xml` (`3783175d`) differs from
+    hlk8-sole's only in the two pins' `stiffness`: 0.458366 → 0.687549
+    N·m/rad; the task bundle differs from hlk8-sole's only in its `model`
+    key.
+- **Clearance** (`~/orun15-queue/v043-chain.sh`): `cadex clearance` rc 0,
+  `--sweep` rc 0, `orun13/clearance_diff.py` against v04's reports:
+  **static 14 → 14, swept 8 → 8, 0 new**, leo's baseline.
+- **The stand on the built model** (`orun14/stand_pin.py`): no NaN, both
+  pins 0.3° into the flat stop, pin peak 85 °/s while settling, paws at
+  −0.3 mm, heels 64.1 mm, the clip's `j_spine2` equal to `j_spine`.
+- **Tagged `leo-v04.3`** at project `3ae1853`. `leo-v02` … `leo-v04.2`
+  are untouched.
+- **hk12-sole** launched cold on `7a69ad4a` at 00:02:49
+  (`~/orun15-queue/hk12-sole.log`).
+
+## Timed (hk12-sole)
+
+- Iteration 10 by 00:19:26, **16.6 min after launch** (hlk8-sole 16.8),
+  about 90 s an iteration with start-up; the trainer's ETA at 10 was
+  3,275 s more, so about 4,270 s in all, inside `budget_s` 5,500.
+- Reward per step 20.3 / 13.8 at 0 / 10 (hlk8-sole 20.3 / 13.8).
+- +25 is due near 00:42 and 50 near 01:13; judged by the rules above.
