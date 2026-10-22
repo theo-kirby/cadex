@@ -1,0 +1,2 @@
+[{"label": "sgs 0.35 m, 2.0 Hz, lag 0.35, heels up", "stride_length_m": 0.35, "speed_m_s": 0.7, "hind_lag": 0.35, "fore_lag": 0.35, "heel_from": 0.99},
+ {"label": "sg0 0.5 m, 2.0 Hz, lag 0.3, heels up", "stride_length_m": 0.5, "speed_m_s": 1.0, "hind_lag": 0.3, "fore_lag": 0.3, "heel_from": 0.99}]
