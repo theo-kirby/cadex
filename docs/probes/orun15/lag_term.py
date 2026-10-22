@@ -23,6 +23,11 @@ settle (1 s) on:
   the clip has both hinds in one state, +1 where the policy splits them the
   clip's way, 0 where it lands them together, -1 where it splits them the
   other way. The clip itself scores 6/21 = 0.286 a step.
+- **the fore candidate** ``fore_lag`` (iteration 10): the same form on the
+  fore pair, ``|rlf - rrf| * (1 - |(clf - crf) - (rlf - rrf)|)``; the clip
+  lands RF 3 samples after LF, so it too scores 6/21 a step. Beside it,
+  the fore pair's touchdown lag (RF after LF) and tied share, as for the
+  hinds;
 - **its discrimination:** the per-seed mean against the seed's median
   RH-after-LH touchdown time, so a term that does not separate a lagged
   seed from a tied one shows it.
@@ -124,9 +129,10 @@ def main(argv):
         floor = ev["rig"]["floor_mm"]
         print("\n## %s (policy %s)\n" % (out.name, ev["policy_sha256"][:8]))
         print("| seed | origin (fit err) | steps | hind_lag | clip | contact hind (w10) | fore_sync (w2) "
-              "| RH after LH ms (median) | together |")
-        print("|---|---|---|---|---|---|---|---|---|")
-        every = {"lag": [], "clip": [], "hind": [], "fsync": []}
+              "| RH after LH ms (median) | together | fore_lag | RF after LF ms (median) | fores together |")
+        print("|---|---|---|---|---|---|---|---|---|---|---|---|")
+        every = {"lag": [], "clip": [], "hind": [], "fsync": [], "flag": []}
+        fore_seed = []
         per_seed = []
         for path in sorted(out.glob("seed-*-trace.json")):
             trace = json.loads(path.read_text())
@@ -137,7 +143,7 @@ def main(argv):
             times = [t for t, _ in samples]
             down = {k: [h <= E.STANCE_MM for h in E.foot_series(samples, body, geoms[body], floor)["height"]]
                     for k, body in PAWS.items()}
-            acc = {"lag": [], "clip": [], "hind": [], "fsync": []}
+            acc = {"lag": [], "clip": [], "hind": [], "fsync": [], "flag": []}
             for i, t in enumerate(times):
                 if t < E.SETTLE_S - 1e-9:
                     continue
@@ -148,22 +154,31 @@ def main(argv):
                 acc["clip"].append(abs(dr))
                 acc["hind"].append(10 * ((1 - abs(c["lh"] - r["lh"])) + (1 - abs(c["rh"] - r["rh"]))) / 4)
                 acc["fsync"].append(2 * (1 - abs(c["lf"] - c["rf"])))
+                fr, fc = r["lf"] - r["rf"], c["lf"] - c["rf"]
+                acc["flag"].append(abs(fr) * (1 - abs(fc - fr)))
             lags = rh_after_lh(touchdowns(times, down["lh"]), touchdowns(times, down["rh"]), period)
             tied = sum(1 for v in lags if abs(v) < 20) / len(lags) if lags else float("nan")
             med = statistics.median(lags) if lags else float("nan")
+            flags = rh_after_lh(touchdowns(times, down["lf"]), touchdowns(times, down["rf"]), period)
+            ftied = sum(1 for v in flags if abs(v) < 20) / len(flags) if flags else float("nan")
+            fmed = statistics.median(flags) if flags else float("nan")
             m = {k: statistics.fmean(v) for k, v in acc.items()}
             per_seed.append((m["lag"], med, tied))
+            fore_seed.append((m["flag"], fmed, ftied))
             for k in every:
                 every[k].extend(acc[k])
-            print("| %s | %d (%.0f) | %d | %+.3f | %.3f | %.2f | %.2f | %+.0f | %.2f |" % (
+            print("| %s | %d (%.0f) | %d | %+.3f | %.3f | %.2f | %.2f | %+.0f | %.2f | %+.3f | %+.0f | %.2f |" % (
                 path.name.split("-")[1], s, err, len(acc["lag"]), m["lag"], m["clip"], m["hind"], m["fsync"],
-                med, tied))
+                med, tied, m["flag"], fmed, ftied))
         m = {k: statistics.fmean(v) for k, v in every.items()}
-        print("\nAll seeds: hind_lag %+.3f a step (clip %.3f), track_contact's hind half %.2f, fore_sync %.2f."
-              % (m["lag"], m["clip"], m["hind"], m["fsync"]))
+        print("\nAll seeds: hind_lag %+.3f a step (clip %.3f), track_contact's hind half %.2f, fore_sync %.2f, "
+              "fore_lag %+.3f." % (m["lag"], m["clip"], m["hind"], m["fsync"], m["flag"]))
         if len(per_seed) > 2:
             xs, ys = [p[0] for p in per_seed], [p[2] for p in per_seed]
             print("Per seed, hind_lag against the tied share: r = %+.2f." % statistics.correlation(xs, ys))
+            xs, ys = [p[0] for p in fore_seed], [p[2] for p in fore_seed]
+            if len(set(ys)) > 1 and len(set(xs)) > 1:
+                print("Per seed, fore_lag against the fores' tied share: r = %+.2f." % statistics.correlation(xs, ys))
     return 0
 
 

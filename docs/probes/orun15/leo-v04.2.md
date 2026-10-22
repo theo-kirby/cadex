@@ -127,3 +127,11 @@ Written before the build, as O1 asks. Follows `sfw-sole.md`.
   `leo-v04` and `leo-v04.1` are untouched.
 - **k8-sole** is queued with the revision `568d38a9` expected and starts
   when hl-sole frees the machine lock (`~/orun15-queue/k8-sole.log`).
+
+## Judged (iteration 10): kept
+
+k8-sole-50 (`k8-sole.md`) passes every clause of the keep rule: U 0.29 /
+0.29 → **0.11 / 0.20** (RH −0.09, LH −0.18), 2.58 m/s against 2.37, pin
+p95 854 / 865 °/s with no swing over 900 and no flapping. **leo-v04.2 is
+kept.** What it costs: the heel at toe-off fell 0.38 / 0.15 → 0.13 / 0.09,
+and the pin's whole-stride p95 is within 50 °/s of O9's 900.
