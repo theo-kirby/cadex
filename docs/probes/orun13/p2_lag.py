@@ -20,7 +20,15 @@ Hz); the fore and hind touchdown rate over the left hind's stride clock
 fore landing after it; the flight share and time; and the footfall orders
 ``legs.stride_kind`` reads (rotary, transverse, or tied: two first
 landings in one frame), split by which hind landed first. A seed is
-**rotary** when more than half of its strides are rotary.
+**rotary** when more than half of its *ordered* strides (rotary or
+transverse) are rotary, over at least ``MIN_ORDERED`` of them; a seed with
+fewer reads ``–``, neither rotary nor not. orun15 (iteration 13): the rule
+had divided by every stride, so tied strides (a lag fault, which the
+``together`` columns and O3's 40 ms measure) and unordered ones (a tap
+landing twice, which ``no_tap`` measures) sank a seed whose every ordered
+stride was rotary (fl-sole-50: 105 of 106 ordered, 4/10 seeds;
+hlk8-sole-50m: 119 of 131, 0/10). The old count is still printed, as
+"of all strides", so earlier tables can be read against it.
 A seed where a paw never settles into a stride (the engine's rate is
 ``None``, as on a policy that stands) reads ``–`` for that rate rather than
 failing (orun13: leo g1-s1 at 25). Standard library only.
@@ -38,6 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "orun12"))
 
 from legs import SETTLE_S, footfall_kind, med, stride_kind  # noqa: E402
 
+MIN_ORDERED = 5
 PAW = {"LF": "c_paw_fl", "RF": "c_paw_fr", "LH": "c_paw_hl", "RH": "c_paw_hr"}
 
 
@@ -120,7 +129,8 @@ def seed_row(s):
     ordered = sum(v for (_, k), v in kinds.items() if k in ("rotary", "transverse"))
     row["tied"] = sum(v for (_, k), v in kinds.items() if k == "tied")
     rotary = sum(v for (_, k), v in kinds.items() if k == "rotary")
-    row["rotary seed"] = len(strides) > 0 and rotary > len(strides) / 2
+    row["rotary seed"] = rotary > ordered / 2 if ordered >= MIN_ORDERED else None
+    row["rotary seed (all)"] = len(strides) > 0 and rotary > len(strides) / 2
     row["strides"] = len(strides)
     row["ordered"] = ordered
     row["rotary"] = rotary
@@ -152,7 +162,9 @@ def eval_report(path: Path):
     print(f"\nmedians: fore lag {fmt(m['F lag'], '%.3f')} (together {fmt(m['F together'])}), hind lag "
           f"{fmt(m['H lag'], '%.3f')} (together {fmt(m['H together'])}), fore rate {fmt(m['fore rate'])}, "
           f"hind rate {fmt(m['hind rate'])}, LH to fore {fmt(m['LH to fore'], '%.3f')}, flight "
-          f"{fmt(m['flight s'], '%.3f')} s; rotary seeds {sum(r['rotary seed'] for r in rows)}/{len(rows)}\n")
+          f"{fmt(m['flight s'], '%.3f')} s; rotary seeds {sum(r['rotary seed'] is True for r in rows)}/{len(rows)} "
+          f"(of ordered strides, {sum(r['rotary seed'] is None for r in rows)} with fewer than {MIN_ORDERED}; "
+          f"{sum(r['rotary seed (all)'] for r in rows)}/{len(rows)} of all strides)\n")
 
 
 def main(argv):
