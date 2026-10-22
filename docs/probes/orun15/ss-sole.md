@@ -136,3 +136,63 @@ is still printed as "of all strides".
   (0.36 → 0.08) and the taps (no_tap 1.54 → 1.63), which its rule did not
   name; that, not the rotary count, is the case against keeping it.
   `fl-sole.md` is frozen and not edited.
+
+## Judged at 25 (`ss-sole-25`, 10 seeds, CPU; iteration 14)
+
++25's checkpoint `73b56cf3`, judged on its own bundle (`29298667`), with
+the commands of `hlk8-sole.md` and `place_term.py` above.
+
+| evaluation | pass | top 2 s m/s min / med / max | hock_down LH / RH | at toe-off LH / RH | **U LH / RH** | floor pitch ° in stance LH / RH | on-ground F / R / T / U, LH | heel mm in stance LH / RH | stride mm LH / RH | touch-down place mm LH / RH | `hind_place` a step | hind lag / together | LH leads | rotary seeds (ordered) | pin p95 °/s LH / RH (swing) | worst RMS/rated | peak margin | loop gap max mm |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| hlk8-sole-25 | 0/10 | 0.48 / 0.69 / 0.85 | 0.13 / 0.35 | 0.00 / 0.05 | 0.01 / 0.19 | +1.3 / +0.9 | 0.13 / 0.85 / 0.01 / 0.01 | 7 / 2 | 93 / 131 | +287 / +256 | 1.203 | 0.333 / 0.00 | RH first | 9/10 | 208 / 129 (140 / 99) | 2.13 (j_spine) | 0.00 | 2.0 |
+| **ss-sole-25** | 0/10 | 0.84 / 0.96 / 1.20 | 0.01 / 0.15 | 0.00 / 0.02 | **0.03 / 0.12** | **−89.6** / +1.1 | 0.00 / 0.09 / **0.87** / 0.03 | **73** / 14 | 244 / 186 | **+34 / +115** | 0.005 | 0.140 / 0.15 | 0.78 | **3/10** (2 under 5) | 497 / 396 (246 / 204) | 1.51 (j_wrist_l) | 0.00 | 2.0 |
+
+- **The term did what it charges**: both hinds stand far nearer the body
+  from the start (touch-down +34 / +115 mm against +287 / +256), and it
+  pays 0.005 a step, nothing. The cold shuffle did not collapse: 0.96 m/s,
+  longer strides (244 / 186 mm), episodes 553 steps at 25 (hlk8-sole 1,078).
+- **But LH found the cheap way under it: it stands on the tip of its paw.**
+  On 0.87 of its on-ground frames it is on its toes with the paw's floor
+  pitch at −89.6° (pin −0.8°, on its flat stop): the metatarsus and paw
+  stand vertical, the heel 73 mm up. That is not O2a's digitigrade (toe
+  bulbs and pads down, the pin toes-up of the metatarsus); it is a stilt.
+  The heel share fell on both legs (0.01 / 0.15 from 0.13 / 0.35).
+- The order fell apart: the hinds lie 0.140 of the stride apart and in one
+  frame on 0.15 of strides, LH now leads (0.78), and only 3 of 10 seeds
+  read rotary over ordered strides (hlk8-sole-25 9/10). No flight.
+- O6: worst drive `j_wrist_l` 1.51 × rated RMS, peak margin 0.00. O9: loop
+  gap max 2.0 mm; pins p95 497 / 396 °/s, no swing over 900, no flapping.
+
+## Verdict at 25: stopped (dead end, cold)
+
+With LH leading, RH is the second hind. Its place moved back (+256 →
++115), but **its U is 0.12, above hlk8-sole-25's second-hind 0.01 by
+0.11, over the rule's 0.10**: the stop rule fires, by a hundredth. The
+stilted LH and the lost rotary order are the larger case against running
+it on. Stopped at 25 (23:16:54, `loop.request_stop`, state `stopped`).
+
+A cold run lets the charge shape the stance before there is a gallop to
+protect, and the cheapest stance under it is a vertical paw. The critic's
+fallback is the warm retry, already queued before the judge:
+
+## ssw-sole: the same task, warm from hlk8-sole-50
+
+- ss-sole's bundle (revision `29298667`, 22 terms), `--init-from`
+  hlk8-sole-50 (`4ac25fff`) across the one task change, with
+  `--init-from-parent-task` (hlk8-sole's bundle) and
+  `--init-from-task-change` (the trainer logged "the task changed in
+  ['reward']"), `--critic-warmup 5`, `--learning-rate 3e-5`, 4,096 envs,
+  seed 0, 50 iterations, `budget_s` 4,600.
+- `docs/probes/orun13/queue_run.py` gained `--parent-task` and
+  `--task-change` for this (the loop's `init_from_parent_task` /
+  `init_from_task_change` settings).
+- Queued 23:02:38, **launched 23:17:41** when ss-sole stopped
+  (`~/orun15-queue/ssw-sole.log`); reward per step 33.0 at 0
+  (hlk8-sole-50 ended at 30.5 without the term).
+- **Keep rule (written before its first checkpoint):** judged at 25 and
+  50 against hlk8-sole-50: the second hind's U under 0.2 (from 0.29), the
+  first hind's no worse than 0.05, rotary on at least 5 of 10 seeds,
+  each hind's heel share at least 0.3, no hind on its toe tip (floor pitch
+  in stance within ±30°), and at least 1.95 m/s at 50. **Stop at 25** if
+  the second hind's U is not below 0.25 or its median touch-down place
+  has not moved back from +208 mm.

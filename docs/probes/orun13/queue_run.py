@@ -3,7 +3,8 @@
     systemd-run --user --scope -p MemoryMax=30G \
       env PYTHONPATH=cli pixi run python docs/probes/orun13/queue_run.py \
         PROJECT RUN BUDGET_S ITERATIONS "REASON" [--expect-revision SHA] [--seed N] [--task gallop] [--envs N] \
-        [--init-from POLICY --critic-warmup N [--learning-rate LR]] [--after RUN --build SCRIPT [--build-param K=V ...]]
+        [--init-from POLICY --critic-warmup N [--learning-rate LR] [--parent-task BUNDLE --task-change "WHY"]]
+        [--after RUN --build SCRIPT [--build-param K=V ...]]
 
 Waits until the project has no live run and the machine's training slot is
 free, then does what an iteration would by hand through ``cadex_cli.loop``:
@@ -11,7 +12,10 @@ free, then does what an iteration would by hand through ``cadex_cli.loop``:
 unroll 20, a checkpoint every 25, the given seed and iterations, cold), ``retain_training_view`` so the dashboard follows it, and
 ``launch``. ``--init-from`` continues a policy on the same task bundle (the
 trainer refuses one whose task or model digest differs), with
-``--critic-warmup`` iterations of critic-only training first (ADR-740).
+``--critic-warmup`` iterations of critic-only training first (ADR-740);
+with ``--parent-task`` (the policy's own task bundle) and ``--task-change``
+(one line on what changed) it continues one across a task change that keeps
+what the network reads and emits (``init_from_parent_task``).
 Launched from a ``systemd-run --scope``, the supervisor and the
 trainer stay in that scope (a transient service would kill the trainer).
 
@@ -64,10 +68,14 @@ def main(argv):
     ap.add_argument("--init-from", default="")
     ap.add_argument("--critic-warmup", type=int, default=0)
     ap.add_argument("--learning-rate", type=float, default=None)
+    ap.add_argument("--parent-task", default="")
+    ap.add_argument("--task-change", default="")
     ap.add_argument("--after", default="")
     ap.add_argument("--build", default="")
     ap.add_argument("--build-param", action="append", default=[])
     args = ap.parse_args(argv)
+    if bool(args.parent_task) != bool(args.task_change) or (args.parent_task and not args.init_from):
+        ap.error("--parent-task and --task-change go together, with --init-from")
     if bool(args.after) != bool(args.build):
         ap.error("--after and --build go together")
     root = Path(args.project).expanduser().resolve()
@@ -108,6 +116,9 @@ def main(argv):
                 "checkpoint_every": 25, "label": f"{args.run}: {args.reason[:80]}"}
     if args.init_from:
         settings.update(init_from=args.init_from, critic_warmup=args.critic_warmup)
+    if args.parent_task:
+        settings.update(init_from_parent_task=str(Path(args.parent_task).expanduser().resolve()),
+                        init_from_task_change=args.task_change)
     if args.learning_rate is not None:
         settings["learning_rate"] = args.learning_rate
     try:
