@@ -106,3 +106,11 @@ to 2400 by at least 0.15 with 1000 at most 0.1; RL's direction holds if at
 every command rotary is 8/10, each pair's lag at least 40 ms with taps
 counted, and the fore and hind lag shares fall from 1000 to 2400). Extend
 warm (O8) only if SG's holds.
+
+**Launched** (recorded after the rules above were committed in `f1ec93df`):
+queued 15:51:35, built 15:55:10 as leo revision **`228e5a97`** (leo commit
+`b8b7b85`, model `59bc5407` unchanged, digest `b28bbacb`), launched
+15:55:14 (`~/orun16-queue/sg-s8.log`); the trainer logs `init-from
+sg-s7-25.cxpolicy sha256=5b956f7e…`. Its `gallop_sg-task.json` against
+sg-s7's: 25 terms against 24, `hock_land` added last; every other key
+equal.
