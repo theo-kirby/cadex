@@ -1,0 +1,2 @@
+[{"label": "sgs duty 0.3, swing 30 mm", "stride_length_m": 0.35, "speed_m_s": 0.7, "hind_lag": 0.35, "fore_lag": 0.35, "heel_from": 0.99, "duty": 0.3, "swing_height_m": 0.03},
+ {"label": "sgs duty 0.35, swing 30 mm", "stride_length_m": 0.35, "speed_m_s": 0.7, "hind_lag": 0.35, "fore_lag": 0.35, "heel_from": 0.99, "duty": 0.35, "swing_height_m": 0.03}]

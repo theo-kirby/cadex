@@ -139,6 +139,8 @@ MAX_STEP_RAD = 0.05
 
 #: Swing samples over which a held heel is eased back up (ADR-778).
 HEEL_EASE_SAMPLES = 3
+# ADR-780: a flat foot is held to its standing pitch within this (radians, 0.5 deg)
+FLAT_TOLERANCE_RAD = math.radians(0.5)
 
 
 class GaitError(ValueError):
@@ -344,13 +346,16 @@ def _pitch_quaternion(home: Any, pitch_rad: float) -> Any:
                      w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2])
 
 
-def _below_centre(model: Any, data: Any, geom: int, mj: Any) -> float:
-    """How far a collision geom reaches below its centre at the current pose, m (ADR-776)."""
+def _below_centre(model: Any, data: Any, geom: int, mj: Any, xmat: Any = None) -> float:
+    """How far a collision geom reaches below its centre at the current pose, m (ADR-776).
+
+    ``xmat`` is the geom's world rotation to read instead of the pose's.
+    """
 
     import numpy as np  # noqa: PLC0415
 
     kind, size = int(model.geom_type[geom]), model.geom_size[geom]
-    up = data.geom_xmat[geom].reshape(3, 3)[2]       # the world z of each geom axis
+    up = (data.geom_xmat[geom] if xmat is None else xmat).reshape(3, 3)[2]  # the world z of each geom axis
     if kind == int(mj.mjtGeom.mjGEOM_SPHERE):
         return float(size[0])
     if kind == int(mj.mjtGeom.mjGEOM_CAPSULE):
@@ -428,11 +433,13 @@ def leg_closures(model: Any, chains: Mapping[str, Sequence[int]], body_joints: S
 
 
 def _leg_rows(model: Any, data: Any, mj: Any, foot: str, target: Any, point: Any, body: int,
-              closure: Mapping[str, Any], jacp: Any, heel: int | None, ground: float) -> tuple[list, list]:
+              closure: Mapping[str, Any], jacp: Any, heel: int | None, ground: float,
+              flat: float | None = None) -> tuple[list, list]:
     """One leg's residual rows and their Jacobians (ADR-776), at the current pose.
 
     First the foot (3 rows), then, in stance with a heel, the heel's lowest
-    point against the ground (1), then each loop closure (3) and joint
+    point against the ground (1) and, for a flat foot (ADR-780), the foot
+    body's pitch against ``flat`` (1), then each loop closure (3) and joint
     coupling (1). ``jacp=None`` returns only the residuals.
     """
 
@@ -449,6 +456,13 @@ def _leg_rows(model: Any, data: Any, mj: Any, foot: str, target: Any, point: Any
         if want:
             mj.mj_jac(model, data, jacp, None, data.geom_xpos[heel], int(model.geom_bodyid[heel]))
             jacs.append(jacp[2:3].copy())
+    if heel is not None and flat is not None:
+        err = flat - _body_pitch(data, body)
+        errs.append(np.array([(err + math.pi) % (2.0 * math.pi) - math.pi]))
+        if want:
+            jacr = np.zeros((3, model.nv))
+            mj.mj_jacBody(model, data, None, jacr, body)
+            jacs.append(jacr[1:2].copy())  # nose-down pitch turns about the world's +y
     for i in closure["connects"]:
         if int(model.eq_objtype[i]) == int(mj.mjtObj.mjOBJ_SITE):
             s1, s2 = int(model.eq_obj1id[i]), int(model.eq_obj2id[i])
@@ -482,6 +496,79 @@ def _leg_rows(model: Any, data: Any, mj: Any, foot: str, target: Any, point: Any
         if want:
             jacs.append(row)
     return errs, jacs
+
+
+def _follow_spine(model: Any, mj: Any, q: Any, spine: int, body_joints: Sequence[int]) -> None:
+    """Set the body joints coupled to the spine joint (a cable-driven second spine joint).
+
+    An active ``equality/joint`` row whose leader is the spine, or a joint that
+    follows it, and whose follower is a body joint, sets the follower from its
+    polynomial about ``qpos0``, as the constraint will; chains are followed.
+    """
+    led = {int(spine)}
+    for _ in range(len(body_joints)):
+        moved = False
+        for i in range(model.neq):
+            if (not int(model.eq_active0[i]) or int(model.eq_type[i]) != int(mj.mjtEq.mjEQ_JOINT)
+                    or int(model.eq_obj2id[i]) not in led):
+                continue
+            follower, leader = int(model.eq_obj1id[i]), int(model.eq_obj2id[i])
+            if follower in led or follower not in body_joints:
+                continue
+            x = q[model.jnt_qposadr[leader]] - model.qpos0[model.jnt_qposadr[leader]]
+            c = model.eq_data[i][:5]
+            q[model.jnt_qposadr[follower]] = model.qpos0[model.jnt_qposadr[follower]] + sum(
+                float(c[n]) * x ** n for n in range(5))
+            led.add(follower)
+            moved = True
+        if not moved:
+            return
+
+
+def _body_pitch(data: Any, body: int) -> float:
+    """A body's pitch about the world's lateral axis (rad, its x axis turned nose-down positive)."""
+
+    x = data.xmat[body].reshape(3, 3)[:, 0]
+    return math.atan2(-float(x[2]), float(x[0]))
+
+
+def _sole_pitch(model: Any, data: Any, body: int, mj: Any) -> float:
+    """The pitch at which ``body``'s collision geoms reach the floor together (rad, ADR-784).
+
+    The body is turned about the world's lateral axis through its origin,
+    within a quarter turn of its pitch at the current pose, to where the
+    spread of its geoms' lowest points is least: a paw's pad and toes level,
+    its sole flat. A body with fewer than two collision geoms has no sole
+    to level, and is refused.
+    """
+
+    import numpy as np  # noqa: PLC0415
+
+    geoms = [g for g in range(model.ngeom) if int(model.geom_bodyid[g]) == body
+             and (int(model.geom_contype[g]) or int(model.geom_conaffinity[g]))]
+    if len(geoms) < 2:
+        raise GaitError(f"flat_feet='sole' levels a foot's collision geoms, and "
+                        f"{model.body(body).name!r} has {len(geoms)}",
+                        reason="bad_flat_feet", body=model.body(body).name)
+    origin = data.xpos[body]
+    centre = {g: data.geom_xpos[g] - origin for g in geoms}
+    home = _body_pitch(data, body)
+
+    def spread(delta: float) -> float:
+        c, s = math.cos(delta), math.sin(delta)
+        turn = np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
+        low = [float((turn @ centre[g])[2])
+               - _below_centre(model, data, g, mj, turn @ data.geom_xmat[g].reshape(3, 3)) for g in geoms]
+        return max(low) - min(low)
+
+    # a grid, then two finer grids about its best: the spread is piecewise
+    # smooth, with its least where two geoms cross
+    step = math.radians(0.5)
+    grid = [step * n for n in range(-180, 181)]
+    best = min(grid, key=lambda a: (spread(a), abs(a)))
+    for fine in (step / 20.0, step / 400.0):
+        best = min((best + fine * n for n in range(-20, 21)), key=lambda a: (spread(a), abs(a)))
+    return home + best
 
 
 def _held(heel_target: Mapping[str, Sequence[float | None]], foot: str, k: int, default: Any = None) -> Any:
@@ -533,7 +620,8 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
              samples: int | None = None, home_qpos: Sequence[float] | None = None,
              heels: Mapping[str, str] | None = None, body_drop_m: float = 0.0,
              body_pitch_deg: float = 0.0, stance_shift_m: Mapping[str, float] | None = None,
-             heel_from: float = 0.0, mujoco: Any | None = None) -> dict[str, Any]:
+             heel_from: float = 0.0, flat_feet: bool | str = False, trail_feet: bool = False,
+             mujoco: Any | None = None) -> dict[str, Any]:
     """One stride of ``gait`` at ``speed_m_s`` on ``model``'s own legs, or a :class:`GaitError`.
 
     ``home_qpos`` is the standing pose the stride is built about (default:
@@ -553,6 +641,20 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
     too: the plantigrade stance, the whole foot down to the heel. With
     ``heel_from`` the heel is held down only from that share of the stance
     to toe-off: the foot lands on its toes and lays down to push off.
+    With ``flat_feet`` (ADR-780) a foot whose heel is held also keeps the
+    pitch it stands at, so a paw on a passive pin lies flat on the floor
+    instead of rolling onto its rear pad; without it the solve leaves that
+    pin to its pull toward home, and a feline-v07 hind paw stood 52-62 deg
+    toes-up with the metatarsus at 18-22 deg, a pose its heel cannot reach
+    in simulation (docs/probes/orun12/heel6-flat.md).
+    ``flat_feet="sole"`` (ADR-784) holds the pitch at which the foot's
+    collision geoms reach the floor together (:func:`_sole_pitch`) instead
+    of its home pitch: the sole flat whatever pitch the foot stands at.
+    With ``trail_feet`` (ADR-785) a flat foot is laid flat only while it is
+    down: through the heel's ease after toe-off it trails the leg at the
+    pitch the solve's pull toward home gives it, instead of staying level
+    while the heel rises, which walked leo v03's paw pin to 56-58 deg
+    toes-up in early swing (docs/probes/orun14/leo-v03.1.md).
     ``body_drop_m`` lowers the trunk that far below its standing height for
     the whole stride, and ``body_pitch_deg`` pitches it nose-up about the
     base's origin by that much more than the stride's own pitch: the crouch,
@@ -560,7 +662,8 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
     ``stance_shift_m`` moves a foot's stance forward of its standing place
     (``{"LH": 0.06}``): where a gallop's hind feet land, under the belly.
     ``assembly.gait`` passes them as ``heels``, ``heel_from``,
-    ``body_drop_mm``, ``body_pitch_deg`` and ``stance_shift_mm`` (ADR-777).
+    ``body_drop_mm``, ``body_pitch_deg``, ``stance_shift_mm`` (ADR-777) and
+    ``flat_feet`` (ADR-780).
     """
 
     import numpy as np  # noqa: PLC0415
@@ -625,6 +728,23 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
                             reason="bad_heel", leg=foot, body=str(name))
         _below_centre(model, data, g, mj)
         heel_geom[foot] = g
+    if flat_feet not in (False, True, "sole"):
+        raise GaitError(f"flat_feet is True, False or 'sole', got {flat_feet!r}",
+                        reason="bad_flat_feet")
+    if trail_feet and not flat_feet:
+        raise GaitError("trail_feet lets a flat foot trail after toe-off: ask for flat_feet",
+                        reason="bad_flat_feet")
+    if flat_feet and not heel_geom:
+        raise GaitError("flat_feet lays a foot flat while its heel is held: name the heels",
+                        reason="bad_flat_feet")
+    # ADR-780: each flat foot's standing pitch, at home; ADR-784: its sole's level pitch
+    flat = {foot: (_sole_pitch(model, data, feet_body[foot], mj) if flat_feet == "sole"
+                   else _body_pitch(data, feet_body[foot])) for foot in heel_geom} if flat_feet else {}
+
+    def flat_at(foot: str, k: int) -> float | None:
+        """The pitch ``foot`` is laid at in sample ``k``; ADR-785: none in swing when it trails."""
+
+        return None if trail_feet and not contact[foot][k] else flat.get(foot)
 
     def world_point(foot: str) -> Any:
         b = feet_body[foot]
@@ -690,6 +810,7 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
             if spine is not None:
                 q[model.jnt_qposadr[spine]] = home[model.jnt_qposadr[spine]] + spine_amp * math.sin(
                     2.0 * math.pi * phase)
+                _follow_spine(model, mj, q, spine, body_joints)
             for foot in feet:
                 travel, lift, _down = foot_path(phase, offsets[foot], duty, length, swing)
                 # the stance this foot is in (or swinging from) began at its offset;
@@ -708,7 +829,8 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
                     rows_err, rows_jac = _leg_rows(model, data, mj, foot, targets[foot][k], world_point(foot),
                                                    feet_body[foot], closures[foot], jacp,
                                                    heel_geom.get(foot) if _held(heel_target, foot, k) else None,
-                                                   ground[foot] + _held(heel_target, foot, k, 0.0))
+                                                   ground[foot] + _held(heel_target, foot, k, 0.0),
+                                                   flat_at(foot, k))
                     err = np.concatenate(rows_err)
                     worst = max(worst, float(np.linalg.norm(err)))
                     n_loops = len(closures[foot]["connects"]) + len(closures[foot]["couplings"])
@@ -759,9 +881,12 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
                 rows_err, _jac = _leg_rows(model, data, mj, foot, targets[foot][k], world_point(foot),
                                            feet_body[foot], closures[foot], None,
                                            heel_geom.get(foot) if _held(heel_target, foot, k) else None,
-                                           ground[foot] + _held(heel_target, foot, k, 0.0))
+                                           ground[foot] + _held(heel_target, foot, k, 0.0),
+                                           flat_at(foot, k))
                 held = _held(heel_target, foot, k)
-                loop = float(max((np.max(np.abs(e)) for e in rows_err[1 + held:]), default=0.0))
+                laid = held and flat_at(foot, k) is not None
+                loop = float(max((np.max(np.abs(e)) for e in rows_err[1 + held + laid:]), default=0.0))
+                tilt = abs(float(rows_err[2][0])) if laid else 0.0
                 closure_miss[foot] = max(closure_miss[foot], loop)
                 if foot in heel_geom:
                     g = heel_geom[foot]
@@ -771,7 +896,7 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
                     miss = max(miss, abs(float(heel_height[foot][k]) - heel_target[foot][k]))
                 miss = max(miss, loop)
                 residual[foot] = max(residual[foot], miss)
-                if miss > TOLERANCE_M:
+                if miss > TOLERANCE_M or tilt > FLAT_TOLERANCE_RAD:
                     stops = []
                     for j in chains[foot]:
                         lo, hi = limits[j]
@@ -781,6 +906,7 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
                     what = ("close its linkage" if loop > TOLERANCE_M else
                             "put its heel down" if held and abs(float(heel_height[foot][k]) - heel_target[foot][k])
                             > TOLERANCE_M else
+                            f"lay its foot flat (off by {math.degrees(tilt):.1f} deg)" if tilt > FLAT_TOLERANCE_RAD else
                             f"reach its {('stance' if contact[foot][k] else 'swing')} target")
                     raise GaitUnreachable(
                         f"leg {foot} cannot {what} "
@@ -839,6 +965,8 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
                   if any(c["connects"] or c["couplings"] for c in closures.values()) else {})},
         **({"heels": {foot: {"body": model.body(int(model.geom_bodyid[g])).name,
                              "from_stance_share": float(heel_from), "down": heel_down[foot],
+                             **({"flat_pitch_deg": math.degrees(flat[foot])} if foot in flat else {}),
+                             **({"trails": True} if trail_feet and foot in flat else {}),
                              "height_m": heel_height[foot].tolist(), "target_m": heel_target[foot]}
                       for foot, g in heel_geom.items()}} if heel_geom else {}),
     }

@@ -45110,6 +45110,42 @@ from standing (pin +36°) to plantigrade (pin +96°, hock −60°, the hock
 case's shoe on the floor with the knee at 0). `pixi run test-engine`: 157
 passed, 3 skipped.
 
+## ADR-780 — The gait generator can lay a foot flat while its heel is held (2026-10-20, orun12)
+
+**Context.** orun12's heel screens on feline v07 never put both hind heels
+down (P1, O2a). On the engine's own stance frames, the heel is down only
+while the metatarsus's world pitch is under about 15°: 0.72 of frames at
+5–10°, 0.28 at 10–15°, none above 15° (`docs/probes/orun12/heel5-pitch.md`).
+The plantigrade clip (ADR-776–778) held the heel down with the metatarsus
+at 18–22°. The hind paw rides a sprung pin that is in the leg's chain, and
+nothing in the solve set its angle except the pull toward home, so the clip
+stood the paw 52–62° toes-up on its rear pad. In simulation the floor lays
+that paw flat. A policy that tracks the clip therefore holds a pose where
+the heel cannot touch.
+
+**Decision.** `CadexGait.generate` takes `flat_feet`. When it is true, a
+foot whose heel is held gets one more row in the leg's solve: the foot
+body's pitch about the world's lateral axis, held at the pitch it stands at
+in the home pose. A sample the solve cannot lay flat within 0.5° is refused
+as `GaitUnreachable` ("lay its foot flat"). `flat_feet` with no heels is
+refused. `assembly.gait(..., flat_feet=True)` declares it, the worker
+resolves it, and `CadexDynamics` passes it to the generator. The clip's
+`heels` block records each flat foot's `flat_pitch_deg`. When the option is
+not declared, nothing is written, so every existing clip and bundle is
+byte-identical. This was checked by regenerating heel5-s1's bundled clip
+and comparing `qpos` exactly.
+
+**Consequences.** On feline v07's heel5 bundle at the same settings (0.7 m,
+duty 0.2, `heel_from` 0.2, a 60 mm drop, 6° pitch, a 120 mm shift), the
+heel-down samples have the paw pin at +57° and the metatarsus at 7.5° on
+both legs, against −13° and 18–22° before. Every `heel_from` from 0 to 0.5
+is still reachable. The paw pin steps up to 58° between samples at the
+hold's ends. The pin is passive and no reward tracks it, so a policy is not
+paid to follow that step. No protocol, tool surface or trainer change.
+
+**Evidence.** `docs/probes/orun12/heel6-flat.md`. `pixi run test-engine`:
+157 passed, 3 skipped.
+
 ## ADR-781 — A cat build stops paying for work it repeats or never reads (2026-10-19)
 
 **Context.** A feline-v07 build took about 9 minutes, and the script itself
@@ -45221,3 +45257,97 @@ against 457 CPU-s; one skin made 2.8 mm thick gives `748fc327…` both ways,
 223 against 586 CPU-s. Unchanged, a second build hits every part: the
 same digest as the first, 100 CPU-s. `pixi run test-engine`: 157 passed,
 3 skipped; `pytest cli/tests`: 53 passed.
+
+## ADR-783 — A gait reference bends a coupled spine joint with the spine (2026-10-20, leo v02)
+
+**Context.** leo v02 bends its spine over two pitch joints, `j_spine` and a
+lumbar `j_spine2`, which a crossed cable couples 1:1 (`assembly.coupling`,
+an `equality/joint`). `CadexGait.generate` set only the named
+`spine_joint` along its sine. Every other body joint stayed at home, so
+the clip held `j_spine2` at 0 while the constraint, in simulation, turns it
+with the spine. The clip described a body the model cannot take.
+
+**Decision.** After setting the spine joint on each sample, the generator
+sets every body joint that an active `equality/joint` row ties to it, or to
+a joint that already follows it, from that row's polynomial about `qpos0`,
+as the constraint will. Leg joints are left to the leg's solve, as
+ADR-776 already handles them. A model with no such coupling is untouched,
+so its clips are unchanged.
+
+**Consequences.** leo v02's clips bend both spine joints together. The
+total bend doubles for the same `spine_amplitude_deg`. The rotary gallop's
+default (10° a joint, 20° in all) leaves leo's left hind heel 2.1 mm off
+the floor at a knee stop, so leo's gallop declares 7° (14° in all). No
+protocol, tool surface or trainer change.
+
+**Evidence.** On leo-spine-b's model, `j_spine` at 0.3 rad sets
+`j_spine2` to 0.3 rad. `pixi run test-engine`: 157 passed, 3 skipped.
+
+## ADR-784 — The gait generator can lay a foot at its sole's level pitch (2026-10-21, orun14, leo v03)
+
+**Context.** leo v03's hind paw turns on a free pin. Its gallop clip holds
+the heel and the toe on the floor in stance, and nothing in the solve sets
+the pin, so the clip folds the paw 12–32° toes-up of the metatarsus. The
+pad, between heel and toe, then sits 3.7–13.3 mm inside the floor, and the
+metatarsus stands 3–11° heel-up of flat (`docs/probes/orun14/p1-flat-25.md`,
+`clip_pad.py`). `track_pose` pays that pose, which no simulated foot can
+take, and it pulls against the heel. ADR-780's `flat_feet=True` holds
+the paw's home pitch instead. At leo's home keyframe the paw stands on its
+toe, 62° toes-down of level, so that is no fix. Of 27 offline
+regenerations over body drop, body pitch and stance shift, 26 are refused.
+
+**Decision.** `flat_feet` also takes `"sole"`. A foot whose heel is held
+is then held at the pitch where its collision geoms reach the floor
+together, in place of its home pitch. The generator finds that pitch by
+turning the foot body about the world's lateral axis, within a quarter
+turn of home, to where the spread of its geoms' lowest points is least.
+It is the same row, tolerance and refusal as ADR-780's. A foot with fewer
+than two collision geoms is refused (`bad_flat_feet`).
+`assembly.gait(..., flat_feet="sole")` declares it, the worker resolves
+it, and `CadexDynamics` passes it on. `True` and the undeclared default are
+unchanged, so every existing clip and bundle is byte-identical.
+
+**Consequences.** On leo v03's p1-flat bundle (4c9de98d), at its own
+settings, both hind paws' sole pitch is −61.90°, the level pitch
+`clip_pad.py` read. On every heel-held sample, heel, pad and toe are
+0.0 mm above the ground, `_META` is +5.8 (v03's flat is +6), and the pin
+is 3.8° toes-up. The largest IK miss is 0.12 mm. The pin steps up to
+57.5° between samples at the hold's ends, as under ADR-780. It is passive
+and no reward tracks it. No protocol, tool surface or trainer change.
+
+**Evidence.** `docs/probes/orun14/clip_sole.py` regenerates the bundled
+clip exactly before it changes the option. `pixi run test-engine` and the
+CLI suite are in the commit.
+
+## ADR-785 — A flat foot can trail after toe-off (2026-10-21, orun14, leo v03)
+
+**Context.** ADR-778 eases a held heel up over three swing samples after
+toe-off, and ADR-780 / ADR-784 hold a flat foot's pitch on every sample
+whose heel has a target, so through that ease the paw stays level while
+the heel rises. On leo v03's free paw pin that walks the pin from 2–4°
+in stance to 56–58° toes-up of the metatarsus in the first three swing
+samples, within 2–4° of its 60° stop, in one 54–58° step back at the next
+sample (`docs/probes/orun14/leo-v03.1.md`). Every v03 policy at 2.2 m/s or
+more stood with the pin past 30° on 0.63–0.97 of stance (`pin_cap.py`),
+and a 30° stop (leo-v03.1) was refused at build because the clip itself
+needs 56°.
+
+**Decision.** `generate(..., trail_feet=True)` lays a flat foot flat only
+on the samples it is down. In swing the pitch row is dropped, and the heel
+ease and the foot target stay, so the paw trails the leg at the pitch the
+solve's null-space pull toward home gives it. It needs `flat_feet`
+(`bad_flat_feet` otherwise). `assembly.gait(..., trail_feet=True)`
+declares it, the worker resolves it, and `CadexDynamics` passes it on. A
+trailing clip's `heels` entries carry `"trails": true`. Undeclared, every
+clip and bundle is byte-identical.
+
+**Consequences.** On ps-sole's bundle (leo v03, `9820961f`) the clip
+regenerated with it holds the same stance (pin 0–3.8°, four heel-down
+samples a leg) and its swing pin peaks at 8.4° (LH) and 7.4° (RH), down
+from 57.7° and 56.0°. The largest pin step between samples is 7.2°, down
+from 57.5°. The largest IK miss is 0.12 mm. A 30° toes-up stop is now
+reachable by the clip. No protocol, tool surface or trainer change.
+
+**Evidence.** `docs/probes/orun14/clip_trail.py` regenerates the bundled
+clip exactly before it turns the option on. `pixi run test-engine` and the
+CLI suite are in the commit.

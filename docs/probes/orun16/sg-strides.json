@@ -1,0 +1,6 @@
+[
+ {"label": "sg0 0.5 m, 2.0 Hz, lag 0.3, heels up", "stride_length_m": 0.5, "speed_m_s": 1.0, "hind_lag": 0.3, "fore_lag": 0.3, "heel_from": 0.99},
+ {"label": "sg1 0.6 m, 2.3 Hz, lag 0.25, heel from 0.7", "stride_length_m": 0.6, "speed_m_s": 1.38, "hind_lag": 0.25, "fore_lag": 0.25, "heel_from": 0.7},
+ {"label": "sg2 0.7 m, 2.7 Hz, lag 0.2, heel from 0.45", "stride_length_m": 0.7, "speed_m_s": 1.89, "hind_lag": 0.2, "fore_lag": 0.2, "heel_from": 0.45},
+ {"label": "sg3 0.8 m, 3.0 Hz, lag 0.15, heel from 0.2", "stride_length_m": 0.8, "speed_m_s": 2.4, "hind_lag": 0.15, "fore_lag": 0.15, "heel_from": 0.2}
+]
