@@ -224,5 +224,36 @@ pixi run python docs/probes/orun18/c3_bundle.py ~/cadex-projects/leo/runs/b1-s2/
 | `cheetah61.clip.json` | `dae3366bbda8cc7af8b4e60fd899638fc4afa3858c93db44712019bf3448fb29` |
 | `cheetah58.clip.json` (not taken) | `d0eff867dd3208a8c4d6d9ee0c5d5d720bc5f02f993f2e750d9ed4c08faccf3e` |
 
-Still open for C4: the retargeted clip's film against the capture, the
-cheetah screen and its judgement beside C3, sgt-4-120 and B1.
+## The film
+
+`retarget_film.py` now takes an AcinoSet `fte.pickle` wherever it took a BVH,
+reading the stride through `acino_retarget.cheetah_stride`, so the film shows
+exactly the retargeted clip. The FTE skeleton gained a drawing tree
+(`SKELETON_PARENT`: spine to the girdles and down each leg, head and tail
+left out as for the dog). The tree is only for drawing: cheetah59's clip and
+measure re-run byte-identical (`ef691788…`). Each of the three strides plays
+three times at real time and once at 1/4 speed.
+
+`~/mocap/films/c4-cheetah-strides.webm` is 8.4 s long, 506 frames at 60 fps,
+with every frame decoded (sha256
+`24902f6f1d58cc591773436b0b97d163898a4d89b917212687540421d2c78217`). It is a
+drawing of AcinoSet's data, so it stays out of the repository (D5a) and goes
+on the run's page. What it shows:
+
+- **The grey cheetah ends at the wrist and hock.** It is scaled by the mean of
+  the fore and hind `s`, and each half stands over its own distal floor. Its
+  distal points can therefore dip under the floor line while rolling.
+- **Leo's paws follow those points**, and its spine bends with the cheetah's.
+  The misses are measured in the table above; the film is a drawing, not a
+  measurement of them.
+
+```
+M=~/cadex-projects/leo/runs/b1-s2/train/cat_model-model.xml   # 59bc5407, c3-s1's model too
+pixi run python docs/probes/orun18/retarget_film.py $M ~/mocap/films/c4-cheetah-strides.webm 26 3 4 \
+  $A/2017_12_12/top/cetane/run1_2/fte_pw/fte.pickle:146:188:cheetah52 \
+  $A/2017_12_12/top/cetane/run1_2/fte_pw/fte.pickle:104:144:cheetah59 \
+  $A/2017_09_03/bottom/zorro/run2_1/fte_pw/fte.pickle:30:71:cheetah61
+```
+
+Still open for C4: the cheetah screen and its judgement beside C3, sgt-4-120
+and B1.

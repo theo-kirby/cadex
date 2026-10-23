@@ -1,7 +1,11 @@
 """A film of retarget.py's strides: the capture against leo, side on, on the dark floor (orun18 F1).
 
 usage: pixi run python docs/probes/orun18/retarget_film.py MODEL_XML OUT_WEBM SAMPLES LOOPS SLOW \
-           BVH:FIRST:END:LABEL [BVH:FIRST:END:LABEL ...]
+           CAPTURE:FIRST:END:LABEL [CAPTURE:FIRST:END:LABEL ...]
+
+``CAPTURE`` is an AI4Animation dog BVH, or an AcinoSet ``fte.pickle`` (a path
+ending ``.pickle``), whose stride is read by ``acino_retarget.cheetah_stride``
+exactly as that probe retargets it (C4). A film takes one kind of capture.
 
 Each stride plays LOOPS times at real time and once more at 1/SLOW speed,
 then the next stride follows. It is retarget_sheet.py's drawing, moving: the
@@ -11,8 +15,12 @@ legs solid, right dashed, a dot on a paw that is down. Leo travels by the
 clip's own root (one stride length per loop) and the window follows it; the
 floor's tick marks stay put, so a paw held still on the ground reads as
 still. Frames are 60 a second; each picks the clip sample nearest its time,
-so nothing is interpolated. The film is a drawing of CC BY-NC material (D5)
-and is written outside the repository.
+so nothing is interpolated. The film is a drawing of CC BY-NC material (D5),
+or of AcinoSet's (D5a), and is written outside the repository.
+
+The cheetah has no paw (acino_retarget.py): its legs end at the wrist and hock,
+which leo's paws follow, and each girdle's points stand over their own distal
+floor, so its skeleton's fore and hind halves sit on the floor separately.
 """
 
 from __future__ import annotations
@@ -34,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src" / "Mod" / "ca
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "cli"))
 
 import CadexGait as G  # noqa: E402
+import acino_retarget as AR  # noqa: E402
 import retarget as R  # noqa: E402
 from retarget_sheet import BG, DOG, LEG_COLOUR, LINE, TEXT, TRUNK  # noqa: E402
 from cadex_cli.video import ffmpeg  # noqa: E402
@@ -74,8 +83,14 @@ def main(argv: list[str]) -> None:
     count = 0
     with tempfile.TemporaryDirectory() as work:
         for spec in argv[5:]:
-            bvh, first, end, label = spec.split(":")
-            clip, measure, dog = R.retarget(model_path, Path(bvh), int(first), int(end), label, samples)
+            capture, first, end, label = spec.split(":")
+            cheetah = capture.endswith(".pickle")
+            stride = AR.cheetah_stride(Path(capture), int(first), int(end), samples) if cheetah else None
+            clip, measure, dog = R.retarget(model_path, Path(capture), int(first), int(end), label, samples,
+                                            stride=stride)
+            credit = ("AcinoSet cheetah (grey, scaled; Joska et al. 2021; paw = wrist/hock) retargeted"
+                      if cheetah else "AI4Animation dog (grey, scaled, CC BY-NC 4.0) retargeted")
+            skip = ("l_eye", "r_eye", "nose", "tail_mid", "tail_tip") if cheetah else ("Head", "Neck", "Tail")
             s = 0.5 * sum(measure["length_scale"].values())
             names, parents = dog["skeleton"]["names"], dog["skeleton"]["parents"]
             mid_dog = np.mean([dog["pivot"][f][:, 0] for f in R.LEGS], axis=0)
@@ -92,7 +107,7 @@ def main(argv: list[str]) -> None:
                 pts = dog["skeleton"]["points"][k] * s
                 shift = centre - s * mid_dog[k]
                 for j, parent in enumerate(parents):
-                    if parent < 0 or names[j].startswith(("Head", "Neck", "Tail")):
+                    if parent < 0 or names[j].startswith(skip):
                         continue
                     ax.plot([pts[parent, 0] + shift, pts[j, 0] + shift], [pts[parent, 2], pts[j, 2]],
                             color=DOG, lw=2.4, solid_capstyle="round", zorder=1)
@@ -118,8 +133,8 @@ def main(argv: list[str]) -> None:
                 ax.text(0.015, 0.97, f"{label}  {leo['speed_m_s']:.2f} m/s  Fr {leo['froude']:.2f}  "
                         f"period {leo['period_s']:.3f} s  ({speed})", transform=ax.transAxes,
                         color=TEXT, fontsize=11, va="top")
-                ax.text(0.015, 0.03, "AI4Animation dog (grey, scaled, CC BY-NC 4.0) retargeted to leo v05: "
-                        "fore amber, hind blue; left solid, right dashed; dot = paw down",
+                ax.text(0.015, 0.03, f"{credit} to leo v05: fore amber, hind blue; "
+                        "left solid, right dashed; dot = paw down",
                         transform=ax.transAxes, color=DOG, fontsize=8.5, va="bottom")
                 ax.text(0.985, 0.97, f"sample {k:02d}/{clip['samples']}", transform=ax.transAxes,
                         color=DOG, fontsize=9, va="top", ha="right")

@@ -60,6 +60,15 @@ import retarget as R  # noqa: E402
 CUTOFF_HZ = 12.0
 PIVOT = {"LF": "l_shoulder", "RF": "r_shoulder", "LH": "l_hip", "RH": "r_hip"}
 GIRDLE_FEET = {"fore": ("LF", "RF"), "hind": ("LH", "RH")}
+# the FTE model's points as a tree for drawing (retarget_film.py): spine to the girdles and
+# down each leg; the head and tail are left unjoined (-1), as the film leaves the dog's
+SKELETON_PARENT = {"neck_base": "spine", "tail_base": "spine",
+                   "l_shoulder": "neck_base", "r_shoulder": "neck_base",
+                   "l_hip": "tail_base", "r_hip": "tail_base",
+                   "l_front_knee": "l_shoulder", "l_front_ankle": "l_front_knee",
+                   "r_front_knee": "r_shoulder", "r_front_ankle": "r_front_knee",
+                   "l_back_knee": "l_hip", "l_back_ankle": "l_back_knee",
+                   "r_back_knee": "r_hip", "r_back_ankle": "r_back_knee"}
 
 
 def cheetah_stride(path: Path, first: int, end: int, samples: int | None = None) -> dict:
@@ -112,7 +121,8 @@ def cheetah_stride(path: Path, first: int, end: int, samples: int | None = None)
         "thorax": read(neck - mid), "pelvis": read(mid - tail),
         "thorax_lateral": read(pivot["LF"] - pivot["RF"]),
         "pelvis_lateral": read(pivot["LH"] - pivot["RH"]),
-        "skeleton": {"parents": [-1] * len(names), "names": names, "points": read(points)},
+        "skeleton": {"parents": [names.index(SKELETON_PARENT[n]) if n in SKELETON_PARENT else -1
+                                 for n in names], "names": names, "points": read(points)},
         "contact": (A.CONTACT_M, A.CONTACT_SPEED, A.CONTACT_GAP_S),
         "source": {"name": str(Path(*path.parts[-5:-2])), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                    "label": f"AcinoSet cheetah {Path(*path.parts[-5:-2])} frames {first}-{end} "
