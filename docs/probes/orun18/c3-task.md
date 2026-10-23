@@ -29,7 +29,8 @@ gait at three speeds. The two gallops keep one order (LH 0.04/0.00, LF 0.19,
 RF 0.38, RH 0.88) and are taken: **`cmd` is 3395–4233 mm/s**, not the
 1099–4233 the critic named. Covering leo's slow end needs another route:
 a slower gallop or canter stride from the dog (`D1_010_KAN01_003` runs down
-to 2.7 m/s), or one task per gait.
+to 2.7 m/s), or one task per gait. The slower stride was found, and the
+bundle C3 trains is the three-stride one: see "A slower gallop" below.
 
 ## The bundle
 
@@ -64,7 +65,70 @@ derived and stays out of the repository.
   gallop falls at once). It was stopped at the 580 s limit before
   iteration 1. That is a load check, not a screen.
 
+## A slower gallop: gallop27, and the bundle C3 trains
+
+`stride_scan.py` lists every left-hind-to-left-hind stride over 1.8 m/s in
+the dog's takes, with each foot's first touchdown phase. It is a finder:
+`retarget.py` then measures the stride it takes. Among the takes, the
+slowest gallops keeping the gallops' order (LH, LF, RF, RH) are:
+
+| take, frames | dog m/s | LF / RF / RH phase | flight |
+|---|---|---|---|
+| `D1_010_KAN01_001`, 404–432 | 2.69 | 0.32 / 0.54 / 0.86 | 0.39 |
+| `D1_010_KAN01_003`, 33–60 | 2.76 | 0.30 / 0.44 / 0.81 | 0.33 |
+
+Nothing slower gallops in this order. `D1_010_KAN01_004` runs from 2.6 to
+5.2 m/s, but its strides under 3.1 m/s show no fore touchdown at all.
+`D1_047z_KAN01_002` gallops at 2.28–3.20 m/s in the other order (LH, RH,
+RF, LF), which crosses the gallops'. So **2.76 m/s on leo is the dog's
+floor** for one schedule. It is 4% above sgt-4-120's fast end (2.66 m/s at
+2400 commanded), and nothing in this capture gallops at 2.4.
+
+Both were retargeted on the shared 26-sample grid (`~/mocap/retargeted/`):
+
+| stride | leo m/s, period, Fr | footfall LH LF RF RH | flight | fore miss max LF/RF (share > 5 mm) | raw slip max | seam max / step | violations, loops |
+|---|---|---|---|---|---|---|---|
+| gallop27 (001, 404–432) | 2.76, 0.478 s, 2.00 | 0.00 0.19 0.42 0.85 | 0.15 | 14 (0.12) / 38 (0.19) | 37 (RH) | 19° / 30° (`j_knee_l`) | 0, 0.000 mm |
+| gallop28 (003, 33–60) | 2.80, 0.457 s, 2.06 | **0.96** 0.15 0.38 0.81 | 0.15 | 9 (0.08) / 50 (0.23) | 74 (RH) | 20° / 25° (`j_elbow_l`) | 0, 0.000 mm |
+
+Hind misses are 0 in both. The spine takes −10…+9° of `j_spine`, unclipped.
+gallop28's left hind lands at 0.96, just before the window's start, so its
+order crosses gallop34's (`c3_bundle.py` refuses: "LF before LH, then
+after"). gallop27 keeps the order, misses less on the right fore, and slips
+half as much. **gallop27 is taken.**
+
+`~/cadex-projects/leo/runs/c3-bundle27/mocap_gallop-task.json` (sha256
+`cc8f312330ff79192a284d13b9e30bf32974bd3d4ea56633cd93905f6816900c`; model XML
+`59bc5407…`, unchanged) is the same build as the two-stride bundle above,
+with three strides:
+
+- **Strides:** gallop27 (2756 mm/s, 0.478 s), gallop34 (3395), gallop42
+  (4233); 78 reset rows.
+- **Goal:** `cmd` 2756–4233 mm/s; nominal 2850 (B1's, now inside the span).
+- **Reward:** unchanged from the two-stride bundle (13 rows, no style term).
+- **The engine reads it:** at cmd 2756 / 3000 / 3395 / 3800 / 4233 the blend
+  is stride 0 at 0.00 / 0.38, then stride 1 at 0.00 / 0.48 / 1.00. The
+  seeded start (seed 0) is row 12 / 12 / 38 / 38 / 64, the nearest stride's
+  own rows. `judged_reference` is gallop27 / gallop27 / gallop34 / gallop34 /
+  gallop42.
+- **The trainer has not yet run it.** On the CPU (8 envs, GPU hidden,
+  b1-s2 holding the 5090), `training/cadex_train.py` hashed the bundle
+  (`task_sha256` `cc8f3123…`, model `59bc5407…`) and was still compiling
+  when its 1100 s limit stopped it, before iteration 0. The two-stride
+  bundle's check reached iteration 0 inside 580 s. So this is not a load
+  check: the first ten iterations timed on the 5090 (D7) are.
+
+The clips' sha256: `gallop27.clip.json` `a88ad380…` (`D1_010_KAN01_001.bvh`
+`61239cf0…`) and `gallop28.clip.json` `88d7d0c8…`. Reproduce with:
+
+```
+pixi run python docs/probes/orun18/stride_scan.py $X/D1_010_KAN01_00{1,2,3,4}.bvh $X/D1_047z_KAN01_002.bvh
+pixi run python docs/probes/orun18/retarget.py $M $X/D1_010_KAN01_001.bvh 404 432 gallop27 ~/mocap/retargeted 26
+pixi run python docs/probes/orun18/c3_bundle.py ~/cadex-projects/leo/runs/b1-s2/train/speed-task.json \
+  ~/cadex-projects/leo/runs/c3-bundle27 mocap_gallop ~/mocap/retargeted/gallop{27,34,42}.clip.json
+```
+
 ## Not done here
 
-C3's training waits for b1-s2's judgement at 180 (D1; the critic's order).
+C3 trains `c3-bundle27`. Its training waits for b1-s2's judgement at 180 (D1; the critic's order).
 Its iteration time on the 5090 is still to be timed (D7).
