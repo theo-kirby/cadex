@@ -2,7 +2,7 @@
 
 Verified against source: 2026-10-23. CPU work while b1-s2 trains (D1).
 Probes: `retarget.py` (the retarget), `clip_carry.py` (the engine reads the
-clips), `retarget_sheet.py` (the stills). The capture, the clips and their
+clips), `retarget_sheet.py` (the stills), `retarget_film.py` (the film, c3-task.md). The capture, the clips and their
 measures stay in `~/mocap/` (D5: CC BY-NC 4.0, SOURCES.md); only their
 sha256 are here.
 

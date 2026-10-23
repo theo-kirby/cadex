@@ -128,6 +128,33 @@ pixi run python docs/probes/orun18/c3_bundle.py ~/cadex-projects/leo/runs/b1-s2/
   ~/cadex-projects/leo/runs/c3-bundle27 mocap_gallop ~/mocap/retargeted/gallop{27,34,42}.clip.json
 ```
 
+## The paw pins sit at their stop through the clip
+
+`j_pawpin_l` / `j_pawpin_r` are at a stop on 0.69 / 0.61 of gallop27's
+samples, 0.73 / 0.73 of gallop34's and 0.65 / 0.65 of gallop42's
+(`joints_at_stop_share` in each `<label>.measure.json`). The pin's home, 0°,
+is its upper stop (range −60…0°), so the clip asks for the pin at rest on
+most of the stride, and `track_pose` pays for that. It is the spring's
+resting pose, not a drive at its clamp, but a policy that tracks the clip is
+paid to keep the paw pin shut: C3's judgement should read the pin's range
+against B1's before crediting or blaming the paw.
+
+## The film
+
+`retarget_film.py` draws `retarget_sheet.py`'s picture moving: each of the
+three strides three times at real time, then once at 1/4 speed, the window
+following leo and the floor's ticks fixed so a held paw reads as still.
+`~/mocap/films/c3-strides.webm` (9.4 s, 566 frames at 60 fps, every frame
+decoded; sha256 `aae4b31ce7a8f4c67e4df1a3e8f8dc086d59bc9f2ff36ed5dc704763b106418e`)
+is a drawing of CC BY-NC material, so it stays out of the repository (D5)
+and goes on the run's page (F1's "the retargeted clip"):
+
+```
+pixi run python docs/probes/orun18/retarget_film.py $M ~/mocap/films/c3-strides.webm 26 3 4 \
+  $X/D1_010_KAN01_001.bvh:404:432:gallop27 $X/D1_010_KAN01_003.bvh:86:112:gallop34 \
+  $X/D1_010_KAN01_002.bvh:66:92:gallop42
+```
+
 ## Not done here
 
 C3 trains `c3-bundle27`. Its training waits for b1-s2's judgement at 180 (D1; the critic's order).
