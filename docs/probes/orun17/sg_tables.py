@@ -15,9 +15,9 @@ otherwise. Left and right are apart (O5).
 
 **SG (O2a).** Per command and hind leg: the engine's ``heel_down_share``
 (``hock_down``'s reading), U (``paw_floor``: the share of on-ground frames
-toes-up of the floor past its ``FLAT_DEG``, 10 deg), the floor pitch at lift and the share
-of lifts toes-up of the floor. Verdicts: the slowest command's heel share
-at most 0.1 on each leg; the fastest's at least 0.4 with U under 0.2 on
+toes-up of the floor past its ``FLAT_DEG``, 10 deg, and past O2's 5 deg), the floor pitch at
+lift and the share of lifts toes-up of the floor. Verdicts: the slowest command's heel share
+at most 0.1 on each leg; the fastest's at least 0.4 with U past 5 deg (O2) under 0.2 on
 each leg; the heel share strictly rising with the command, per leg.
 
 **RL (O3a).** Per command: rotary seeds (``p2_lag``'s rule, over ordered
@@ -225,7 +225,7 @@ def main(argv):
          f"**{c['speed'][1]:.2f}** ({c['speed'][0]:.2f} / {c['speed'][2]:.2f})"),
         ("heel share of stance LH / RH (engine `hock_down`)", lr("engine")),
         ("U LH / RH (toes-up of floor past 10°, `paw_floor`)", lr("U")),
-        ("U LH / RH past 5° (the charter's wording)", lr("U5")),
+        ("U LH / RH past 5° (O2, the verdict's)", lr("U5")),
         ("floor pitch at lift LH / RH °", lr("lift_pitch", "%+.1f")),
         ("lifts toes-up of floor LH / RH", lr("lift_up")),
     ])
@@ -235,7 +235,8 @@ def main(argv):
             slow[leg]["engine"] is not None and slow[leg]["engine"] <= SLOW_HEEL for leg, _ in HIND),
         f"fastest ({fast['cmd']}) heel ≥ {FAST_HEEL} each leg": all(
             fast[leg]["engine"] is not None and fast[leg]["engine"] >= FAST_HEEL for leg, _ in HIND),
-        f"fastest U < {U_MAX} each leg": all(fast[leg]["U"] is not None and fast[leg]["U"] < U_MAX for leg, _ in HIND),
+        f"fastest U (past {U5_DEG:g}°, O2) < {U_MAX} each leg": all(
+            fast[leg]["U5"] is not None and fast[leg]["U5"] < U_MAX for leg, _ in HIND),
         "heel share rises with the command, LH": strictly([c["LH"]["engine"] for c in cols], True),
         "heel share rises with the command, RH": strictly([c["RH"]["engine"] for c in cols], True),
     }

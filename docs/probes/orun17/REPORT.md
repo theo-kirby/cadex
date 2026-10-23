@@ -13,7 +13,7 @@ frozen seeds (`orun16/sg_judge.py` at a held command), read by
 | B1 | met in substance (scribe's claim: working) | sg-s9 judged at 50 and 80 (`sg-s9-50-80.md`); the slow reference read sample by sample and the generator option argued not needed (`b1-trim.md`); `gallop_sg` trimmed 24 → 18 terms, sgt-1 launched cold (`b1-trim.md`) |
 | SG | open, 3 of 5 clauses on sgt-4-120 | table below |
 | RL | open, 2 of 4 clauses on sgt-4-120 | table below |
-| P1 | open; no orun17 policy passes `hock_down` on 8 seeds | sgt-4-120 at 2400: heel 0.31 / 0.38, U 0.13 / 0.24 (`sgt-4-120.md`); single-speed v05-s1-50 (orun16): 0.40 / 0.35, U 0.25 / 0.01 |
+| P1 | open; no orun17 policy passes `hock_down` on 8 seeds | sgt-4-120 at 2400: heel 0.31 / 0.38, U (O2, past 5°) 0.18 / 0.35, at 10° 0.13 / 0.24 (`sgt-4-120.md`); single-speed v05-s1-50 (orun16): 0.40 / 0.35, U 0.25 / 0.01 |
 | P2 | open; overreach fails on every SG screen | sgt-4-120 hind overreach LH / RH −166 / −434, +74 / −407, +242 / −355 mm at 700 / 1550 / 2400; `no_tap` 0/10 at 700 (LF 1.89 a stride) |
 | SP | open (no P1 / P2 policy); preview below | |
 | Q1 | open (no P1 / P2 policy); preview below | |
@@ -38,7 +38,7 @@ command; 0/10 `gallop_spec` (top_speed by design at a held command,
 | top 2 s m/s, median (min / max) | 0.88 (0.87 / 0.93) | 1.70 (1.68 / 1.72) | 2.66 (2.64 / 2.67) | |
 | heel share of stance LH | **0.00** | 0.18 | 0.31 | slow ≤ 0.1 pass; rises pass; fast ≥ 0.4 fail |
 | heel share of stance RH | **0.00** | 0.00 | 0.38 | slow ≤ 0.1 pass; rises fail (flat 700 → 1550); fast ≥ 0.4 fail |
-| U LH / RH at 10° (5°) | 0.01 / 0.00 (0.03 / 0.06) | 0.05 / 0.00 (0.07 / 0.07) | 0.13 / **0.24** (0.18 / 0.35) | fast U < 0.2 fail (RH) |
+| U LH / RH past 5° (O2); at 10° | 0.03 / 0.06; 0.01 / 0.00 | 0.07 / 0.07; 0.05 / 0.00 | 0.18 / **0.35**; 0.13 / 0.24 | fast U < 0.2 fail (RH) |
 | heel stance height LH / RH mm | 19 / 28 | 5 / 10 | 5 / 4 | |
 | floor pitch at lift LH / RH °; lifts toes-up of floor | −2.5 / +0.3; 0.00 / 0.00 | −0.4 / −3.3; 0.00 / 0.00 | −4.0 / −11.3; 0.00 / 0.00 | |
 
