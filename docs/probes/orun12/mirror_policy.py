@@ -20,7 +20,8 @@ runs the result unchanged:
   sign is checked against the action ranges (the partner's range is the
   same, or its negation);
 - the IMU quaternion goes to (w, -x, y, -z), the gyro to (-x, y, -z);
-- a height-scan point goes to the point at (x, -y); the clip phase stays.
+- a height-scan point goes to the point at (x, -y); the clip phase and a
+  forward speed command (``cmd``, orun17) stay.
 
 The first layer and the normaliser absorb M_o (mean_j' = s mean_i), the last
 layer M_a (a tanh output negates when the sign is -1, which the range check
@@ -82,7 +83,7 @@ def channel_map(channels, signs, scan_offsets):
             out.append((index[f"{m.group(1)}_{partner(m.group(2))}"], signs[joint]))
         elif c in ("imu_qx", "imu_qz", "gyro_x", "gyro_z"):
             out.append((index[c], -1.0))
-        elif c in ("imu_qw", "imu_qy", "gyro_y", "ref_sin", "ref_cos"):
+        elif c in ("imu_qw", "imu_qy", "gyro_y", "ref_sin", "ref_cos", "cmd"):
             out.append((index[c], 1.0))
         elif c in scan_offsets:
             x, y = scan_offsets[c]
@@ -101,7 +102,8 @@ def main(argv):
 
     scan_offsets = {}
     if "scan_0" in header["observations"]:
-        task = __import__("json").loads((Path(src).parent / "gallop-task.json").read_text())
+        bundle = next(p for p in (Path(src).parent / n for n in ("gallop-task.json", "gallop_sg-task.json")) if p.exists())
+        task = __import__("json").loads(bundle.read_text())
         for scan in task.get("scans") or ():
             for c, (x, y) in zip(scan["channels"], scan["offsets_mm"]):
                 scan_offsets[c] = (x, y)
