@@ -89,11 +89,14 @@ extracted from `MotionCapture.zip` to `~/mocap/ai4animation/extract/`:
 (trot 2.1–2.3 m/s) and `D1_055_KAN01_001` (pace 0.8–1.1 m/s). `retarget.py`
 writes the four retargeted strides to `~/mocap/retargeted/` (an adaptation,
 so also CC BY-NC 4.0, and never committed). Their sha256 are in
-`c2-retarget.md`. The repository holds only `retarget.py`, `clip_carry.py`,
-`retarget_sheet.py` (our code) and the stills `c2-retarget.png`. The stills
-are a drawing of the capture and of its adaptation, so they carry the
-capture's terms: CC BY-NC 4.0, credited as above. They sit only in
-`docs/probes/`, which no payload carries.
+`c2-retarget.md`. The repository holds only our code: `retarget.py`, `clip_carry.py`,
+`retarget_sheet.py` and `c3_bundle.py`. The stills that script draws are a drawing
+of the capture and of its adaptation, so they carry the capture's terms (CC
+BY-NC 4.0) and are kept out of the repository: they sit in
+`~/mocap/stills/c2-retarget.png` and on the run's page, credited as above.
+An earlier commit (`40197e4a`) carried them under `docs/probes/orun18/`;
+they were removed at the critic's call, and only their sha256 stays
+(`c2-retarget.md`).
 
 No cat capture with a licence of this standing was found in this pass; the
 dog is the source, as D5 allows.

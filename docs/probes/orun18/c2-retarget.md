@@ -6,7 +6,11 @@ clips), `retarget_sheet.py` (the stills). The capture, the clips and their
 measures stay in `~/mocap/` (D5: CC BY-NC 4.0, SOURCES.md); only their
 sha256 are here.
 
-![capture against leo](c2-retarget.png)
+The stills (capture against leo, six phases per stride) are drawn by
+`retarget_sheet.py` to `~/mocap/stills/c2-retarget.png` (sha256
+`ddab26f0cb722983a3aa3f9cf73299cc4120c94664f41493bf29c877040870c5`) and
+shown on the run's page. They are a drawing of CC BY-NC material, so they
+stay out of the repository (D5).
 
 ## The capture, checked
 
