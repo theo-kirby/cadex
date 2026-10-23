@@ -1,304 +1,215 @@
-# Goal: why leo trains worse than a stock quadruped, settled in three steps
+# Goal: leo on sphere feet, speed first, then animal motion
 
-Verified against source: 2026-10-23. Operator charter for orun18, a 24 h
-run (C4, the cheetah, added mid-run by the owner). It replaces orun17 (`.ouroboros/history/orun17.md`, merged at
-`6235e46f`), which the owner stopped at 11.3 h to run this diagnosis.
+Verified against source: 2026-10-23. Operator charter for orun19, a 24 h
+run. It replaces orun18 (`.ouroboros/history/orun18.md`, merged at
+`44ec3656`), which the owner stopped at 7.2 h to start this one.
 
 **Why this run exists (owner, 2026-10-23).**
-- **What prompted it:** the owner saw a public clip. A stock Unitree Go2,
-  in MuJoCo, chases a target at 2–4 m/s and jumps or ducks bars, trained
-  "very fast" on one consumer GPU.
-- **The owner's question:** is the gap to leo our framework, our training
-  style, or our models?
-- **The operator's read** (not yet measured; testing it is this run's job):
-  - **Mostly the model and the task.**
-    - Leo has 26 actuators, 59 joints, 4 push-rod loops, a sprung paw pin,
-      drives at their clamp and about 30 kg. The Go2 has 12 actuators and
-      ball feet.
-    - We ask for a stylised gait through 18 reward terms and about 10
-      pass/fail checks.
-  - **Partly the training style:** stacking reward terms where the field
-    imitates animal motion.
-  - **Least the framework:** speed-only cats reached 4.2–4.64 m/s (orun7,
-    orun10) on this trainer, and it is Brax PPO on MJX, the stack MuJoCo
-    Playground uses.
+- **orun18 cleared the trainer.** The same Go1 model and task, trained
+  through `training/cadex_train.py`, tracked within 6% of MuJoCo
+  Playground's own recipe, in less wall time (A3, `docs/probes/orun18/a2.md`).
+- **The gap is leo's body and task.** Two of orun18's leo results:
+  - On speed alone, leo v05 holds a 2.59 m/s trot with 0/50 falls but does
+    not track the command (`b1-s2-180.md`).
+  - Imitating the dog capture, it gallops rotary but settles at 1.6–1.9 m/s
+    whatever it is commanded (`c3-s1-50.md`).
+- **Every leo policy ran on its toes with the hind paw pin shut**
+  (`pin_stop.py`: at its stop on 0.72–0.86 of frames).
+  - The cause is geometry, not the spring. The hind pad touches 15 mm
+    behind the pin, so stance load locks the pin on its stop at any spring
+    rate from 0 to 12 N·mm/deg (governor `tall-bay-3130`).
+  - The Go1 that trained well has sphere feet.
+- **The owner's decision: sphere feet.** No paw redesign. Leo gets the
+  simplest foot, and the run asks what leo can do on it.
 
-**This run tests that read, in the owner's order.** The human owns this
-file; unattended roles never edit it.
+The human owns this file; unattended roles never edit it.
 
 ## Mission
 
-Settle where the gap is, with measurements, in this order:
+1. **Build leo v06 on sphere feet.** Each of the four feet ends in one
+   sphere and nothing else of the foot touches the ground. The hind paw pin
+   and its spring are gone.
+2. **Train leo v06 on speed alone and make it track the command.** Use
+   orun18's B1 task, with no style terms, and compare it with v05's B1.
+3. **Give it its gait from animal motion.** Use the dog (orun18 C3) and
+   then the cheetah (orun18 C4) captures, retargeted to v06's legs and
+   spine.
 
-1. **Clear or blame the framework.** Train a stock quadruped from a
-   published, known-good recipe (MuJoCo Playground's Unitree Go1 joystick).
-   Then train the same robot on the same plain velocity task through
-   Cadex's own trainer, on this machine, and compare.
-2. **Find what leo can do with the style taken off.** Train leo v05 on
-   speed alone (track speed, stay up, regularise), with no reference clip
-   and no heel, paw or lag terms. The result is the body's ceiling, and
-   what binds it.
-3. **Give leo its style from animal motion, not from reward terms.**
-   Retarget real quadruped motion capture to leo, train leo to track it
-   alongside a speed command, and judge it on the same tables as orun17's
-   best (sgt-4-120).
-
-If the loop achieves only one thing, it is **step 1's verdict**: the same
-robot and task trained both ways, with numbers that say whether Cadex's
-trainer is the problem.
+If the loop achieves only one thing, it is **leo v06 tracking a commanded
+speed on sphere feet**: a speed table at four or more commands, beside
+v05's B1.
 
 ## The machines
 
-- **The control robot is Unitree Go1, from MuJoCo Playground**
-  (`mujoco_playground`, its `Go1JoystickFlatTerrain` environment and its
-  published PPO config).
-  - Playground ships a tuned recipe and published training times for Go1.
-    It has no Go2 recipe the operator knows of. If the actor finds a
-    published Go2 recipe of the same standing, Go2 may replace Go1.
-  - The model comes from MuJoCo Menagerie, through Playground.
-- **Leo is `~/cadex-projects/leo`**, at its current head (`3b0942b`,
-  orun17's sgt-5 script). **The model is frozen at leo v05** this run: no
-  model changes, because a diagnosis needs a fixed body. New tasks are
-  written in its `script.py` as before.
+- **Leo is `~/cadex-projects/leo`**, at its current head (orun18's
+  scripts). This run makes **one model change, v06 (O1)**, and then freezes
+  it.
   - The `leo-v02` … `leo-v05` tags are never moved.
-  - orun17's best SG policy is `runs/sgt-4/train/` at 120 (judged
-    `915a9863`, `docs/probes/orun17/sgt-4-120.md`):
-    - 0.88 / 1.70 / 2.66 m/s at 700 / 1550 / 2400 mm/s commanded;
-    - heel 0.00 / 0.00 slow, 0.31 / 0.38 fast;
-    - U 0.13 / 0.24 fast;
-    - rotary on 4 / 10 / 10 seeds;
-    - hocks, wrists and `j_tail2` at their clamp on 0.13–0.80 of frames.
+  - orun18's evidence on v05:
+    - B1 is `runs/b1-s2/` at 180: 1.84 / 2.59 / 1.85 / 1.80 / 1.62 m/s at
+      700 / 1500 / 2400 / 3500 / 5000 commanded;
+    - C3 is `runs/c3-s1/` at 50;
+    - the C4 bundle `c4-bundle` (e6a04ce8, cmd 4629–5328) was built but
+      not trained.
 - **The trainer** is `training/cadex_train.py`, from `~/cadex-train-venv`
-  (brax 0.14.2, jax 0.7.2, mujoco-mjx 3.10.0). It takes the task bundle a
-  Cadex build writes (`<task>-task.json` with `model`, `actions`,
-  `observations`, `reward`, `reference` and `tracking`).
-- **Measured:** leo runs about 70–90 s an iteration at 4096 envs.
+  (brax 0.14.2, jax 0.7.2, mujoco-mjx 3.10.0), cleared by orun18 A3.
+- **The motion:**
+  - the AI4Animation dog (CC BY-NC 4.0) is in `~/mocap/`;
+  - AcinoSet's cheetah (cited per orun18's D5a) is in `~/mocap/acinoset/`.
+
+  The retargeting code is `docs/probes/orun18/retarget.py`,
+  `acino_retarget.py` and `c3_bundle.py`. The licence terms in
+  `docs/probes/orun18/SOURCES.md` carry over unchanged.
+- **Measured on v05:** about 70–90 s an iteration at 4096 envs.
 
 ## Owner decisions
 
-- **D1. Order.** The GPU work goes A, then B, then C.
-  - B's first training waits for A's verdict.
-  - C's first training waits for B's first judged run.
-  - CPU work for a later step (fetching, reading licences, retargeting,
-    writing tasks) may run while an earlier step trains.
-  - If A blames the trainer, fixing it is the top of the frontier, and B
-    runs on the fixed trainer.
-- **D2. Like for like.** A's comparison holds the robot, the physics
-  settings, the task and the wall-clock budget as equal as the two
-  pipelines allow. Every difference that remains is listed, with its
-  likely size:
-  - timestep and substeps;
-  - solver;
-  - action space and PD gains;
-  - observations and their noise;
-  - reward terms;
-  - episode length and termination;
-  - envs, batch and PPO hyperparameters;
-  - domain randomisation.
-- **D3. Judge with one yardstick.** Both A policies are judged by one
-  script on the same seeds and commands:
-  - tracked forward speed over a 2 s window at three or more commands,
-    up to the top of Playground's command range;
-  - falls;
-  - joint torque against the model's limits.
+- **O1. Sphere feet (owner, 2026-10-23).** Leo v06 is v05 with all four
+  feet replaced by spheres.
+  - **Hind feet:**
+    - the paw pin, its spring and damping, and the paw body are removed;
+    - a sphere sits at the foot's end, the ball of the foot, where the pad
+      was;
+    - the heel's collision geometry comes off, or is shown clear of the
+      floor through the whole judged gait.
+  - **Fore feet:** the paw's capsules are replaced by one sphere at the
+    same contact point.
+  - **Everything else stays v05:** the drives, the push-rod loops, the
+    spine, the tail and the head.
+  - **Each sphere's radius and material** are the actor's choice:
+    - stated with their reason, e.g. Go1's foot scaled to leo's mass;
+    - the friction and contact settings follow the engine's defaults
+      unless measured otherwise.
+  - **The new parts are designed,** not stand-ins: a foot sphere is a
+    real part (a rubber-capped hemisphere on the leg's end, as robot dogs
+    use), so the renders read as a robot.
+  - **The checks:**
+    - the build passes `cadex clearance` and `--sweep` with no new pairs
+      against v05's reports;
+    - the stand holds for 3 s on every drive with no NaN;
+    - the mass and the hip heights are reported against v05.
 
-  The script is written by the actor, outside both pipelines.
-  - Leo's B and C runs use the engine's evaluation (`gallop_spec`'s seeds),
-    as before, plus orun17's `sg_tables.py`.
-  - The trainer's reward is never a pass.
-- **D4. Speed only means speed only.**
-  - B's task keeps:
+    Then the result is tagged `leo-v06`, and the model is frozen.
+- **O2. Speed only means speed only (orun18's D4, kept).**
+  - The task keeps:
     - the speed command and `track_speed`;
     - staying upright and alive;
     - torque, energy and action-rate regularisers;
     - terminations.
-  - It drops:
-    - the reference clip's tracking terms;
-    - `heel_pitch`, `heel_sched`, `paw_flat`, `paw_fold`, `overrun`, the
-      lag and sync terms, `hind_scuff`;
-    - every other style term.
+  - It drops every style term: the heel, paw, lag, sync, scuff and
+    reference terms.
+  - Footfall order, flight and stride are measured and reported, not
+    rewarded.
+  - Paw-pin and heel measures no longer apply and are not reported.
+- **O3. Tracking means the command.** A speed policy "tracks" when its
+  speed over the last 2 s of each judged seed is within 10% of the command
+  at every judged command up to its top. Changes to make it track are, in
+  this order:
+  - the command curriculum and its sampling;
+  - `track_speed`'s shape and weight;
+  - the regularisers' weights.
 
-  The heel, U and footfall order are measured and reported, not rewarded.
-- **D5. Real motion, licensed.**
-  - C's motion comes from a real-animal capture whose licence permits this
-    use: a dog for certain, a cat if one exists.
-  - The licence is read and recorded before any download is used.
-  - The data stays outside the repository (`~/mocap/`); the repository gets
-    only the retargeting code and its outputs' hashes.
-  - If no usable licence is found, C stops there and the report says so.
-- **D5a. The cheetah, AcinoSet (owner, 2026-10-23, mid-run).**
-  - AcinoSet (github.com/African-Robotics-Unit/AcinoSet; Joska, Clark,
-    Muramatsu, Jericevich, Nicolls, A. Mathis, M. W. Mathis and Patel,
-    ICRA 2021, arXiv 2103.13282) has no licence file. Its README asks only
-    that users of its code or data cite it. **The owner reads that as
-    permission for this research use.**
-  - The terms the run keeps:
-    - cite it in `SOURCES.md` and R1;
-    - keep the data and everything derived from it outside the repository
-      and out of every payload, as with the dog;
-    - never redistribute it.
-  - Correction: `SOURCES.md`'s line "No cat capture with a licence of this
-    standing was found in this pass" was written without a search for one.
-    Replace it with what was actually searched and found.
-- **D6. Tracking before AMP.** C first carries the motion as the task's
-  reference clip, the path the trainer already has: tracking reward plus
-  speed plus D4's regularisers, and no style terms.
-  - An adversarial motion prior (AMP: a discriminator in `training/`) is
-    the next step, only if tracking proves too rigid. It needs an ADR
-    (from ADR-786) and its tests.
-- **D7. Cold, sized, one trainer at a time (orun17's O8, kept).**
-  - Every changed task trains cold.
+  Each change is screened alone against the last, so the cause is known.
+- **O4. Motion uses the legs and spine only.** The retargeted clips map
+  onto v06's legs, spine and (where the capture has them) tail and head.
+  - The capture's paw and digit angles are dropped; nothing maps to them.
+  - The motion tasks follow orun18's D6: tracking plus speed plus O2's
+    regularisers, with no style terms.
+  - An adversarial motion prior (AMP) comes only if tracking proves too
+    rigid, and it needs an ADR (from ADR-791) and its tests.
+- **O5. Cold, sized, one trainer at a time (orun18's D7, kept).**
+  - Every changed task or model trains cold.
   - Screens run 100–150 iterations and are judged at 50 and at the end.
   - Time the first ten iterations and set `budget_s` to the iterations
     asked for plus 20%.
   - Keep the GPU busy, with one trainer at a time.
-  - Playground's Go1 run is sized by its own published config.
-- **D8. Torque, symmetry, a clean simulation (orun17's O5, O6, O9,
-  kept).** Every leo number carries:
+- **O6. Torque, symmetry, a clean simulation (orun18's D8, kept).** Every
+  judged number carries:
   - the worst drive's RMS over rated and its peak margin;
   - left against right;
-  - O9's checks (no NaN, loops within 2 mm reported, pin rate).
-- **D9. Straight lines, flat ground.** No turning, leaping or terrain on
-  leo. A's Go1 runs Playground's flat joystick task as published, turning
-  commands included, and is judged on forward speed.
+  - which drives sit at their clamp, and on what share of frames;
+  - no NaN, and the loops' closure (within 2 mm) reported.
+- **O7. Straight lines, flat ground.** No turning, leaping or terrain.
 
 ## Done criteria
 
-- [ ] **A1. The reference.**
-  - Playground's Go1 joystick (flat) trains from its published config in
-    its own venv on this 5090.
-  - The report gives:
-    - wall time and env steps to its final policy;
-    - steps per second;
-    - D3's judgement: tracked speed at three or more forward commands,
-      falls, torque.
-  - The source versions are pinned in the report.
-- [ ] **A2. The same robot through Cadex.**
-  - The same Go1 model, on a plain velocity task, trains cold through
-    `training/cadex_train.py` within twice A1's wall time.
-  - The task is made as close to Playground's as the Cadex task format
-    allows, by the smallest honest route:
-    - a Cadex project that builds the Go1 from Menagerie's numbers;
-    - or a task bundle written around Menagerie's MJCF;
-    - or another route; the report says which was taken and why.
-  - The report gives:
-    - D3's judgement;
-    - wall time;
-    - steps per second;
-    - D2's table of differences.
-- [ ] **A3. The verdict.**
-  - **Cleared:** A2's tracked speed is within 10% of A1's at every judged
-    command, with no more falls, in at most twice the wall time.
-  - **Blamed:** otherwise. The gap is then broken down by D2's list,
-    each candidate tested by changing it alone, until one or two explain
-    it.
-  - If blamed, fixing the trainer comes next (a `training/` change with
-    an ADR and the trainer's tests), and A2 is rerun on the fix.
-- [ ] **B1. Leo on speed alone.**
-  - Leo v05 trains cold on D4's speed-only task, with speed commands up
-    to 5 m/s, for 150–200 iterations.
-  - It is judged at 50 and at the end at four or more commands (at least
-    0.7, 1.5, 2.4 and the fastest it holds). Each judgement gives:
-    - tracked speed;
+- [ ] **V1. Leo v06 on sphere feet** is built, checked and tagged `leo-v06`
+  as O1 asks.
+  - `docs/probes/orun19/leo-v06.md` gives:
+    - each sphere's radius and reason;
+    - what was removed;
+    - the clearance diff;
+    - the stand;
+    - mass and hip heights against v05.
+  - A render on the dark floor shows the new feet.
+- [ ] **S1. Leo v06 on speed alone.**
+  - It trains cold on orun18's B1 task (`b1-s2`'s weights, the paw-pin
+    observations dropped), with speed commands up to 5 m/s, for 150–200
+    iterations.
+  - It is judged at 50 and at the end at 0.7, 1.5, 2.4, 3.5 and 5.0 m/s
+    commanded, beside v05's b1-s2-180. Each judgement gives:
+    - tracked speed (the last 2 s);
     - falls;
-    - the footfall order it chose;
+    - footfall order;
     - flight;
-    - heel share and U per hind leg (reported, not required);
-    - D8's numbers;
-    - which drives sit at their clamp, and on what share of frames.
-- [ ] **B2. The ceiling, read.** The report compares B1's top speed:
-  - with orun17's best (sgt-4-120);
-  - with the cats of orun7 and orun10;
-  - with A's Go1, as a Froude number (v² / g·hip height);
-  - and says what binds: a drive, the foot or the stride.
-
-  If B1 shows the clip alone moves the gait, a reference-only variant (the
-  clip's tracking terms plus D4, no style terms) may be screened to
-  separate the clip from the terms.
-- [ ] **C1. The motion and its licence.**
-  - A real quadruped capture with a gallop or canter is found, its licence
-    read and recorded in `docs/probes/orun18/SOURCES.md`, and the data
-    fetched to `~/mocap/`.
-  - Candidates to check first:
-    - the AI4Animation dog capture (Zhang et al. 2018, mode-adaptive
-      networks);
-    - the retargeted dog clips of Peng et al. 2020 (`motion_imitation`).
-
-    Neither licence is assumed.
-- [ ] **C2. Retargeted to leo.**
-  - The capture is retargeted to leo's joints and proportions:
-    - foot contacts kept;
-    - joint limits respected;
-    - the spine mapped onto `j_spine` / `j_spine_yaw`.
-  - The result is a reference the leo task can carry.
-  - The route is the smallest that works:
-    - a probe that writes the clip;
-    - or an engine generator option (reference from a file), which needs
-      an ADR from ADR-786 and the engine and CLI suites.
-  - The report shows the retargeted clip against the capture (stills or a
-    film), with foot slip and limit violations measured.
-- [ ] **C3. Leo on animal motion.**
-  - Leo v05 trains cold on the retargeted reference (D6: tracking + speed
-    + D4's regularisers, no style terms) and is judged on orun17's SG/RL
-    tables at three or more speeds, beside sgt-4-120 and B1.
-  - Films show the three side by side, on the run's page.
-- [ ] **C4. Leo on cheetah motion (D5a).**
-  - AcinoSet's 3D cheetah trajectories (the FTE-processed `fte.pickle`
-    files, from the links in its README) are fetched to
-    `~/mocap/acinoset/`.
-  - The steady galloping strides are found, with their speeds and footfall
-    order.
-  - They are retargeted to leo as C2 did the dog, spine included, with foot
-    slip and limit violations measured.
-  - Leo trains cold on them as in C3, and is judged on the same tables
-    beside C3's dog, sgt-4-120 and B1, with a film side by side.
-  - The report says whether the cheetah's motion fits leo better than the
-    dog's: paw pins at their stop, foot misses, heel and footfall order.
-  - Video-reconstructed poses are noisier than marker capture: filter
-    them, measure the noise, and say what the filter did.
-
+    - O6's numbers.
+- [ ] **S2. It tracks the command.**
+  - A v06 speed policy tracks (O3) at four or more commands from 0.7 m/s up
+    to its top, with 0 falls on the judged seeds.
+  - The report gives the top tracked speed and its Froude number, beside
+    v05's B1 (Fr 1.73) and Go1's.
+  - If S1 does not track, O3's changes are screened in order until one
+    does, or until the remaining runs are spent; the report says what
+    each moved.
+- [ ] **M1. Leo v06 on the dog.**
+  - orun18's C3 strides (gallop27/34/42) are retargeted to v06 per O4,
+    with foot slip and limit violations measured.
+  - It trains cold and is judged at three or more commands beside S1's
+    best and v05's c3-s1-50, with whether the commanded speed is held.
+- [ ] **M2. Leo v06 on the cheetah.**
+  - orun18's AcinoSet strides are retargeted to v06 the same way and
+    trained cold.
+  - It is judged beside M1, S1 and v05's B1.
+  - The report says which motion fits v06 better: foot misses, footfall
+    order, held speed.
 - [ ] **F1. The films**, on the run's page:
-  - A1's and A2's Go1 at the same command;
-  - B1 at its fastest;
-  - C3 against sgt-4-120 at the slow and fast ends;
-  - the retargeted clip.
-- [ ] **R1. The closing report.** `docs/probes/orun18/REPORT.md` answers
-  the owner's question (framework, training style or model) with:
+  - v06's new feet, standing;
+  - S1 against v05's B1 at the same commands;
+  - S2's tracked speeds;
+  - M1 and M2 beside S1 at the slow and fast ends.
+- [ ] **R1. The closing report.** `docs/probes/orun19/REPORT.md` gives:
   - each criterion's numbers;
-  - what was ruled out, and what was not tested;
+  - whether sphere feet changed what leo can do, against v05, with what
+    was not tested;
   - the next run's recommendation.
 
 ## Horizon ladder
 
 - **short-term:**
-  1. Install Playground in its own venv (`~/playground-venv`). Pin its
-     version. Launch A1 from its published Go1 joystick config, and time
-     it.
-  2. While A1 trains: read how Playground's Go1 task is built (timestep,
-     substeps, action scale, PD gains, observations, noise, rewards,
-     episode, PPO config). Write D2's table before building A2.
-  3. Write D3's judging script and check it on A1's policy.
-  4. Build A2 by the smallest honest route. Time ten iterations, launch it
-     and judge it. Write A3.
-  5. While A trains: search for the motion capture, read the licences, and
-     write `SOURCES.md` (C1).
-  6. While B1 and C3 train: fetch AcinoSet, find its gallop strides and
-     retarget them (C4), so the cheetah screen launches right after C3's.
+  1. Write `docs/probes/orun19/leo-v06.md` before the build: what is
+     removed, each sphere's radius and why, and the expected change in
+     mass. Then build v06 (12–15 min, in the background), check it as O1
+     asks, and tag it.
+  2. Write S1's task on v06 from b1-s2's script, with the paw-pin
+     observations and anything that reads the pin removed. Time ten
+     iterations and launch it cold.
+  3. While S1 trains: retarget the dog's C3 strides to v06 (O4) and build
+     the bundle, then do the same for the cheetah's.
+  4. Judge S1 at 50 with orun18's `speed_judge.py` and `b1_summary.py`,
+     beside b1-s2-180.
 - **medium-term:**
-  1. If A blames the trainer: test D2's differences one at a time until
-     the gap is explained. Fix `training/` with an ADR and rerun A2.
-  2. B1: write leo's speed-only task, train it cold and judge it at 50 and
-     at the end. Then B2.
-  3. C2: retarget the capture to leo, measure slip and limits, and film it.
-  4. C3: train it cold and judge it beside sgt-4-120 and B1.
+  1. S1 to its end, then S2: screen O3's changes one at a time until v06
+     tracks.
+  2. M1: train it cold and judge it beside S1 and c3-s1-50.
+  3. M2: train it cold and judge it beside M1.
+  4. F1's films on the run's page.
 - **long-term:**
-  1. If C3 tracks the motion but holds speed badly or too rigidly: AMP
-     (D6), with an ADR and tests, screened against C3.
-  2. A long run (200–400 iterations, warm on the same task) of whichever of
-     B1 and C3 reads best, judged on orun17's criteria (SG, RL, P1, P2).
-  3. Fold what this run proves into `training/RECIPE.md` (the control
-     comparison, speed-only first, motion over reward terms) and
-     `docs/MUJOCO.md` if the trainer changed.
+  1. A long run (200–400 iterations, warm on the same task) of whichever
+     of S2 and M1/M2 reads best.
+  2. Fold what this run proves into `training/RECIPE.md` (sphere feet,
+     speed first, motion over reward terms) and the leo project's docs.
+  3. If motion tracking proves too rigid: AMP (O4), with an ADR and tests,
+     screened against M1.
   4. Keep every gate green, every doc true, `STATE.md` folded, and R1
      current.
 
@@ -315,46 +226,35 @@ trainer is the problem.
   - build outputs;
   - full transcripts;
   - policy binaries, checkpoints or rollout traces;
-  - fetched third-party files: Playground, Menagerie models and meshes,
-    motion capture.
+  - fetched third-party files: Menagerie models and meshes, motion
+    capture, or anything derived from the capture data (CC BY-NC, and
+    AcinoSet per orun18's D5a).
 - Do not hand-edit `STATE.md`, `PLAN.md` or state claims.
 
 **This run:**
-- **Third-party software and data stay outside the repository.**
-  - Playground goes into a new venv, `~/playground-venv`, never into
-    `~/cadex-train-venv`, the pixi environment or any `requirements.txt`.
-  - Menagerie and capture data go under `~/menagerie/` and `~/mocap/`.
-  - `SOURCES.md` records each one's URL, version or commit, and licence.
-  - Code copied into the repository from any of them needs a compatible
-    licence and a `docs/PROVENANCE.md` line. Prefer writing our own.
 - **Projects the run writes:**
-  - `~/cadex-projects/leo`: tasks only, the model frozen at v05;
-  - a new `~/cadex-projects/go1-control` if A2 takes the Cadex-project
-    route.
-
-  Every other project is read-only.
-- **One training run at a time on the 5090.** This counts Playground's.
-  The machine lock is the arbiter for Cadex runs; check `nvidia-smi` before
-  a Playground launch. The CLI suite runs with the GPU hidden
+  - `~/cadex-projects/leo`: the v06 model change (O1), then tasks only.
+  - Every other project is read-only.
+- **Motion data stays in `~/mocap/`.** The repository gets only
+  retargeting code and hashes.
+- **One training run at a time on the 5090.** The machine lock is the
+  arbiter. The CLI suite runs with the GPU hidden
   (`CUDA_VISIBLE_DEVICES=`).
 - **Long training does not block an iteration.**
   - Cadex runs start detached through `cadex_cli.loop` (`register`,
     `retain_training_view`, `launch`), so the dashboard follows them.
-  - Playground runs start in their own scope
-    (`systemd-run --user --scope -p MemoryMax=30G ...`) with output to a
-    log.
   - Never use a transient service: it kills the trainer.
 - **Builds.**
   - A leo build takes 12–15 minutes and goes to the background.
   - The project's `agent.json` timeout stays at most 3600 s.
   - A direct `FreeCADCmd` runs under `ulimit -v 16000000`.
 - **The protocol and tool surface stay a contract** (AGENTS.md).
-  - An engine change gets an ADR from ADR-786 and the engine and CLI
+  - An engine change gets an ADR from ADR-791 and the engine and CLI
     suites.
   - A `training/` change gets an ADR and the trainer's tests.
 - **The dashboard stays read-only.** The actor may serve it on 127.0.0.1;
   it never runs `tailscale serve` or binds a public address.
-- Committed images are PNG, ≤ 300 KB each, under `docs/probes/orun18/`, on
+- Committed images are PNG, ≤ 300 KB each, under `docs/probes/orun19/`, on
   the dark floor. Films live outside the repo and on the run's page.
 - No role starts, stops or restarts the loop or signals its process. Kill
   stray processes by PID, never with a broad `pkill` pattern.
@@ -362,9 +262,8 @@ trainer is the problem.
 ## Owner notes
 
 - **The run's page is the owner's view.** The scribe keeps it, showing:
-  - where A, B and C stand;
-  - A's comparison table;
-  - each judged run's speed table;
+  - where V1, S and M stand;
+  - each judged run's speed table beside v05's;
   - training curves;
   - the newest films.
 - **Gates run in the foreground** and finish within the shell's 10-minute
@@ -372,31 +271,27 @@ trainer is the problem.
 - **Lean suites (ADR-725).** Add a test only for a contract or a regression
   that actually happened.
 - **What came before:**
-  - **orun12–orun17 on feline v07 and leo v02–v05:** 0 criteria ticked
-    across about 60 h of style screens.
-    - The fold was cut by the paw spring (orun15).
-    - The heel came to follow speed (orun17).
-    - The slow fore still strikes twice a stride.
-    - Drives sit at their clamp.
-  - **Speed:** the best on any cat was 4.64 m/s, on its toes, with few
-    style terms (orun10). orun7's gallop reached 4.2 m/s. Every rule
-    added cost speed.
-- **Probes** from earlier runs: `docs/probes/orun11/judge.py` (engine
-  judging), `orun17/sg_tables.py` (SG/RL tables), `orun14/paw_floor.py`
-  (U), `orun13/p2_lag.py`, `orun13/spine_foot.py`. Put this run's under
-  `docs/probes/orun18/`.
+  - **orun12–orun17:** about 60 h of style screens on feline v07 and leo
+    v02–v05, with 0 criteria ticked.
+  - **orun18:** the trainer was cleared. Leo's speed-only and dog-motion
+    policies ran on their toes and did not track the command.
+  - **Speed:** the best on any cat was 4.64 m/s, with few style terms
+    (orun10).
+- **Probes** to reuse:
+  - `docs/probes/orun18/`: `speed_judge.py`, `b1_summary.py`, `froude.py`,
+    `retarget.py`, `acino_retarget.py`, `c3_bundle.py`, `side_film.py`;
+  - `orun14/stand_pin.py` (the stand);
+  - `orun13/clearance_diff.py`.
+
+  Put this run's probes under `docs/probes/orun19/`.
 - **Engine caps:** 32 reward terms, 128 observation channels, 64 parameters
   per script (leo is at the cap, so new knobs are literals).
 
 ## Question policy
 
 - Resolve reversible choices autonomously, with the smallest measured step
-  towards the highest-ranked open criterion. The order is A1, A2, A3, B1,
-  B2, C1, C2, C3, C4, F1, R1. C1 and C4's CPU work (fetching, retargeting)
-  may be done at any time.
-- Where a published recipe and Cadex's format disagree, write the
-  difference down (D2) rather than silently picking one.
-- A licence that is unclear counts as unusable.
+  towards the highest-ranked open criterion. The order is V1, S1, S2, M1,
+  M2, F1, R1. Retargeting may be done at any time while something trains.
 - Code and accepted artifacts outrank docs.
 - A pre-existing test failure is recorded and left alone, unless the unit's
   own change touches it.
@@ -426,14 +321,13 @@ trainer is the problem.
   - its source checkpoint;
   - tracked speed per command;
   - falls;
-  - for leo, D8's numbers and the SG/RL tables.
-- **A comparison is reported with D2's table.** A difference left
-  unlisted is a defect.
+  - O6's numbers;
+  - the v05 run it is compared with.
 - **The critic checks numbers at their source.** For every judged run, it
   opens at least one cited evaluation or judging output and checks the
   report against it.
-- **The critic checks licences.** No third-party file is committed, and
-  `SOURCES.md` names a licence for everything fetched.
+- **The critic checks licences.** No capture data or derivative is
+  committed.
 
 ## Reconcile
 
