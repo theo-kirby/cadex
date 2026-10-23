@@ -1,4 +1,4 @@
-# orun18 B1: leo v05 on speed alone, the task and its launch
+# orun18 B1: leo v05 on speed alone, the task and its launch (b1-s1 stopped, b1-s2 training)
 
 Verified against source: 2026-10-23. D4's task, written and launched cold
 after A3 cleared the trainer (`a2.md`). Judging comes in later iterations, at
@@ -8,7 +8,7 @@ after A3 cleared the trainer (`a2.md`). Judging comes in later iterations, at
 
 `~/orun18-queue/orun18-b1.py` is leo's head script (`3b0942b`, sgt-5) with
 two additions, set with `./cadex script --project ~/cadex-projects/leo --set`.
-Leo accepted it as revision **`11140180`** (digest `ddab1aae`, project commit
+Leo accepted it as revision **`11140180`** for b1-s1 (digest `ddab1aae`, project commit
 `249c8bc`, ~4 min from the fit and part caches). The **model is unchanged**: the bundle's
 model is `59bc5407…`, the same as sgt-4's and sgt-5's, and clearance reads as
 at baseline (sweep 12 pairs, mounting pass, 46 panels reported, 0 failing).
@@ -72,3 +72,36 @@ by ~3,000 s and changes nothing unless the run stalls. Reward per step
 −9.82 → −6.08 over iterations 0–9. The episode's mean length falls from 50
 to 30 steps meanwhile: from the standing keyframe the cold policy falls
 within a second.
+
+## b1-s1 stopped at iteration 11: the regularisers paid a fall
+
+b1-s1's reward per step stayed negative (−4.98 at 10) while its episodes
+shortened (68 → 26 steps). sgt-4 and sgt-5 were +15 to +19 a step at the same
+point, with their episodes lengthening. With every step costing more than it
+pays, ending the episode early is what PPO learns. `noise_terms.py` prices
+the three new terms in stock MuJoCo on the CPU: b1-s1's bundle and model,
+the `solved` keyframe, and Gaussian commands at σ times each command box's
+half-width, 20 episodes × 100 steps:
+
+| term (weight in b1-s1) | σ 0.9 | σ 0.5 | σ 0.2 | b1-s1 cost at σ 0.9 |
+|---|---|---|---|---|
+| `action_rate` (−0.05) | 174 | 84 | 14.8 | **8.7** |
+| `energy` (−1.0) | 2.37 | 1.24 | 0.27 | 2.4 |
+| `torque` (−0.5) | 2.18 | 1.44 | 0.69 | 1.1 |
+
+The policy's σ was 0.97–0.85 over those iterations, so the three cost ~12 a
+step against `alive`'s 4. I had sized them for a smooth 3 Hz gallop, not for
+a cold policy's exploration noise. Playground's Go1 escapes this with its
+reward floor at 0 (`a2.md`); this trainer has no floor.
+
+`request_stop`ped at iteration 11. **b1-s2** (leo `2ba9b8bf`, project commit
+`f4fca52`, `orun18-b1-s2.py`) is b1-s1 with `action_rate` −0.002, `energy`
+−0.2 and `torque` −0.2, so each costs at most ~0.5 a step at σ 0.9. Nothing
+else changed: the model, the terms kept, the goal and the spec are as above.
+It launched cold at 06:40:37, seed 0, 4096 envs, 180 iterations, budget_s
+15,100 (b1-s1's measured 232 s compile + 179 × 68.7 s, + 20 %).
+
+b1-s2's first 13 iterations: reward per step −0.93, −1.42, −2.25, −2.56,
+−1.90, −1.12, −0.30, +0.59, 1.48, 2.27, 2.90, 3.31, 3.56. Episode length
+49, 46, 70, 56, 51, 47, 41, 39, 35, 34, 35, 35, 38 steps: past its low and
+lengthening. 1,060 s at iteration 12.
