@@ -42,7 +42,7 @@ git:
                           # critic's fix is the top of the next actor prompt.
   allow_dirty: false
 stop:
-  after: 24h              # owner: 24h, orun19 (2026-10-23); on_done_accepted below is the other way out
+  after: 72h              # owner: 72h, orun19 (2026-10-23); on_done_accepted below is the other way out
   max_iterations: null
   max_cost_usd: null      # subscriptions; nothing here is billed per call
   max_usage: null         # a window crossing a line must not end the run: the
