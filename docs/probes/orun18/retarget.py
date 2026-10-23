@@ -246,8 +246,17 @@ def _runs(flags: list[int]) -> list[list[int]]:
 # ---------------------------------------------------------------- leo
 
 def retarget(model_path: Path, bvh: Path, first: int, end: int, label: str,
-             samples: int | None = None) -> tuple[dict, dict, dict]:
-    dog = dog_stride(bvh, first, end, samples)
+             samples: int | None = None, stride: dict | None = None) -> tuple[dict, dict, dict]:
+    """Retarget the BVH's stride, or ``stride`` when given: a ``dog_stride``-shaped
+    dictionary from another capture, which also carries its ``source`` (``name``,
+    ``sha256``, ``label``, ``sources``) and its ``contact`` rule (metres over the
+    stance level, share of the trunk's speed, gap seconds)."""
+
+    dog = stride if stride is not None else dog_stride(bvh, first, end, samples)
+    source = dog.get("source") or {"name": bvh.name, "sha256": hashlib.sha256(bvh.read_bytes()).hexdigest(),
+                                   "label": f"AI4Animation dog {bvh.name} frames {first}-{end}",
+                                   "sources": SOURCES}
+    contact_m, contact_speed, contact_gap_s = dog.get("contact") or (CONTACT_M, CONTACT_SPEED, CONTACT_GAP_S)
     n = len(dog["thorax"])
     model = mujoco.MjModel.from_xml_path(str(model_path))
     data = mujoco.MjData(model)
@@ -367,11 +376,11 @@ def retarget(model_path: Path, bvh: Path, first: int, end: int, label: str,
         ahead = np.vstack([paw[1:], paw[:1] + [dog_stride_m, 0, 0]])
         behind = np.vstack([paw[-1:] - [dog_stride_m, 0, 0], paw[:-1]])
         crawl = np.linalg.norm((ahead - behind)[:, :2], axis=1) / (2.0 * dog["dt"])
-        down = [int(paw[k, 2] - level < CONTACT_M and crawl[k] < CONTACT_SPEED * dog_speed)
+        down = [int(paw[k, 2] - level < contact_m and crawl[k] < contact_speed * dog_speed)
                 for k in range(n)]
-        # a gap of up to CONTACT_GAP_S inside a stance is the paw rolling, not a step
+        # a gap of up to contact_gap_s inside a stance is the paw rolling, not a step
         for run in _runs([1 - v for v in down]):
-            if len(run) * dog["dt"] <= CONTACT_GAP_S + 1e-9 and len(run) < n - sum(down):
+            if len(run) * dog["dt"] <= contact_gap_s + 1e-9 and len(run) < n - sum(down):
                 for k in run:
                     down[k] = 1
         contact[f] = down
@@ -495,14 +504,14 @@ def retarget(model_path: Path, bvh: Path, first: int, end: int, label: str,
     clip = {
         "schema": G.SCHEMA,
         "gait": "capture",
-        "label": f"{label}: AI4Animation dog {bvh.name} frames {first}-{end}, retargeted to leo v05",
+        "label": f"{label}: {source['label']}, retargeted to leo v05",
         "parameters": {
             "speed_m_s": speed, "period_s": period, "stride_length_m": stride_m,
             "stride_frequency_hz": 1.0 / period, "hip_height_m": hip_height, "froude": froude,
             "duty_factor": float(np.mean(list(duty.values()))), "phase_offsets": touchdown,
             "spine_joint": SPINE, "length_scale": scale, "time_scale": time_scale,
         },
-        "sources": SOURCES,
+        "sources": source["sources"],
         "sample_dt_s": dt,
         "samples": n,
         "legs": {f: {"foot_body": LEGS[f], "joints": [model.joint(j).name for j in chains[f]]} for f in LEGS},
@@ -520,8 +529,8 @@ def retarget(model_path: Path, bvh: Path, first: int, end: int, label: str,
         "start": "random",
     }
     measure = {
-        "label": label, "bvh": bvh.name, "bvh_sha256": hashlib.sha256(bvh.read_bytes()).hexdigest(),
-        "frames": [first, end], "dog_sample_s": dog["dt"], "samples": n,
+        "label": label, "bvh": source["name"], "bvh_sha256": source["sha256"],
+        "frames": list(dog["frames"]), "dog_sample_s": dog["dt"], "samples": n,
         "dog": {"speed_m_s": dog_speed, "stride_m": dog_stride_m, "period_s": n * dog["dt"],
                 "hip_pivot_height_m": dog_hip,
                 "shoulder_pivot_height_m": float(np.mean(dog_girdle_z["fore"])),
@@ -541,7 +550,8 @@ def retarget(model_path: Path, bvh: Path, first: int, end: int, label: str,
                                  "max": round(max(slip_raw[f], default=0.0), 1)} for f in LEGS},
         "foot_slip_solved_mm": {f: round(max(slip_solved[f], default=0.0), 2) for f in LEGS},
         "foot_miss_mm": {f: {"max": round(max(miss[f]), 2), "median": round(float(np.median(miss[f])), 2),
-                             "over_5mm_share": round(float(np.mean(np.array(miss[f]) > 5.0)), 3)} for f in LEGS},
+                             "over_5mm_share": round(float(np.mean(np.array(miss[f]) > 5.0)), 3),
+                             "per_sample": [round(v, 1) for v in miss[f]]} for f in LEGS},
         "loop_error_mm": {f: round(v, 4) for f, v in loop.items()},
         "joints_at_stop_share": at_stop,
         "limit_violations": int(sum(
