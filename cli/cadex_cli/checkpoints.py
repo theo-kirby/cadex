@@ -18,8 +18,12 @@ The rules it keeps:
   child runs one at a time under ``nice``, with the GPU hidden. A watcher
   that raises is switched off with its reason, never propagated.
 * **A checkpoint is a file on disk**, whoever wrote it. Only numbered tags
-  are rolled out; ``best`` is rewritten in place under a new digest and the
-  final policy is the run's own, evaluated by ``cadex evaluate``.
+  are rolled out; ``best`` is rewritten in place under a new digest. The
+  final policy is the run's own, evaluated by ``cadex evaluate``, and once
+  the trainer has said it is done, :meth:`drain` copies it to the numbered
+  tag of the iteration count (``walk.000120.cxpolicy``), which the trainer
+  never writes itself, and rolls that out last, so the page plays the
+  policy the run ended with and not only the last numbered one (ADR-790).
 * **The checkpoint is named by what the trainer said of it.** Its iteration
   and reward per step come from the progress row whose digest is the file's;
   a checkpoint the progress does not list yet waits for the next poll, until
@@ -114,6 +118,7 @@ class CheckpointRollouts:
         self._scratch = Path(tempfile.mkdtemp(prefix="cadex-checkpoint-"))
         self._child: tuple[subprocess.Popen[bytes], Path, float, Any] | None = None
         self._scanned = float("-inf")
+        self._final: tuple[Path, Any] | None = None
 
     # -- what is waiting -------------------------------------------------------
 
@@ -138,10 +143,12 @@ class CheckpointRollouts:
                        None)
             if row is None and not final:
                 continue  # the trainer has not said what this one is yet
+            # The final policy's copy: its reward is the progress's last iteration's.
+            last = self._final[1] if self._final and self._final[0] == path else None
             rows.append({
                 "checkpoint": path, "tag": tag, "sha256": sha,
                 "iteration": int(row["iteration"]) if row else int(tag) - 1,
-                "reward_per_step": row.get("reward_per_step") if row else None,
+                "reward_per_step": row.get("reward_per_step") if row else last,
             })
         rows.sort(key=lambda row: int(row["tag"]), reverse=True)
         return rows
@@ -226,11 +233,31 @@ class CheckpointRollouts:
         except Exception as exc:  # noqa: BLE001 - the view never breaks the run
             self.error = f"checkpoint rollouts stopped: {exc.__class__.__name__}: {exc}"
 
+    def final_checkpoint(self) -> Path | None:
+        """The run's final policy as a numbered checkpoint, copied once the
+        trainer's progress says ``done``; ``None`` when it did not finish."""
+
+        progress = _read_json(self.train_dir / PROGRESS_NAME)
+        final = self.train_dir / (self.output + ".cxpolicy")
+        total = progress.get("total")
+        if (progress.get("state") != "done" or isinstance(total, bool) or not isinstance(total, int)
+                or total <= 0 or final.is_symlink() or not final.is_file()):
+            return None
+        numbered = self.train_dir / f"{self.output}.{total:06d}.cxpolicy"
+        if not numbered.exists():
+            partial = numbered.with_name(numbered.name + ".partial")
+            shutil.copyfile(final, partial)
+            os.replace(partial, numbered)
+        self._final = (numbered, progress.get("reward_per_step"))
+        return numbered
+
     def drain(self, *, finish: bool = True) -> None:
         """After the trainer: finish every pending rollout, then clean up.
         ``finish=False`` -- an interrupted supervisor -- only stops the child."""
 
         try:
+            if finish and not self.error:
+                self.final_checkpoint()
             while finish and not self.error:
                 self._reap(block=True)
                 waiting = self.pending(final=True)

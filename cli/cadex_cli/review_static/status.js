@@ -36,6 +36,10 @@
                 '--ok', '--warn', '--bad', '--info', '--select', '--font', '--mono', '--fs-0', '--fs-1', '--fs-2', '--fs-3'];
   var NS = 'http://www.w3.org/2000/svg';
   var review = null, activityKey = null, runsKey = null, evalKey = null, chartKeys = {};
+  // The run the Training editor reads (ADR-790): the one picked as the 3D viewport's source, else
+  // the stage's. A picked run that is not the stage's is read whole from api/run, again only
+  // when its record moves.
+  var picked = { run: null, key: null, t: null };
   var evalDetail = { name: null, stamp: null, summary: null };
   var panel = { url: null, frame: null, detail: null, detailKey: null, detailAt: 0, message: null, posted: 0 };
 
@@ -87,8 +91,45 @@
     });
   }
 
+  // A run's full telemetry in the stage's shape: its curves as the charts' sparks, and the
+  // reward chart's marks where its checkpoints were written.
+  function pickedTelemetry(full) {
+    var t = {}, reward = {};
+    Object.keys(full).forEach(function (k) {
+      if (k !== 'curve' && k !== 'checkpoints' && k !== 'checkpoint_source' && !/_curve$/.test(k)) t[k] = full[k];
+    });
+    t.spark = {};
+    CHARTS.forEach(function (c) { t.spark[c.key] = full[c.key] || []; });
+    (full.curve || []).forEach(function (p) { if (Array.isArray(p)) reward[p[0]] = p[1]; });
+    t.marks = (full.checkpoints || []).filter(function (c) { return typeof c.iteration === 'number'; })
+      .map(function (c) { return [c.iteration, reward[c.iteration] == null ? null : reward[c.iteration]]; });
+    return t;
+  }
+  function refreshPicked() {
+    var stage = review.stage || {};
+    if (!picked.run || picked.run === stage.run) return;
+    var name = picked.run, run = (review.runs || []).filter(function (r) { return r.run === name; })[0];
+    if (!run) { picked = { run: null, key: null, t: null }; return; }
+    var tel = run.telemetry || {}, key = JSON.stringify([name, run.status, tel.iteration, tel.state]);
+    if (key === picked.key) return;
+    picked.key = key;
+    json('api/run/' + encodeURIComponent(name)).then(function (record) {
+      if (picked.run !== name) return;
+      var full = record.telemetry || {};
+      picked.t = full.state && full.state !== 'missing' ? pickedTelemetry(full) : null;
+      chartKeys = {};
+      if (review) render(review);
+    }).catch(function () { if (picked.run === name) picked.key = null; });
+  }
+  // What the Training editor shows: the stage's run and its telemetry, or the picked one's.
+  function shown() {
+    var stage = (review && review.stage) || {};
+    if (!picked.run || picked.run === stage.run) return { run: stage.run, t: stage.training || null, own: true };
+    return { run: picked.run, t: picked.t, own: false };
+  }
+
   // -- the head: stage, line, run, activity, warning ------------------------------
-  function renderHead(stage, t, now) {
+  function renderHead(stage, t, now, view) {
     var node = $('status'), name = STAGE_LABELS[stage.state] ? stage.state : 'idle';
     if (node.dataset.stage !== name) node.dataset.stage = name;
     setText('status-stage', STAGE_LABELS[name]).dataset.stage = name;
@@ -112,13 +153,14 @@
     var bar = name === 'training' && t && t.total ? Math.max(0, Math.min(1, ((t.iteration || 0) + 1) / t.total)) : null;
     setHidden('status-progress', bar == null);
     if (bar != null) fillBar('status-progress', bar);
-    renderTrainingHead(name, t, line);
+    renderTrainingHead(view.own ? name : 'idle', view.t, line);
     renderActivity(now);
     // The run it reads, named when there is more than one to choose from.
     setHidden('status-run', !(stage.run && stage.runs > 1));
     var run = stage.run ? 'run ' + stage.run + (t && name !== 'training' ? ' · ' + t.state : '') : '';
     setText('status-run', run);
-    setText('training-run', run || 'no runs').title = run;
+    var trained = view.own ? run : 'run ' + view.run + (view.t ? ' · ' + view.t.state : ' · reading…');
+    setText('training-run', trained || 'no runs').title = trained;
     var warning = t ? (t.warning || (t.state === 'stale' ? t.reason : '')) : '';
     setHidden('status-warning', !warning);
     setText('status-warning', warning);
@@ -246,7 +288,7 @@
     var xs = points.map(function (p) { return p[0]; }), ys = points.map(function (p) { return p[1]; });
     // While the run trains, the axis runs to its total so the unrun part
     // shows; once it has ended, to the last iteration it reached.
-    var live = (review.stage || {}).state === 'training';
+    var live = (review.stage || {}).state === 'training' && shown().own;
     var x0 = 0, x1 = Math.max(Math.max.apply(null, xs), live ? (t.total || 0) - 1 : 0, 1);
     var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
     if (y1 === y0) { y0 -= Math.abs(y0) * 0.1 || 1; y1 += Math.abs(y1) * 0.1 || 1; }
@@ -388,7 +430,7 @@
     if (board.max) $('training').dataset.max = board.max; else delete $('training').dataset.max;
     applySpans();
     renderCardsMenu();
-    if (review) { chartKeys = {}; renderCharts((review.stage || {}).training); }
+    if (review) { chartKeys = {}; renderCharts(shown().t); }
   }
   function setCard(id, change) {
     if (!card(id)) return false;
@@ -466,7 +508,7 @@
       var h = Math.max(min, Math.min(1200, Math.round(s.h + e.clientY - startY)));
       board.size[node.dataset.card] = [span, h];
       applySpans();
-      if (review && kindOf(node) === 'chart') renderCharts((review.stage || {}).training);
+      if (review && kindOf(node) === 'chart') renderCharts(shown().t);
     }
     function lifted() {
       document.removeEventListener('pointermove', moved);
@@ -720,10 +762,12 @@
     review = next;
     var stage = review.stage || { state: 'idle', training: null, runs: 0 }, t = stage.training;
     var now = Date.parse(review.served_at) || Date.now(), name = STAGE_LABELS[stage.state] ? stage.state : 'idle';
-    renderHead(stage, t, now);
+    refreshPicked();
+    var view = shown();
+    renderHead(stage, t, now, view);
     renderPanel();
-    renderStats(t, name);
-    renderCharts(t);
+    renderStats(view.t, view.own ? name : 'idle');
+    renderCharts(view.t);
     renderEvaluation(now);
     renderRuns(now);
     if (panel.frame) { refreshDetail(); postPanel(); }
@@ -732,7 +776,7 @@
   function wire() {
     wireBoard();
     // The cards follow the area's width.
-    if (window.ResizeObserver) new ResizeObserver(function () { applySpans(); if (review) renderCharts((review.stage || {}).training); }).observe($('training'));
+    if (window.ResizeObserver) new ResizeObserver(function () { applySpans(); if (review) renderCharts(shown().t); }).observe($('training'));
     document.addEventListener('cadex-theme', postPanel);
     // A panel may ask for the newest message once its script is listening.
     window.addEventListener('message', function (event) {
@@ -744,6 +788,14 @@
 
   window.CadexStatus = {
     render: render,
+    // The run picked as the 3D viewport's source, or null for the stage's (ADR-790).
+    select: function (run) {
+      run = run || null;
+      if (picked.run === run) return;
+      picked = { run: run, key: null, t: null };
+      chartKeys = {};
+    },
+    shown: function () { var v = shown(); return { run: v.run, own: v.own, iteration: v.t ? v.t.iteration : null }; },
     // The Training cards (ADR-770): their arrangement, and a change to one card as its buttons make it.
     cards: function () {
       return { order: board.order.slice(), pinned: Object.keys(board.pinned), hidden: Object.keys(board.hidden), max: board.max,

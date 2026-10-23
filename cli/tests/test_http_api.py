@@ -165,6 +165,7 @@ PROBES = {
         [f"api/playback/checkpoint/{RUN}/walk.000080", "api/playback/checkpoint/nope/walk.000040"]),
     "playback/reference/<task>": (["api/playback/reference/walk", "api/playback/reference/stand"],
                                   ["api/playback/reference/nope"]),
+    "checkpoints/<run>": ([f"api/checkpoints/{RUN}", "api/checkpoints/first"], ["api/checkpoints/nope"]),
     "policy/run/<run>": ([f"api/policy/run/{RUN}", "api/policy/run/first"], ["api/policy/run/nope"]),
     "policy/checkpoint/<run>/<stem>": (
         [f"api/policy/checkpoint/{RUN}/walk.000040", f"api/policy/checkpoint/{RUN}/walk.000080"],
