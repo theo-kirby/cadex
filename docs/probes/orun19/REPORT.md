@@ -63,13 +63,14 @@ seeds within 10% of the command (O3):
 |---|---|---|---|---|
 | s1-v06 | (S1, the base) | 180 | 700 (6/10), 3500 (10/10); not a tracking prefix | 3.77 (3.66) |
 | s2a-hold | lever 1, sampling: command held per episode (resample 3 s → 12 s) | 50, 150 | 5000 only (9/10) | 4.53 (5.28) |
-| s2b-tent | lever 2, shape: `track_speed`'s tent symmetric (overshoot slope −0.5 → −1 /cmd) | training | | |
+| s2b-tent | lever 2, shape: `track_speed`'s tent symmetric (overshoot slope −0.5 → −1 /cmd) | 50 (training to 150) | none at 50 (1500 6/10 is the plateau crossing it) | — |
 
 Last 2 s, median m/s (seeds within 10%):
 
 | command mm/s | 700 | 1500 | 2400 | 3500 | 5000 | falls |
 |---|---|---|---|---|---|---|
 | s2a-hold-50 (`80f97755`) | 1.80 (0) | 1.95 (0) | 1.63 (1) | 2.23 (0) | 1.05 (0) | 0/50 |
+| s2b-tent-50 (`43cbe2ef`) | 1.27 (0) | 1.43 (6) | 1.49 (0) | 1.23 (0) | 1.16 (0) | 0/50 |
 | **s2a-hold-150** (`efe7f96b`) | **0.86** (0) | **1.80** (0) | **2.95** (0) | **4.08** (0) | **4.53** (9) | 0/50 |
 | s1-v06-180 | 0.75 (6) | 2.17 (0) | 3.07 (0) | 3.77 (10) | 4.24 (0) | 0/50 |
 
@@ -79,7 +80,13 @@ Last 2 s, median m/s (seeds within 10%):
   command it can reach**, so it tracks only at 5000, where the body tops out.
   The uniform overshoot is what the asymmetric tent predicts (reward falls
   half as fast over the command as under it); S2b tests that reading.
-- O6 at 150: worst RMS 1.03× rated at 700 rising to 1.43× (`j_elbow_l`) at
+- **Lever 2 (s2b-tent) at 50** (`s2b-tent-50.md`) runs ~1.2–1.5 m/s at
+  every command, 0.4–0.5 m/s under s2a-hold-50's plateau: the symmetric tent
+  cut the slow end's overshoot (700: 1.80 → 1.27) by lowering the whole
+  plateau, not by separating speeds. 0/50 falls, veers above ~3 m/s, toe
+  stance; worst RMS 1.49–1.59× (`j_spine`, then `j_shoulder_l`), loops
+  1.3–1.5 mm. No verdict until 150.
+- O6 at 150 (s2a-hold): worst RMS 1.03× rated at 700 rising to 1.43× (`j_elbow_l`) at
   5000; peak margin 0.00; the fores lean left (shoulder 1.4–2.1× the
   right's), the hinds lean right at the knee (1.2–2.4×). No NaN; loops
   1.0–1.5 mm. The heel pad never touches.
