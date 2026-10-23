@@ -21,8 +21,17 @@ trunk) and places the foot body's lowest collision geom on the target. On v06:
   so the fore chain is abduction, scapula, shoulder and elbow, with no wrist.
   The capture's fore point is the wrist itself (the FTE has no carpus or digits),
   so nothing below it is dropped: the ball is fitted at the wrist's track;
-- the spine maps to ``j_spine`` / ``j_spine_yaw`` as before. **The tail and head
-  are not mapped**: the clip leaves them at home, as orun18's did.
+- the spine maps to ``j_spine`` / ``j_spine_yaw`` as before;
+- **the tail** (``map_tail``): the capture's tail chord (tail base to tip) against
+  its pelvis, in pitch and heading, about the stride's mean as the spine is, goes
+  to ``j_tail1`` (pitch) and ``j_tail2`` (yaw) by leo's own gains on its tail chord
+  (``j_tail1``'s anchor to ``c_tail_tip``'s centre of mass, against ``c_pelvis_frame``), measured with the
+  cable followers (the model's joint couplings) applied; clamped to the drives'
+  ranges. The followers are written into ``qpos`` as the couplings hold them;
+- **the head** is measured, not posed: its chord (neck base to nose) against the
+  thorax, in pitch and heading. leo's speed task holds ``j_neck1``, ``j_neckyaw``
+  and ``j_headpitch`` (they are not actions), so a posed head could not be
+  tracked and would only make the reset start off its hold.
 
 **What this adds for v06**, measured on the solved clip, nothing rewarded:
 
@@ -101,6 +110,93 @@ def heel_and_miss(model_path: Path, clip: dict, measure: dict) -> dict:
     return out
 
 
+def _couple(model, q: np.ndarray) -> None:
+    """Apply the model's joint couplings (the tail's cables) to ``q`` in place."""
+
+    for _ in range(int(model.neq)):
+        for e in range(int(model.neq)):
+            if int(model.eq_type[e]) != int(mujoco.mjtEq.mjEQ_JOINT) or int(model.eq_obj2id[e]) < 0:
+                continue
+            c = model.eq_data[e][:5]
+            x = float(q[model.jnt_qposadr[model.eq_obj2id[e]]])
+            q[model.jnt_qposadr[model.eq_obj1id[e]]] = sum(float(c[i]) * x ** i for i in range(5))
+
+
+def _bend(base_minus_tip: np.ndarray, frame_x: np.ndarray, frame_heading: float) -> tuple[float, float]:
+    return (R._pitch(base_minus_tip) - R._pitch(frame_x),
+            (R._heading(base_minus_tip) - frame_heading + math.pi) % (2 * math.pi) - math.pi)
+
+
+def map_tail(model_path: Path, stride: dict, clip: dict) -> dict:
+    """Pose j_tail1/j_tail2 from the capture's tail (see the docstring); return the measure."""
+
+    model = mujoco.MjModel.from_xml_path(str(model_path))
+    data = mujoco.MjData(model)
+    body = {n: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, n) for n in ("c_tail_tip", "c_pelvis_frame")}
+    jt = {n: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, n) for n in ("j_tail1", "j_tail2")}
+    adr = {n: int(model.jnt_qposadr[j]) for n, j in jt.items()}
+    home = np.asarray(model.key_qpos[0], dtype=float)
+
+    def leo(q0: np.ndarray, t1: float, t2: float) -> tuple[float, float]:
+        q = q0.copy()
+        q[adr["j_tail1"]], q[adr["j_tail2"]] = t1, t2
+        _couple(model, q)
+        data.qpos[:] = q
+        mujoco.mj_kinematics(model, data)
+        px = data.xmat[body["c_pelvis_frame"]].reshape(3, 3)[:, 0]
+        # the body frames sit at the origin, so the chord runs from j_tail1's anchor to
+        # the tip body's centre of mass
+        return _bend(data.xanchor[jt["j_tail1"]] - data.xipos[body["c_tail_tip"]], px, R._heading(px))
+
+    b0 = leo(home, 0.0, 0.0)
+    gain_p = (leo(home, 0.05, 0.0)[0] - b0[0]) / 0.05
+    gain_y = (leo(home, 0.0, 0.05)[1] - b0[1]) / 0.05
+    names = stride["skeleton"]["names"]
+    pts = np.asarray(stride["skeleton"]["points"])
+    ix = {n: names.index(n) for n in ("tail_base", "tail_tip")}
+    n = int(clip["samples"])
+    cap = np.array([_bend(pts[k, ix["tail_base"]] - pts[k, ix["tail_tip"]], stride["pelvis"][k],
+                          math.atan2(-stride["pelvis_lateral"][k][0], stride["pelvis_lateral"][k][1]))
+                    for k in range(n)])
+    want = np.column_stack([(cap[:, 0] - cap[:, 0].mean()) / gain_p, (cap[:, 1] - cap[:, 1].mean()) / gain_y])
+    rng = [tuple(float(v) for v in model.jnt_range[jt[j]]) for j in ("j_tail1", "j_tail2")]
+    got = np.column_stack([np.clip(want[:, i], *rng[i]) for i in range(2)])
+    qpos = np.asarray(clip["qpos"], dtype=float)
+    for k in range(n):
+        qpos[k, adr["j_tail1"]], qpos[k, adr["j_tail2"]] = got[k]
+        _couple(model, qpos[k])
+    clip["qpos"] = qpos.tolist()
+    for j in ("j_tail1", "j_tail2"):
+        clip["joints"].append(j)
+        clip["joint_limits_rad"].append(list(rng[0 if j == "j_tail1" else 1]))
+    for k in range(n):
+        clip["joint_angles_rad"][k] += [float(got[k, 0]), float(got[k, 1])]
+    deg = np.degrees
+    return {"gain_pitch": gain_p, "gain_yaw": gain_y,
+            "capture_pitch_deg": [round(float(deg(cap[:, 0].min())), 1), round(float(deg(cap[:, 0].max())), 1)],
+            "capture_heading_deg": [round(float(deg(cap[:, 1].min())), 1), round(float(deg(cap[:, 1].max())), 1)],
+            "j_tail1_deg": [round(float(deg(got[:, 0].min())), 1), round(float(deg(got[:, 0].max())), 1)],
+            "j_tail2_deg": [round(float(deg(got[:, 1].min())), 1), round(float(deg(got[:, 1].max())), 1)],
+            "clipped_share": round(float(np.mean(np.any(np.abs(want - got) > 1e-9, axis=1))), 3)}
+
+
+def measure_head(stride: dict, n: int) -> dict:
+    """The capture's head chord (neck base to nose) against its thorax, in pitch and heading (deg)."""
+
+    names = stride["skeleton"]["names"]
+    pts = np.asarray(stride["skeleton"]["points"])
+    nose, neck = names.index("nose"), names.index("neck_base")
+    # the head points sit over the hind floor and the thorax is read the same way, so the
+    # chord's direction is exact; the head is forward of the neck, so nose minus neck
+    cap = np.array([_bend(pts[k, nose] - pts[k, neck], stride["thorax"][k],
+                          math.atan2(-stride["thorax_lateral"][k][0], stride["thorax_lateral"][k][1]))
+                    for k in range(n)])
+    d = np.degrees(cap)
+    return {"pitch_deg": [round(float(d[:, 0].min()), 1), round(float(d[:, 0].max()), 1)],
+            "heading_deg": [round(float(d[:, 1].min()), 1), round(float(d[:, 1].max()), 1)],
+            "posed": False, "why": "j_neck1/j_neckyaw/j_headpitch are held, not actions, in leo's speed task"}
+
+
 def main(argv: list[str]) -> None:
     model_path, pickle_path, first, end, label, out_dir = argv[:6]
     samples = int(argv[6]) if len(argv) > 6 else None
@@ -114,6 +210,8 @@ def main(argv: list[str]) -> None:
                                                         for g, feet in AR.GIRDLE_FEET.items()},
                           "paw": "wrist/hock (FTE has no paw): duty short, flight long, raw slip is the roll"}
     measure["v06"] = heel_and_miss(Path(model_path), clip, measure)
+    measure["v06"]["tail"] = map_tail(Path(model_path), stride, clip)
+    measure["v06"]["head"] = measure_head(stride, int(clip["samples"]))
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     text = json.dumps(clip)
