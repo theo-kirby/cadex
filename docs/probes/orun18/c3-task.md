@@ -155,7 +155,42 @@ pixi run python docs/probes/orun18/retarget_film.py $M ~/mocap/films/c3-strides.
   $X/D1_010_KAN01_002.bvh:66:92:gallop42
 ```
 
+## The launch: c3-s1
+
+`loop.register` trains only a task the accepted attempt retained, and this
+bundle was built by `c3_bundle.py`, not by the engine's build. So
+`queue_bundle.py` registers the accepted revision's `speed` task (leo
+`2ba9b8bf`, the bundle B1 trained), refuses unless the new bundle names the
+very model registered (`cat_model-model.xml`, `59bc5407…`), and puts the
+bundle in its place: the file, `task_output` `mocap_gallop`, `task_sha256`
+`cc8f3123…`, the policy name and the trainer command, with `base_task` /
+`base_task_sha256` (`speed`, `b51f1ff6…`) saying what it replaced. The
+supervisor holds the trainer's receipt to `cc8f3123…` as for any run.
+
+```
+systemd-run --user --scope -p MemoryMax=30G env PYTHONPATH=cli pixi run python \
+    docs/probes/orun18/queue_bundle.py ~/cadex-projects/leo c3-s1 \
+    ~/cadex-projects/leo/runs/c3-bundle27/mocap_gallop-task.json 15600 150 "orun18 C3: ..." \
+    --base-task speed --seed 0 --envs 4096
+```
+
+Cold, seed 0 (B1's), 4096 envs, 150 iterations, unroll 20, a checkpoint
+every 25 (50 is a judged checkpoint), `--stop-on-collapse`. The budget,
+15,600 s, was set before the timing from sgt-4's ~83 s an iteration
+(300 s + 149 × 85 s, + 20 %).
+
+**The first ten iterations** (`runs/c3-s1/train/progress.json`, on the
+5090): iteration 0 at 240 s (the compile), iteration 9 at 860 s, so
+**68.9 s an iteration**, B1's rate. 150 iterations come to ~10,500 s, and
+D7's asked + 20 % is ~12,600 s; the registered cap is looser by ~3,000 s and
+changes nothing unless the run stalls (as with b1-s1). Reward per step
+22.85 → 20.23 over iterations 0–9 while the mean episode lengthens 15.3 →
+28.2 steps and σ falls 0.89 → 0.86: a cold policy started mid-gallop falls
+at once, and the per-step pay is front-loaded by the tracking terms at the
+clip's own start, so a longer episode first averages lower. Not a collapse;
+to be read at 50.
+
 ## Not done here
 
-C3 trains `c3-bundle27`. Its training waits for b1-s2's judgement at 180 (D1; the critic's order).
-Its iteration time on the 5090 is still to be timed (D7).
+C3's judgement at 50 and at 150 (orun17's SG/RL tables beside sgt-4-120 and
+b1-s2, D8's numbers, the paw pin's range against B1's).
