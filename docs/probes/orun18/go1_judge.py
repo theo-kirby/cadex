@@ -21,7 +21,12 @@ It reports:
     ~/playground-venv/bin/python -I go1_judge.py playground ~/orun18/a1 \
         --out ~/orun18/a1/judge.json [--trace-dir DIR]
 
-Adapters: `playground` (a1_train.py's params.pkl).
+    ~/playground-venv/bin/python -I go1_judge.py cadex ~/orun18/a2/run1/go1.cxpolicy \
+        --out ~/orun18/a2/run1/judge.json
+
+Adapters: `playground` (a1_train.py's params.pkl, on Playground's mj_model)
+and `cadex` (a .cxpolicy beside a2_bundle.py's outputs, on the bundle's
+model, whose dynamics equal Playground's to 0 qpos drift over 1000 steps).
 """
 import argparse
 import json
@@ -96,7 +101,115 @@ class PlaygroundGo1:
         return self.default_pose + act * self.action_scale
 
 
-ADAPTERS = {"playground": PlaygroundGo1}
+class CadexGo1:
+    """A2's .cxpolicy on its bundle's model (a2_bundle.py), played as the
+    engine plays one: the header's channels from sensordata at the bundle's
+    adr and scale, the goal channels, the previous two issued commands,
+    (x - mean) / std, the MLP, tanh * output_scale + output_bias, then the
+    bundle's clamp and x scale into ctrl. Numpy, no engine and no trainer
+    code beyond the container reader."""
+
+    def __init__(self, policy_path):
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                        "..", "..", "..", "training"))
+        import cadex_train  # stdlib-only at module scope (ADR-084)
+
+        blob = open(policy_path, "rb").read()
+        container = cadex_train.decode_policy(blob)
+        self.header = h = container["header"]
+        bundle_dir = os.path.dirname(os.path.dirname(os.path.abspath(policy_path)))
+        task = json.load(open(os.path.join(bundle_dir, "outputs", "go1_joystick-task.json")))
+        xml = open(os.path.join(bundle_dir, task["model"]["path"]), "rb").read()
+        import hashlib
+        assert hashlib.sha256(xml).hexdigest() == h["model"]["sha256"], "model digest"
+        alpha = float(h["training"]["action_filter_alpha"])
+        slew = float(h["training"]["command_slew_deg"])
+        assert alpha == 1.0 and slew == 0.0, "this adapter plays no filter or slew"
+        self.task = task
+        self.mj_model = mujoco.MjModel.from_xml_string(xml.decode())
+        ep = task["episode"]
+        self.n_substeps = int(ep["solver_steps_per_action"])
+        self.ctrl_dt = float(ep["control_interval_s"])
+        key = self.mj_model.keyframe(ep["reset_keyframe"])
+        self.home_qpos = np.array(key.qpos)
+        self.trunk = self.mj_model.body("trunk").id
+        self.sensor = {}
+        for r in task["observations"]:
+            if r.get("contact") or r.get("tracker") or r.get("load"):
+                continue
+            for i, ch in enumerate(r["channels"]):
+                self.sensor[ch] = (int(r["adr"]) + i, float(r["scale"]))
+        self.actions = task["actions"]
+        self.low = np.array([a["low"] for a in self.actions])
+        self.high = np.array([a["high"] for a in self.actions])
+        self.ctrl_scale = np.array([a["scale"] for a in self.actions])
+        self.ctrl_index = np.array([a["index"] for a in self.actions])
+        self.reset_command = np.clip(np.array(key.ctrl)[self.ctrl_index] / self.ctrl_scale,
+                                     self.low, self.high)
+        self.command_names = {r["channels"][0]: (int(r["action"]), r["channels"][1])
+                              for r in task.get("commands") or ()}
+        net = h["network"]
+        assert net["activation"] == "swish" and net["output"] == "tanh"
+        w = np.asarray(container["weights"], dtype=np.float64)
+        self.layers, cur = [], 0
+        for n_in, n_out in net["layers"]:
+            W = w[cur:cur + n_in * n_out].reshape(n_in, n_out)
+            cur += n_in * n_out
+            b = w[cur:cur + n_out]
+            cur += n_out
+            self.layers.append((W, b))
+        assert cur == len(w)
+        self.out_scale = np.array(net["output_scale"])
+        self.out_bias = np.array(net["output_bias"])
+        self.mean = np.array(h["normaliser"]["mean"])
+        self.std = np.array(h["normaliser"]["std"])
+        self.channels = list(h["observations"])
+        self.source = policy_path
+        # The container's own witness: its observations through this forward
+        # pass must give its actions, as the engine's verify_policy demands.
+        ev = h["evaluation"]
+        err = max(float(np.abs(self._act(np.array(o)) - np.array(a)).max())
+                  for o, a in zip(ev["observations"], ev["actions"]))
+        assert err < 1e-4, f"witness disagreement {err}"
+        self.witness_error = err
+
+    def _act(self, values):
+        x = (values - self.mean) / self.std
+        for k, (W, b) in enumerate(self.layers):
+            x = x @ W + b
+            if k < len(self.layers) - 1:
+                x = x / (1.0 + np.exp(-x))   # swish
+        return np.tanh(x) * self.out_scale + self.out_bias
+
+    def reset(self):
+        self.issued = self.reset_command.copy()   # command in force
+        self.before = self.reset_command.copy()   # the one it replaced
+
+    def targets(self, data, command):
+        goal = {"cx": command[0] * 1000.0, "cy": command[1] * 1000.0,
+                "cw": np.degrees(command[2])}
+        values = []
+        for ch in self.channels:
+            if ch in self.sensor:
+                adr, scale = self.sensor[ch]
+                values.append(data.sensordata[adr] * scale)
+            elif ch in goal:
+                values.append(goal[ch])
+            elif ch in self.command_names:
+                values.append(self.issued[self.command_names[ch][0]])
+            elif ch.endswith("_rate") and ch[:-5] in self.command_names:
+                i = self.command_names[ch[:-5]][0]
+                values.append((self.issued[i] - self.before[i]) / self.ctrl_dt)
+            else:
+                raise SystemExit(f"channel {ch!r}: no source in this adapter")
+        surface = np.clip(self._act(np.array(values)), self.low, self.high)
+        self.before, self.issued = self.issued, surface
+        ctrl = data.ctrl.copy()
+        ctrl[self.ctrl_index] = surface * self.ctrl_scale
+        return ctrl
+
+
+ADAPTERS = {"playground": PlaygroundGo1, "cadex": CadexGo1}
 
 
 def episode(pol, command_vx, seed, seconds, trace=None):
@@ -164,6 +277,7 @@ def main():
         os.makedirs(args.trace_dir, exist_ok=True)
     names = [pol.mj_model.actuator(i).name for i in range(pol.mj_model.nu)]
     result = {"adapter": args.adapter, "source": pol.source, "seeds": list(SEEDS),
+              "witness_error": getattr(pol, "witness_error", None),
               "seconds": args.seconds, "window_s": WINDOW_S,
               "actuators": names, "commands": {}}
     for vx in args.commands:
