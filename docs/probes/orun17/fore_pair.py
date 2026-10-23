@@ -1,6 +1,6 @@
 """orun17 RL (O3a, O8): the slow fore pair, in the clip and in judged traces.
 
-usage: pixi run python docs/probes/orun17/fore_pair.py MODEL_XML EVALUATION_DIR [...]
+usage: pixi run python docs/probes/orun17/fore_pair.py [--clip TASK_JSON] MODEL_XML EVALUATION_DIR [...]
 
 Each EVALUATION_DIR is one ``sg_judge.py`` evaluation at a held command; its
 ``judged-task.json`` carries the ``gallop_sg`` schedule. The stride read is
@@ -18,6 +18,15 @@ speed (700 is stride 0); any other command is refused. Prints:
   ``|rlf - rrf| * (1 - |(clf - crf) - (rlf - rrf)|)`` per step with the
   clip's own score beside it;
 - across seeds, ``fore_lag`` against the share within 40 ms (Pearson r).
+
+``--clip TASK_JSON`` scores against another bundle's ``gallop_sg`` clip (its
+schedule's stride at the same command) in place of the judged one: the
+episode's start sample is still recovered from the judged task's reset rows
+(the policy ran on that clock), and the two schedules must share the stride's
+period and sample count. Beside ``fore_lag`` it then prints the fore half of
+``track_contact`` (``(1 - |clf - rlf|) + (1 - |crf - rrf|)``, over 2) on that
+clip, and the clip's own score of each. orun17 used it to price ``fore_lag``
+on sgt-4's duty 0.35 slow stance before it is trained (``fore-lag-sgt4.md``).
 
 Writes nothing.
 """
@@ -41,6 +50,10 @@ def wrap(x, period):
 
 
 def main(argv):
+    alt = None
+    if argv[:1] == ["--clip"]:
+        alt = json.loads(Path(argv[1]).read_text())["tracking"]
+        argv = argv[2:]
     if len(argv) < 2:
         print(__doc__)
         return 2
@@ -62,6 +75,16 @@ def main(argv):
         dt = period / n
         stride = dict(tracking, table=sched["tables"][k], period_s=period,
                       reset_qpos=tracking["reset_qpos"][k * n:(k + 1) * n])
+        clock = stride
+        if alt is not None:
+            asch = alt["schedule"]
+            if (cmd not in asch["speeds_mm_s"] or int(alt["samples"]) != n
+                    or abs(float(asch["periods_s"][asch["speeds_mm_s"].index(cmd)]) - period) > 1e-9):
+                print("%s: --clip's stride at %g differs in period or samples" % (out.name, cmd))
+                return 2
+            ka = asch["speeds_mm_s"].index(cmd)
+            stride = dict(alt, table=asch["tables"][ka], period_s=period,
+                          reset_qpos=alt["reset_qpos"][ka * n:(ka + 1) * n])
         clip = {key: [L.ref_down(stride, s / n)[key] for s in range(n)] for key in PAWS}
         clip_td = {key: [s for s in range(n) if clip[key][s] and not clip[key][s - 1]][0] for key in PAWS}
         print("\n## %s (policy %s), %s\n" % (out.name, ev["policy_sha256"][:8], sched["labels"][k]))
@@ -80,13 +103,13 @@ def main(argv):
             trace = json.loads(path.read_text())
             joints = [c["joint"] for c in trace["actuator_channels"]]
             solver = [f for f in trace["frames"] if f.get("frame_kind") == "solver_output"]
-            _, s0 = L.origin(model, stride, list(zip(joints, solver[0]["joint_positions"])))
+            _, s0 = L.origin(model, clock, list(zip(joints, solver[0]["joint_positions"])))
             samples = [(f["nominal_time_s"], f["component_placements"]) for f in solver]
             times = [t for t, _ in samples]
             floor = ev["rig"]["floor_mm"]
             down = {key: [h <= E.STANCE_MM for h in E.foot_series(samples, body, geoms[body], floor)["height"]]
                     for key, body in PAWS.items()}
-            score, clip_score = [], []
+            score, clip_score, contact, clip_contact = [], [], [], []
             for i, t in enumerate(times):
                 if t < E.SETTLE_S - 1e-9:
                     continue
@@ -95,6 +118,10 @@ def main(argv):
                 fc = (1.0 if down["lf"][i] else 0.0) - (1.0 if down["rf"][i] else 0.0)
                 score.append(abs(fr) * (1 - abs(fc - fr)))
                 clip_score.append(abs(fr))
+                cl = 1.0 if down["lf"][i] else 0.0
+                cr = 1.0 if down["rf"][i] else 0.0
+                contact.append(((1 - abs(cl - r["lf"])) + (1 - abs(cr - r["rf"]))) / 2)
+                clip_contact.append(1.0)
             tds = {key: [t for t in L.touchdowns(times, down[key]) if t >= E.SETTLE_S] for key in ("lf", "rf")}
             off = {}
             for key in ("lf", "rf"):
@@ -105,13 +132,16 @@ def main(argv):
             w20 = sum(1 for v in lags if abs(v) < 20) / len(lags) if lags else float("nan")
             w40 = sum(1 for v in lags if abs(v) < 40) / len(lags) if lags else float("nan")
             fl, cs = statistics.fmean(score), statistics.fmean(clip_score)
-            rows.append((fl, w40))
+            rows.append((fl, w40, statistics.fmean(contact)))
             strides = (times[-1] - E.SETTLE_S) / period
             print("| %s | %.2f / %.2f | %+.0f | %+.0f | %+.0f | %.2f | %.2f | %+.3f | %.3f |" % (
                 path.name.split("-")[1], len(tds["lf"]) / strides, len(tds["rf"]) / strides, off["lf"], off["rf"], statistics.median(lags) if lags else float("nan"),
                 w20, w40, fl, cs))
         xs, ys = [r[0] for r in rows], [r[1] for r in rows]
         print("\nAll seeds: fore_lag %+.3f a step; within 40 ms %.2f." % (statistics.fmean(xs), statistics.fmean(ys)))
+        if alt is not None:
+            print("On the --clip stride: fore_lag %+.3f a step (clip %.3f); track_contact's fore half %.3f (clip 1)."
+                  % (statistics.fmean(xs), cs, statistics.fmean(r[2] for r in rows)))
         if len(set(xs)) > 1 and len(set(ys)) > 1:
             print("Per seed, fore_lag against the share within 40 ms: r = %+.2f." % statistics.correlation(xs, ys))
     return 0
