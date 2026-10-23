@@ -13,10 +13,10 @@ leo v06 throughout (tag `leo-v06`, revision `62e391eb`, model XML
 | criterion | state | best evidence so far |
 |---|---|---|
 | S1 | evidence complete | s1-v06 judged at 50 and 180 beside v05's b1-s2-180 (`s1-v06-50.md`, `s1-v06-180.md`) |
-| S2 | open: no v06 policy tracks at four commands | s2a-hold-150 tracks at 5000 only, s1-v06-180 at 700 (6/10) and 3500 (`s2a-hold-150.md`); S2b (O3 lever 2) rejected at 150 (`s2b-tent-150.md`) |
+| S2 | **met** under the revised O3: s2a-hold-150 tracks 0.7, 1.5, 2.4 and 3.5 m/s with 0/50 falls (slowest seed 1.14× its command at 3.5), top held 4.08 m/s, Fr 4.29; 5.0 misses by one seed (4.49, 0.898) | `o3-reread.md` |
 | M1 | trained, not judged: `m1-cheetah` ran 150/150 cold (17:04–17:57, 3,100 s, policy `a1b5218a`, reward/step 27.95 at 150, σ 0.52) | `m1-retarget.md` |
-| M2 | retargeted and bundled, not trained | `m2-retarget.md` |
-| L1 | not started (needs S2, M1 or M2 judged) | |
+| M2 | training: `m2-dog` launched cold 19:19:50 on revision `4ff224d2`, bundle `8e9e53fc`, seed 0, 4096 envs, 150 iterations, budget 3,600 s | `m2-retarget.md` |
+| L1 | not started (S2 met; waits for M1 and M2 judged) | |
 | F1 | first films made | `f1-films.md`: v06 standing, s1-v06-180 beside b1-s2-180, the M1 and M2 clips on v06 |
 | R1 | this file | |
 
@@ -59,13 +59,17 @@ seeds within 10% of the command (O3):
 
 ## S2: making it track (O3's levers, one at a time)
 
-| screen | what changed from its parent | judged | tracked commands (O3) | top tracked m/s (Fr) |
-|---|---|---|---|---|
-| s1-v06 | (S1, the base) | 180 | 700 (6/10), 3500 (10/10); not a tracking prefix | 3.77 (3.66) |
-| s2a-hold | lever 1, sampling: command held per episode (resample 3 s → 12 s) | 50, 150 | 5000 only (9/10) | 4.53 (5.28) |
-| s2b-tent | lever 2, shape: `track_speed`'s tent symmetric (overshoot slope −0.5 → −1 /cmd) | 50, 150 | none (3500 6/10 at 150; rejected) | — |
+**S2 is met under the owner's revised O3** (over the command is never a
+miss; `o3-reread.md`, re-read from the evaluations, nothing re-run). The
+second table is the old reading (within ±10%), kept as judged.
 
-Last 2 s, median m/s (seeds within 10%):
+| screen | what changed from its parent | judged | tracks up to (revised O3) | held there, median m/s (Fr) |
+|---|---|---|---|---|
+| s1-v06 | (S1, the base) | 180 | 3.5 (4 commands) | 3.77 (3.66) |
+| s2a-hold | lever 1, sampling: command held per episode (resample 3 s → 12 s) | 50, 150 | **3.5 (4 commands) at 150**; 5.0 misses by one seed (0.898) | **4.08 (4.29)** |
+| s2b-tent | lever 2, shape: `track_speed`'s tent symmetric (overshoot slope −0.5 → −1 /cmd) | 50, 150 | 3.5 (4 commands) at 150; rejected, slower at the top (4.01 at 5.0) | 3.82 (3.76) |
+
+Old reading, last 2 s, median m/s (seeds within ±10%):
 
 | command mm/s | 700 | 1500 | 2400 | 3500 | 5000 | falls |
 |---|---|---|---|---|---|---|
@@ -113,11 +117,12 @@ Last 2 s, median m/s (seeds within 10%):
   5000; peak margin 0.00; the fores lean left (shoulder 1.4–2.1× the
   right's), the hinds lean right at the knee (1.2–2.4×). No NaN; loops
   1.0–1.5 mm. The heel pad never touches.
-- **Top tracked speed so far: 4.53 m/s, Fr 5.28** (s2a-hold-150 at 5000,
-  9/10), against v05's B1 2.59 m/s (Fr 1.73, held, not tracked) and Go1's
-  tracked 1.53 m/s (Fr 0.80; held 2.48, Fr 2.11, past its range,
-  `../orun18/b2-ceiling.md`). S2 needs four commands from 700 up, so this is
-  not S2's number yet.
+- **Top tracked speed (revised O3): 4.08 m/s held on a 3.5 m/s command,
+  Fr 4.29** (s2a-hold-150, every seed 4.00–4.21, `o3-reread.md`), against
+  v05's B1, which tracks 0.7 and 1.5 only and holds 2.59 m/s at most (Fr
+  1.73), and Go1's tracked 1.53 m/s (Fr 0.80; held 2.48, Fr 2.11, past its
+  range, `../orun18/b2-ceiling.md`). The fastest v06 has held on any command
+  is 4.53 m/s (Fr 5.28) at 5.0, which misses by one seed (4.49).
 
 ## M1 and M2: the motion, retargeted
 
@@ -165,10 +170,11 @@ What binds now, on the evidence so far:
 
 ## Not tested yet
 
-- O3's third lever (the regularisers' weights); `s2-speed-signal.md`
-  predicts it will not close the overshoot.
+- O3's third lever (the regularisers' weights); not needed for S2 once
+  overshoot stopped counting, and `s2-speed-signal.md` predicts it would not
+  close the overshoot.
 - What holds the slow end (700–1150 mm/s) over its command once the noise
   gap is accounted for.
-- A judged M1 policy (trained to 150, not judged) and any trained M2; AMP (O4) is not started.
+- A judged M1 policy (trained to 150, not judged) and a judged M2 (training); AMP (O4) is not started.
 - The long run (L1) and its films.
 - Why v06 trains faster per iteration than v05.

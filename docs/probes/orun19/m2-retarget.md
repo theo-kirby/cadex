@@ -213,3 +213,27 @@ pixi run python -I docs/probes/orun19/m1_bundle.py ~/cadex-projects/leo/runs/s1-
 
 The takes' own hashes are in `~/mocap/SHA256SUMS` and in each measure file
 (`bvh_sha256`).
+
+## M2's launch (iteration 14)
+
+The GPU sat idle after M1 finished, so M2 launched cold at 19:19:50 with
+M1's command, changing only the run and the bundle:
+
+```
+systemd-run --user --scope -p MemoryMax=30G env PYTHONPATH=cli pixi run python \
+    docs/probes/orun18/queue_bundle.py ~/cadex-projects/leo m2-dog \
+    ~/mocap/ai4animation/m2-bundle/mocap_gallop-task.json 3600 150 \
+    "orun19 M2: leo v06 on the AI4Animation dog gallop27/34/42 (tracking + speed + O2 regularisers), cold" \
+    --base-task speed --seed 0 --envs 4096
+```
+
+Run `m2-dog` on leo revision `4ff224d2`, task `mocap_gallop` **`8e9e53fc`**
+in place of `speed` `c5e8223c`, model `f9b8ab82` (the bundle's sha256
+checked first), cold, seed 0, 4096 envs, 150 iterations, budget 3,600 s.
+Iteration 10 came at ~19:27, about 440 s after launch by the clock, with
+the engine suite running on the CPU beside it. Reward per step 17.2, σ
+0.86, episodes 50 steps and lengthening. Iterations 12 to 15 took 60 s,
+20 s each, against M1's 18.5–19.7 s. At that pace 150 iterations take
+~3,000 s plus compile, so the 3,600 s budget is about +15–20% (O5). The
+supervisor's early ETA of 4,561 s counts the compile. If the budget binds,
+the run ends `budget_exhausted` on its last 25-iteration checkpoint.
