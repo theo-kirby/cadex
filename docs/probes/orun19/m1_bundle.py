@@ -23,7 +23,8 @@ O4; no style term):
 Weights are sgt-4's: 1.5, 1.5 and 10. The head drives are held in the speed
 task, not actions, so the head is not tracked (``acino_retarget.measure_head``).
 The bundle carries the clips, so it is AcinoSet-derived (D5a) and stays in
-``~/mocap/``.
+``~/mocap/``. Nothing in the terms is the cheetah's: M2 builds the dog's bundle
+with this script unchanged, from ``dog_retarget.py``'s clips (m2-retarget.md).
 """
 
 from __future__ import annotations

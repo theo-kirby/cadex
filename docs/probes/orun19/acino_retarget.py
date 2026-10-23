@@ -127,7 +127,8 @@ def _bend(base_minus_tip: np.ndarray, frame_x: np.ndarray, frame_heading: float)
             (R._heading(base_minus_tip) - frame_heading + math.pi) % (2 * math.pi) - math.pi)
 
 
-def map_tail(model_path: Path, stride: dict, clip: dict) -> dict:
+def map_tail(model_path: Path, stride: dict, clip: dict,
+             points: tuple[str, str] = ("tail_base", "tail_tip")) -> dict:
     """Pose j_tail1/j_tail2 from the capture's tail (see the docstring); return the measure."""
 
     model = mujoco.MjModel.from_xml_path(str(model_path))
@@ -153,9 +154,9 @@ def map_tail(model_path: Path, stride: dict, clip: dict) -> dict:
     gain_y = (leo(home, 0.0, 0.05)[1] - b0[1]) / 0.05
     names = stride["skeleton"]["names"]
     pts = np.asarray(stride["skeleton"]["points"])
-    ix = {n: names.index(n) for n in ("tail_base", "tail_tip")}
+    base, tip = (names.index(n) for n in points)
     n = int(clip["samples"])
-    cap = np.array([_bend(pts[k, ix["tail_base"]] - pts[k, ix["tail_tip"]], stride["pelvis"][k],
+    cap = np.array([_bend(pts[k, base] - pts[k, tip], stride["pelvis"][k],
                           math.atan2(-stride["pelvis_lateral"][k][0], stride["pelvis_lateral"][k][1]))
                     for k in range(n)])
     want = np.column_stack([(cap[:, 0] - cap[:, 0].mean()) / gain_p, (cap[:, 1] - cap[:, 1].mean()) / gain_y])
@@ -180,12 +181,12 @@ def map_tail(model_path: Path, stride: dict, clip: dict) -> dict:
             "clipped_share": round(float(np.mean(np.any(np.abs(want - got) > 1e-9, axis=1))), 3)}
 
 
-def measure_head(stride: dict, n: int) -> dict:
+def measure_head(stride: dict, n: int, points: tuple[str, str] = ("nose", "neck_base")) -> dict:
     """The capture's head chord (neck base to nose) against its thorax, in pitch and heading (deg)."""
 
     names = stride["skeleton"]["names"]
     pts = np.asarray(stride["skeleton"]["points"])
-    nose, neck = names.index("nose"), names.index("neck_base")
+    nose, neck = (names.index(p) for p in points)
     # the head points sit over the hind floor and the thorax is read the same way, so the
     # chord's direction is exact; the head is forward of the neck, so nose minus neck
     cap = np.array([_bend(pts[k, nose] - pts[k, neck], stride["thorax"][k],
