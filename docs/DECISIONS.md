@@ -45351,3 +45351,57 @@ reachable by the clip. No protocol, tool surface or trainer change.
 **Evidence.** `docs/probes/orun14/clip_trail.py` regenerates the bundled
 clip exactly before it turns the option on. `pixi run test-engine` and the
 CLI suite are in the commit.
+
+## ADR-790 — The dashboard reads the run you pick, and a run's final policy is rolled out (2026-10-23, owner)
+
+**Context.** The owner asked whether picking a run (a version) in the
+dashboard shows its training graphs, and why older runs' rollouts would
+hardly ever play. On leo's last 30 runs, none of them did:
+- **The Training editor read only `stage.run`** (the run training now, else
+  `default_run`), whatever the 3D viewport showed.
+- **The checkpoint scrubber was built only when the picked run was
+  `stage.run`** (ADR-545), although every finished run kept its rolled-out
+  checkpoints: sgt-4 had 25/50/75/100 and b1-s2 had 25–175.
+- **Runs launched through `cadex_cli.loop`** (every Ouroboros run's) record
+  no rollout leg (`rollout.trace: null`), so picking one drew its model with
+  nothing to play.
+- **The final policy was never rolled out**: the trainer writes no numbered
+  checkpoint at its last iteration, and the watcher rolled out numbered tags
+  only (ADR-544).
+
+**Decision.**
+- **`GET api/checkpoints/<run>`** answers any run's checkpoint block, the
+  same block `stage.checkpoints` carries for the stage's run (404 for an
+  unknown run).
+- **The page scrubs the picked run's checkpoints.** For a run that is not
+  the stage's, it reads them from that route when the run is picked, and
+  again every 15 s while the run is running or has rollouts pending.
+- **The Training editor follows the 3D viewport's source.** A picked run
+  that is not the stage's is read whole from `api/run/<run>` (charts from
+  its curves, marks where its checkpoints were written), and again only
+  when its record moves. The Status head still describes the project's
+  stage.
+- **The watcher rolls out the final policy.** When the trainer's progress
+  says `done`, `CheckpointRollouts.drain` copies `<out>.cxpolicy` to
+  `<out>.<total:06d>.cxpolicy`, a tag the trainer never writes itself, and
+  rolls it out with the others, with the progress's last reward per step.
+
+**Consequences.**
+- **Picking a run** shows its training graphs and plays its newest
+  checkpoint, with every older one on the scrubber. Picking nothing (the
+  accepted model) reads the stage's run as before.
+- **Runs that end from here on** also play the policy they ended with.
+  Runs that ended earlier play their last numbered checkpoint.
+- **The HTTP API grows one route,** pinned in `API_ROUTES`,
+  `API_RESPONSE_KEYS`, `docs/CLI.md`'s table and `test_http_api.py`.
+- **No protocol, tool surface or trainer change.**
+
+**Evidence.** On leo through a test server (`cadex app --port 8796`) and the
+repo's headless browser:
+- picking sgt-4 shows "run sgt-4 · done", its 120-point reward curve and
+  four checkpoints (25–100), and plays iteration 100;
+- b1-s2 shows its 180-point curve and seven checkpoints, and plays 175.
+
+`final_checkpoint()` on a copy of b1-s2's `train/` writes `speed.000180.cxpolicy`,
+byte-identical to `speed.cxpolicy`, pending as iteration 179 at reward
+12.41. `test_http_api.py` and the CLI suite pass.

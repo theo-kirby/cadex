@@ -694,8 +694,12 @@ export function create(canvas, {labels=true}={}) {
   const NEAR_FRACTION=.002;
   let stageFloor={roomSize:0, far:1, centre:[0,0]};
   function draw() {
-    const w=canvas.clientWidth||canvas.width,h=canvas.clientHeight||canvas.height;
-    if (renderer.domElement.width!==Math.floor(w*renderer.getPixelRatio()) || renderer.domElement.height!==Math.floor(h*renderer.getPixelRatio())) renderer.setSize(w,h,false);
+    // A canvas with no layout box (its editor on the hidden shelf) keeps its buffer: canvas.width is
+    // already in device pixels, so sizing from it would multiply by the pixel ratio on every draw
+    // until a high-DPI phone runs out of GPU memory and loses the context.
+    const ratio=renderer.getPixelRatio(), laid=canvas.clientWidth>0&&canvas.clientHeight>0;
+    const w=laid?canvas.clientWidth:canvas.width/ratio,h=laid?canvas.clientHeight:canvas.height/ratio;
+    if (laid&&(renderer.domElement.width!==Math.floor(w*ratio) || renderer.domElement.height!==Math.floor(h*ratio))) renderer.setSize(w,h,false);
     camera.aspect=w/h;
     const d=c.distance/1000, t=c.target.map(x=>x/1000), cp=Math.cos(c.pitch);
     camera.position.set(t[0]+d*cp*Math.cos(c.yaw),t[2]+d*Math.sin(c.pitch),-t[1]-d*cp*Math.sin(c.yaw));
