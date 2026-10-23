@@ -14,7 +14,7 @@ leo v06 throughout (tag `leo-v06`, revision `62e391eb`, model XML
 |---|---|---|
 | S1 | evidence complete | s1-v06 judged at 50 and 180 beside v05's b1-s2-180 (`s1-v06-50.md`, `s1-v06-180.md`) |
 | S2 | **met** under the revised O3: s2a-hold-150 tracks 0.7, 1.5, 2.4 and 3.5 m/s with 0/50 falls (slowest seed 1.14× its command at 3.5), top held 4.08 m/s, Fr 4.29; 5.0 misses by one seed (4.49, 0.898) | `o3-reread.md` |
-| M1 | trained, not judged: `m1-cheetah` ran 150/150 cold (17:04–17:57, 3,100 s, policy `a1b5218a`, reward/step 27.95 at 150, σ 0.52) | `m1-retarget.md` |
+| M1 | **judged** at 50 and 150 (4.63 / 5.0 / 5.33 m/s): `m1-cheetah-150` (`a1b5218a`) holds 4.25 / 4.37 / 4.36 m/s with 0/30 falls, so it holds the slowest stride's command and plateaus above it (top held 4.37 m/s, Fr 4.92; s2a-hold-150 4.53 and v05 B1 1.62 at 5.0); the clip's transverse order and ~2.5 Hz stride, hind feet 0 misses, fore feet double-tap (21–120 of ~210 strides missed); `j_spine` 1.48–1.53× rated, left elbow 1.32–1.35 against 0.81–0.86; at 50, 14/30 tip. Film beside the clip not made | `m1-cheetah-150.md`, `m1-retarget.md` |
 | M2 | training: `m2-dog` launched cold 19:19:50 on revision `4ff224d2`, bundle `8e9e53fc`, seed 0, 4096 envs, 150 iterations, budget 3,600 s | `m2-retarget.md` |
 | L1 | not started (S2 met; waits for M1 and M2 judged) | |
 | F1 | first films made | `f1-films.md`: v06 standing, s1-v06-180 beside b1-s2-180, the M1 and M2 clips on v06 |
@@ -142,8 +142,9 @@ No joint leaves its range and the hind loops stay closed on every clip.
 
 On the retarget alone the dog fits v06's hind legs and the cheetah its fore
 legs; v06's fore leg reaches less far forward in late swing than the dog
-asks. Neither clip asks for the heel pad. Neither bundle is trained yet;
-the comparison M2 asks for is on trained policies, against v05's
+asks. Neither clip asks for the heel pad. Trained, the cheetah's policy keeps its clip's
+order and stride and holds 4.25–4.37 m/s (`m1-cheetah-150.md`); the dog's
+is training. The comparison M2 asks for is on trained policies, against v05's
 c3-s1-50 (1.60–1.94 m/s last 2 s at 2756–4233 commanded, 1 fall in 40,
 `../orun18/c3-s1-50.md`).
 
@@ -167,6 +168,9 @@ What binds now, on the evidence so far:
   to right on every judged v06 policy.
 - **The heel pad is never used**: every v06 policy and both clips run on
   the balls.
+- **On the cheetah's strides, the clip's stride frequency and the spine**:
+  m1-cheetah-150 keeps ~2.5 Hz whatever it is commanded, so its speed
+  plateaus at 4.37 m/s, and its spine runs at 1.5× rated.
 
 ## Not tested yet
 
@@ -175,6 +179,6 @@ What binds now, on the evidence so far:
   close the overshoot.
 - What holds the slow end (700–1150 mm/s) over its command once the noise
   gap is accounted for.
-- A judged M1 policy (trained to 150, not judged) and a judged M2 (training); AMP (O4) is not started.
+- A judged M2 (training); M1's film beside its clip; AMP (O4) is not started.
 - The long run (L1) and its films.
 - Why v06 trains faster per iteration than v05.
