@@ -2,7 +2,8 @@
 
 Verified against source: 2026-10-23. Everything listed here lives outside the
 repository. The repository holds only our own code that imports or reads it
-(`a1_train.py`, `a2_bundle.py`, `go1_judge.py`), and no line copied from any of them.
+(`a1_train.py`, `a2_bundle.py`, `go1_judge.py`, and for C2 `retarget.py`,
+`clip_carry.py`, `retarget_sheet.py`), and no line copied from any of them.
 
 | What | Where (outside the repo) | Version / commit | Licence (read from) | Used for |
 |---|---|---|---|---|
@@ -78,6 +79,21 @@ horizontal speed is 4.07 m/s median on `dog_run01` (155 frames) and 3.13 on
 up. That is canter-to-gallop speed for a dog this size. The footfall order is
 C2's to read; units and frame rate are assumptions until C2 checks them
 against the BVH.
+
+**C2 checked them (2026-10-23, `c2-retarget.md`).** C2 reads the BVH takes,
+not the keypoint text: they are in cm, y up, at 60 fps (`Frame Time:
+0.0166667`), on a 27-joint skeleton with a two-body spine. Four takes are
+extracted from `MotionCapture.zip` to `~/mocap/ai4animation/extract/`:
+`D1_010_KAN01_002` (`dog_run01`, rotary gallop 3.6–4.4 m/s),
+`D1_010_KAN01_003` (`dog_run02`, rotary gallop 2.7–3.4 m/s), `D1_031_KAN01_001`
+(trot 2.1–2.3 m/s) and `D1_055_KAN01_001` (pace 0.8–1.1 m/s). `retarget.py`
+writes the four retargeted strides to `~/mocap/retargeted/` (an adaptation,
+so also CC BY-NC 4.0, and never committed). Their sha256 are in
+`c2-retarget.md`. The repository holds only `retarget.py`, `clip_carry.py`,
+`retarget_sheet.py` (our code) and the stills `c2-retarget.png`. The stills
+are a drawing of the capture and of its adaptation, so they carry the
+capture's terms: CC BY-NC 4.0, credited as above. They sit only in
+`docs/probes/`, which no payload carries.
 
 No cat capture with a licence of this standing was found in this pass; the
 dog is the source, as D5 allows.
