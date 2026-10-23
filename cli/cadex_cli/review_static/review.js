@@ -255,6 +255,7 @@
     // The key of the model this load shows, so the next poll does not load it a second time
     // (and drop the rollout it has just started playing).
     modelKey = state.review ? sourceKey(state.review) : null; modelFailures = 0; modelRetryAt = 0;
+    renderStatus();
     return loadModel();
   }
 
@@ -595,9 +596,31 @@
   // run trains, the viewport turns to it unless a source was picked by hand.
   var ckpt = { items: [], pending: 0, pinned: null, shown: null, playing: null, paused: false, chosenSource: false };
 
+  // Any run picked as the source scrubs its own checkpoints (ADR-790): the stage carries the
+  // run it reads, and any other is read from its own route when picked, and again while it moves.
+  var otherCkpt = { run: null, block: null, at: 0, busy: false };
+  function checkpointBlock(name) {
+    var stage = state.review.stage || {};
+    if (name === stage.run) return stage.checkpoints;
+    if (otherCkpt.run !== name) otherCkpt = { run: name, block: null, at: 0, busy: false };
+    var run = (state.review.runs || []).filter(function (r) { return r.run === name; })[0];
+    var moving = (run && run.status === 'running') || (otherCkpt.block && otherCkpt.block.pending > 0);
+    if (!otherCkpt.busy && (!otherCkpt.at || (moving && Date.now() - otherCkpt.at > 15000))) {
+      otherCkpt.busy = true;
+      json('api/checkpoints/' + encodeURIComponent(name)).then(function (block) {
+        if (otherCkpt.run !== name) return;
+        otherCkpt.block = block; otherCkpt.at = Date.now(); otherCkpt.busy = false;
+        renderCheckpoints();
+      }).catch(function () {
+        if (otherCkpt.run === name) { otherCkpt.busy = false; otherCkpt.at = Date.now(); }
+      });
+    }
+    return otherCkpt.block;
+  }
   function checkpointItems() {
-    var stage = (state.review && state.review.stage) || {}, block = stage.checkpoints;
-    if (!block || !stage.run || source !== 'run:' + stage.run) return { items: [], pending: 0 };
+    if (!state.review || source.indexOf('run:') !== 0) return { items: [], pending: 0 };
+    var block = checkpointBlock(source.slice(4));
+    if (!block) return { items: [], pending: 0 };
     var items = (block.items || []).slice(), own = state.model && state.model.available && state.model.playback;
     // The run's own rollout, once it has one, is its newest policy.
     if (items.length && own && own.available && own.url) {
@@ -778,7 +801,12 @@
   // -- Status (ADR-542, an editor since ADR-572, drawn by status.js since ADR-606) -----
   // What the project is doing and how training is going, from /api/project's
   // `stage` on the page's own poll.
-  function renderStatus() { if (window.CadexStatus) window.CadexStatus.render(state.review); }
+  // The Training editor reads the run picked as the 3D source, else the stage's (ADR-790).
+  function renderStatus() {
+    if (!window.CadexStatus || !state.review) return;
+    window.CadexStatus.select(source.indexOf('run:') === 0 ? source.slice(4) : null);
+    window.CadexStatus.render(state.review);
+  }
 
   // Text and attributes are written only when they change, so an idle poll adds no nodes.
   function setText(id, value) { var node = $(id); if (node.textContent !== value) node.textContent = value; return node; }
@@ -1050,7 +1078,7 @@
   function render() {
     renderFreshness();
     if (!state.review) return;
-    renderHeader(); renderRevisions(); renderStatus(); renderSources(); followTraining(); renderCheckpoints(); renderRevisionTimeline(); renderSheetSources();
+    renderHeader(); renderRevisions(); renderSources(); followTraining(); renderStatus(); renderCheckpoints(); renderRevisionTimeline(); renderSheetSources();
   }
 
   function runModelKey(review, name) {

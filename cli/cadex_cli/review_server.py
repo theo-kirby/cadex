@@ -133,6 +133,7 @@ API_ROUTES = (
     "playback/run/<run>",
     "playback/checkpoint/<run>/<stem>",
     "playback/reference/<task>",
+    "checkpoints/<run>",
     "policy/run/<run>",
     "policy/checkpoint/<run>/<stem>",
 )
@@ -180,6 +181,7 @@ API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "playback/reference/<task>": (frozenset({"available", "task", "source"}),
                                   (_PLAYBACK_KEYS - {"policy", "joints", "velocities", "efforts", "terrain"})
                                   | {"reference", "strides"}),
+    "checkpoints/<run>": (frozenset({"run", "items", "pending", "listed_of", "reason"}), frozenset()),
     "policy/run/<run>": (frozenset({"available", "run", "source"}), _POLICY_KEYS),
     "policy/checkpoint/<run>/<stem>": (frozenset({"available", "run", "stem", "source"}), _POLICY_KEYS),
 }
@@ -190,6 +192,7 @@ _API_HANDLERS = {
     "playback/run/<run>": "playback_run",
     "playback/checkpoint/<run>/<stem>": "playback_checkpoint",
     "playback/reference/<task>": "playback_reference",
+    "checkpoints/<run>": "checkpoints",
     "policy/run/<run>": "policy_run",
     "policy/checkpoint/<run>/<stem>": "policy_checkpoint",
 }
@@ -3420,6 +3423,10 @@ class ReviewHandler(BaseHTTPRequestHandler):
                                  stem: str) -> dict[str, Any] | None:
         return (checkpoint_playback(project.root, run, stem)
                 if project.run(run) is not None else None)
+
+    def _api_checkpoints(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
+        # Any run's, as the stage carries the run it reads (ADR-790).
+        return checkpoint_rollouts(project.root, run) if project.run(run) is not None else None
 
     def _api_policy_run(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
         record = project.run(run)

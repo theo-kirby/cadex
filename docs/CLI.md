@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-17. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-23. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -1183,7 +1183,9 @@ unplayable trace), `iteration`, `reward_per_step`, `sha256`, `reason` and
 block. `pending` counts checkpoints with neither file yet. Only regular
 files in the run's own `train/` are read, and each trace is parsed once
 per file identity, so an idle poll reparses nothing; `null` when there is
-no run.
+no run. `GET /api/checkpoints/<run>` answers the same block for any
+run, so the 3D viewport scrubs the checkpoints of the run picked as its
+source, not only the stage's (ADR-790).
 
 `/api/project`'s `revisions` (the stored trail, newest first) marks each
 entry `retained` when its model is kept in `review/revisions/` (ADR-546),
@@ -1351,6 +1353,7 @@ of a fixture biped that reaches every route disagree, in the way
 | `GET api/playback/run/<run>` | the run's rollout trace as playback frames | `available`, `run`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `policy`, `terrain` |
 | `GET api/playback/checkpoint/<run>/<stem>` | one checkpoint's rollout as playback frames | `available`, `run`, `stem`, `checkpoint`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `policy`, `terrain` |
 | `GET api/playback/reference/<task>` | an accepted task's gait reference (ADR-703) as playback frames: its one stride repeated a stride further on each time, for about 4 s | `available`, `task`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `reference`, `strides` |
+| `GET api/checkpoints/<run>` | any run's checkpoint rollouts, as `stage.checkpoints` lists the stage's run (ADR-790) | `run`, `items`, `pending`, `listed_of`, `reason` | |
 | `GET api/policy/run/<run>` | the run's own policy as the Activations editor runs it (ADR-727): its network, normaliser, input and action names, the weights as base64, each input's kind from the task bundle, the gait clock and the parts each motor moves | `available`, `run`, `source` | `reason`, `label`, `network`, `normaliser`, `observations`, `actions`, `weights`, `inputs`, `clock`, `parts` |
 | `GET api/policy/checkpoint/<run>/<stem>` | one checkpoint's policy, the same way | `available`, `run`, `stem`, `source` | `reason`, `label`, `network`, `normaliser`, `observations`, `actions`, `weights`, `inputs`, `clock`, `parts` |
 
