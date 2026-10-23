@@ -14,7 +14,7 @@ leo v06 throughout (tag `leo-v06`, revision `62e391eb`, model XML
 |---|---|---|
 | S1 | evidence complete | s1-v06 judged at 50 and 180 beside v05's b1-s2-180 (`s1-v06-50.md`, `s1-v06-180.md`) |
 | S2 | open: no v06 policy tracks at four commands | s2a-hold-150 tracks at 5000 only, s1-v06-180 at 700 (6/10) and 3500 (`s2a-hold-150.md`); S2b (O3 lever 2) rejected at 150 (`s2b-tent-150.md`) |
-| M1 | training: `m1-cheetah` launched 17:04, cold, 150 iterations | `m1-retarget.md` |
+| M1 | trained, not judged: `m1-cheetah` ran 150/150 cold (17:04–17:57, 3,100 s, policy `a1b5218a`, reward/step 27.95 at 150, σ 0.52) | `m1-retarget.md` |
 | M2 | retargeted and bundled, not trained | `m2-retarget.md` |
 | L1 | not started (needs S2, M1 or M2 judged) | |
 | F1 | first films made | `f1-films.md`: v06 standing, s1-v06-180 beside b1-s2-180, the M1 and M2 clips on v06 |
@@ -95,6 +95,20 @@ Last 2 s, median m/s (seeds within 10%):
   2.2–2.3 mm at 3500–5000 (over O6's 2 mm). The tent's shape is not what
   holds the slow end over its command. Lever 3 (one regulariser weight)
   goes on s2a-hold's task, queued behind M1.
+- **Why s2a-hold runs ~1.2× over** (`s2-speed-signal.md`, no training): the
+  speed `track_speed` reads (`comv_x`, the root's `subtreelinvel`) is right
+  in MJX and equals the judge's base-point speed to 0.02% on the judged
+  traces. Its within-stride swing is 0.3–2.6% of the command, too small to
+  move the tent's peak. The trainer's own deterministic witness overshoots
+  the same way (1.18–1.22 at 100 and 150). In the trainer's environment the
+  same actor **with its training noise** (σ 0.52) runs at **1.03×** the
+  command (median, 64 envs; 1.00–1.15 at 1.2–3.4 m/s) against **1.21×**
+  deterministic. The policy is calibrated for its noisy self, and the
+  engine plays the mean. The slow end keeps a floor (×1 still 1.13–1.27 at
+  700–1150), and the full noise stalls the gait above ~3.4 m/s. So no
+  regulariser weight closes it (they cost 0.5–1.5 a step and pull toward
+  slower); what would is a smaller σ late (a long warm start as σ falls, or
+  the entropy cost) or a task that pays the played speed.
 - O6 at 150 (s2a-hold): worst RMS 1.03× rated at 700 rising to 1.43× (`j_elbow_l`) at
   5000; peak margin 0.00; the fores lean left (shoulder 1.4–2.1× the
   right's), the hinds lean right at the knee (1.2–2.4×). No NaN; loops
@@ -151,9 +165,10 @@ What binds now, on the evidence so far:
 
 ## Not tested yet
 
-- O3's third lever (the regularisers' weights).
-- What holds the slow end over its command (the overshoot grew when the
-  tent paid more for it).
-- Any trained M1 (training) or M2 policy; AMP (O4) is not started.
+- O3's third lever (the regularisers' weights); `s2-speed-signal.md`
+  predicts it will not close the overshoot.
+- What holds the slow end (700–1150 mm/s) over its command once the noise
+  gap is accounted for.
+- A judged M1 policy (trained to 150, not judged) and any trained M2; AMP (O4) is not started.
 - The long run (L1) and its films.
 - Why v06 trains faster per iteration than v05.
