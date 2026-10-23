@@ -40,7 +40,8 @@ seed-median p95, and the largest seed p95) and its flapping swings; the
 cable's largest gap and the largest loop gap (``judge.py``'s ``closure``);
 the spine's range per left-hind stride and share at a stop
 (``spine_foot``); flight share; the worst drive's RMS over rated (the median
-of each seed's worst, and the drive worst most often) and its peak margin;
+of each seed's worst, and the drive worst most often) and its peak margin,
+with the drives at their clamp (peak) on 5% or more of frames, by share;
 falls and any non-finite metric (a blow-up). Verdicts: pins p95 under 900
 deg/s with no flapping, cable within 1 deg, loops within 2 mm, no
 non-finite metric, at each command.
@@ -77,6 +78,7 @@ ROTARY_SEEDS = 8
 PIN_P95 = 900.0
 CABLE_DEG = 1.0
 LOOP_MM = 2.0
+AT_PEAK_SHARE = 0.05  # a drive at its clamp on 5% of frames or more is named
 
 
 def fmt(v, spec="%.2f"):
@@ -170,6 +172,17 @@ def column(model, geoms, out: Path):
     col["rms_drive"] = names.most_common(1)[0][0] if names else "–"
     peak = med([s["metrics"].get("effort_peak_ratio_max") for s in seeds])
     col["margin"] = None if peak is None else 1.0 - peak
+    # The engine's effort is the actuator's force after MuJoCo's forcerange,
+    # so a peak ratio of 1.0 is a drive held at its clamp (the drive's peak),
+    # never past it: a margin of 0 says which drives saturate, not a fault in
+    # the column. Name them, by the seed-median share of frames at the clamp.
+    shares = collections.defaultdict(list)
+    for s in seeds:
+        for c in s["detail"]["drives"]["channels"]:
+            if c.get("effort_clamp_share") is not None:
+                shares[c["joint"]].append(c["effort_clamp_share"])
+    col["at_peak"] = sorted(((j, med(v)) for j, v in shares.items() if med(v) >= AT_PEAK_SHARE),
+                            key=lambda jv: -jv[1])
     col["falls"] = sum(1 for s in seeds if s["metrics"].get("falls"))
     col["nonfinite"] = sum(1 for s in seeds if not finite(s["metrics"]))
     return col
@@ -263,6 +276,8 @@ def main(argv):
         ("spine range per stride (sum) °; at a stop", lambda c: f"{fmt(c['spine'], '%.1f')}; {fmt(c['stop'])}"),
         ("flight share; flight s", lambda c: f"{fmt(c['flight'])}; {fmt(c['flight_s'], '%.3f')}"),
         ("worst RMS / rated (drive); peak margin", lambda c: f"{fmt(c['rms'])} (`{c['rms_drive']}`); {fmt(c['margin'])}"),
+        (f"at peak: drives ≥ {AT_PEAK_SHARE:.2f} of frames at the clamp (seed median)",
+         lambda c: ", ".join(f"`{j}` {fmt(v)}" for j, v in c["at_peak"]) or "none"),
         ("falls; non-finite seeds", lambda c: f"{c['falls']}; {c['nonfinite']}"),
     ])
     o9 = {
