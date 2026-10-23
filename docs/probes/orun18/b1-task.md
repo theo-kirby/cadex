@@ -35,9 +35,9 @@ at baseline (sweep 12 pairs, mounting pass, 46 panels reported, 0 failing).
 
 `tail` (tail links off the floor) and `straight` (D9's straight line) are
 kept as staying-up terms, not style: neither says how a foot lands. The three
-regularisers' weights are this run's choice, sized so each costs well under a
-tenth of `alive + track_speed` in a vigorous gallop. No screen has priced
-them on leo yet.
+regularisers' weights are this run's choice. b1-s1's were sized for a smooth
+gallop and cost a fall at exploration noise; `noise_terms.py` priced them
+(below), and b1-s2 carries the re-weighted set.
 
 `no_tap`, `every_stride` and `overreach` leave the spec because the engine
 computes them against a reference (`CadexEvaluation` needs `reference`), and
