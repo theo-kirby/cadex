@@ -1,7 +1,8 @@
 """Judge one checkpoint of leo's speed-only task (B1) on its own speed_spec at held commands.
 
 usage: CUDA_VISIBLE_DEVICES= PYTHONPATH=cli pixi run python docs/probes/orun18/speed_judge.py \
-           PROJECT RUN_TRAIN_DIR POLICY OUT_NAME [--cmd 700 1500 2400 5000] [--seeds 1001 ...]
+           PROJECT RUN_TRAIN_DIR POLICY OUT_NAME [--cmd 700 1500 2400 5000] [--seeds 1001 ...] \
+           [--task speed]
 
 ``orun16/sg_judge.py`` for D4's task: the bundle is ``speed-task.json`` and
 its spec ``speed_spec`` (``completes``, ``no_fall``, ``upright``,
@@ -24,6 +25,11 @@ with leo's labels (``LEGS``) and the start heading the engine would use
 ``footfall_source``. Nothing is rewarded or judged on it; it lets
 ``orun17/sg_tables.py`` read B1's evaluations as any SG evaluation
 (footfall order, pair lags in ms, flight, heel, U, drives, O9).
+
+**C3 and C4.** ``--task mocap_gallop`` judges a reference bundle built by
+``c3_bundle.py`` (the same ``speed_spec``, its ``cmd`` narrowed to the
+strides' span). That bundle carries a reference whose legs are ``LEGS``, so
+the engine reads its footfall itself and ``add_footfall`` is not applied.
 """
 
 from __future__ import annotations
@@ -47,7 +53,7 @@ _spec = importlib.util.spec_from_file_location(
 J = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(J)
 
-TASK, SPEC = "speed", "speed_spec"
+SPEC = "speed_spec"
 LEGS = {"LF": "c_paw_fl", "RF": "c_paw_fr", "LH": "c_paw_hl", "RH": "c_paw_hr"}
 
 
@@ -64,6 +70,10 @@ def add_footfall(report: dict, out: Path) -> None:
         seed["footfall_source"] = "orun18 speed_judge: CadexEvaluation.footfall_metrics with LEGS, no reference"
 
 
+def option(argv: list[str], flag: str, default: str) -> str:
+    return argv[argv.index(flag) + 1] if flag in argv else default
+
+
 def options(argv: list[str], flag: str) -> list[int] | None:
     if flag not in argv:
         return None
@@ -78,7 +88,8 @@ def options(argv: list[str], flag: str) -> list[int] | None:
 def main() -> None:
     root, train, policy, name = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4]
     commands = options(sys.argv, "--cmd") or [700, 1500, 2400, 5000]
-    trained_path = train / f"{TASK}-task.json"
+    task = option(sys.argv, "--task", "speed")
+    trained_path = train / f"{task}-task.json"
     trained = json.loads(trained_path.read_text())
     model = train / Path(trained["model"]["path"]).name
     header = D.decode_policy(policy.read_bytes(), context="judge")["header"]
@@ -111,7 +122,7 @@ def main() -> None:
         judged.write_text(json.dumps(judged_task))
         inputs = {"accepted_revision": str(state["accepted_revision"]),
                   "accepted_digest": str(state.get("accepted_digest") or ""),
-                  "policy_output": "undeclared", "task_output": TASK, "model_output": "cat_model",
+                  "policy_output": "undeclared", "task_output": task, "model_output": "cat_model",
                   "policy": policy.resolve(), "policy_sha256": J.sha(policy), "weights": policy.name,
                   "trained_task_sha256": J.sha(trained_path), "task": judged, "model": model,
                   "components": components, "seeds": seeds}
@@ -119,7 +130,8 @@ def main() -> None:
         report["judged_spec_task"] = SPEC
         report["judged_command_mm_s"] = cmd
         report["judged_policy"] = str(policy)
-        add_footfall(report, out)
+        if not (trained.get("reference") or {}).get("legs"):
+            add_footfall(report, out)
         report["closure"] = J.closure(model, out)
         (out / "evaluation.json").write_text(json.dumps(report, indent=2) + "\n")
         print(f"{name}-{cmd}", report["verdict"], len(report["summary"]["passed"]), flush=True)
