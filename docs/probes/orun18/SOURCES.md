@@ -3,7 +3,8 @@
 Verified against source: 2026-10-23. Everything listed here lives outside the
 repository. The repository holds only our own code that imports or reads it
 (`a1_train.py`, `a2_bundle.py`, `go1_judge.py`, and for C2 `retarget.py`,
-`clip_carry.py`, `retarget_sheet.py`), and no line copied from any of them.
+`clip_carry.py`, `retarget_sheet.py`, and for C4 `acino_strides.py`), and no line
+copied from any of them.
 
 | What | Where (outside the repo) | Version / commit | Licence (read from) | Used for |
 |---|---|---|---|---|
@@ -98,5 +99,37 @@ An earlier commit (`40197e4a`) carried them under `docs/probes/orun18/`;
 they were removed at the critic's call, and only their sha256 stays
 (`c2-retarget.md`).
 
-No cat capture with a licence of this standing was found in this pass; the
-dog is the source, as D5 allows.
+**The cat (corrected 2026-10-23).** An earlier line here said no cat capture
+with a licence of this standing was found "in this pass"; no search for one had
+been made. The search, made now: two web searches ("domestic cat motion capture
+dataset gallop 3D kinematics open licence download"; "cat mocap BVH dataset CC BY
+quadruped animal motion capture cat walk trot"). Found: Kim and Yun's feline
+gallop papers (J. Bionic Eng. 17, 2020; a KAIST thesis on spinal motion at two
+gallop speeds), which recorded a domestic cat on planar motion capture but name
+no data release or licence; QuadFM (arXiv 2603.24021), dog motion capture with
+no licence named in what was read; horse and robot (Kine2Go, Go2) kinematics.
+No domestic-cat capture with a released licence was found. The nearest felid is
+AcinoSet's cheetah, below (D5a).
+
+## C4: the cheetah, AcinoSet (D5a, read 2026-10-23)
+
+AcinoSet (github.com/African-Robotics-Unit/AcinoSet, README read at commit
+`983e4362ed60e6c05f2e727b0320cd58779beaeb`) has **no licence file**. Its README
+asks only that users of its code or data cite it. The owner reads that as
+permission for this research use (D5a); the run keeps the owner's terms: cite
+it (here and in R1), keep the data and everything derived from it outside the
+repository and every payload, never redistribute it. Citation:
+
+> Joska D., Clark L., Muramatsu N., Jericevich R., Nicolls F., Mathis A.,
+> Mathis M. W., Patel A. 2021. AcinoSet: A 3D Pose Estimation Dataset and
+> Baseline Models for Cheetahs in the Wild. ICRA 2021, arXiv 2103.13282.
+
+| What | Where (outside the repo) | Version | Licence | Used for |
+|---|---|---|---|---|
+| AcinoSet FTE 3D trajectories: every `fte_pw/fte.pickle` and its `reconstruction_params.json` (90 takes, 15 capture days 2017-08-29 to 2019-03-09) from the Dropbox folder the README links ("3D files that are processed using our FTE baseline model") | `~/mocap/acinoset/<day>/.../fte_pw/` | Dropbox carries no commit: the folder listing as fetched on 2026-10-23 is `~/mocap/acinoset/LISTING.txt`, and each of the 180 files' sha256 is in `~/mocap/acinoset/SHA256SUMS` (sizes checked against the listing) | none; owner's reading of the README's cite request (D5a) | C4: the gallop strides (`acino_strides.py`, `c4-cheetah.md`) |
+| Two DeepLabCut metadata pickles (cam 1 of `2017_08_29/top/jules/run1_2` and `2019_02_27/kiara/flick`) | `~/mocap/acinoset/meta/` | as above | as above | the videos' frame rates (90 and 119.88 fps), checked against the FTE's own |
+
+Videos, 2D labels and DLC outputs were not fetched. The files are pickles from
+outside the repository; `acino_strides.py` reads them with an unpickler that
+refuses every class but numpy's arrays. The repository holds only our code;
+none of AcinoSet's code is copied.
