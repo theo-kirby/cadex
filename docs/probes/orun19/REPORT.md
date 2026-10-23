@@ -13,8 +13,8 @@ leo v06 throughout (tag `leo-v06`, revision `62e391eb`, model XML
 | criterion | state | best evidence so far |
 |---|---|---|
 | S1 | evidence complete | s1-v06 judged at 50 and 180 beside v05's b1-s2-180 (`s1-v06-50.md`, `s1-v06-180.md`) |
-| S2 | open: no v06 policy tracks at four commands | s2a-hold-150 tracks at 5000 only, s1-v06-180 at 700 (6/10) and 3500 (`s2a-hold-150.md`); S2b (O3 lever 2) training |
-| M1 | retargeted and bundled, not trained | `m1-retarget.md` |
+| S2 | open: no v06 policy tracks at four commands | s2a-hold-150 tracks at 5000 only, s1-v06-180 at 700 (6/10) and 3500 (`s2a-hold-150.md`); S2b (O3 lever 2) rejected at 150 (`s2b-tent-150.md`) |
+| M1 | training: `m1-cheetah` launched 17:04, cold, 150 iterations | `m1-retarget.md` |
 | M2 | retargeted and bundled, not trained | `m2-retarget.md` |
 | L1 | not started (needs S2, M1 or M2 judged) | |
 | F1 | first films made | `f1-films.md`: v06 standing, s1-v06-180 beside b1-s2-180, the M1 and M2 clips on v06 |
@@ -63,7 +63,7 @@ seeds within 10% of the command (O3):
 |---|---|---|---|---|
 | s1-v06 | (S1, the base) | 180 | 700 (6/10), 3500 (10/10); not a tracking prefix | 3.77 (3.66) |
 | s2a-hold | lever 1, sampling: command held per episode (resample 3 s → 12 s) | 50, 150 | 5000 only (9/10) | 4.53 (5.28) |
-| s2b-tent | lever 2, shape: `track_speed`'s tent symmetric (overshoot slope −0.5 → −1 /cmd) | 50 (training to 150) | none at 50 (1500 6/10 is the plateau crossing it) | — |
+| s2b-tent | lever 2, shape: `track_speed`'s tent symmetric (overshoot slope −0.5 → −1 /cmd) | 50, 150 | none (3500 6/10 at 150; rejected) | — |
 
 Last 2 s, median m/s (seeds within 10%):
 
@@ -71,6 +71,7 @@ Last 2 s, median m/s (seeds within 10%):
 |---|---|---|---|---|---|---|
 | s2a-hold-50 (`80f97755`) | 1.80 (0) | 1.95 (0) | 1.63 (1) | 2.23 (0) | 1.05 (0) | 0/50 |
 | s2b-tent-50 (`43cbe2ef`) | 1.27 (0) | 1.43 (6) | 1.49 (0) | 1.23 (0) | 1.16 (0) | 0/50 |
+| s2b-tent-150 (`f971c970`) | 0.97 (0) | 1.89 (0) | 3.09 (0) | 3.82 (6) | 4.01 (0) | 0/50 |
 | **s2a-hold-150** (`efe7f96b`) | **0.86** (0) | **1.80** (0) | **2.95** (0) | **4.08** (0) | **4.53** (9) | 0/50 |
 | s1-v06-180 | 0.75 (6) | 2.17 (0) | 3.07 (0) | 3.77 (10) | 4.24 (0) | 0/50 |
 
@@ -85,7 +86,15 @@ Last 2 s, median m/s (seeds within 10%):
   cut the slow end's overshoot (700: 1.80 → 1.27) by lowering the whole
   plateau, not by separating speeds. 0/50 falls, veers above ~3 m/s, toe
   stance; worst RMS 1.49–1.59× (`j_spine`, then `j_shoulder_l`), loops
-  1.3–1.5 mm. No verdict until 150.
+  1.3–1.5 mm.
+- **Lever 2 at 150, rejected** (`s2b-tent-150.md`): as tight and monotone
+  as s2a-hold-150 but **further over** the command at 700–2400 (+26–39%
+  against +20–23%) under a tent that pays twice as hard for overshoot; 6/50
+  seeds within 10% (3500 only) against s2a-hold-150's 9/50; top end 4.01
+  m/s against 4.53; right hind knee/hip 1.16–1.78× rated, hind rod loops
+  2.2–2.3 mm at 3500–5000 (over O6's 2 mm). The tent's shape is not what
+  holds the slow end over its command. Lever 3 (one regulariser weight)
+  goes on s2a-hold's task, queued behind M1.
 - O6 at 150 (s2a-hold): worst RMS 1.03× rated at 700 rising to 1.43× (`j_elbow_l`) at
   5000; peak margin 0.00; the fores lean left (shoulder 1.4–2.1× the
   right's), the hinds lean right at the knee (1.2–2.4×). No NaN; loops
@@ -142,7 +151,9 @@ What binds now, on the evidence so far:
 
 ## Not tested yet
 
-- O3's third lever (the regularisers' weights), and S2b's result.
-- Any trained M1 or M2 policy; AMP (O4) is not started.
+- O3's third lever (the regularisers' weights).
+- What holds the slow end over its command (the overshoot grew when the
+  tent paid more for it).
+- Any trained M1 (training) or M2 policy; AMP (O4) is not started.
 - The long run (L1) and its films.
 - Why v06 trains faster per iteration than v05.
