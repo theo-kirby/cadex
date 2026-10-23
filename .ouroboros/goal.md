@@ -1,7 +1,7 @@
 # Goal: why leo trains worse than a stock quadruped, settled in three steps
 
 Verified against source: 2026-10-23. Operator charter for orun18, a 24 h
-run. It replaces orun17 (`.ouroboros/history/orun17.md`, merged at
+run (C4, the cheetah, added mid-run by the owner). It replaces orun17 (`.ouroboros/history/orun17.md`, merged at
 `6235e46f`), which the owner stopped at 11.3 h to run this diagnosis.
 
 **Why this run exists (owner, 2026-10-23).**
@@ -126,6 +126,20 @@ trainer is the problem.
   - The data stays outside the repository (`~/mocap/`); the repository gets
     only the retargeting code and its outputs' hashes.
   - If no usable licence is found, C stops there and the report says so.
+- **D5a. The cheetah, AcinoSet (owner, 2026-10-23, mid-run).**
+  - AcinoSet (github.com/African-Robotics-Unit/AcinoSet; Joska, Clark,
+    Muramatsu, Jericevich, Nicolls, A. Mathis, M. W. Mathis and Patel,
+    ICRA 2021, arXiv 2103.13282) has no licence file. Its README asks only
+    that users of its code or data cite it. **The owner reads that as
+    permission for this research use.**
+  - The terms the run keeps:
+    - cite it in `SOURCES.md` and R1;
+    - keep the data and everything derived from it outside the repository
+      and out of every payload, as with the dog;
+    - never redistribute it.
+  - Correction: `SOURCES.md`'s line "No cat capture with a licence of this
+    standing was found in this pass" was written without a search for one.
+    Replace it with what was actually searched and found.
 - **D6. Tracking before AMP.** C first carries the motion as the task's
   reference clip, the path the trainer already has: tracking reward plus
   speed plus D4's regularisers, and no style terms.
@@ -228,6 +242,21 @@ trainer is the problem.
     + D4's regularisers, no style terms) and is judged on orun17's SG/RL
     tables at three or more speeds, beside sgt-4-120 and B1.
   - Films show the three side by side, on the run's page.
+- [ ] **C4. Leo on cheetah motion (D5a).**
+  - AcinoSet's 3D cheetah trajectories (the FTE-processed `fte.pickle`
+    files, from the links in its README) are fetched to
+    `~/mocap/acinoset/`.
+  - The steady galloping strides are found, with their speeds and footfall
+    order.
+  - They are retargeted to leo as C2 did the dog, spine included, with foot
+    slip and limit violations measured.
+  - Leo trains cold on them as in C3, and is judged on the same tables
+    beside C3's dog, sgt-4-120 and B1, with a film side by side.
+  - The report says whether the cheetah's motion fits leo better than the
+    dog's: paw pins at their stop, foot misses, heel and footfall order.
+  - Video-reconstructed poses are noisier than marker capture: filter
+    them, measure the noise, and say what the filter did.
+
 - [ ] **F1. The films**, on the run's page:
   - A1's and A2's Go1 at the same command;
   - B1 at its fastest;
@@ -253,6 +282,8 @@ trainer is the problem.
      and judge it. Write A3.
   5. While A trains: search for the motion capture, read the licences, and
      write `SOURCES.md` (C1).
+  6. While B1 and C3 train: fetch AcinoSet, find its gallop strides and
+     retarget them (C4), so the cheetah screen launches right after C3's.
 - **medium-term:**
   1. If A blames the trainer: test D2's differences one at a time until
      the gap is explained. Fix `training/` with an ADR and rerun A2.
@@ -361,7 +392,8 @@ trainer is the problem.
 
 - Resolve reversible choices autonomously, with the smallest measured step
   towards the highest-ranked open criterion. The order is A1, A2, A3, B1,
-  B2, C1, C2, C3, F1, R1. C1 may be worked on the CPU at any time.
+  B2, C1, C2, C3, C4, F1, R1. C1 and C4's CPU work (fetching, retargeting)
+  may be done at any time.
 - Where a published recipe and Cadex's format disagree, write the
   difference down (D2) rather than silently picking one.
 - A licence that is unclear counts as unusable.
