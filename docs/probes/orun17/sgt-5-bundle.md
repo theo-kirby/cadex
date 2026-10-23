@@ -34,7 +34,7 @@ systemd-run --user --scope -p MemoryMax=30G ./cadex script --project ~/cadex-pro
   schedule, tracking, goal, success and model (`59bc5407…`) are the same, so
   sgt-5 reads and emits what sgt-4 does; it still trains cold (O8: a changed
   task trains cold).
-- `fore_sync` (w 10 in sgt-4) stays: it is gated on the command and pays
+- `fore_sync` (w 2 in sgt-4) stays: it is gated on the command and pays
   nothing at the 700 end where `fore_lag` matters most; the two compete only
   at the top, where the clip's fore lag is smallest.
 
