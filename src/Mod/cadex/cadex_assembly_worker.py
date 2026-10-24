@@ -6674,6 +6674,9 @@ def _declared_floors(properties, component_outputs):
 
 # A child owns native queries so a stuck OCCT operation cannot exceed the budget.
 _SWEEP_JOINT_SECONDS = 90.0
+#: The share of the sweep's total one joint's child may take past that
+#: (ADR-820): a 900 s sweep gives each joint 300 s, a 180 s one 90 s.
+_SWEEP_JOINT_FRACTION = 1.0 / 3.0
 _SWEEP_TOTAL_SECONDS = 180.0
 #: The share of the run's own budget a sweep may take past that, up to
 #: _SWEEP_TOTAL_MAX_SECONDS (ADR-690): a 2400 s project sweeps for 600 s.
@@ -8008,9 +8011,13 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
         # swept for the first time must not turn a build that fits into one
         # the runtime refuses; the joints it leaves say so, by name.
         total = max(0.0, min(total, left - _SWEEP_RESERVE_SECONDS - _SWEEP_RESERVE_FRACTION * _run_age()))
+    # One joint's child is bounded by a share of that total (ADR-820): a
+    # joint whose exact distances are slow (a soft shell's rounded panels)
+    # needs more than the fixed floor, and a run given more time has it.
+    per_joint = max(_SWEEP_JOINT_SECONDS, _SWEEP_JOINT_FRACTION * total)
     report = {"status": "complete",
               "step_degrees": steps.get("sweep_step_degrees"), "step_mm": steps.get("sweep_step_mm"),
-              "per_joint_seconds": _SWEEP_JOINT_SECONDS, "total_seconds": total,
+              "per_joint_seconds": per_joint, "total_seconds": total,
               "max_poses": _SWEEP_MAX_POSES, "max_pairs": _SWEEP_MAX_PAIRS, "joints": []}
     start = time.monotonic()
     serialised = None
@@ -8106,7 +8113,7 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
         if remaining <= 0:
             return {"status": "incomplete", "reason": "unsolved assembly or total runtime budget exceeded"}
         return _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, step,
-                                   min(remaining, _SWEEP_JOINT_SECONDS), *((couplings,) if couplings else ()))
+                                   min(remaining, per_joint), *((couplings,) if couplings else ()))
 
     if pending:
         from concurrent.futures import ThreadPoolExecutor

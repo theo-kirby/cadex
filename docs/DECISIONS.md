@@ -45487,3 +45487,39 @@ still.
 **Evidence.** leon I (`~/cadex-projects/leon`, rev `092997dd`) rendered with
 `cadex hero --only views --software --no-engine --out <scratch>`; its six
 views and a labelled grid are under `docs/probes/orun20/k1/`.
+
+## ADR-820 — A joint sweep's child takes a share of the sweep's total, not a fixed 90 s (2026-10-24, l3r1)
+
+**Context.** Leon III (`~/cadex-projects/leon-iii`, revision `69444f8e`) is
+leon I with a soft shell: the same joints, actuators and colliding geoms,
+rounded panels. On every build its 12 tail joints (`j_tail1`–`j_tail7`,
+`j_tail3p`–`j_tail7p`) ended `runtime budget exceeded` at 85–89 s with no
+pair measured, even on an idle machine, so its swept coverage was
+`incomplete` forever: each joint's child was cut at the fixed
+`_SWEEP_JOINT_SECONDS` (90 s) while the sweep as a whole (900 s on a
+3600 s project, ADR-690) had used 316 s. Leon I's tail joints take about
+10 s each in the same budget (rev `092997dd`). A probe build with the
+per-joint cap lifted to 900 s completed every joint: the tail joints took
+149–190 s each, the sweep 791 s of its 900, 0 failing pairs.
+
+**Decision.** A joint's child is bounded by
+`max(_SWEEP_JOINT_SECONDS, _SWEEP_JOINT_FRACTION * total)`, with the fraction
+1/3, and still by what is left of the total when it starts. The sweep's
+total is computed as before (ADR-690, ADR-622), so the per-joint budget
+follows the run's: 90 s for the 180 s default sweep (unchanged), 300 s for
+a 900 s one. It is set, like the total, through the project's budget
+(`cadex budgets --set timeout_seconds=…`). The report's `per_joint_seconds`
+carries the value used.
+
+**Consequences.**
+- A project with a short budget sweeps exactly as before.
+- On a long project one slow joint can hold one of the `_SWEEP_PARALLEL`
+  slots for up to a third of the total; the joints after it still get
+  what is left, and the total still bounds the whole sweep, so a sweep
+  cannot time a build out.
+- Once a joint's pairs are in the fit cache (ADR-622) later builds sweep it
+  in seconds as before.
+- No protocol, tool-surface, CLI or `pixi.toml` change; no test pins the
+  fixed value. Verified by running: `pixi run test-engine` (157 passed, 3
+  skipped) and `pytest cli/tests` (53 passed), and leon III's build and
+  `cadex clearance --sweep` on this branch.
