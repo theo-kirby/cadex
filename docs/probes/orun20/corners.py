@@ -3,9 +3,9 @@
 usage: pixi run python docs/probes/orun20/corners.py PROJECT [--json OUT] [--panel NAME ...]
 
 Reads only the project's accepted build: ``script.json`` names the accepted
-revision and digest, and the attempt under ``script_artifacts/<revision>/``
-whose ``result.json`` carries that digest holds every output's facts and
-BREP. Nothing in the project is written, and no engine is opened.
+revision, digest and attempt (its pinned staging, else the attempts under
+``script_artifacts/<revision>/``), and the attempt whose ``result.json``
+carries that digest holds every output's facts and BREP. Nothing in the project is written, and no engine is opened.
 
 Two measures:
 
@@ -65,7 +65,14 @@ SAMPLES = 24
 def accepted_attempt(project: Path) -> tuple[str, Path, dict]:
     state = json.loads((project / "script.json").read_text())
     revision, digest = state["accepted_revision"], state["accepted_digest"]
-    for result in sorted((project / "script_artifacts" / revision).glob("attempt-*/result.json")):
+    # The manifest pins the accepted attempt; on a project's first accepted script its
+    # directory is named for another revision (ADR-311), so the pin is read first.
+    pinned = (state.get("accepted_attempt") or {}).get("staging")
+    candidates = [project / pinned / "result.json"] if pinned else []
+    candidates += sorted((project / "script_artifacts" / revision).glob("attempt-*/result.json"))
+    for result in candidates:
+        if not result.is_file():
+            continue
         value = json.loads(result.read_text())
         if value.get("ok") and value.get("digest") == digest:
             return revision, result.parent, value
