@@ -21,6 +21,7 @@ import pytest
 
 from cadex_train import (
     CURRICULUM_EPISODE_KEYS,
+    CURRICULUM_GOAL_KEYS,
     CURRICULUM_TASK_KEYS,
     check_policy_fits,
 )
@@ -250,5 +251,58 @@ def test_the_curriculum_sets_say_what_they_mean():
     assert "functions" not in CURRICULUM_TASK_KEYS
     assert "schema" not in CURRICULUM_TASK_KEYS
     assert "goal" not in CURRICULUM_TASK_KEYS
+    assert CURRICULUM_GOAL_KEYS == {"low", "high", "nominal", "sequence"}
     assert "success" in CURRICULUM_TASK_KEYS
     assert CURRICULUM_EPISODE_KEYS == {"episode_seconds", "max_steps"}
+
+
+# --------------------------------------------------------------------------
+# ADR-791: a goal's draw range may move; nothing else about the goal may.
+# --------------------------------------------------------------------------
+
+GOAL = {"channels": ["cmd"], "high": 5000.0, "kind": "speed", "label": "cmd",
+        "low": 700.0, "name": "cmd", "nominal": [2850.0], "ramp_steps": 50,
+        "resample_steps": 600, "segments": 1, "unit": "mm/s"}
+
+
+@pytest.fixture()
+def goal_parent(tmp_path: Path) -> tuple[dict, Path]:
+    task = child_with(goal=[dict(GOAL)])
+    path = tmp_path / "goal-parent-task.json"
+    path.write_bytes(emit(task))
+    return task, path
+
+
+def goal_header(task: dict) -> dict:
+    header = header_for(task)
+    header["observations"] = ["a", "b", "cmd"]
+    header["network"] = {"layers": [[3, 8], [8, 8], [8, 1]]}
+    return header
+
+
+def test_a_wider_goal_range_may_move(goal_parent):
+    parent, path = goal_parent
+    child = copy.deepcopy(parent)
+    child["goal"][0].update(high=7500.0, nominal=[4100.0], sequence=[7500.0])
+    keys = check_policy_fits(
+        goal_header(parent), bundle_of(child),
+        options(init_from_task_change="a higher command ceiling",
+                init_from_parent_task=str(path)))
+    assert keys == ["goal.range"]
+
+
+@pytest.mark.parametrize("field, value", [
+    ("channels", ["cmd", "yaw"]),
+    ("kind", "point"),
+    ("unit", "m/s"),
+    ("resample_steps", 300),
+    ("ramp_steps", 0),
+])
+def test_anything_else_about_a_goal_may_not_move(goal_parent, field, value):
+    parent, path = goal_parent
+    child = copy.deepcopy(parent)
+    child["goal"][0][field] = value
+    with pytest.raises(SystemExit, match=r"moved and may not: \['goal'\]"):
+        check_policy_fits(
+            goal_header(parent), bundle_of(child),
+            options(init_from_task_change="x", init_from_parent_task=str(path)))

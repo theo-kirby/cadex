@@ -45405,3 +45405,41 @@ repo's headless browser:
 `final_checkpoint()` on a copy of b1-s2's `train/` writes `speed.000180.cxpolicy`,
 byte-identical to `speed.cxpolicy`, pending as iteration 179 at reward
 12.41. `test_http_api.py` and the CLI suite pass.
+
+## ADR-791 — A warm start may cross a goal's draw range (2026-10-24, orun19)
+
+**Context.** orun19's X1 (top speed) needs leo's speed policy to be asked
+for more than the 5 m/s it trained on. X1a raised the training goal's
+ceiling 5000 → 6500 mm/s and the trainer refused the warm start from
+s2a-hold-150, because `goal` is not in ADR-161's `CURRICULUM_TASK_KEYS`
+(`docs/probes/orun19/x1a-cold.md`). Trained cold instead, X1a reached
+~4.1 m/s, below the warm policy's 4.57. X1b, warm on an unchanged goal with
+a one-sided `track_speed`, reached 5.72 m/s at a 6.0 m/s command it never
+trained on (`x1b-warm-150.md`). The next screen is that policy asked for
+more, which only a goal-range change can do.
+
+**Decision.** `check_curriculum_change` admits a `goal` change whose entries
+are equal less `CURRICULUM_GOAL_KEYS` (`low`, `high`, `nominal`,
+`sequence`): where the goal is drawn from. It names the step `goal.range`.
+The actor reads a goal's drawn value as it is (the goal channels follow the
+sensor channels in `policy_channels`, through the running normaliser a warm
+start carries and keeps updating), so a value means the same at any range;
+a wider range is new values on an input the network already has, as a
+harder shove band is new states. Every other part of a goal (channels,
+kind, unit, period, ramp, segments) is still refused, and every other check
+in `check_policy_fits` still runs.
+
+**Consequences.**
+- A command curriculum can warm-start: a speed policy can be asked for a
+  higher ceiling without retraining from scratch.
+- The normaliser sees goal values beyond its statistics for its first
+  iterations; that is the curriculum's cost, as with any wider band.
+- No engine, protocol, tool-surface or `pixi.toml` change.
+  `training/README.md` names the rule.
+
+**Evidence.** `training/test_curriculum_warm_start.py` gains
+`test_a_wider_goal_range_may_move` (a 5000 → 7500 mm/s ceiling is admitted
+as `["goal.range"]`) and `test_anything_else_about_a_goal_may_not_move`
+(channels, kind, unit, resample and ramp each refused); the trainer's
+suite passes from `~/cadex-train-venv`. Used first by orun19's X1c
+(`docs/probes/orun19/x1c-ceil.md`).
