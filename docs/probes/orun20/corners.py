@@ -149,11 +149,16 @@ def panel_corners(shape) -> dict:
     thickness = 2.0 * shape.Volume / shape.Area
     edges = Index()
     owners: dict[int, list[int]] = {}
+    seams: set[int] = set()
     for f, face in enumerate(faces):
         for edge in face.Edges:
             e = edges.get(edge)
             if f not in owners.setdefault(e, []):
                 owners[e].append(f)
+            if e not in seams and edge.isSeam(face):
+                # One face on both sides: a periodic surface's seam (a loft's,
+                # a revolve's), inside the skin, never its outline.
+                seams.add(e)
     face_edges = {f: [edges.get(edge) for edge in face.Edges] for f, face in enumerate(faces)}
     widths = [_width(face) for face in faces]
 
@@ -178,7 +183,7 @@ def panel_corners(shape) -> dict:
                 queue.append(g)
 
     outline = {e: next(f for f in fs if f in skin) for e, fs in owners.items()
-               if sum(1 for f in fs if f in skin) == 1}
+               if e not in seams and sum(1 for f in fs if f in skin) == 1}
     # Loops by shared vertices; a short loop is a screw hole.
     vertices = Index()
     at_vertex: dict[int, list[int]] = {}
