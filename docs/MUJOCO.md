@@ -1888,6 +1888,21 @@ nearest the settled command (`judged_reference`). It cannot be combined
 with `reference_cadence="speed"`, and a warm start onto a schedule is not
 a curriculum step (`reference` and `tracking` move).
 
+**Gait families: a switch inside a speed schedule (ADR-822).** A walk or
+trot and a gallop land their feet in other orders, so ADR-773 refuses to
+blend them. `api.task(reference_switches=[...])` states one entry per
+neighbouring pair of strides: `None` where the two blend, or a speed in
+mm/s strictly between theirs where one family gives way to the next. Across
+a switch `w` is 0 below the speed and 1 from it up, so the reference is
+one stride or the other, never a blend; the clock keeps its phase and
+turns at the stride in force. The footfall order is checked inside each
+family only (`check_schedule_order`), and the start stride and the judged
+stride are the bracketing one nearer in `w`, so they are of the family in
+force. `tracking.schedule` then carries `switches_mm_s` and a `rule` with
+`SCHEDULE_SWITCH_RULE`'s clause; a schedule with no switch is written as
+before, byte for byte. Refused: `schedule_switches_count`,
+`schedule_switch_outside_strides`, `schedule_switches_empty`.
+
 **Screening drives against it (ADR-710).** Before a design change is
 rebuilt or trained, `training/cadex_proxy.py` swaps datasheet drives, moves
 and scales mass in the exported model, and replays the task's reference

@@ -159,6 +159,41 @@ def _number(
     return result
 
 
+def _reference_switches(
+    operation: str, declared: Sequence[Any], speeds_mm_s: Sequence[float]
+) -> list[float | None]:
+    """``api.task(reference_switches=...)`` checked against the strides'
+    speeds (ADR-822): one entry per neighbouring pair, ``None`` where the two
+    blend or a speed strictly between theirs, and at least one speed."""
+
+    switches: list[float | None] = list(declared)
+    if len(switches) != len(speeds_mm_s) - 1:
+        raise _error(
+            operation, "reference_switches",
+            f"states one entry per neighbouring pair of the {len(speeds_mm_s)} "
+            "strides", len(switches),
+        )
+    for index, switch in enumerate(switches):
+        if switch is None:
+            continue
+        value = _number(operation, f"reference_switches[{index}]", switch)
+        if not speeds_mm_s[index] < value < speeds_mm_s[index + 1]:
+            raise _error(
+                operation, f"reference_switches[{index}]",
+                f"lies strictly between {speeds_mm_s[index]:g} and "
+                f"{speeds_mm_s[index + 1]:g} mm/s, the speeds of the two "
+                "strides it separates", value,
+            )
+        switches[index] = value
+    if all(switch is None for switch in switches):
+        raise _error(
+            operation, "reference_switches",
+            "names at least one switch speed; omit it to blend every pair",
+            switches,
+        )
+    return switches
+
+
 def _appearance(operation: str, value: Any) -> str:
     role = str(value).strip().lower() if isinstance(value, str) else value
     if role not in APPEARANCE_ROLES:
@@ -5482,6 +5517,7 @@ class AssemblyDomainAPI:
         reference_start: str = "phase0",
         reference_cadence: str = "fixed",
         reference_cadence_exponent: float | None = None,
+        reference_switches: Sequence[float | None] | None = None,
         body: Mapping[str, Any] | None = None,
         label: str = "",
     ) -> DomainValue:
@@ -5591,6 +5627,16 @@ class AssemblyDomainAPI:
         starts at a random phase of the stride nearest the opening command.
         The bundle's ``reference`` is the slowest stride (the one the
         dashboard plays); ``reference_schedule`` lists every stride.
+
+        ``reference_switches`` (ADR-822) splits a schedule into **gait
+        families**: one entry per neighbouring pair of strides, ``None``
+        where the two blend as above, or a speed in mm/s, strictly between
+        the two strides' speeds, where one family gives way to the next --
+        ``reference=[walk, trot, gallop], reference_switches=[None, 3000]``
+        blends the walk into the trot and switches to the gallop at
+        3 m/s. Across a switch the reference is one stride or the other,
+        never a blend, so the footfall order need only hold inside each
+        family; the clock keeps its phase and turns at the stride in force.
 
         Like ``api.mjcf`` and for the same reason, ``api.task`` is not under
         the "exactly one simulation" rule: a script may declare several,
@@ -5771,6 +5817,10 @@ class AssemblyDomainAPI:
                     "a list of strides is blended at the task's one speed goal, "
                     f"and this task declares {len(commanded)}",
                 )
+            if reference_switches is not None:
+                # ADR-822: where one gait family gives way to the next.
+                judged["reference_switches"] = _reference_switches(
+                    operation, reference_switches, speeds_mm_s)
             if reference_cadence != "fixed":
                 raise _error(
                     operation, "reference_cadence",
@@ -5815,6 +5865,11 @@ class AssemblyDomainAPI:
             judged["reference"] = gait_value
             if scheduled:
                 judged["reference_schedule"] = scheduled
+        if reference_switches is not None and not scheduled:
+            raise _error(operation, "reference_switches",
+                         "separates the gait families of a speed schedule, and "
+                         "this task's reference is not a list of strides",
+                         reference_switches)
         if reference_start not in ("phase0", "random"):
             raise _error(operation, "reference_start",
                          "must be 'phase0' or 'random'", reference_start)

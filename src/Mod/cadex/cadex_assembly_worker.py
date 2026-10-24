@@ -4217,6 +4217,12 @@ def _execute_task_bundle(
                 _gait_input(entry, component_outputs, joint_outputs)
                 for entry in properties["reference_schedule"]
             ]
+        if properties.get("reference_switches"):
+            # ADR-822: the speeds where one gait family gives way to the next.
+            declaration["reference"]["switches_mm_s"] = [
+                None if value is None else float(value)
+                for value in properties["reference_switches"]
+            ]
 
     if properties.get("body") is not None:
         # ADR-755: each slot's joint by output name; the engine resolves it.

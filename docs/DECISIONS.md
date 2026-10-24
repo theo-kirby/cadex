@@ -45568,3 +45568,58 @@ it already stated `height_scan`'s.
   60 channels and see the hurdle at exactly the grid points on it), plus
   `pixi run test-engine` and `pytest cli/tests`.
 
+
+## ADR-822 — A speed schedule may switch between gait families at a stated speed (2026-10-24, l3r1)
+
+**Context.** ADR-773 blends every neighbouring pair of a schedule's strides
+at one phase, and so refuses a pair whose feet land in other orders
+(`schedule_footfall_order`). An animal's gaits are not one family: a walk
+and a trot are symmetric, a gallop is not, and it changes from one to the
+other at a speed rather than by a blend. l3r1 measured it on leon III's
+retargeted dog clips: trot23 crosses both gallop families (the dog's and
+the cheetah's) at every one of its 26 phase origins, under every contact
+rule tried, so leon III's ADR-003 schedule (walk, trot, gallop) cannot be
+one ADR-773 blend.
+
+**Decision.** `api.task(reference_switches=[...])`, one entry per
+neighbouring pair of strides: `None` where the two blend (ADR-773), or a
+speed in mm/s, strictly between the two strides' speeds, where one family
+gives way to the next. Across a switch the blend weight is 0 below the
+speed and 1 from it up (`schedule_blend`), so the reference is one stride or
+the other, never a blend of two footfall orders. The clock keeps its phase
+and turns at the stride in force. The footfall order is checked only inside
+a family (`check_schedule_order`, used by `_reference_schedule_records` and
+`_schedule_record`). The start stride and the judged stride
+(`schedule_nearest`) become the bracketing stride nearer in the weight, so
+they are of the family in force; on a schedule without switches it is the
+nearest by speed, as before. The bundle's `tracking.schedule` gains
+`switches_mm_s`, and its `rule` gains `SCHEDULE_SWITCH_RULE`'s clause. The
+trainer's `schedule_blend` and `schedule_nearest` read it the same way.
+- **A switch speed, not a family label.** One number per pair says both
+  where the families meet and that they meet there; a label would still
+  need the speed.
+- **Strictly between the strides.** Each family's end strides are then read
+  at their own speeds, and a command never picks a stride from beyond the
+  other family's end.
+
+**Consequences.**
+- A schedule with no switch writes the bundle it always wrote: no key is
+  added and its rule is `SCHEDULE_RULE` unchanged.
+- The reference jumps at a switch, from one stride's pose to the other's at
+  the same phase. That is the gait change; a policy that tracks the
+  reference must learn to make it.
+- Refused: `schedule_switches_count`, `schedule_switch_outside_strides`,
+  `schedule_switches_empty`; the script API refuses the same three, and
+  `reference_switches` on a task whose reference is not a list.
+- No protocol, tool-surface, CLI or `pixi.toml` change. No suite test is
+  added (ADR-725: the suites hold contracts only). Verified by running
+  `docs/probes/l3r1/schedule_switch.py` on leon III's U1 bundle (walk10,
+  trot23 | 2500 mm/s | gallop27, gallop34, gallop42) and B1's dog bundle:
+  the engine and the trainer agree on the blend, the start stride, the
+  clock turn and all 30 tracking channels at every command and phase
+  tried; below the switch the reference is trot23's own row and from it up
+  gallop27's; inside a family the blend is ADR-773's; with no switch, or
+  the switch moved to walk10 | trot23, the schedule is refused
+  `schedule_footfall_order`; and the three refusals hold in the engine and
+  in the script API. Plus `pixi run test-engine`, `pytest cli/tests` and the
+  trainer's tests.

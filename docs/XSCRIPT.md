@@ -660,7 +660,12 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `reference` is the slowest stride (the one the dashboard plays),
   `reference_schedule` lists every stride, and `tracking.schedule` holds
   their tables, speeds, turns and the rule. An evaluation judges the gait
-  against the stride nearest the settled command. A cat whose rotary-gallop
+  against the stride nearest the settled command.
+  `reference_switches=[None, 3000, ...]` (ADR-822) splits the strides into
+  gait families: one entry per neighbouring pair, `None` to blend, or a
+  speed strictly between the two strides' at which the reference switches
+  from the one to the other without a blend. The footfall order need then
+  hold only inside each family. A cat whose rotary-gallop
   lag closes with speed:
 
   ```python

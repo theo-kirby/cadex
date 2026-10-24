@@ -12449,6 +12449,16 @@ SCHEDULE_RULE = (
     "the blend is at least one half"
 )
 
+#: How a schedule with gait-family switches is read (ADR-822), appended to
+#: :data:`SCHEDULE_RULE` in the bundle of a schedule that states any.
+SCHEDULE_SWITCH_RULE = (
+    "; where switches_mm_s[i] is a speed s (strides i and i + 1 are of two "
+    "gait families), w is 0 while v < s and 1 from s up, so the strides of "
+    "two families are never blended; the stride a start row or a judged "
+    "evaluation picks is then i + 1 if w > 1/2 else i, the bracketing "
+    "stride nearer in w"
+)
+
 #: How an episode of a speed-scheduled task that starts at a random phase
 #: picks its start row (ADR-773), after :data:`REFERENCE_START_ALGORITHM`'s
 #: draw of ``sample``.
@@ -12468,12 +12478,21 @@ def schedule_blend(schedule: Mapping[str, Any], speed: float) -> tuple[int, floa
     index = 0
     while index < len(speeds) - 2 and speeds[index + 1] <= v:
         index += 1
+    switch = (schedule.get("switches_mm_s") or [None] * len(speeds))[index]
+    if switch is not None:
+        # ADR-822: two gait families meet here; one or the other, never a blend.
+        return index, 0.0 if v < float(switch) else 1.0
     return index, (v - speeds[index]) / (speeds[index + 1] - speeds[index])
 
 
 def schedule_nearest(schedule: Mapping[str, Any], speed: float) -> int:
-    """The stride whose speed is nearest a command, the slower on a tie (ADR-773)."""
+    """The stride whose speed is nearest a command, the slower on a tie
+    (ADR-773); on a schedule with family switches (ADR-822), the bracketing
+    stride nearer in the blend's weight, so it is of the family in force."""
 
+    if schedule.get("switches_mm_s"):
+        index, weight = schedule_blend(schedule, speed)
+        return index + 1 if weight > 0.5 else index
     speeds = [float(value) for value in schedule["speeds_mm_s"]]
     v = abs(float(speed))
     return min(range(len(speeds)), key=lambda index: abs(speeds[index] - v))
@@ -12746,6 +12765,94 @@ def judged_reference(task: Mapping[str, Any], command_mm_s: float | None) -> Any
     return strides[schedule_nearest(scheduled, command_mm_s)]
 
 
+def footfall_crossings(before: Mapping[str, Any], after: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """Every pair of feet ``(a, b)`` that lands a before b in the stride whose
+    ``phase_offsets`` are ``before`` and b before a in ``after`` (ADR-773's
+    ``schedule_footfall_order``)."""
+
+    return sorted(
+        (a, b) for a in before for b in before
+        if float(before[a]) < float(before[b]) and float(after[a]) > float(after[b])
+    )
+
+
+def schedule_switches(declared: Sequence[Any] | None, speeds_mm_s: Sequence[float], *,
+                      context: str) -> list[float | None]:
+    """A schedule's family switches (ADR-822), one entry per neighbouring
+    pair of strides: ``None`` where the two are blended, else the speed in
+    mm/s at which the reference switches from one to the next. Absent, every
+    pair is blended (ADR-773). A switch lies strictly between its two
+    strides' speeds, so each family's own strides are read where they run."""
+
+    pairs = len(speeds_mm_s) - 1
+    if declared is None:
+        return [None] * pairs
+    switches = [None if value is None else float(value) for value in declared]
+    if len(switches) != pairs:
+        raise DynamicsError(
+            f"{context}: its speed schedule has {len(speeds_mm_s)} strides and "
+            f"states {len(switches)} switches.",
+            reason="schedule_switches_count",
+            correction="State one entry per neighbouring pair of strides: None "
+                       "where they blend, a speed in mm/s where the family switches.",
+            observed={"speeds_mm_s": list(speeds_mm_s), "switches_mm_s": switches},
+        )
+    for index, switch in enumerate(switches):
+        low, high = float(speeds_mm_s[index]), float(speeds_mm_s[index + 1])
+        if switch is not None and not (low < switch < high and math.isfinite(switch)):
+            raise DynamicsError(
+                f"{context}: its switch between stride {index} ({low:g} mm/s) and "
+                f"stride {index + 1} ({high:g} mm/s) is at {switch:g} mm/s.",
+                reason="schedule_switch_outside_strides",
+                correction="Put a family switch strictly between the speeds of "
+                           "the two strides it separates.",
+                observed={"pair": index, "switch_mm_s": switch, "between": [low, high]},
+            )
+    if all(switch is None for switch in switches):
+        raise DynamicsError(
+            f"{context}: its speed schedule states switches and none is a speed.",
+            reason="schedule_switches_empty",
+            correction="Omit the switches to blend every pair (ADR-773).",
+            observed={"switches_mm_s": switches},
+        )
+    return switches
+
+
+def check_schedule_order(clips: Sequence[Mapping[str, Any]], switches_mm_s: Sequence[Any] | None,
+                         *, context: str) -> list[float | None]:
+    """Refuse a schedule whose neighbouring strides land their feet in other
+    orders (ADR-773), except across a family switch (ADR-822); return the
+    switches, one per pair."""
+
+    switches = schedule_switches(switches_mm_s,
+                                 [1000.0 * float(clip["parameters"]["speed_m_s"]) for clip in clips],
+                                 context=context)
+    for index, clip in enumerate(clips[1:], start=1):
+        if switches[index - 1] is not None:
+            # ADR-822: a family switch; the two strides are never blended.
+            continue
+        before = clips[index - 1]["parameters"]["phase_offsets"]
+        after = clip["parameters"]["phase_offsets"]
+        crossed = footfall_crossings(before, after)
+        if crossed:
+            raise DynamicsError(
+                f"{context}: stride {index} of its speed schedule lands its feet "
+                f"in another order than stride {index - 1}: "
+                + ", ".join(f"{a} before {b}, then after" for a, b in crossed) + ".",
+                reason="schedule_footfall_order",
+                correction=(
+                    "A schedule blends two strides at one phase, so each foot "
+                    "must land in the same order in both; move a lead or a lag "
+                    "towards zero rather than past it. Write every stride's "
+                    "offsets from the same foot at 0. Two gaits whose feet "
+                    "land in other orders are two families: state a switch "
+                    "between them (ADR-822)."
+                ),
+                observed={"stride": index, "before": dict(before), "after": dict(after)},
+            )
+    return switches
+
+
 def _reference_schedule_records(
     mujoco: Any,
     reloaded: Any,
@@ -12801,26 +12908,7 @@ def _reference_schedule_records(
                 observed={"stride": index, "joints": clip["joints"],
                           "first": clips[0]["joints"]},
             )
-        before = clips[index - 1]["parameters"]["phase_offsets"]
-        after = clip["parameters"]["phase_offsets"]
-        crossed = sorted(
-            (a, b) for a in before for b in before
-            if float(before[a]) < float(before[b]) and float(after[a]) > float(after[b])
-        )
-        if crossed:
-            raise DynamicsError(
-                f"{context}: stride {index} of its speed schedule lands its feet "
-                f"in another order than stride {index - 1}: "
-                + ", ".join(f"{a} before {b}, then after" for a, b in crossed) + ".",
-                reason="schedule_footfall_order",
-                correction=(
-                    "A schedule blends two strides at one phase, so each foot "
-                    "must land in the same order in both; move a lead or a lag "
-                    "towards zero rather than past it. Write every stride's "
-                    "offsets from the same foot at 0."
-                ),
-                observed={"stride": index, "before": dict(before), "after": dict(after)},
-            )
+    check_schedule_order(clips, declared.get("switches_mm_s"), context=context)
     return clips
 
 
@@ -12840,10 +12928,13 @@ def _schedule_record(
     *,
     taken: Sequence[str],
     context: str,
+    switches_mm_s: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     """The bundle's ``tracking.schedule`` (ADR-773): every stride's table on
     one phase grid, its speed and its turn per step, and the speed goal that
-    picks between them."""
+    picks between them. ``switches_mm_s`` (ADR-822) are the speeds at which
+    one gait family gives way to the next, ``None`` between strides that
+    blend; written only when given, so every earlier bundle is unchanged."""
 
     speeds_goal = [entry for entry in goal if str(entry.get("kind")) == "speed"]
     if len(speeds_goal) != 1:
@@ -12868,6 +12959,8 @@ def _schedule_record(
             ),
             observed={"between": [low, high], "speeds_mm_s": speeds},
         )
+    switches = None if switches_mm_s is None else check_schedule_order(
+        clips, switches_mm_s, context=context)
     tables = []
     reads = None
     for clip in clips:
@@ -12884,7 +12977,8 @@ def _schedule_record(
         "periods_s": [float(clip["parameters"]["period_s"]) for clip in clips],
         "turns_per_step": [interval / float(clip["parameters"]["period_s"]) for clip in clips],
         "tables": tables,
-        "rule": SCHEDULE_RULE,
+        **({"switches_mm_s": switches,
+            "rule": SCHEDULE_RULE + SCHEDULE_SWITCH_RULE} if switches else {"rule": SCHEDULE_RULE}),
         **({"start_rule": SCHEDULE_START_RULE} if clips[0].get("start") == "random" else {}),
     }
 
@@ -13573,7 +13667,8 @@ def task_records(
         )
         if strides:
             tracking["schedule"] = _schedule_record(
-                strides, observations, schedule, goal, taken=taken, context=context)
+                strides, observations, schedule, goal, taken=taken, context=context,
+                switches_mm_s=task["reference"].get("switches_mm_s"))
         if reference.get("start") == "random":
             if strides:
                 starts = [_reference_start_records(mujoco, reloaded, clip) for clip in strides]

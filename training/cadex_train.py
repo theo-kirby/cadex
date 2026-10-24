@@ -1731,14 +1731,26 @@ def schedule_blend(xp: Any, task: dict[str, Any], told: Any) -> tuple[Any, Any]:
     v = xp.clip(xp.abs(told[..., goal_channels(task).index(str(scheduled["channel"]))]),
                 speeds[0], speeds[-1])
     index = xp.clip(xp.searchsorted(speeds, v, side="right") - 1, 0, count - 2)
-    return index, (v - speeds[index]) / (speeds[index + 1] - speeds[index])
+    weight = (v - speeds[index]) / (speeds[index + 1] - speeds[index])
+    if scheduled.get("switches_mm_s"):
+        # ADR-822: where two gait families meet, one or the other, never a blend.
+        switched = [value is not None for value in scheduled["switches_mm_s"]]
+        at = xp.asarray([float(value) if value is not None else 0.0
+                         for value in scheduled["switches_mm_s"]], dtype=told.dtype)
+        weight = xp.where(xp.asarray(switched)[index],
+                          (v >= at[index]).astype(told.dtype), weight)
+    return index, weight
 
 
 def schedule_nearest(xp: Any, task: dict[str, Any], told: Any) -> Any:
     """The stride nearest the command in ``told``, the slower on a tie
-    (ADR-773). ``CadexDynamics.schedule_nearest`` in ``xp``."""
+    (ADR-773); with family switches (ADR-822), the bracketing stride nearer
+    in the blend's weight. ``CadexDynamics.schedule_nearest`` in ``xp``."""
 
     scheduled = task["tracking"]["schedule"]
+    if scheduled.get("switches_mm_s"):
+        index, weight = schedule_blend(xp, task, told)
+        return index + (weight > 0.5).astype(index.dtype)
     speeds = xp.asarray([float(v) for v in scheduled["speeds_mm_s"]], dtype=told.dtype)
     v = xp.abs(told[..., goal_channels(task).index(str(scheduled["channel"]))])
     return xp.argmin(xp.abs(speeds - v[..., None]), axis=-1)
