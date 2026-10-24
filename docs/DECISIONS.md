@@ -45523,3 +45523,48 @@ carries the value used.
   fixed value. Verified by running: `pixi run test-engine` (157 passed, 3
   skipped) and `pytest cli/tests` (53 passed), and leon III's build and
   `cadex clearance --sweep` on this branch.
+
+## ADR-821 — A second height-scan kind, `height_scan_far`, reads the ground 0.4 to 1.8 m ahead (2026-10-24, l3r1)
+
+**Context.** l3r1 trains one leon III policy that must later jump hurdles
+and gaps (its charter's U4) and run box courses (U5). A warm start cannot
+cross a change in the actor's scan rows (`check_curriculum_change`), so
+every input the last stage needs has to be in the first bundle (leon III's
+ADR-003). `height_scan`'s grid is fixed (ADR-715) and ends 300 mm ahead of
+the body: 0.1 s of warning at 3 m/s, less than one stride, while a takeoff
+is placed a stride or more before an obstacle.
+
+**Decision.** A second scan kind, `height_scan_far`, with its own fixed grid
+`HEIGHT_SCAN_FAR_OFFSETS_MM`: 15 points along the heading from 400 to
+1800 mm ahead at 100 mm, by 3 across at -150, 0 and +150 mm, 45 channels
+`_0` .. `_44`. It reads exactly what `height_scan` reads (the body's height
+above the course or the plane, the grid turned with the heading), takes the
+same roles, and travels in the same `scans` section. Each kind's table row
+now carries its `offsets_mm`, and the bundle row states the kind's grid, as
+it already stated `height_scan`'s.
+- **A new kind, not a grid option.** A grid parameter would make a kind's
+  channel set depend on its arguments, and the surface keeps every kind's
+  names enumerable (`_OBSERVATION_SUFFIXES`). Fixed, the far grid is one more
+  enumerable set; `height_scan` and every bundle that declares it are
+  unchanged byte for byte.
+- **Why that grid.** At 100 mm along, a hurdle 100 mm deep or a 400 mm gap is
+  seen by at least one row; 1800 mm is 0.4 s at 4.5 m/s. It starts where the
+  near grid stops, so no point is read twice. ±150 mm across lies just
+  outside leon III's hind feet (±122 mm), so each side row reads the ground
+  a foot lands on.
+
+**Consequences.**
+- The trainer and the evaluator needed no change: both read a row's
+  `offsets_mm`, and the trainer names a scan channel by its grid's digest,
+  so a policy with both scans is canonical as before.
+- Scans are not sensors and stay outside the 128-channel cap, so 45 more
+  rows cost the actor inputs, not sensor budget.
+- No protocol, tool-surface, CLI or `pixi.toml` change. No suite test is
+  added (ADR-725: the suites hold contracts only). Verified by running:
+  `docs/probes/l3r1/scan_far.py` on leon III's MJCF (both rows state their
+  grids, the API's suffixes are the engine's, and over a 200 mm hurdle at
+  250, 450, 1020, 1750 and 2500 mm, straight and turned 30°, the engine's
+  `height_scan_values` and the trainer's `height_scan_vector` agree on all
+  60 channels and see the hurdle at exactly the grid points on it), plus
+  `pixi run test-engine` and `pytest cli/tests`.
+

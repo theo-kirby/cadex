@@ -484,6 +484,18 @@ channels, after its reference clock, as a depth sensor's map of the ground
 would (orun8 O2, ADR-748); a warm start across that change is refused,
 because the actor's inputs move.
 
+**Forward scan (ADR-821, 2026-10-24).** `assembly.observation(trunk,
+"height_scan_far", name="scan_far", role="policy")` is the same reading at a
+second fixed grid, where a run places its takeoff: 15 points along the
+heading from 400 mm to 1800 mm ahead, 100 mm apart, by 3 across at -150, 0
+and +150 mm, so `scan_far_0` .. `scan_far_44`, and `scan_far_{3i+1}` is the
+centre line at `400 + 100 i` mm. It starts where `height_scan` stops, so the
+two read the ground from 100 mm behind to 1800 mm ahead with no point read
+twice. Each kind's grid is `CadexDynamics.SCAN_OBSERVATION_KINDS[kind]
+["offsets_mm"]`, stated on the bundle's `scans` row, so the engine and the
+trainer read every kind alike; `docs/probes/l3r1/scan_far.py` holds them
+equal over a hurdle at five distances, the body straight and turned.
+
 ---
 
 ## 3. Three tensions to resolve before code

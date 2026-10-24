@@ -486,6 +486,9 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   across, 100 mm apart. `scan_4` is under the body. It travels in the
   bundle's `scans` section, last in every vector, and it must be
   `privileged`: the critic reads it, the policy does not.
+  `"height_scan_far"` (ADR-821) is the same reading further ahead:
+  `scan_far_0` .. `scan_far_44` at 15 points along the heading, from 400 mm
+  to 1800 mm ahead, by 3 across at -150, 0 and +150 mm.
   `assembly.reward(expression, weight=...)` terms are summed and a policy
   maximises the total, reported term by term so "which part of the reward is
   doing the work" is answerable; a cost is a positive quantity with a

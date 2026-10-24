@@ -9275,6 +9275,21 @@ HEIGHT_SCAN_OFFSETS_MM: tuple[tuple[float, float], ...] = tuple(
     for left in (-1, 0, 1)
 )
 
+#: The forward scan's grid (ADR-821): 15 points along the heading, from
+#: 400 mm to 1800 mm ahead at the same 100 mm spacing, by 3 across it at
+#: -150, 0 and +150 mm. ``HEIGHT_SCAN_OFFSETS_MM`` ends 300 mm ahead, less
+#: than one stride at a run; a takeoff over a hurdle or a gap is placed a
+#: stride or more before it, and 1800 mm is 0.4 s at 4.5 m/s. It starts
+#: where the near grid stops, so the two together see the ground from
+#: 100 mm behind to 1800 mm ahead with no point read twice. Channel ``_i``
+#: is ``HEIGHT_SCAN_FAR_OFFSETS_MM[i]``.
+HEIGHT_SCAN_FAR_LATERAL_MM = 150.0
+HEIGHT_SCAN_FAR_OFFSETS_MM: tuple[tuple[float, float], ...] = tuple(
+    (ahead * HEIGHT_SCAN_SPACING_MM, left * HEIGHT_SCAN_FAR_LATERAL_MM)
+    for ahead in range(4, 19)
+    for left in (-1, 0, 1)
+)
+
 #: Observation kinds that read the ground around a body (ADR-715). A
 #: ``height_scan`` is the body's height, in mm, above the ground at each
 #: point of :data:`HEIGHT_SCAN_OFFSETS_MM`, laid out in the body's heading
@@ -9285,11 +9300,21 @@ HEIGHT_SCAN_OFFSETS_MM: tuple[tuple[float, float], ...] = tuple(
 #: against ``MAXIMUM_OBSERVATION_CHANNELS``. ``role: privileged`` keeps it
 #: to the critic, the reward and the terminations (orun7 O5); ``role:
 #: policy`` gives it to the actor too, as a depth sensor's map of the ground
-#: ahead (orun8 O2, ADR-748).
+#: ahead (orun8 O2, ADR-748). A ``height_scan_far`` is the same reading at
+#: :data:`HEIGHT_SCAN_FAR_OFFSETS_MM`, the ground a run reaches in the next
+#: stride or two (ADR-821). Each kind's ``offsets_mm`` is its grid, and the
+#: bundle states it on every row, so the engine and the trainer read any
+#: kind alike.
 SCAN_OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
     "height_scan": {
         "target": "component",
         "suffixes": tuple(f"_{index}" for index in range(len(HEIGHT_SCAN_OFFSETS_MM))),
+        "offsets_mm": HEIGHT_SCAN_OFFSETS_MM,
+    },
+    "height_scan_far": {
+        "target": "component",
+        "suffixes": tuple(f"_{index}" for index in range(len(HEIGHT_SCAN_FAR_OFFSETS_MM))),
+        "offsets_mm": HEIGHT_SCAN_FAR_OFFSETS_MM,
     },
 }
 
@@ -12887,8 +12912,8 @@ def _scan_records(
             "body": str(record["object_name"]),
             "body_id": int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY,
                                              str(record["object_name"]))),
-            "offsets_mm": [[float(ahead), float(left)]
-                           for ahead, left in HEIGHT_SCAN_OFFSETS_MM],
+            "offsets_mm": [[float(ahead), float(left)] for ahead, left
+                           in SCAN_OBSERVATION_KINDS[str(record["kind"])]["offsets_mm"]],
             "channels": [str(channel) for channel in record["channels"]],
             "unit": "mm",
             # The world position's metres to the channel's mm, so the trainer

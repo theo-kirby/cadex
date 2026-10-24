@@ -1130,6 +1130,8 @@ _OBSERVATION_KINDS: dict[str, str] = {
     # Not a sensor (ADR-715): the body's height above the ground at a fixed
     # grid round it. ``CadexDynamics.SCAN_OBSERVATION_KINDS``.
     "height_scan": "component_link",
+    # ADR-821: the same reading on a forward grid, 0.4 to 1.8 m ahead.
+    "height_scan_far": "component_link",
 }
 
 #: What each observation kind's declared name expands to. A vector channel
@@ -1162,6 +1164,8 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     "acceleration": ("",),
     # One per point of ``CadexDynamics.HEIGHT_SCAN_OFFSETS_MM`` (ADR-715).
     "height_scan": tuple(f"_{index}" for index in range(15)),
+    # One per point of ``CadexDynamics.HEIGHT_SCAN_FAR_OFFSETS_MM`` (ADR-821).
+    "height_scan_far": tuple(f"_{index}" for index in range(45)),
 }
 
 
@@ -3689,6 +3693,12 @@ class AssemblyDomainAPI:
           ``api.component``. ``role="privileged"`` keeps it to the critic,
           the reward and the terminations; ``role="policy"`` gives the
           actor the ground ahead as well, as a depth sensor would (ADR-748).
+        * ``height_scan_far`` -- the same reading further ahead (ADR-821):
+          45 points, 15 along its heading (from 400 mm to 1800 mm ahead,
+          100 mm apart) by 3 across (-150, 0 and +150 mm), where a run
+          places its takeoff over a hurdle or a gap. ``name="scan_far"``
+          gives ``scan_far_0`` .. ``scan_far_44``; ``_3i + 1`` is the
+          centre line at ``400 + 100 i`` mm. Roles as ``height_scan``.
 
         **A vector channel expands to suffixed names.** ``name="hand"`` on a
         ``component_position`` gives ``hand_x``, ``hand_y`` and ``hand_z``;
