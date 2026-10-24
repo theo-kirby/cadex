@@ -1,313 +1,248 @@
-# Goal: leo v06 on sphere feet: speed, then cheetah motion, then dog motion
+# Goal: leon I in four styles — soft, sleek, organic, crisp — for the owner to choose
 
-Verified against source: 2026-10-23. Operator charter for orun19, a 72 h
-run. It replaces orun18 (`.ouroboros/history/orun18.md`, merged at
-`44ec3656`), which the owner stopped at 7.2 h to redesign leo first.
-
-**Why this run exists (owner, 2026-10-23).**
-- **orun18 cleared the trainer.** The same Go1 model and task, trained
-  through `training/cadex_train.py`, tracked within 6% of MuJoCo
-  Playground's own recipe, in less wall time (A3, `docs/probes/orun18/a2.md`).
-- **The gap is leo's body and task.** On v05:
-  - on speed alone, leo held a 2.59 m/s trot with 0/50 falls but did not
-    track the command (`b1-s2-180.md`);
-  - imitating the dog capture, it galloped rotary but settled at 1.6–1.9 m/s
-    whatever it was commanded (`c3-s1-50.md`).
-- **Every v05 policy ran on its toes with the hind paw pin shut.** The pad
-  touched 15 mm behind the pin, so stance load locked the pin at any spring
-  rate (governor `tall-bay-3130`).
-- **So the owner redesigned leo before this run (v06, below):** sphere feet
-  and heel pads, and no front wrists. The run trains it; it does not change
-  it.
-
-The human owns this file; unattended roles never edit it.
+Verified against source: 2026-10-24. Operator charter for orun20, a 24 h
+design-only run. It follows orun19 (`.ouroboros/history/orun19.md`, merged at
+`d2b161ca`).
 
 ## Mission
 
-1. **Make leo v06 track a commanded speed on speed alone.** Use orun18's B1
-   task, with no style terms, and compare it with v05's B1.
-2. **Give it a gait from cheetah motion.** Retarget AcinoSet's strides to
-   v06 and train leo on them.
-3. **Then from dog motion.** Do the same with the AI4Animation dog's
-   strides, and compare the two.
-4. **Then push one policy as fast as it will go** (X1), for as long as
-   the run has time.
+Leon I (`~/cadex-projects/leon`, tag `leon-i`) works as a mechanism. Its shell
+does not yet look the way the owner wants. Too many panel outlines end in sharp
+corners, the nose comes to a hard point, and the ears are beveled polygons rather
+than round. This run builds the same robot in four aesthetic styles and puts them
+side by side, so the owner can pick one, or parts of several.
 
-Faster is always better, in every config (owner, 2026-10-23): running
-above the command is never a miss.
+1. **Soft / rounded (required).**
+   - Every panel's outline corner is rounded: the corner of the shape, not the
+     bend in the panel's surface.
+   - The face's corners are rounded too: the nose tip, the muzzle, the brow and
+     the jaw.
+   - The ears are round half-discs, not beveled facets.
+2. **Sleek / streamlined.** Fewer, larger panels, with long continuous surfaces
+   and tight seams, along a cheetah's lines.
+3. **Organic / anatomical.** Panels shaped like the muscles under them
+   (shoulder, haunch, ribcage), and a sculpted, softer face.
+4. **Crisp / refined faceted.** Keep today's faceted language but make it
+   deliberate: consistent chamfers and bevels, no needle points, and a geometric
+   face done well.
+5. **A comparison the owner can choose from.** All four, plus leon I, from
+   identical cameras, with their numbers in one table.
 
-If the loop achieves only one thing, it is **leo v06 tracking a commanded
-speed**: a speed table at four or more commands, beside v05's B1.
+If the loop achieves only one thing, it is **the soft / rounded leon**, built
+clean and shown beside leon I.
 
-## The machines
+## The machine
 
-- **Leo is `~/cadex-projects/leo` at tag `leo-v06`** (project commit
-  `356e547`, accepted revision `62e391eb`, script
-  `~/orun19-queue/leo_v06.py`). **The model is frozen.** No model changes;
-  new tasks are written in `script.py` as before.
-  - The `leo-v02` … `leo-v06` tags are never moved.
-  - v06's changes from v05 (owner, 2026-10-23):
-    - **Hind feet:** the paw, paw pin, spring, toes and claws are gone. The
-      metatarsus ends in a white ball, r 30 mm, and a white heel pad, r 16
-      mm, sits on a short lever behind the hock.
-      - Standing on the balls is the toe stance.
-      - Near hock −40° ball and heel pad both touch, which is plantigrade.
-      - Past that it rests on the heel.
-    - **Fore legs:** the wrist drive (the second motor at the elbow), its
-      crank, rod, pastern and the carpus pin are gone. The forearm runs
-      straight from the elbow to a white ball, r 22 mm, at v05's standing
-      height. Each fore leg has four drives: abduction, scapula, shoulder
-      and elbow. The elbow keeps v05's travel.
-    - **Hind hock:** unchanged. Both motors are at the knee and the
-      parallelogram linkage runs down the inside of the shin.
-    - **Totals:** 30.68 kg (v05 31.55) and 24 actuated drives (v05 26).
-      Clearance: static pairs 14 → 6, swept pairs 8 → 0, no new pair.
-    - **Tasks:** v06 builds only the `speed` task. Without the fore wrist
-      the engine's trot (580 mm) and gallop (700 mm) reference gaits cannot
-      be generated: the fore foot cannot lift 40 mm with scapula or elbow
-      at a stop. So the orun8–9 trot-tracking tasks and the old gallop task
-      are not built.
-  - orun18's evidence on v05, for comparison:
-    - B1 is `runs/b1-s2/` at 180: 1.84 / 2.59 / 1.85 / 1.80 / 1.62 m/s at
-      700 / 1500 / 2400 / 3500 / 5000 commanded;
-    - C3 (dog) is `runs/c3-s1/` at 50;
-    - the C4 cheetah bundle was built on v05 and never trained.
-- **The trainer** is `training/cadex_train.py`, from `~/cadex-train-venv`
-  (brax 0.14.2, jax 0.7.2, mujoco-mjx 3.10.0), cleared by orun18 A3.
-- **The motion:**
-  - AcinoSet's cheetah (cited per orun18's D5a) is in `~/mocap/acinoset/`;
-  - the AI4Animation dog (CC BY-NC 4.0) is in `~/mocap/`.
+- **Leon I is the base:** `~/cadex-projects/leon` at tag `leon-i`, script
+  `~/leon-queue/leon_i5.py`. It is leo v06 (sphere feet, heel pads, no fore
+  wrists) plus three changes:
+  - an AK10-9 spine pitch drive;
+  - flank panels on the saddle;
+  - the v06 thigh panels.
 
-  The retargeting code is in `docs/probes/orun18/`: `retarget.py`,
-  `acino_retarget.py`, `acino_strides.py`, `c3_bundle.py` and
-  `queue_bundle.py`. The licence terms in `docs/probes/orun18/SOURCES.md`
-  carry over unchanged.
-- **Measured on v05:** about 70–90 s an iteration at 4096 envs.
+  Its clearance baseline:
+  - static: 6 known pairs (the hind rod/crank/meta contacts and the knee's
+    missed contact);
+  - swept: 0;
+  - panels: pass.
 
-## Owner decisions
+  It weighs 31.3 kg, with 24 drives (revision `092997dd`). It is in the leon project's
+  `DECISIONS.md` ADR-002.
+- **The mechanism is frozen.** These stay exactly as leon I has them:
+  - joints, their axes and limits;
+  - drives and links;
+  - collision geometry;
+  - the MJCF's joints and actuators.
 
-- **O1. The body is v06, frozen.** No model changes this run.
-  - A measurement that shows the body is the limit goes in the report as a
-    recommendation for the next model.
-  - A task that needs a model change is not written.
-- **O2. Speed only means speed only (orun18's D4, kept).**
-  - The task keeps:
-    - the speed command and `track_speed`;
-    - staying upright and alive;
-    - torque, energy and action-rate regularisers;
-    - terminations.
-  - It drops every style term: the heel, paw, lag, sync, scuff and
-    reference terms.
-  - Footfall order, flight, stride and the heel pad's share of stance are
-    measured and reported, not rewarded.
-- **O3. Tracking means at least the command; faster is better.** A speed
-  policy "tracks" when its speed over the last 2 s of each judged seed is
-  no more than 10% under the command at every judged command up to its top.
-  Running over the command is never a miss, in S, M1, M2, L1 or X1 (owner,
-  2026-10-23); report the overshoot, but rank faster policies higher.
-  Judgements made before this change are re-read under it, not re-run.
-  Changes to make it track are, in this order:
-  - the command curriculum and its sampling;
-  - `track_speed`'s shape and weight;
-  - the regularisers' weights.
-
-  Each change is screened alone against the last, so the cause is known.
-- **O4. Motion maps onto v06's joints.**
-  - The cheetah's and dog's strides are retargeted onto:
-    - v06's hind legs (hip, knee, hock), with the ball as the foot;
-    - its fore legs (abduction, scapula, shoulder, elbow), with the ball as
-      the foot and no wrist: the capture's carpus and digit angles are
-      dropped, and the fore foot is fitted at the ball;
-    - its spine and, where the capture has them, its tail and head.
-  - The motion tasks follow orun18's D6: tracking plus speed plus O2's
-    regularisers, with no style terms.
-  - An adversarial motion prior (AMP) comes only if tracking proves too
-    rigid, and it needs an ADR (from ADR-791) and its tests.
-- **O5. Cold, sized, one trainer at a time (orun18's D7, kept).**
-  - Every changed task trains cold.
-  - Screens run 100–150 iterations and are judged at 50 and at the end.
-  - Time the first ten iterations and set `budget_s` to the iterations
-    asked for plus 20%.
-  - Keep the GPU busy, with one trainer at a time.
-  - A long run (200–400 iterations) is a warm start from a screen, on the
-    same task.
-- **O6. Torque, symmetry, a clean simulation (orun18's D8, kept).** Every
-  judged number carries:
-  - the worst drive's RMS over rated and its peak margin;
-  - left against right;
-  - which drives sit at their clamp, and on what share of frames;
-  - no NaN, and the loops' closure (within 2 mm) reported.
-- **O7. Straight lines, flat ground.** No turning, leaping or terrain.
+  A style changes only:
+  - shell panels and their formers, posts and screws;
+  - the face's and ears' shell parts;
+  - tail and leg covers;
+  - colours and finish, if a style calls for them.
+- **What the owner said about form:**
+  - Form follows function, never "look engineered".
+  - Curved panels are good when they wrap the mechanism. Cosmetic shells over
+    nothing are a defect.
+  - Styles are options over one general base, not fixed rules.
 
 ## Done criteria
 
-- [ ] **S1. Leo v06 on speed alone.**
-  - It trains cold on orun18's B1 task (`b1-s2`'s weights, rebuilt on v06's
-    24 drives), with speed commands up to 5 m/s, for 150–200 iterations.
-  - It is judged at 50 and at the end at 0.7, 1.5, 2.4, 3.5 and 5.0 m/s
-    commanded, beside v05's b1-s2-180. Each judgement gives:
-    - tracked speed (the last 2 s);
-    - falls;
-    - footfall order and flight;
-    - the heel pad's share of hind stance;
-    - O6's numbers.
-- [ ] **S2. It tracks the command.**
-  - A v06 speed policy tracks (O3) at four or more commands from 0.7 m/s up
-    to its top, with 0 falls on the judged seeds.
-  - The report gives the top tracked speed and its Froude number, beside
-    v05's B1 (Fr 1.73) and Go1's.
-  - If S1 does not track, O3's changes are screened in order until one
-    does; the report says what each moved.
-- [ ] **M1. Leo v06 on the cheetah.**
-  - AcinoSet's steady strides (orun18 C4's three slowest, and faster ones if
-    v06 reaches them) are retargeted to v06 per O4, with foot slip and limit
-    violations measured.
-  - It trains cold and is judged at three or more commands beside S2's best
-    and v05's B1, with whether the commanded speed is held.
-  - A film shows it beside the retargeted clip.
-- [ ] **M2. Leo v06 on the dog.**
-  - orun18's C3 strides (gallop27/34/42) are retargeted to v06 the same way
-    and trained cold.
-  - It is judged beside M1, S2 and v05's c3-s1-50.
-  - The report says which motion fits v06 better: foot misses, footfall
-    order, held speed, torque.
-- [ ] **L1. The long run.**
-  - Whichever of S2, M1 and M2 reads best is trained long (O5), and judged
-    at the end on the same tables.
-  - The report says what the extra iterations bought.
-- [ ] **F1. The films**, on the run's page:
-  - v06 standing, then at its tracked speeds;
-  - S against v05's B1 at the same commands;
-  - M1 and M2 beside S at the slow and fast ends, and beside their clips;
-  - L1 at its best.
-- [ ] **X1. Top speed.**
-  - Starting from the fastest v06 policy so far, push one policy to the
-    highest speed it holds over the last 2 s with 0 falls on the judged
-    seeds, any gait.
-  - Anything in the task may change for it: the command ceiling above
-    5 m/s, `track_speed` rewarding speed past the command, curricula,
-    regulariser weights, warm starts. v06 stays frozen (O1), and O5 and
-    O6 still apply.
-  - Each screen is judged beside the previous top, with its Froude number
-    and O6's numbers; the report gives the best beside v05's and Go1's.
-- [ ] **R1. The closing report.** `docs/probes/orun19/REPORT.md` gives:
-  - each criterion's numbers;
-  - what v06's body allowed against v05, and what binds it now (drive,
-    foot or stride);
-  - what was not tested;
-  - the next run's recommendation, including any model change the evidence
-    asks for.
+- [ ] **K1. The comparison kit.**
+  - One command renders any leon project from fixed cameras on the dark floor
+    (the dashboard's palette, `docs/DASHBOARD.md`):
+    - hero three-quarter;
+    - side;
+    - front;
+    - three-quarter rear;
+    - top;
+    - a head close-up.
+  - It also assembles a labelled grid of several projects per camera
+    (`cadex hero-grid` where it fits).
+  - The run's page carries leon I's set.
+- [ ] **K2. Corner measures.**
+  - Each build reports two numbers:
+    - the share of sharp edges (the concept sheet's "sharp edges");
+    - the smallest outline-corner radius on its shell panels, with a count of
+      corners under 4 mm.
+  - Both are measured on leon I as the baseline.
+- [ ] **S1. Soft / rounded leon** (`~/cadex-projects/leon-soft`).
+  - Every shell panel's outline corners are rounded to at least 6 mm, or as
+    much as the panel's width allows. The report names each panel kept
+    smaller and why.
+  - The nose tip and the face's corners are rounded. No point of the face
+    shell is sharper than a 4 mm radius.
+  - The ears are round half-discs, at least 10 mm in radius at the tip.
+  - The panel surfaces keep wrapping the mechanism.
+  - The sharp-edge share falls well below leon I's.
+- [ ] **S2. Sleek / streamlined leon** (`~/cadex-projects/leon-sleek`).
+  - It has fewer panels than leon I and longer runs between seams.
+  - The report gives the panel count and the longest panel against leon I.
+- [ ] **S3. Organic / anatomical leon** (`~/cadex-projects/leon-organic`).
+  - Its panels follow the muscle groups under them.
+  - Its face is sculpted rather than faceted.
+  - The report says which muscle each panel stands for.
+- [ ] **S4. Crisp / refined faceted leon** (`~/cadex-projects/leon-crisp`).
+  - Its bevels and chamfers are consistent, one or two sizes used
+    throughout.
+  - It has no needle points.
+  - Its face is geometric and deliberate.
+- [ ] **G1. Every style passes leon I's gates.**
+  - Each style is a clean, accepted build.
+  - Clearance does not regress against leon I:
+    - static: only leon I's 6 known pairs;
+    - swept: 0;
+    - panels: pass.
+  - The MJCF's joints, limits and actuators are identical to leon I's
+    (diffed).
+  - Total mass is within ±5% of leon I's.
+  - It stands, with no NaN: the keyframe holds 3 s on the balls.
+- [ ] **C1. The comparison.**
+  - It covers leon I and the four styles, from K1's cameras, with head
+    close-ups.
+  - It has a table of each style's numbers:
+    - mass;
+    - panel count;
+    - sharp-edge share;
+    - smallest corner radius;
+    - clearance;
+    - build time.
+  - It is on the run's page, and committed as PNG under
+    `docs/probes/orun20/`.
+- [ ] **R1. The report.** `docs/probes/orun20/REPORT.md` gives:
+  - what each style changed;
+  - what the engine or the script needed to do it;
+  - what was tried and dropped;
+  - which pieces of each style could combine, with the owner's choice left
+    open.
 
 ## Horizon ladder
 
 - **short-term:**
-  1. Write S1's task on v06 from b1-s2's script. Its paw-pin and wrist
-     channels are gone with the model. Build it (12–15 min, in the
-     background), time ten iterations and launch it cold.
-  2. While S1 trains: adapt the retargeting to v06's legs (O4) and
-     retarget the cheetah's strides. Measure slip and limits, film the clip
-     and build the M1 bundle.
-  3. Judge S1 at 50 with orun18's `speed_judge.py` and `b1_summary.py`,
-     beside b1-s2-180.
-  4. While M1 trains: retarget the dog's strides the same way and build the
-     M2 bundle.
+  1. K1: the camera set and grid, rendered for leon I and on the run's page.
+  2. K2: measure leon I's sharp edges and corner radii.
+  3. Copy leon I into the four style projects, the way leon was copied from
+     leo:
+     - its script from `~/leon-queue/leon_i5.py` (or tag `leon-i`);
+     - its `agent.json`, `.gitignore` and `docs/`;
+     - fresh history, with the first build as that project's baseline.
+  4. Soft, first: find how to round a panel's outline corners. Pick the
+     cheapest thing that works:
+     - rounded region outlines in the script (the regions are boxes today);
+     - an option on `part.skin`;
+     - fillets on the cut panel.
+
+     Prove it on one panel, then roll it out.
+  5. Soft: round the nose tip and the face's corners, then turn the ears into
+     round half-discs.
 - **medium-term:**
-  1. S1 to its end, then S2: screen O3's changes one at a time until v06
-     tracks.
-  2. M1: train it cold and judge it beside S2 and v05's B1.
-  3. M2: train it cold and judge it beside M1.
-  4. F1's films on the run's page.
+  1. S1 to completion and G1 on it, then C1's first comparison: leon I beside
+     soft.
+  2. S2, S3 and S4, each built and through G1, one change at a time.
+  3. C1 with all five.
+  4. Anything that proves general (rounded outlines, round ears) goes into the
+     engine or `CadexAgentStyle.creature.md` as an option, never a rule, with
+     an ADR.
 - **long-term:**
-  1. L1: the long run of whichever reads best, then judge it.
-  2. If tracking motion proves too rigid: AMP (O4), with an ADR and tests,
-     screened against M1.
-  3. A second long run, or a screen that combines speed tracking with the
-     better motion's clip, if L1 leaves a clear next step.
-  4. Fold what this run proves into `training/RECIPE.md` (sphere feet,
-     speed first, motion over reward terms) and the leo project's docs.
-  5. X1: sprint screens, each warm or cold from the fastest so far,
-     raising the top speed one change at a time.
-  6. Keep every gate green, every doc true, `STATE.md` folded, and R1
-     current.
+  1. A second round on each style, after reading the comparison: fix what
+     reads worst in each.
+  2. Mixes: the soft face on the sleek body, the organic haunch on the soft
+     body. Each mix is a project of its own, if the styles' pieces combine.
+  3. R1, kept current.
+  4. Keep every gate green, every doc true, `STATE.md` folded.
 
 ## Constraints
 
 **Standing:**
 - Obey AGENTS.md, the licensing rules and the process boundaries.
   - The repository carries no GPL or AGPL code.
-  - Training stays offboard in `training/`, whose `cadex_train.py` imports
-    only the standard library at module scope.
   - `CadexDynamics.py` stays unreachable from `cadexd` (ADR-102).
 - Never commit any of the following:
   - secrets or private hostnames;
   - build outputs;
   - full transcripts;
   - policy binaries, checkpoints or rollout traces;
-  - fetched third-party files: motion capture, or anything derived from the
-    capture data (CC BY-NC, and AcinoSet per orun18's D5a).
+  - fetched third-party files.
 - Do not hand-edit `STATE.md`, `PLAN.md` or state claims.
 
 **This run:**
-- **Projects the run writes:**
-  - `~/cadex-projects/leo`: tasks only, on the frozen v06 model.
-  - Every other project is read-only.
-- **Motion data stays in `~/mocap/`.** The repository gets only
-  retargeting code and hashes.
-- **One training run at a time on the 5090.** The machine lock is the
-  arbiter. The CLI suite runs with the GPU hidden
-  (`CUDA_VISIBLE_DEVICES=`).
-- **Long training does not block an iteration.**
-  - Cadex runs start detached through `cadex_cli.loop` (`register`,
-    `retain_training_view`, `launch`), so the dashboard follows them.
-  - Never use a transient service: it kills the trainer.
+- **Projects the run writes:** `~/cadex-projects/leon-soft`, `leon-sleek`,
+  `leon-organic`, `leon-crisp`, and any mix project it creates
+  (`leon-mix-*`).
+  - `~/cadex-projects/leon`, `leo` and every other project are read-only.
+- **The mechanism is frozen** (The machine, above). A change that would move a
+  joint, a drive, a link or a collision shape is out of scope: report it, and
+  do not make it.
+- **No training, and no GPU work.** This is a design run.
 - **Builds.**
-  - A leo build takes 12–15 minutes and goes to the background.
+  - A leon build takes 12–15 minutes and goes to the background.
+  - A first build in a fresh project takes longer, with no part cache.
+  - At most two builds run at once (each FreeCADCmd is capped at 16 GB:
+    `ulimit -v 16000000`).
   - The project's `agent.json` timeout stays at most 3600 s.
-  - A direct `FreeCADCmd` runs under `ulimit -v 16000000`.
-- **The protocol and tool surface stay a contract** (AGENTS.md).
-  - An engine change gets an ADR from ADR-791 and the engine and CLI
-    suites.
-  - A `training/` change gets an ADR and the trainer's tests.
+  - OCCT fillets on curved shells have refused or segfaulted before (leo's
+    domed-face lab). Prefer constructions that are round by shape (rounded
+    outlines, tori, spheres, rounded sketches) where a fillet fails, and
+    record each failure.
+- **Engine changes are allowed** when a style needs one.
+  - Each gets an ADR from ADR-792, the engine and CLI suites, and
+    `pixi run build-engine`.
+  - The protocol and tool surface stay a contract (AGENTS.md).
+- **Images:**
+  - every render is on the dark floor;
+  - committed images are PNG, ≤ 300 KB each, under `docs/probes/orun20/`;
+  - full-size renders stay in the projects' `review/` folders.
 - **The dashboard stays read-only.** The actor may serve it on 127.0.0.1;
   it never runs `tailscale serve` or binds a public address.
-- Committed images are PNG, ≤ 300 KB each, under `docs/probes/orun19/`, on
-  the dark floor. Films live outside the repo and on the run's page.
 - No role starts, stops or restarts the loop or signals its process. Kill
   stray processes by PID, never with a broad `pkill` pattern.
 
 ## Owner notes
 
 - **The run's page is the owner's view.** The scribe keeps it, showing:
-  - where S, M and L stand;
-  - each judged run's speed table beside v05's;
-  - training curves;
-  - the newest films.
+  - each style's newest hero and head close-up beside leon I's;
+  - the C1 table.
+
+  The owner chooses from it, so it has to show the styles, not describe them.
 - **Gates run in the foreground** and finish within the shell's 10-minute
   limit.
 - **Lean suites (ADR-725).** Add a test only for a contract or a regression
   that actually happened.
-- **What came before:**
-  - **orun12–orun17:** about 60 h of style screens on feline v07 and leo
-    v02–v05, with 0 criteria ticked.
-  - **orun18:** the trainer was cleared. Leo's speed-only and dog-motion
-    policies ran on their toes and did not track the command.
-  - **Speed:** the best on any cat was 4.64 m/s, with few style terms
-    (orun10).
-- **Probes to reuse:**
-  - from `docs/probes/orun18/`: `speed_judge.py`, `b1_summary.py`,
-    `froude.py`, `retarget.py`, `acino_retarget.py`, `acino_strides.py`,
-    `c3_bundle.py`, `retarget_film.py`, `side_film.py`;
-  - `orun13/clearance_diff.py`.
-
-  Put this run's probes under `docs/probes/orun19/`.
-- **Engine caps:** 32 reward terms, 128 observation channels, 64 parameters
-  per script (leo is at the cap, so new knobs are literals).
+- **Useful from before:**
+  - leo's head lab notes (`~/cadex-projects/leo/DECISIONS.md`, and the leo
+    memory): sphere-cap domed faces failed in OCCT. Face crease radii 26/18/14
+    were the owner's accepted "rounder" face on leo v01.
+  - `cadex clearance` and `--sweep`, and `docs/probes/orun13/clearance_diff.py`,
+    diff a build against leon I.
+  - The stand check: load the MJCF, hold the keyframe 3 s, check for NaN and
+    that the balls carry the weight.
 
 ## Question policy
 
 - Resolve reversible choices autonomously, with the smallest measured step
-  towards the highest-ranked open criterion. The order is S1, S2, M1, M2,
-  L1, F1, R1. Retargeting may be done at any time while something trains.
+  towards the highest-ranked open criterion. The order is K1, K2, S1, G1 on
+  S1, then S2–S4, C1, R1.
+- Taste calls inside a style's brief are the run's to make. Make them
+  visibly, so the owner can compare them, and say which were made.
 - Code and accepted artifacts outrank docs.
 - A pre-existing test failure is recorded and left alone, unless the unit's
   own change touches it.
@@ -318,11 +253,11 @@ speed**: a speed table at four or more commands, beside v05's B1.
 ## Exhaustion policy
 
 `report_done`.
-- Once S1–F1 have evidence, work X1 for the rest of the run. Write R1 and
-  claim done only after two X1 screens in a row fail to raise the top
-  speed. Two consecutive critic acceptances stop the run.
-- Until then, work the highest-ranked open criterion, then the long-term
-  rung.
+- Once every criterion has evidence and the comparison is on the page, work
+  the long-term rung: a second round on each style, then mixes.
+- Write R1 and claim done when the second round is in, or when two rounds in
+  a row on the weakest style fail to improve it.
+- Two consecutive critic acceptances stop the run.
 - If the stop arrives first, report how far each criterion got. Do not
   redefine success.
 
@@ -330,21 +265,19 @@ speed**: a speed table at four or more commands, beside v05's B1.
 
 - At every accepted commit that touches code, run:
   - `pixi run test-engine`;
-  - `CUDA_VISIBLE_DEVICES= pixi run python -m pytest cli/tests`;
-  - for `training/` changes, its tests from `~/cadex-train-venv`.
+  - `CUDA_VISIBLE_DEVICES= pixi run python -m pytest cli/tests`.
 - Python changes under `src/Mod/cadex/` need `pixi run build-engine` before
   the CLI's engine-needing tests count.
-- **A judged run is reported with:**
-  - its source checkpoint;
-  - tracked speed per command;
-  - falls;
-  - O6's numbers;
-  - the v05 run it is compared with.
-- **The critic checks numbers at their source.** For every judged run, it
-  opens at least one cited evaluation or judging output and checks the
-  report against it.
-- **The critic checks licences.** No capture data or derivative is
-  committed.
+- **A style is reported with:**
+  - its accepted revision;
+  - G1's numbers against leon I;
+  - its renders from K1's cameras.
+- **The critic looks at the pictures.** For every style claimed, it opens the
+  newest hero and head close-up and checks that they show what the claim
+  says: rounded corners where rounded is claimed, a round ear where round is
+  claimed.
+- **The critic checks numbers at their source:** the build's verdicts and the
+  MJCF diff.
 
 ## Reconcile
 
