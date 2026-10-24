@@ -45443,3 +45443,47 @@ as `["goal.range"]`) and `test_anything_else_about_a_goal_may_not_move`
 (channels, kind, unit, resample and ramp each refused); the trainer's
 suite passes from `~/cadex-train-venv`. Used first by orun19's X1c
 (`docs/probes/orun19/x1c-ceil.md`).
+
+## ADR-792 — `cadex hero --only views`: fixed cameras from the design's front, and a labelled grid (2026-10-24, orun20)
+
+**Context.** orun20 builds leon I in four shell styles for the owner to choose
+from, and K1 asks for one command that renders any leon project from fixed
+cameras (hero three-quarter, side, front, three-quarter rear, top, and a head
+close-up) on the dark floor, and a labelled grid of several projects per
+camera. `cadex hero`'s five stills are each a different look from a
+different three-quarter yaw in absolute terms, and none frames a part of the
+design; `cadex hero-grid` tiled stills without saying which project was
+which. Also measured: on this machine `cadex hero` on the GPU (ANGLE over
+Vulkan) returns blank white frames with no WebGL renderer reported, while
+`--software` (SwiftShader) draws leon I correctly, about 70 s a 2560×1440
+still.
+
+**Decision.**
+- A sixth hero item, `views`, made only when asked for (a bare `cadex hero`
+  makes what it made before). It writes `view-{hero,side,front,rear,top,
+  head}.png` at 1920×1080, drawn at twice that, in Studio on the dark mat.
+  Yaws are measured from the design's front: the direction, in plan, from
+  the design's centre to the centre of its focus parts, the parts whose names
+  match `--focus` (default a creature's head parts, a name segment `head`,
+  `skull`, `jaw`, `muzzle`, `snout`, `nose`, `face`, `cheek`, `brow`, `eye`
+  or `ear`). So a design shot from any heading is shot alike, and the head
+  close-up is framed by the focus parts' own outline.
+- The scene gains `boundsOf(names)` and `screenBox(names)` (the outline of
+  those parts alone); the hero page gains `focus(pattern)` and a `parts`
+  option on `fitCamera`.
+- `cadex hero-grid` labels each tile with its project's name, takes a view
+  name as `--still`, and `--tile-width` scales the tiles (so a five-project
+  grid can be committed small).
+
+**Consequences.**
+- Two projects, or two revisions of one, compare shot for shot.
+- A design with no part named for its head errors the views alone (`--focus`
+  names other parts); the other items are unaffected.
+- `hero-grid` output now carries labels; there was no consumer that relied
+  on unlabelled tiles.
+- No engine, protocol, tool-surface or `pixi.toml` change. The page code
+  changes the hero's `style_sha256`.
+
+**Evidence.** leon I (`~/cadex-projects/leon`, rev `092997dd`) rendered with
+`cadex hero --only views --software --no-engine --out <scratch>`; its six
+views and a labelled grid are under `docs/probes/orun20/k1/`.

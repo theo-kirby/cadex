@@ -1,6 +1,6 @@
 # DASHBOARD.md — The dashboard, Cadex's only UI
 
-Verified against source: 2026-10-23. [Cadex-new]
+Verified against source: 2026-10-24. [Cadex-new]
 
 This is the design specification for the dashboard: the pages `cadex app`
 and `cadex review` serve (`cli/cadex_cli/review_server.py` and
@@ -1144,6 +1144,7 @@ when it has one (`--software` forces SwiftShader, about thirty times slower).
 | `rollout.mp4` | The chosen rollout at 1920×1080 and 30 fps, with the clock. The camera is this page's follow rig (§10), framed so the design's standing height is 42% of the frame. The last pose is held for 0.8 s. |
 | `hero-landscape.mp4`, `hero-square.mp4` | 1920×1080 and 1080×1080, 30 fps, H.264. **The turn** is one revolution in 12 s at constant speed through the 30° lens. Meanwhile the camera cranes down from 36° to 21° above the floor and pushes in by 12%, both eased. It is framed so that every view of that move fills 90% of the frame, centred. It starts in Clay. At 2.7 s a diagonal edge sweeps from the top left to Aluminium, at 5.9 s to the wireframe, and at 9.1 s to the design's own materials (Studio). Each wipe takes 0.55 s, eased in and out (cubic), and the edge turns from 38° to 16° off vertical as it crosses. The edge is drawn additively: a white core, a cyan fringe behind it and an amber one ahead, a narrow band of light, a glint running along it, and a flash over what it has just uncovered. **The rollout** follows: its first 6 s, without the clock. **The training curves** come last: reward per step (with the best marked) and loss, drawn left to right over 3 s and then held, side by side or stacked to fit the frame. A 0.6 s crossfade joins the parts. |
 | `hero-wireframe-landscape.mp4`, `hero-wireframe-square.mp4` | The same move in the wireframe alone, in 6 s. |
+| `view-hero.png`, `view-side.png`, `view-front.png`, `view-rear.png`, `view-top.png`, `view-head.png` | **The views (ADR-792)**, made only when asked for (`--only views`): fixed cameras, so that projects or revisions compare shot for shot. The design's front is the direction, in plan, from its centre to its focus parts' centre: the parts whose names match `--focus` (default a creature's head: `head`, `skull`, `jaw`, `muzzle`, `ear` and the like, each at the start of the name or after `_`). Yaw from the front and pitch above the floor: hero three-quarter 0.75 rad and 0.42, side π/2 and 0.08, front 0 and 0.12, three-quarter rear π−0.75 and 0.42, top π/2 and 1.45, and the head close-up 0.6 and 0.2, framed by the focus parts' outline alone (`screenBox(names)`) at 70%; the others are framed by the whole design at 80–85%. 1920×1080, drawn at twice that, in Studio on the dark mat. No focus part is an error for the views alone. |
 | `hero.json` | What was made, from which revision, run and checkpoint, with each camera and the renderer. Each item that was not made is listed with its reason. |
 
 **Banding.** Every frame carries a fixed dither, a level and a half either way, so the dark sky
@@ -1151,9 +1152,10 @@ and the fog's fade do not step once they are 8 bits a channel. The frames go to 
 x264 encodes with `tune grain` and `aq-mode=3` at crf 15, so the dither is not smoothed back into
 bands.
 
-**A grid of projects.** `cadex hero-grid A B C D --out FILE.png [--still NAME] [--columns N]`
-tiles one still from each project's hero folder, two to a row by default, in the order given (left
-to right, top to bottom), and fills a missing last tile with the mat. The Cadex checkout ignores
+**A grid of projects.** `cadex hero-grid A B C D --out FILE.png [--still NAME] [--columns N] [--tile-width PX]`
+tiles one still or view from each project's hero folder, two to a row by default, in the order given (left
+to right, top to bottom), labels each tile top left with its project's name in the page's ink on a
+translucent mat, scales the tiles to `--tile-width` when given, and fills a missing last tile with the mat. The Cadex checkout ignores
 `showcase/`, where such grids are kept.
 
 **Which rollout.** The candidates are each run's own rollout and every
@@ -1166,7 +1168,7 @@ run. The curves are that run's, or else the newest run's that has any.
 run (no rollout or curves), no Chromium or a busy engine, is named in
 `hero.json` and the rest are made. The folder's `.gitignore` keeps all of it
 out of the project's history, because it is drawn again on request.
-`--only stills,dashboard,sheet,rollout,video` makes a subset.
+`--only stills,dashboard,sheet,rollout,video,views` makes a subset; a bare run makes all but the views.
 
 ## 27. Activations and Network (ADR-727, ADR-728)
 

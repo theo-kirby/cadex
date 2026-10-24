@@ -1143,13 +1143,15 @@ export function create(canvas, {labels=true}={}) {
   }
   // The box, in canvas pixels with [0,0] top left, round every drawn vertex of the design at the
   // camera now (world geometry left out); null when nothing is in front of the camera. The hero
-  // page frames its shots by it (ADR-677), tighter than a bounding sphere.
-  function screenBox() {
+  // page frames its shots by it (ADR-677), tighter than a bounding sphere. With `names`, round
+  // those parts alone (a close-up, ADR-792).
+  function screenBox(names) {
     draw(); model.updateMatrixWorld(true);
     const w=canvas.clientWidth||canvas.width, h=canvas.clientHeight||canvas.height, v=new THREE.Vector3();
+    const only=Array.isArray(names)?new Set(names):null;
     let x0=Infinity, y0=Infinity, x1=-Infinity, y1=-Infinity;
-    meshes.forEach(m=> {
-      if (!m.visible||m.userData.world) return;
+    meshes.forEach((m,n)=> {
+      if (!m.visible||m.userData.world||(only&&!only.has(n))) return;
       const a=m.geometry.attributes.position;
       for (let i=0;i<a.count;i++) {
         v.fromBufferAttribute(a,i).applyMatrix4(m.matrixWorld).project(camera);
@@ -1210,6 +1212,18 @@ export function create(canvas, {labels=true}={}) {
   function parts() {
     return [...meshes].filter(([,m])=>!m.userData.world).map(([n,m])=>({name:n, visible:m.visible, selected:selectedNames.includes(n),
       finish:m.userData.finish, colour:'#'+m.userData.colour.getHexString(), triangles:m.geometry.attributes.position.count/3}));
+  }
+  // The named parts' box at their poses now, mm, as `bounds` is; null when none is there.
+  function boundsOf(names) {
+    const box=new THREE.Box3(), v=new THREE.Vector3();
+    (names||[]).forEach(n=> {
+      const m=meshes.get(n); if (!m||m.userData.world) return;
+      m.updateMatrix(); const a=m.geometry.attributes.position;
+      for (let i=0;i<a.count;i++) box.expandByPoint(v.fromBufferAttribute(a,i).applyMatrix4(m.matrix).multiplyScalar(1000));
+    });
+    if (box.isEmpty()) return null;
+    const min=box.min.toArray(), max=box.max.toArray();
+    return {min,max,center:min.map((x,i)=>(x+max[i])/2)};
   }
   // Frame the named parts at their poses now, keeping the view's direction. False when none is there.
   function fitTo(names) {
@@ -1277,7 +1291,7 @@ export function create(canvas, {labels=true}={}) {
   return {available:true,load,install,clear,fit,draw,setPoses,setTrail,setTrailStyle,setTrailColours,showTrail,footfalls,trail:()=>({style:trailStyle,at:trailAt,stops:trailEnds.length,shown:trail.children[0]?trail.children[0].geometry.drawRange.count:0}),centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,setTerrain,groundAt,
     setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
     setLook,look:()=>look,setFov,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
-    setHidden,hidden:()=>[...hiddenNames],select,setHeat,heat:()=>heat&&{...heat},selected:()=>selectedNames.slice(),parts,fitTo,
+    setHidden,hidden:()=>[...hiddenNames],select,setHeat,heat:()=>heat&&{...heat},selected:()=>selectedNames.slice(),parts,boundsOf,fitTo,
     pick,screenPoint,screenBox,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,
       world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,render_style:style,stage,showing:showing(),

@@ -48,7 +48,10 @@ from .video import ffmpeg
 
 HERO_DIRNAME = "hero"
 SCHEMA = "cadex-hero-v1"
-ITEMS = ("stills", "dashboard", "sheet", "rollout", "video")
+ITEMS = ("stills", "dashboard", "sheet", "rollout", "video", "views")
+#: What a bare ``cadex hero`` makes: the views are asked for by name (``--only views``).
+DEFAULT_ITEMS = ITEMS[:-1]
+PAGE_ITEMS = {"stills", "dashboard", "rollout", "video", "views"}
 FPS = 30
 #: The stills: each a look (shading.js) from its own three-quarter view, yaw and pitch in radians as
 #: the viewport's camera has them (yaw 0.8, pitch 0.5 is its Fit). Three-quarter views show two
@@ -61,6 +64,20 @@ STILLS = (
     {"name": "wireframe", "style": "wireframe", "yaw": 0.8, "pitch": 0.42},
 )
 STILL = {"size": (2560, 1440), "supersample": 2, "fill": 0.8}
+#: The views (ADR-792): fixed cameras, so that two projects, or two revisions, compare shot for
+#: shot. Yaw is measured from the design's front, the direction from its centre to its focus parts
+#: (the head), so a design that faces any way is shot alike; ``parts`` frames the focus alone.
+VIEWS = (
+    {"name": "hero", "yaw": 0.75, "pitch": 0.42, "fill": 0.8},
+    {"name": "side", "yaw": math.pi / 2, "pitch": 0.08, "fill": 0.85},
+    {"name": "front", "yaw": 0.0, "pitch": 0.12, "fill": 0.8},
+    {"name": "rear", "yaw": math.pi - 0.75, "pitch": 0.42, "fill": 0.8},
+    {"name": "top", "yaw": math.pi / 2, "pitch": 1.45, "fill": 0.85},
+    {"name": "head", "yaw": 0.6, "pitch": 0.2, "fill": 0.7, "parts": True},
+)
+VIEW = {"size": (1920, 1080), "supersample": 2, "look": "studio"}
+#: The focus parts by default: a creature's head, named as the creature style names its parts.
+FOCUS = r"(^|_)(head|skull|jaw|muzzle|snout|nose|face|cheek|brow|eye|ear)"
 #: The two hero videos' frames.
 FORMATS = {"landscape": (1920, 1080), "square": (1080, 1080)}
 #: The turn: one full revolution at constant speed, starting from the viewport's yaw, while the
@@ -300,6 +317,31 @@ def make_stills(stage: Stage, out: Path) -> list[dict[str, Any]]:
     return made
 
 
+def make_views(stage: Stage, out: Path, focus: str = FOCUS) -> dict[str, Any]:
+    """``view-<name>.png`` from each of :data:`VIEWS`, in the studio look on the dark mat."""
+
+    facts = stage.load("api/model/accepted")
+    width, height = VIEW["size"]
+    stage.size(width, height, VIEW["supersample"])
+    found = stage.call("cadexHero.focus(" + json.dumps(focus) + ")")
+    if not found["names"]:
+        raise HeroError(f"no part's name matches the focus {focus!r}: pass --focus")
+    front = math.atan2(found["center"][1] - found["design"][1], found["center"][0] - found["design"][0])
+    made = []
+    for spec in VIEWS:
+        options = {"yaw": front + spec["yaw"], "pitch": spec["pitch"], "fill": spec["fill"]}
+        if spec.get("parts"):
+            options["parts"] = found["names"]
+        camera = stage.call("cadexHero.fitCamera(" + json.dumps(options) + ")")
+        stage.call("cadexHero.shot(" + json.dumps({"camera": camera, "layers": [{"look": VIEW["look"]}]}) + ")")
+        path = out / f"view-{spec['name']}.png"
+        stage.grab(path, "png")
+        made.append({"file": path.name, "view": spec["name"], "camera": camera})
+    return {"files": made, "focus": focus, "focus_parts": found["names"], "front_yaw": front,
+            "look": VIEW["look"], "size": [width, height], "supersample": VIEW["supersample"],
+            "revision": facts.get("revision")}
+
+
 def turntable_frames(stage: Stage, directory: Path, width: int, height: int,
                      spec: dict[str, Any] = TURNTABLE) -> dict[str, Any]:
     facts = stage.load("api/model/accepted")
@@ -437,7 +479,7 @@ def current_sheet(root: Path) -> Path | None:
 
 
 def make(root: Path | str, *, out: Path | None = None, run: str | None = None,
-         only: tuple[str, ...] = ITEMS, gpu: bool = True,
+         only: tuple[str, ...] = DEFAULT_ITEMS, gpu: bool = True, focus: str = FOCUS,
          sheet: Callable[[Path], dict[str, Any]] | None = None,
          progress: Callable[[str], None] = lambda message: None) -> dict[str, Any]:
     """Write the hero folder; returns what ``hero.json`` says."""
@@ -504,12 +546,12 @@ def make(root: Path | str, *, out: Path | None = None, run: str | None = None,
         manifest["rollout_choice"] = choice
     if "video" in only:
         curves = training_curves(root, (choice or {}).get("run") or run)
-    needs_page = bool(set(only) & {"stills", "dashboard", "rollout", "video"}) and accepted.get("available")
+    needs_page = bool(set(only) & PAGE_ITEMS) and accepted.get("available")
     if needs_page:
         try:
             stage = Stage(root, gpu=gpu, progress=progress)
         except Exception as exc:  # noqa: BLE001
-            for key in set(only) & {"stills", "dashboard", "rollout", "video"}:
+            for key in set(only) & PAGE_ITEMS:
                 manifest["errors"][key] = f"{type(exc).__name__}: {exc}"
             stage = None
         if stage is not None:
@@ -517,6 +559,7 @@ def make(root: Path | str, *, out: Path | None = None, run: str | None = None,
                 with tempfile.TemporaryDirectory(prefix=".hero-", dir=target) as scratch:
                     work = Path(scratch)
                     attempt("stills", lambda: {"files": make_stills(stage, target)})
+                    attempt("views", lambda: make_views(stage, target, focus))
                     manifest["renderer"] = stage.renderer
                     # The page holds one model at a time, so the order is the accepted design's
                     # work (stills, both turns), then the run's (the rollouts), then the curves.
@@ -572,8 +615,8 @@ def make(root: Path | str, *, out: Path | None = None, run: str | None = None,
                     attempt("dashboard", lambda: make_dashboard(stage, target))
             finally:
                 stage.close()
-    elif needs_page is False and set(only) & {"stills", "dashboard", "rollout", "video"} and not accepted.get("available"):
-        for key in set(only) & {"stills", "dashboard", "rollout", "video"}:
+    elif needs_page is False and set(only) & PAGE_ITEMS and not accepted.get("available"):
+        for key in set(only) & PAGE_ITEMS:
             manifest["errors"].setdefault(key, manifest["errors"]["model"])
     manifest["seconds"] = round(time.monotonic() - started, 1)
     manifest["style_sha256"] = _style_digest()
@@ -595,17 +638,33 @@ def _style_digest() -> str:
     return h.hexdigest()
 
 
-def grid(projects: list[Path], out: Path, *, still: str = "wireframe", columns: int = 2) -> dict[str, Any]:
-    """Tile each project's ``hero/still-<still>.png`` into one image, ``columns`` to a row, in reading
-    order (left to right, top to bottom). The stills are all one size, so the tiles line up."""
+#: A grid tile's label: the project's name, top left, in the dark page's ink on its mat.
+LABEL = "font=Sans:fontcolor=0xededed:fontsize=h/24:x=h/40:y=h/40:box=1:boxcolor=0x141414@0.7:boxborderw=10"
+
+
+def _label_text(text: str) -> str:
+    """``text`` escaped for drawtext's value inside a filtergraph."""
+
+    return "".join("\\" + ch if ch in "\\':,;[]=%" else ch for ch in text)
+
+
+def grid(projects: list[Path], out: Path, *, still: str = "wireframe", columns: int = 2,
+         tile_width: int | None = None) -> dict[str, Any]:
+    """Tile each project's ``hero/still-<still>.png`` (or ``view-<still>.png``, ADR-792) into one
+    image, ``columns`` to a row, in reading order (left to right, top to bottom), each labelled with
+    its project's name. The images are all one size, so the tiles line up; ``tile_width`` scales
+    each tile to that many pixels wide."""
 
     if not projects:
         raise HeroError("hero-grid needs at least one project")
     images = []
     for root in projects:
-        path = hero_dir(Path(root).expanduser()) / f"still-{still}.png"
-        if not path.is_file():
-            raise HeroError(f"{path} is missing: run cadex hero --project {root} --only stills")
+        folder = hero_dir(Path(root).expanduser())
+        path = next((folder / f"{kind}-{still}.png" for kind in ("still", "view")
+                     if (folder / f"{kind}-{still}.png").is_file()), None)
+        if path is None:
+            raise HeroError(f"{folder}/still-{still}.png and view-{still}.png are missing: run "
+                            f"cadex hero --project {root} --only stills (or views)")
         images.append(path)
     out = Path(out).expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -615,17 +674,17 @@ def grid(projects: list[Path], out: Path, *, still: str = "wireframe", columns: 
         argv += ["-i", str(path)]
     columns = max(1, min(columns, len(images)))
     rows = math.ceil(len(images) / columns)
-    # A missing last tile is filled with the dark mat, so the grid stays a rectangle.
     pad = rows * columns - len(images)
+    scale = f"scale={int(tile_width)}:-2" if tile_width else "null"
+    parts = [f"[{k}:v]{scale}[s{k}]" for k in range(len(images))]
     if pad:
-        argv += ["-f", "lavfi", "-i", "color=c=0x141414:s=16x16:d=1"]
-    parts, inputs = [], []
-    for k in range(rows * columns):
-        if k < len(images):
-            inputs.append(f"[{k}:v]")
-        else:
-            parts.append(f"[{len(images)}:v][0:v]scale2ref[blank{k}][ref{k}];[ref{k}]nullsink")
-            inputs.append(f"[blank{k}]")
+        # A missing last tile is the dark mat, the first tile's size, so the grid stays a rectangle.
+        parts[0] = parts[0][:-len("[s0]")] + "[s0a]"
+        parts.append(f"[s0a]split={pad + 1}[s0]" + "".join(f"[b{j}]" for j in range(pad)))
+        parts += [f"[b{j}]drawbox=c=0x141414:t=fill[blank{j}]" for j in range(pad)]
+    parts += [f"[s{k}]drawtext=text='{_label_text(Path(root).expanduser().name)}':{LABEL}[t{k}]"
+              for k, root in enumerate(projects)]
+    inputs = [f"[t{k}]" for k in range(len(images))] + [f"[blank{j}]" for j in range(pad)]
     layout = "|".join(("+".join(["w0"] * (k % columns)) or "0") + "_" + ("+".join(["h0"] * (k // columns)) or "0")
                       for k in range(rows * columns))
     graph = ";".join(parts + ["".join(inputs) + f"xstack=inputs={rows * columns}:layout={layout}[v]"])
