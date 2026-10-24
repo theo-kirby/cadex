@@ -284,6 +284,8 @@ What binds it now:
 - **Training:** before another X1 lever, screen σ: a late low-noise warm
   start from x1b-warm-150 on its own task. It is the one lever the
   evidence points at that X1 did not test.
-- **Docs:** fold this run into `training/RECIPE.md` (sphere feet, speed
-  first, a one-sided `track_speed`, warm starts across a goal's range by
-  ADR-791). That work is not done here.
+- **Docs:** folded. `training/RECIPE.md` §5 carries this run's steps
+  (sphere feet, speed first, the held command, the noise gap, the one-sided
+  `track_speed`, warm starts across a goal's range by ADR-791, the hip
+  clamp before another weight), each citing its note here; the leo
+  project's `DECISIONS.md` ADR-002 points to it.

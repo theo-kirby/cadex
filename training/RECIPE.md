@@ -1,10 +1,11 @@
 # The cold-start recipe for a legged policy
 
-Verified against source: 2026-10-18. Provenance: `[Cadex-new]`. orun8's B1
+Verified against source: 2026-10-24. Provenance: `[Cadex-new]`. orun8's B1
 draft (`wild-forest-4815`), half proven: a cold quadruped that is not the cat
 followed it to its walk spec on 10/10 seeds by iteration 150 (orun9 `b1-q1`,
 `docs/probes/orun9/b1-quad.md`); the biped has not run (see *What is not
-proven*).
+proven*). Section 5 adds what orun19 proved on leo v06, a speed task with
+no reference (`docs/probes/orun19/REPORT.md`).
 
 This is the order of work that has made a cold legged policy train quickly
 in Cadex, written from the runs that showed it. Each step names the record
@@ -169,6 +170,65 @@ the engine's (`docs/MUJOCO.md`, `docs/XSCRIPT.md`).
    a shuffle that fails step clearance; at 300 it fell. The reward curve
    alone would have kept the worst file (orun9 iteration 10,
    `docs/probes/orun9/b1-biped.md`).
+
+## 5. Speed alone, then top speed (orun19, leo v06)
+
+orun19 trained leo v06 (30.7 kg, 24 drives, sphere feet) on a speed task
+with no reference and no style terms: a speed command, `track_speed`,
+upright and alive, torque, energy and action-rate costs, terminations.
+Every number below is the engine's evaluation on 10 frozen seeds, last 2 s
+along the heading (`docs/probes/orun19/REPORT.md`). Shown on one robot.
+
+1. **Give the feet a round contact before tuning the reward.** On v05's
+   paw pin every policy ran on its toes with the pin shut, and the same
+   speed task held 1.6–2.6 m/s whatever it was asked (orun18 `b1-s2-180`).
+   On v06's balls the unchanged task's speed rose with the command, a
+   0.75 m/s walk to a 4.24 m/s gallop, 0/50 falls (`s1-v06-180.md`). The
+   rest of the change is one run's body against another's, not isolated.
+   v06's heel pad was never loaded by any policy or clip (O2 did not ask):
+   a contact a stance does not reach is not a foot.
+2. **Speed first, with no reference, when speed is what is judged.** Speed
+   alone reached 4.57 m/s held (`s2a-hold-150`, below); the cheetah clip's
+   policy held 4.25–4.37 m/s, plateauing at the clip's ~2.5 Hz stride
+   (`m1-cheetah-150.md`), and the dog's tracked to 4.36 m/s at 150 and to
+   4.43 after 250 more iterations, nearer the clip and slower
+   (`m2-dog-150.md`, `l1-dog-250.md`) [rec: bright-quill-0475]. A clip
+   buys its order and stride where the body can follow it (the hind legs;
+   v06's straight fore leg missed 10–84% of the clips' fore strides) and
+   caps speed at the clip's tempo. This refines step 1.1 for a speed
+   criterion; it does not overturn it for a gait criterion.
+3. **Hold the command for the episode.** Resampling every 3 s left a gap
+   between a walk and a ~2.1 m/s gallop; holding one command per episode
+   (resample 12 s) made held speed a monotone function of the command,
+   ±2–3% seed to seed, tracking to 4.63 m/s (`s2a-hold-150.md`,
+   `s2a-hold-150-top.md`). Making `track_speed`'s tent symmetric instead
+   lowered every speed and was rejected (`s2b-tent-150.md`).
+4. **Expect the engine's deterministic policy to run faster than the
+   trainer's noisy one.** s2a-hold's ~1.2× overshoot is not the speed
+   signal: with its training noise (σ 0.52) the same actor runs 1.03× the
+   command, deterministic 1.21× (`s2-speed-signal.md`). No regulariser
+   weight closes that gap; a lower σ late might (not tested).
+5. **For top speed, pay `track_speed` in full at and above the command**
+   (one-sided: linear `v / cmd` below, the full weight above), warm from the
+   best speed policy. That one change took the top from 4.57 to 5.72 m/s
+   tracked at a 6.0 command it never trained on (Fr 8.42), 5.84 held at
+   6.5, 0/100 falls (`x1b-warm-150.md`) [rec: twilight-river-5248]. A cold
+   run with only the ceiling raised (5000 → 6500) stopped near 4.1 m/s
+   (`x1a-cold-150.md`) [rec: green-bay-4654].
+6. **A warm start may widen a goal's draw range** (`goal.range`, ADR-791)
+   [rec: crisp-spark-8057]; the rest of a goal is still refused. On leo it
+   bought nothing: asked for up to 7.5 m/s, x1b's policy held ~5.8 m/s
+   whatever it was commanded to 8.0 (`x1c-ceil-150.md`)
+   [rec: civic-grove-0040]. Raise the ceiling only below what the body
+   reaches.
+7. **At the top, read the drive clamp before another reward lever.**
+   x1b-warm-150's hind hips run 1.74–1.75× rated and touch their 53 N·m
+   limit on 7–9% of frames at 6.0, at a fixed 6.25 Hz stride (it gains
+   speed by step length). Quartering the torque, energy and action-rate
+   weights did not load the hips harder; σ rose 0.41 → 0.49 and the policy
+   slowed to 3.95 m/s tracked and tipped from 6.0 up (`x1d-reg-150.md`)
+   [rec: keen-dawn-4639]. When the worst drive sits at its peak, the next
+   speed is a model change (step 0.1), not a weight.
 
 ## What is not proven
 
