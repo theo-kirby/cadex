@@ -10,6 +10,7 @@ for policy films and `~/mocap/films/` for anything drawn from capture data
 | `~/orun19-films/v06-standing.webm` | leo v06 standing, one full turn, 12° above the floor, 480 px | `82e05f42` | 6.0 s, 150 frames |
 | `~/orun19-films/s1-v06-vs-b1-s2.webm` | s1-v06-180 (v06) beside b1-s2-180 (v05) at 0.7 and 3.5 m/s commanded, seed 1001, 6–8 s, real time then 1/2 | `16244dd6` | 12.0 s, 300 frames |
 | `~/mocap/films/m1-cheetah-v06.webm` | M1's clips cheetah52/59/61 against the AcinoSet cheetah, 3 loops then 1/4 | `25e230a7` | 8.4 s, 506 frames |
+| `~/mocap/films/m1-cheetah-150-vs-clip.webm` | m1-cheetah-150 beside the clip it trained on, at the slowest (cheetah52, 4.63 m/s) and fastest (cheetah61, 5.33 m/s) stride's command, seed 1001, 6–8 s, real time then 1/2 | `97d59ade` | 12.0 s, 300 frames |
 | `~/mocap/films/m2-dog-v06.webm` | M2's clips gallop27/34/42 (carpus target) against the AI4Animation dog, 3 loops then 1/4 | `103700da` | 9.4 s, 566 frames |
 
 Every film passed its decode check: every encoded frame decodes.
@@ -40,8 +41,25 @@ Every film passed its decode check: every encoded frame decodes.
   a ball that is down. It is a drawing, not a measurement. The misses are in
   `m1-retarget.md` and `m2-retarget.md`.
 
+- **M1 beside its clip** (iteration 16). `clip_side_film.py` (this folder) is
+  orun18's `side_film.py`, unchanged, with one more panel: `BUNDLE#K`, stride
+  K of the trained bundle's `reference_schedule` (M1's `c3c099af`), its `qpos`
+  posed by MuJoCo's kinematics on the bundle's own model (`f9b8ab82`, checked)
+  and looped, each loop moved on by the stride's length. Nothing is simulated.
+  The loops' equality residual is under 0.001 mm. Both panels share the
+  engine's renderer, camera rule, floor and one scale per row. A clip
+  is a capture derivative, so the film is under `~/mocap/films/`.
+
+  | row | m1-cheetah-150 (policy `a1b5218a`), chest m/s in the window | clip: speed, stride, period (qpos sha256) |
+  |---|---|---|
+  | cmd 4.63 m/s | 4.265 (trace `b1650750`) | cheetah52: 4.629 m/s, 1.925 m, 0.416 s (`de2181aa`) |
+  | cmd 5.33 m/s | 4.375 (trace `bf54b54e`) | cheetah61: 5.328 m/s, 2.121 m, 0.398 s (`5807de0b`) |
+
+  At 5.33 the policy is 0.95 m/s behind its clip, as judged in
+  `m1-cheetah-150.md`.
+
 Not yet filmed (F1's remainder): v06 at every tracked speed of an S2 policy
-that tracks, M1 and M2 trained policies beside S, and L1.
+that tracks, M1 and M2 trained policies beside S, M2 beside its clip, and L1.
 
 ## Reproduce
 
@@ -62,7 +80,11 @@ pixi run python -I docs/probes/orun19/retarget_film.py $M ~/mocap/films/m2-dog-v
   $X/D1_010_KAN01_001.bvh:404:432:gallop27:$D/gallop27.clip.json:carpus \
   $X/D1_010_KAN01_003.bvh:86:112:gallop34:$D/gallop34.clip.json:carpus \
   $X/D1_010_KAN01_002.bvh:66:92:gallop42:$D/gallop42.clip.json:carpus
+R=~/cadex-projects/leo/runs/m1-cheetah/train/mocap_gallop-task.json   # c3c099af
+CUDA_VISIBLE_DEVICES= PYTHONPATH=cli pixi run python docs/probes/orun19/clip_side_film.py $P ~/mocap/films/m1-cheetah-150-vs-clip.webm \
+  "cmd 4.63 m/s@m1-cheetah-150-4630=m1-cheetah-150,$R#0=cheetah52 clip" \
+  "cmd 5.33 m/s@m1-cheetah-150-5328=m1-cheetah-150,$R#2=cheetah61 clip"
 ```
 
-The side film takes about 10 minutes on the CPU. The other three take a few
+The side films take about 10 minutes on the CPU. The other three take a few
 minutes each.

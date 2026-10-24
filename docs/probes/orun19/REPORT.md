@@ -14,10 +14,10 @@ leo v06 throughout (tag `leo-v06`, revision `62e391eb`, model XML
 |---|---|---|
 | S1 | evidence complete | s1-v06 judged at 50 and 180 beside v05's b1-s2-180 (`s1-v06-50.md`, `s1-v06-180.md`) |
 | S2 | **met** under the revised O3: s2a-hold-150 tracks 0.7, 1.5, 2.4 and 3.5 m/s with 0/50 falls (slowest seed 1.14× its command at 3.5), top held 4.08 m/s, Fr 4.29; 5.0 misses by one seed (4.49, 0.898) | `o3-reread.md` |
-| M1 | **judged** at 50 and 150 (4.63 / 5.0 / 5.33 m/s): `m1-cheetah-150` (`a1b5218a`) holds 4.25 / 4.37 / 4.36 m/s with 0/30 falls, so it holds the slowest stride's command and plateaus above it (top held 4.37 m/s, Fr 4.92; s2a-hold-150 4.53 and v05 B1 1.62 at 5.0); the clip's transverse order and ~2.5 Hz stride, hind feet 0 misses, fore feet double-tap (21–120 of ~210 strides missed); `j_spine` 1.48–1.53× rated, left elbow 1.32–1.35 against 0.81–0.86; at 50, 14/30 tip. Film beside the clip not made | `m1-cheetah-150.md`, `m1-retarget.md` |
-| M2 | training: `m2-dog` launched cold 19:19:50 on revision `4ff224d2`, bundle `8e9e53fc`, seed 0, 4096 envs, 150 iterations, budget 3,600 s | `m2-retarget.md` |
-| L1 | not started (S2 met; waits for M1 and M2 judged) | |
-| F1 | first films made | `f1-films.md`: v06 standing, s1-v06-180 beside b1-s2-180, the M1 and M2 clips on v06 |
+| M1 | **judged** at 50 and 150 (4.63 / 5.0 / 5.33 m/s): `m1-cheetah-150` (`a1b5218a`) holds 4.25 / 4.37 / 4.36 m/s with 0/30 falls, so it holds the slowest stride's command and plateaus above it (top held 4.37 m/s, Fr 4.92; s2a-hold-150 4.53 and v05 B1 1.62 at 5.0); the clip's transverse order and ~2.5 Hz stride, hind feet 0 misses, fore feet double-tap (21–120 of ~210 strides missed); `j_spine` 1.48–1.53× rated, left elbow 1.32–1.35 against 0.81–0.86; at 50, 14/30 tip. Filmed beside its clip (`m1-cheetah-150-vs-clip.webm`) | `m1-cheetah-150.md`, `m1-retarget.md`, `f1-films.md` |
+| M2 | **judged** at 50 and 150 (2.76 / 3.5 / 4.23 m/s, the bundle's span; M1's commands lie above it): `m2-dog-150` (`863845a8`) holds 3.67 / 4.36 / 4.83 m/s, over every command, and tracks 2.76 and 3.5 (top tracked 4.36 m/s, Fr 4.89); at 4.23 nine seeds hold 4.80–4.85 and seed 1007 tips at 0.42 s; the clip's rotary order and stride at 2.76–3.5, stride doubled (4.35 Hz) at 4.23; fore feet miss 62–84% of strides, hind 7–12%; worst `j_scap_r` 1.29–1.52×, `j_spine` 0.75–0.90×; hind loop 2.1 mm at 4.23. At 50 it ran as v05's c3-s1-50 (1.65–1.95 against 1.60–1.94 m/s), 6/30 tip. Dog against cheetah: the dog fits v06 better on held speed and torque, and the cheetah on following the clip | `m2-dog-150.md`, `m2-retarget.md` |
+| L1 | not started; S2, M1 and M2 are all judged | |
+| F1 | films made: v06 standing, s1-v06-180 beside b1-s2-180, the M1 and M2 clips on v06, m1-cheetah-150 beside its clip | `f1-films.md` |
 | R1 | this file | |
 
 ## S1: leo v06 on speed alone
@@ -143,10 +143,18 @@ No joint leaves its range and the hind loops stay closed on every clip.
 On the retarget alone the dog fits v06's hind legs and the cheetah its fore
 legs; v06's fore leg reaches less far forward in late swing than the dog
 asks. Neither clip asks for the heel pad. Trained, the cheetah's policy keeps its clip's
-order and stride and holds 4.25–4.37 m/s (`m1-cheetah-150.md`); the dog's
-is training. The comparison M2 asks for is on trained policies, against v05's
-c3-s1-50 (1.60–1.94 m/s last 2 s at 2756–4233 commanded, 1 fall in 40,
-`../orun18/c3-s1-50.md`).
+order and stride and holds 4.25–4.37 m/s (`m1-cheetah-150.md`). The dog's
+runs 1.1–1.3× over its strides, 3.67–4.83 m/s, keeps the clip's order and
+stride to 3.5 m/s and drops the stride at 4.23, with its fore feet off the
+clip on most strides (`m2-dog-150.md`). v05's c3-s1-50 held 1.60–1.94 m/s at
+the same commands (1 fall in 40, `../orun18/c3-s1-50.md`).
+
+| | M1 cheetah-150 | M2 dog-150 | v05 c3-s1-50 |
+|---|---|---|---|
+| held m/s at the bundle's commands | 4.25 / 4.37 / 4.36 (4.63–5.33) | 3.67 / 4.36 / 4.83 (2.76–4.23) | 1.60 / 1.94 / 1.83 (2.76–4.23) |
+| commands tracked; falls | 1; 0/30 | 2; 1/30 (at reset) | 0; 1/40 |
+| fore / hind strides missed | 10–58% / 0% | 62–84% / 7–12% (to 3.5) | – |
+| worst RMS / rated | 1.53 (`j_spine`) | 1.52 (`j_scap_r`, 4.23); 1.14–1.29 below | 1.57 (`j_wrist_r`) |
 
 ## What v06's body allowed against v05, so far
 
@@ -171,6 +179,10 @@ What binds now, on the evidence so far:
 - **On the cheetah's strides, the clip's stride frequency and the spine**:
   m1-cheetah-150 keeps ~2.5 Hz whatever it is commanded, so its speed
   plateaus at 4.37 m/s, and its spine runs at 1.5× rated.
+- **On the dog's strides, the fore girdle and the fore feet**: m2-dog-150
+  reaches 4.83 m/s, with the right scapula at 1.52× rated, and the fore balls
+  touch twice a stride on both motions. v06's straight forearm does not
+  follow either clip's fore swing (`m1-retarget.md`, `m2-retarget.md`).
 
 ## Not tested yet
 
@@ -179,6 +191,7 @@ What binds now, on the evidence so far:
   close the overshoot.
 - What holds the slow end (700–1150 mm/s) over its command once the noise
   gap is accounted for.
-- A judged M2 (training); M1's film beside its clip; AMP (O4) is not started.
+- M2's film beside its clip and beside S; AMP (O4) is not started.
+- Whether seed 1007's tip at reset (m2-dog-150 at 4.23, and v05's c3-s1-50) is the reset pose or the policy.
 - The long run (L1) and its films.
 - Why v06 trains faster per iteration than v05.
