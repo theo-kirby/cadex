@@ -1,7 +1,8 @@
 # orun19 report: leo v06 on sphere feet, speed first
 
-Verified against source: 2026-10-24. R1, kept current as criteria close;
-not yet the closing report. Every number cites the probe note in this folder
+Verified against source: 2026-10-24. **R1, the closing report**: written
+in full after two X1 screens in a row (X1c, X1d) failed to raise the top
+speed, per the charter's exhaustion policy. Every number cites the probe note in this folder
 that holds it. Every judged run is the engine's evaluation on the 10 frozen
 seeds (C2_SEEDS 1001–1010) at each held command, by orun18's
 `speed_judge.py`, read by `b1_summary.py` and `s1_tables.py`. The model is
@@ -18,8 +19,8 @@ leo v06 throughout (tag `leo-v06`, revision `62e391eb`, model XML
 | M2 | **judged** at 50 and 150 (2.76 / 3.5 / 4.23 m/s, the bundle's span; M1's commands lie above it): `m2-dog-150` (`863845a8`) holds 3.67 / 4.36 / 4.83 m/s, over every command, and tracks 2.76 and 3.5 (top tracked 4.36 m/s, Fr 4.89); at 4.23 nine seeds hold 4.80–4.85 and seed 1007 tips at 0.42 s; the clip's rotary order and stride at 2.76–3.5, stride doubled (4.35 Hz) at 4.23; fore feet miss 62–84% of strides, hind 7–12%; worst `j_scap_r` 1.29–1.52×, `j_spine` 0.75–0.90×; hind loop 2.1 mm at 4.23. At 50 it ran as v05's c3-s1-50 (1.65–1.95 against 1.60–1.94 m/s), 6/30 tip. Dog against cheetah: the dog fits v06 better on held speed and torque, and the cheetah on following the clip | `m2-dog-150.md`, `m2-retarget.md` |
 | L1 | **judged** at 250 (2.76 / 3.5 / 4.23 m/s, the bundle's span): `l1-dog-250` (`ec612b29`, warm from m2-dog-150 on M2's bundle `8e9e53fc`, 250 iterations in 4,904 s) holds 2.93 / 3.73 / 4.43 m/s with 0/30 falls, so it tracks all three (top tracked 4.43 m/s, Fr 5.05), and seed 1007 survives (pitch +15° against +23°). It is 0.4–0.7 m/s slower than m2-dog-150 on every command, nearer the clip: hind feet on every stride, the clip's 2.27 Hz stride kept at 4.23, the left fore still double-taps. Worst drive 0.94 / 1.05 / 1.22× rated (m2-dog-150 1.14–1.52), loops ≤ 1.6 mm. Below s2a-hold-150's 4.57 m/s on top tracked speed. Filmed beside m2-dog-150 and the clip | `l1-dog-250.md`, `l1-dog.md` |
 | F1 | **all films made**: v06 standing, s1-v06-180 beside b1-s2-180, the M1 and M2 clips on v06, m1-cheetah-150 and m2-dog-150 beside their clips, s2a-hold-150 at its six tracked speeds, M1 and M2 beside s2a-hold-150 at 3.5, 4.23, 4.63 and 5.0 m/s, and L1 (l1-dog-250) beside m2-dog-150 and the clip at 2.76 and 4.23 m/s | `f1-films.md` |
-| X1 | **new top (screen 2, X1b)**: `x1b-warm-150` (`10f197e1`), s2a-hold's task with `track_speed` paying in full at and above the command (0.75 → 0.5) and the judged range to 6.5 m/s, warm from s2a-hold-150, 150 iterations in 3,014 s. It tracks nine commands, 0.7–6.0 m/s, with 0/100 falls: **top tracked 5.72 m/s held at 6.0 (Fr 8.42)**, and **5.84 m/s held at 6.5 on all ten seeds (Fr 8.78)**, the fastest held, past its 5 m/s training goal. One gait from 3.5 up: 6.25 Hz, flight every stride, steps 616 → 931 mm; bound at the hind hips (1.74–1.85× rated at 6.0–6.5) and `j_spine_yaw` (1.60–1.71×). At 50 (`6debc30e`) it already tracked to 5.0 (4.84 m/s, Fr 6.03). The streak without a new top is reset. Before it, X1a (`x1a-cold`, ceiling 5000 → 6500 only, cold) tracked 0.7–4.23 with a ~4.1 m/s ceiling, no new top over s2a-hold-150's 4.57 (Fr 5.38). **X1c** (`x1c-ceil-150`, `56182229`): X1b's task with the training goal's ceiling 5000 → 7500 mm/s and the judged range to 8.0 m/s, warm from `10f197e1` across the goal change by ADR-791, 150 iterations in 3,008 s. **No new top**: it tracks 0.7–6.0 with 0/130 falls, top 5.61 m/s at 6.0 (Fr 8.10), fastest held 5.82 m/s at 8.0 (Fr 8.72); it changed to a 6.25 Hz flying trot with the hips at 1.42–1.62× rated at 6.0 (x1b 1.74–1.75) and 1.81× at 8.0. The streak without a new top is 1. **X1d** (`x1d-reg`) is training: X1b's task with the torque, energy and action-rate weights to a quarter (−0.2 → −0.05, −0.2 → −0.05, −0.002 → −0.0005; O3's third lever) and the judged range to 8.0 m/s, warm from `10f197e1`; not judged yet | `x1a-cold.md`, `x1a-cold-150.md`, `x1b-warm.md`, `x1b-warm-150.md`, `x1c-ceil.md`, `x1c-ceil-150.md`, `x1d-reg.md` |
-| R1 | this file | |
+| X1 | **top: `x1b-warm-150` (`10f197e1`), 5.72 m/s tracked at 6.0 (Fr 8.42), 5.84 m/s held at 6.5 on all ten seeds (Fr 8.78), 0/100 falls.** Four screens, each one change: X1a (ceiling 5000 → 6500, cold) ~4.1 m/s ceiling, no new top; **X1b** (`track_speed` one-sided, warm from s2a-hold-150) the new top; X1c (training ceiling 7500, warm from X1b) 5.61 m/s tracked at 6.0, 5.82 held at 8.0, no new top; X1d (torque, energy and action-rate weights to a quarter, warm from X1b) 3.95 m/s tracked at 4.23 (Fr 4.02) and 44/130 tips from 6.0 up, no new top. Two failed screens in a row: X1 ends here. Bound at the hind hips' 53 N·m limit (x1b-warm-150 at 6.0: both hips 1.74–1.75× rated, at the clamp on 7–9% of frames) | `x1a-cold.md`, `x1a-cold-150.md`, `x1b-warm.md`, `x1b-warm-150.md`, `x1c-ceil.md`, `x1c-ceil-150.md`, `x1d-reg.md`, `x1d-reg-150.md` |
+| R1 | **written**: this file, closed after X1d | this file |
 
 ## S1: leo v06 on speed alone
 
@@ -159,38 +160,82 @@ the same commands (1 fall in 40, `../orun18/c3-s1-50.md`).
 | fore / hind strides missed | 10–58% / 0% | 62–84% / 7–12% (to 3.5) | – |
 | worst RMS / rated | 1.53 (`j_spine`) | 1.52 (`j_scap_r`, 4.23); 1.14–1.29 below | 1.57 (`j_wrist_r`) |
 
-## What v06's body allowed against v05, so far
+## X1: top speed
+
+Each screen is one change from its parent, judged at 50 and 150 on the 10
+frozen seeds per command, by `o3_reread.py`'s O3 (at least 0.9 × the
+command on every seed, no fall or tip, at every judged command up to the
+top). Fr uses v06's hip height, 0.396 m.
+
+| screen | the one change, from | top tracked m/s at command (Fr) | fastest held, no tip | falls / tips | verdict |
+|---|---|---|---|---|---|
+| s2a-hold-150 (`efe7f96b`) | (S2's top) | 4.57 at 4.63 (5.38) | 4.57 at 4.63 | 0/70 | the start |
+| x1a-cold-150 | training ceiling 5000 → 6500, cold | 4.12 at 4.23 (4.37) | ~4.1 | 0/100 | no new top |
+| **x1b-warm-150** (`10f197e1`) | `track_speed` pays in full at and above the command, warm from s2a-hold-150 | **5.72 at 6.0 (8.42)** | **5.84 at 6.5 (8.78)** | 0/100 | **new top** |
+| x1c-ceil-150 (`56182229`) | training ceiling 5000 → 7500, warm from x1b-warm-150 (ADR-791) | 5.61 at 6.0 (8.10) | 5.82 at 8.0 (8.72) | 0/130 | no new top (1) |
+| x1d-reg-150 (`a57ca0d2`) | torque, energy and action-rate weights to a quarter, warm from x1b-warm-150 | 3.95 at 4.23 (4.02) | 4.09 at 5.0 (4.31) | 44/130 tips, 6.0–8.0 | no new top (2) |
+
+- **The top is x1b-warm-150**: 5.72 m/s tracked at 6.0 (Fr 8.42) and 5.84
+  m/s held at 6.5 on all ten seeds (Fr 8.78), against v05's B1 2.59 m/s
+  held (Fr 1.73; it tracks only 0.7 and 1.5) and Go1's 1.53 m/s tracked
+  (Fr 0.80; 2.48 held, Fr 2.11, `../orun18/b2-ceiling.md`). It is faster
+  than the best on any cat before this run (4.64 m/s, orun10, per the
+  charter). Its gait from 3.5 up: 6.25 Hz,
+  flight every stride, steps 616 → 931 mm (`x1b-warm-150.md`).
+- **X1c**: asked for up to 7.5 m/s in training, the policy holds ~5.8 m/s
+  whatever it is commanded to 8.0, in a diagonal trot that loads the hips
+  less (`x1c-ceil-150.md`). The command is not what holds it back.
+- **X1d**: with torque and energy priced at a quarter, the hips did not
+  work harder. The policy's σ rose 0.41 → 0.49 and its reward per step fell
+  22.9 → 20.5. Its hips ran at 0.8–1.2× rated, and it slowed to a 5.56 Hz
+  stride that tips from 6.0 m/s up. At 50 it was nearer the top (5.31 m/s
+  tracked, Fr 7.26) (`x1d-reg-150.md`). The regularisers are not what keeps
+  the top policy's hips in check.
+- O6 at the top (x1b-warm-150 at 6.0): worst RMS 1.74–1.75× rated at the
+  hips (`j_spine_yaw` 1.70×); both hips peak at their 53 N·m limit, at the
+  clamp on 7–9% of frames; peak margin 0.00; left and right hips within 1%;
+  loops within 2 mm; no NaN; the heel pad never touches.
+
+## What v06's body allowed against v05
 
 On the same speed-only task and budget, v06 against v05:
 
 - it reaches 4.24 m/s held against 2.59 (S1), s2a-hold-150 tracks to
   4.63 m/s commanded, holding 4.57 m/s on all ten seeds, and X1b's
   x1b-warm-150 tracks to 6.0, holding 5.72 m/s (Fr 8.42), and holds 5.84
-  m/s at 6.5 (Fr 8.78);
+  m/s at 6.5 (Fr 8.78): 2.2× v05's held speed, Fr 8.78 against 1.73;
 - its speed follows the command instead of plateauing;
 - it runs more upright (tilt 9–13° against 12–28°);
-- its fore drives stay within 1.35× rated, against v05's shoulder and
-  scapula at 1.4–1.8×;
+- at S's speeds its fore drives stay within 1.35× rated (s2a-hold-150),
+  against v05's shoulder and scapula at 1.4–1.8×; at X1's top the
+  scapulae reach 1.35–1.46× (`x1b-warm-150.md`);
 - it trains ~3.7× faster per iteration (the reason is not measured).
 
-What binds now, on the evidence so far:
+What binds it now:
 
-- **At the top, the hind hips**: x1b-warm-150 holds 5.7–5.8 m/s at a
-  fixed 6.25 Hz stride by lengthening its step to ~930 mm, with both hips
-  at 1.74–1.85× rated and `j_spine_yaw` at 1.71× (`x1b-warm-150.md`).
-  Asked for up to 7.5 m/s in training (X1c), the policy holds ~5.8 m/s
-  whatever it is commanded to 8.0, in a trot that loads the hips less;
-  the command is not what holds it back (`x1c-ceil-150.md`).
-- **Tracking, not reach**: the speed range covers the commands; the
-  error is a proportional overshoot (s2a-hold) or a gap between gaits
-  (s1-v06). Above ~4.2 m/s commanded, s2a-hold-150 holds ~4.55 m/s in one
-  fixed gait (8.33 Hz, 543 mm steps), with the left fore elbow at
-  1.41–1.43× rated and at its clamp on 17% of frames
-  (`s2a-hold-150-top.md`).
+- **At the top, the hind hips' peak torque.** x1b-warm-150 holds 5.7–5.8
+  m/s at a fixed 6.25 Hz stride by lengthening its step to ~930 mm. Both
+  hips run at 1.74–1.75× their 18 N·m rated and touch their 53 N·m limit,
+  at the clamp on 7–9% of frames at 6.0 (`x1b-warm-150.md`,
+  `x1d-reg-150.md`). The hips are already the catalog's heaviest QDD
+  (CubeMars AK10-9 V3.0, ADR-713). Neither more command (X1c) nor cheaper
+  torque (X1d) moved the top. Next after the hips, `j_spine_yaw` (9 N·m
+  rated) runs at 1.70×.
+- **The stride, not the frequency**: every fast v06 policy holds a fixed
+  stride frequency (6.25 Hz at the top) and gains speed only by step
+  length. So the step's reach, set by the hip's swing and the leg's
+  length, is the second limit. That is a reading from the gait tables,
+  not a measured counterfactual.
+- **Tracking, not reach**, at S's speeds: the speed range covers the
+  commands; the error is a proportional overshoot (s2a-hold) or a gap
+  between gaits (s1-v06). The trainer's noisy policy runs at ~1.03× the
+  command where the engine's deterministic one runs at ~1.21×
+  (`s2-speed-signal.md`).
 - **The right hind and the left fore**: drives over rated and lopsided left
-  to right on every judged v06 policy.
+  to right on every judged v06 policy below the top (the shoulders 1.3–2.1×,
+  the hind knees 1.2–2.4×); at x1b's top the hips are even.
 - **The heel pad is never used**: every v06 policy and both clips run on
-  the balls.
+  the balls; the pad rides 123–139 mm up in stance.
 - **On the cheetah's strides, the clip's stride frequency and the spine**:
   m1-cheetah-150 keeps ~2.5 Hz whatever it is commanded, so its speed
   plateaus at 4.37 m/s, and its spine runs at 1.5× rated.
@@ -199,16 +244,46 @@ What binds now, on the evidence so far:
   touch twice a stride on both motions. v06's straight forearm does not
   follow either clip's fore swing (`m1-retarget.md`, `m2-retarget.md`).
 
-## Not tested yet
+## Not tested
 
-- O3's third lever (the regularisers' weights); not needed for S2 once
-  overshoot stopped counting, and `s2-speed-signal.md` predicts it would not
-  close the overshoot.
 - What holds the slow end (700–1150 mm/s) over its command once the noise
   gap is accounted for.
-- AMP (O4) is not started.
+- A smaller σ late in training (a long warm start, or the entropy cost),
+  which `s2-speed-signal.md` predicts would close the overshoot and X1d's
+  rising σ suggests may matter at the top.
+- A command draw weighted toward the top, as an X1 lever.
+- AMP (O4) is not started; tracking the clips was not too rigid for the
+  speeds they cover.
 - A counterfactual for seed 1007 (its start phase with another seed's mass and kick), which would measure each part's share (`l1-dog.md`).
 - L1 judged above 4.23 m/s: its bundle's command range stops there (`l1-dog-250.md`).
 - Why v06 trains faster per iteration than v05.
 - x1b-warm-150 above 6.5 m/s commanded: its speed spec stops there, so the judge refuses higher (x1c-ceil-150, judged to 8.0, holds 5.82 m/s there).
-- The regularisers' weights and a command draw weighted toward the top, as X1 levers.
+- Any v06 policy on the heel pad: none uses it, and no task asked for it (O2).
+
+## Recommendation for the next run
+
+- **Train from x1b-warm-150** (`10f197e1`), on its task (`x1b-warm`'s
+  bundle `f070a89b`), for anything that needs speed. It tracks 0.7–6.0 m/s
+  with 0/100 falls.
+- **Model (needs the owner; O1 froze it here):** the next speed is at the
+  hind hips. The evidence asks for more hip torque at the top of the stroke
+  than the AK10-9's 53 N·m. Options: a reduction stage on the hip (the
+  hip's speed is not what binds; its torque is), or moving hip load onto a
+  second drive. `j_spine_yaw` (9 N·m rated, 1.70× at the top) is the next
+  drive to bind, so it should be sized up with the hips. Lighter hind
+  segments would cut the swing torque the hips pay at 6.25 Hz. Each of
+  these is a recommendation from the torque tables, not a tested change.
+- **Feet:** v06's heel pad is never loaded by a speed policy and either
+  clip. If a plantigrade stance is still wanted, the task has to ask for
+  it, or the pad has to sit where a ball stance reaches it. Otherwise it
+  can go.
+- **Fore leg:** v06's straight forearm does not follow either clip's late
+  fore swing (fore misses 10–84% of strides). A motion run on v06 should
+  retarget with a fore target the forearm can reach, or bring a carpus
+  back.
+- **Training:** before another X1 lever, screen σ: a late low-noise warm
+  start from x1b-warm-150 on its own task. It is the one lever the
+  evidence points at that X1 did not test.
+- **Docs:** fold this run into `training/RECIPE.md` (sphere feet, speed
+  first, a one-sided `track_speed`, warm starts across a goal's range by
+  ADR-791). That work is not done here.
