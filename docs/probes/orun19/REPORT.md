@@ -16,7 +16,7 @@ leo v06 throughout (tag `leo-v06`, revision `62e391eb`, model XML
 | S2 | **met** under the revised O3: s2a-hold-150 tracks 0.7, 1.5, 2.4 and 3.5 m/s with 0/50 falls (slowest seed 1.14× its command at 3.5), top held 4.08 m/s, Fr 4.29; 5.0 misses by one seed (4.49, 0.898) | `o3-reread.md` |
 | M1 | **judged** at 50 and 150 (4.63 / 5.0 / 5.33 m/s): `m1-cheetah-150` (`a1b5218a`) holds 4.25 / 4.37 / 4.36 m/s with 0/30 falls, so it holds the slowest stride's command and plateaus above it (top held 4.37 m/s, Fr 4.92; s2a-hold-150 4.53 and v05 B1 1.62 at 5.0); the clip's transverse order and ~2.5 Hz stride, hind feet 0 misses, fore feet double-tap (21–120 of ~210 strides missed); `j_spine` 1.48–1.53× rated, left elbow 1.32–1.35 against 0.81–0.86; at 50, 14/30 tip. Filmed beside its clip (`m1-cheetah-150-vs-clip.webm`) | `m1-cheetah-150.md`, `m1-retarget.md`, `f1-films.md` |
 | M2 | **judged** at 50 and 150 (2.76 / 3.5 / 4.23 m/s, the bundle's span; M1's commands lie above it): `m2-dog-150` (`863845a8`) holds 3.67 / 4.36 / 4.83 m/s, over every command, and tracks 2.76 and 3.5 (top tracked 4.36 m/s, Fr 4.89); at 4.23 nine seeds hold 4.80–4.85 and seed 1007 tips at 0.42 s; the clip's rotary order and stride at 2.76–3.5, stride doubled (4.35 Hz) at 4.23; fore feet miss 62–84% of strides, hind 7–12%; worst `j_scap_r` 1.29–1.52×, `j_spine` 0.75–0.90×; hind loop 2.1 mm at 4.23. At 50 it ran as v05's c3-s1-50 (1.65–1.95 against 1.60–1.94 m/s), 6/30 tip. Dog against cheetah: the dog fits v06 better on held speed and torque, and the cheetah on following the clip | `m2-dog-150.md`, `m2-retarget.md` |
-| L1 | not started; S2, M1 and M2 are all judged | |
+| L1 | **training**: `l1-dog`, a warm start from m2-dog-150 (`863845a8`) on M2's own bundle `8e9e53fc`, seed 1, 4096 envs, 250 iterations, budget 6,200 s, launched 20:23:32, ~18–22 s an iteration; not judged. Seed 1007's tip at reset is the draw (heaviest mass ×1.071, largest kick 0.146 m/s, a +6° nose-up start phase), not the start pose alone (seed 1010 starts as far up and survives); inferred from the draws and traces, with no counterfactual run | `l1-dog.md` |
 | F1 | films made: v06 standing, s1-v06-180 beside b1-s2-180, the M1 and M2 clips on v06, m1-cheetah-150 beside its clip | `f1-films.md` |
 | R1 | this file | |
 
@@ -191,7 +191,7 @@ What binds now, on the evidence so far:
   close the overshoot.
 - What holds the slow end (700–1150 mm/s) over its command once the noise
   gap is accounted for.
-- M2's film beside its clip and beside S; AMP (O4) is not started.
-- Whether seed 1007's tip at reset (m2-dog-150 at 4.23, and v05's c3-s1-50) is the reset pose or the policy.
-- The long run (L1) and its films.
+- M2's film beside S; AMP (O4) is not started.
+- A counterfactual for seed 1007 (its start phase with another seed's mass and kick), which would measure each part's share (`l1-dog.md`).
+- L1's judgement and its films.
 - Why v06 trains faster per iteration than v05.

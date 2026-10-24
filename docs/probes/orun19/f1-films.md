@@ -12,6 +12,7 @@ for policy films and `~/mocap/films/` for anything drawn from capture data
 | `~/mocap/films/m1-cheetah-v06.webm` | M1's clips cheetah52/59/61 against the AcinoSet cheetah, 3 loops then 1/4 | `25e230a7` | 8.4 s, 506 frames |
 | `~/mocap/films/m1-cheetah-150-vs-clip.webm` | m1-cheetah-150 beside the clip it trained on, at the slowest (cheetah52, 4.63 m/s) and fastest (cheetah61, 5.33 m/s) stride's command, seed 1001, 6–8 s, real time then 1/2 | `97d59ade` | 12.0 s, 300 frames |
 | `~/mocap/films/m2-dog-v06.webm` | M2's clips gallop27/34/42 (carpus target) against the AI4Animation dog, 3 loops then 1/4 | `103700da` | 9.4 s, 566 frames |
+| `~/mocap/films/m2-dog-150-vs-clip.webm` | m2-dog-150 beside the clip it trained on, at the slowest (gallop27, 2.76 m/s) and fastest (gallop42, 4.23 m/s) stride's command, seed 1001, 6–8 s, real time then 1/2 | `6e92a939` | 12.0 s, 300 frames |
 
 Every film passed its decode check: every encoded frame decodes.
 
@@ -58,8 +59,19 @@ Every film passed its decode check: every encoded frame decodes.
   At 5.33 the policy is 0.95 m/s behind its clip, as judged in
   `m1-cheetah-150.md`.
 
+- **M2 beside its clip** (iteration 17), drawn the same way from M2's bundle
+  (`8e9e53fc`, model `f9b8ab82` checked, loop residual 0.0 mm):
+
+  | row | m2-dog-150 (policy `863845a8`), chest m/s in the window | clip: speed, stride, period (qpos sha256) |
+  |---|---|---|
+  | cmd 2.76 m/s | 3.596 (trace `c03a6592`) | gallop27: 2.756 m/s, 1.317 m, 0.478 s (`89a208b2`) |
+  | cmd 4.23 m/s | 4.828 (trace `97e1e271`) | gallop42: 4.233 m/s, 1.842 m, 0.435 s (`f7b2049b`) |
+
+  The policy runs ahead of its clip at both ends, 0.84 and 0.59 m/s on this
+  seed, as judged in `m2-dog-150.md`.
+
 Not yet filmed (F1's remainder): v06 at every tracked speed of an S2 policy
-that tracks, M1 and M2 trained policies beside S, M2 beside its clip, and L1.
+that tracks, M1 and M2 trained policies beside S, and L1.
 
 ## Reproduce
 
@@ -84,6 +96,10 @@ R=~/cadex-projects/leo/runs/m1-cheetah/train/mocap_gallop-task.json   # c3c099af
 CUDA_VISIBLE_DEVICES= PYTHONPATH=cli pixi run python docs/probes/orun19/clip_side_film.py $P ~/mocap/films/m1-cheetah-150-vs-clip.webm \
   "cmd 4.63 m/s@m1-cheetah-150-4630=m1-cheetah-150,$R#0=cheetah52 clip" \
   "cmd 5.33 m/s@m1-cheetah-150-5328=m1-cheetah-150,$R#2=cheetah61 clip"
+R=~/cadex-projects/leo/runs/m2-dog/train/mocap_gallop-task.json   # 8e9e53fc
+CUDA_VISIBLE_DEVICES= PYTHONPATH=cli pixi run python docs/probes/orun19/clip_side_film.py $P ~/mocap/films/m2-dog-150-vs-clip.webm \
+  "cmd 2.76 m/s@m2-dog-150-2760=m2-dog-150,$R#0=gallop27 clip" \
+  "cmd 4.23 m/s@m2-dog-150-4230=m2-dog-150,$R#2=gallop42 clip"
 ```
 
 The side films take about 10 minutes on the CPU. The other three take a few
