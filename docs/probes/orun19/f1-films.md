@@ -13,6 +13,8 @@ for policy films and `~/mocap/films/` for anything drawn from capture data
 | `~/mocap/films/m1-cheetah-150-vs-clip.webm` | m1-cheetah-150 beside the clip it trained on, at the slowest (cheetah52, 4.63 m/s) and fastest (cheetah61, 5.33 m/s) stride's command, seed 1001, 6–8 s, real time then 1/2 | `97d59ade` | 12.0 s, 300 frames |
 | `~/mocap/films/m2-dog-v06.webm` | M2's clips gallop27/34/42 (carpus target) against the AI4Animation dog, 3 loops then 1/4 | `103700da` | 9.4 s, 566 frames |
 | `~/mocap/films/m2-dog-150-vs-clip.webm` | m2-dog-150 beside the clip it trained on, at the slowest (gallop27, 2.76 m/s) and fastest (gallop42, 4.23 m/s) stride's command, seed 1001, 6–8 s, real time then 1/2 | `6e92a939` | 12.0 s, 300 frames |
+| `~/orun19-films/s2a-hold-150-tracked.webm` | s2a-hold-150 (S2) at each of its six tracked commands, 0.7, 1.5, 2.4, 3.5, 4.23 and 4.63 m/s, seed 1001, 6–8 s, real time then 1/2 | `bb22f155` | 36.0 s, 900 frames |
+| `~/orun19-films/m-vs-s2a.webm` | M2 (m2-dog-150) beside S (s2a-hold-150) at 3.5 and 4.23 m/s, M2's slow and fast shared commands; M1 (m1-cheetah-150) beside S at 4.63 and 5.0 m/s, M1's; seed 1001, 6–8 s, real time then 1/2 | `14dd6ece` | 24.0 s, 600 frames |
 
 Every film passed its decode check: every encoded frame decodes.
 
@@ -70,8 +72,30 @@ Every film passed its decode check: every encoded frame decodes.
   The policy runs ahead of its clip at both ends, 0.84 and 0.59 m/s on this
   seed, as judged in `m2-dog-150.md`.
 
-Not yet filmed (F1's remainder): v06 at every tracked speed of an S2 policy
-that tracks, M1 and M2 trained policies beside S, and L1.
+- **S2 at its tracked speeds, and M1 and M2 beside S** (iteration 18).
+  Drawn by orun18's `side_film.py`, unchanged, from the evaluations' traces.
+  The trace drawn is the one each evaluation recorded. s2a-hold-150 had
+  been judged only at 0.7–5.0 m/s. It was judged at 4.23 and 4.63 m/s too
+  (`s2a-hold-150-top.md`), so that it shares a command with each end of M1
+  and M2. M2's commands top out at 4.23 and M1's start at 4.63, so no
+  command has all three. Neither film draws a clip, and both are under
+  `~/orun19-films/`. Chest speed in the 2 s window on seed 1001:
+
+  | command | s2a-hold-150 (`efe7f96b`) | m2-dog-150 (`863845a8`) | m1-cheetah-150 (`a1b5218a`) |
+  |---|---|---|---|
+  | 0.7 m/s | 0.848 (trace `18e67647`) | – | – |
+  | 1.5 m/s | 1.787 (`69af31f5`) | – | – |
+  | 2.4 m/s | 2.947 (`25800604`) | – | – |
+  | 3.5 m/s | 4.148 (`133eefa2`) | 4.340 (`630bc6b8`) | – |
+  | 4.23 m/s | 4.536 (`e3582001`) | 4.828 (`97e1e271`) | – |
+  | 4.63 m/s | 4.584 (`1fcc405b`) | – | 4.265 (`b1650750`) |
+  | 5.0 m/s | 4.523 (`450fe949`) | – | 4.366 (`2e2b2df5`) |
+
+  On M2's commands the dog's policy is the faster one, by 0.19–0.29 m/s on
+  this seed. On M1's, speed-only S is faster than the cheetah's policy, by
+  0.16–0.32 m/s.
+
+Not yet filmed (F1's remainder): L1.
 
 ## Reproduce
 
@@ -100,7 +124,17 @@ R=~/cadex-projects/leo/runs/m2-dog/train/mocap_gallop-task.json   # 8e9e53fc
 CUDA_VISIBLE_DEVICES= PYTHONPATH=cli pixi run python docs/probes/orun19/clip_side_film.py $P ~/mocap/films/m2-dog-150-vs-clip.webm \
   "cmd 2.76 m/s@m2-dog-150-2760=m2-dog-150,$R#0=gallop27 clip" \
   "cmd 4.23 m/s@m2-dog-150-4230=m2-dog-150,$R#2=gallop42 clip"
+CUDA_VISIBLE_DEVICES= PYTHONPATH=cli pixi run python docs/probes/orun18/side_film.py $P ~/orun19-films/s2a-hold-150-tracked.webm \
+  "cmd 0.7 m/s@$E/s2a-hold-150-700=s2a-hold-150" "cmd 1.5 m/s@$E/s2a-hold-150-1500=s2a-hold-150" \
+  "cmd 2.4 m/s@$E/s2a-hold-150-2400=s2a-hold-150" "cmd 3.5 m/s@$E/s2a-hold-150-3500=s2a-hold-150" \
+  "cmd 4.23 m/s@$E/s2a-hold-150-4230=s2a-hold-150" "cmd 4.63 m/s@$E/s2a-hold-150-4630=s2a-hold-150"
+CUDA_VISIBLE_DEVICES= PYTHONPATH=cli pixi run python docs/probes/orun18/side_film.py $P ~/orun19-films/m-vs-s2a.webm \
+  "cmd 3.5 m/s@$E/s2a-hold-150-3500=S s2a-hold-150,$E/m2-dog-150-3500=M2 m2-dog-150" \
+  "cmd 4.23 m/s@$E/s2a-hold-150-4230=S s2a-hold-150,$E/m2-dog-150-4230=M2 m2-dog-150" \
+  "cmd 4.63 m/s@$E/s2a-hold-150-4630=S s2a-hold-150,$E/m1-cheetah-150-4630=M1 m1-cheetah-150" \
+  "cmd 5.0 m/s@$E/s2a-hold-150-5000=S s2a-hold-150,$E/m1-cheetah-150-5000=M1 m1-cheetah-150"
 ```
 
-The side films take about 10 minutes on the CPU. The other three take a few
+The side films take about 10 minutes on the CPU; the last two took about 20
+minutes each, run together beside l1-dog's trainer. The other three take a few
 minutes each.

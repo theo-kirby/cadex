@@ -13,11 +13,11 @@ leo v06 throughout (tag `leo-v06`, revision `62e391eb`, model XML
 | criterion | state | best evidence so far |
 |---|---|---|
 | S1 | evidence complete | s1-v06 judged at 50 and 180 beside v05's b1-s2-180 (`s1-v06-50.md`, `s1-v06-180.md`) |
-| S2 | **met** under the revised O3: s2a-hold-150 tracks 0.7, 1.5, 2.4 and 3.5 m/s with 0/50 falls (slowest seed 1.14× its command at 3.5), top held 4.08 m/s, Fr 4.29; 5.0 misses by one seed (4.49, 0.898) | `o3-reread.md` |
+| S2 | **met** under the revised O3: s2a-hold-150 tracks six commands, 0.7, 1.5, 2.4, 3.5, 4.23 and 4.63 m/s, with 0/70 falls. The top is 4.57 m/s held (4.54 the slowest seed), Fr 5.38, judged at 4.23 and 4.63 in iteration 18. Above ~4.2 m/s commanded it holds ~4.55 m/s whatever the command, and 5.0 misses by one seed (4.49, 0.898) | `o3-reread.md`, `s2a-hold-150-top.md` |
 | M1 | **judged** at 50 and 150 (4.63 / 5.0 / 5.33 m/s): `m1-cheetah-150` (`a1b5218a`) holds 4.25 / 4.37 / 4.36 m/s with 0/30 falls, so it holds the slowest stride's command and plateaus above it (top held 4.37 m/s, Fr 4.92; s2a-hold-150 4.53 and v05 B1 1.62 at 5.0); the clip's transverse order and ~2.5 Hz stride, hind feet 0 misses, fore feet double-tap (21–120 of ~210 strides missed); `j_spine` 1.48–1.53× rated, left elbow 1.32–1.35 against 0.81–0.86; at 50, 14/30 tip. Filmed beside its clip (`m1-cheetah-150-vs-clip.webm`) | `m1-cheetah-150.md`, `m1-retarget.md`, `f1-films.md` |
 | M2 | **judged** at 50 and 150 (2.76 / 3.5 / 4.23 m/s, the bundle's span; M1's commands lie above it): `m2-dog-150` (`863845a8`) holds 3.67 / 4.36 / 4.83 m/s, over every command, and tracks 2.76 and 3.5 (top tracked 4.36 m/s, Fr 4.89); at 4.23 nine seeds hold 4.80–4.85 and seed 1007 tips at 0.42 s; the clip's rotary order and stride at 2.76–3.5, stride doubled (4.35 Hz) at 4.23; fore feet miss 62–84% of strides, hind 7–12%; worst `j_scap_r` 1.29–1.52×, `j_spine` 0.75–0.90×; hind loop 2.1 mm at 4.23. At 50 it ran as v05's c3-s1-50 (1.65–1.95 against 1.60–1.94 m/s), 6/30 tip. Dog against cheetah: the dog fits v06 better on held speed and torque, and the cheetah on following the clip | `m2-dog-150.md`, `m2-retarget.md` |
 | L1 | **training**: `l1-dog`, a warm start from m2-dog-150 (`863845a8`) on M2's own bundle `8e9e53fc`, seed 1, 4096 envs, 250 iterations, budget 6,200 s, launched 20:23:32, ~18–22 s an iteration; not judged. Seed 1007's tip at reset is the draw (heaviest mass ×1.071, largest kick 0.146 m/s, a +6° nose-up start phase), not the start pose alone (seed 1010 starts as far up and survives); inferred from the draws and traces, with no counterfactual run | `l1-dog.md` |
-| F1 | films made: v06 standing, s1-v06-180 beside b1-s2-180, the M1 and M2 clips on v06, m1-cheetah-150 beside its clip | `f1-films.md` |
+| F1 | films made: v06 standing, s1-v06-180 beside b1-s2-180, the M1 and M2 clips on v06, m1-cheetah-150 and m2-dog-150 beside their clips, s2a-hold-150 at its six tracked speeds, and M1 and M2 beside s2a-hold-150 at 3.5, 4.23, 4.63 and 5.0 m/s; L1 still to film | `f1-films.md` |
 | R1 | this file | |
 
 ## S1: leo v06 on speed alone
@@ -66,7 +66,7 @@ second table is the old reading (within ±10%), kept as judged.
 | screen | what changed from its parent | judged | tracks up to (revised O3) | held there, median m/s (Fr) |
 |---|---|---|---|---|
 | s1-v06 | (S1, the base) | 180 | 3.5 (4 commands) | 3.77 (3.66) |
-| s2a-hold | lever 1, sampling: command held per episode (resample 3 s → 12 s) | 50, 150 | **3.5 (4 commands) at 150**; 5.0 misses by one seed (0.898) | **4.08 (4.29)** |
+| s2a-hold | lever 1, sampling: command held per episode (resample 3 s → 12 s) | 50, 150 | **4.63 (6 commands) at 150**, 3.5 before 4.23 and 4.63 were judged; 5.0 misses by one seed (0.898) | **4.57 (5.38)**; 4.08 (4.29) at 3.5 |
 | s2b-tent | lever 2, shape: `track_speed`'s tent symmetric (overshoot slope −0.5 → −1 /cmd) | 50, 150 | 3.5 (4 commands) at 150; rejected, slower at the top (4.01 at 5.0) | 3.82 (3.76) |
 
 Old reading, last 2 s, median m/s (seeds within ±10%):
@@ -117,12 +117,14 @@ Old reading, last 2 s, median m/s (seeds within ±10%):
   5000; peak margin 0.00; the fores lean left (shoulder 1.4–2.1× the
   right's), the hinds lean right at the knee (1.2–2.4×). No NaN; loops
   1.0–1.5 mm. The heel pad never touches.
-- **Top tracked speed (revised O3): 4.08 m/s held on a 3.5 m/s command,
-  Fr 4.29** (s2a-hold-150, every seed 4.00–4.21, `o3-reread.md`), against
+- **Top tracked speed (revised O3): 4.57 m/s held on a 4.63 m/s command,
+  Fr 5.38** (s2a-hold-150, every seed 4.54–4.59, `s2a-hold-150-top.md`;
+  4.08 m/s, Fr 4.29, on 3.5 in `o3-reread.md`), against
   v05's B1, which tracks 0.7 and 1.5 only and holds 2.59 m/s at most (Fr
   1.73), and Go1's tracked 1.53 m/s (Fr 0.80; held 2.48, Fr 2.11, past its
   range, `../orun18/b2-ceiling.md`). The fastest v06 has held on any command
-  is 4.53 m/s (Fr 5.28) at 5.0, which misses by one seed (4.49).
+  on all ten seeds is s2a-hold-150's 4.57 m/s (Fr 5.38) at 4.63. m2-dog-150
+  holds 4.83 m/s at 4.23 (Fr 6.01) on nine seeds, but seed 1007 tips there.
 
 ## M1 and M2: the motion, retargeted
 
@@ -160,7 +162,8 @@ the same commands (1 fall in 40, `../orun18/c3-s1-50.md`).
 
 On the same speed-only task and budget, v06 against v05:
 
-- it reaches 4.24 m/s held against 2.59, and 4.53 m/s on a held command;
+- it reaches 4.24 m/s held against 2.59 (S1), and s2a-hold-150 tracks to
+  4.63 m/s commanded, holding 4.57 m/s on all ten seeds;
 - its speed follows the command instead of plateauing;
 - it runs more upright (tilt 9–13° against 12–28°);
 - its fore drives stay within 1.35× rated, against v05's shoulder and
@@ -171,7 +174,10 @@ What binds now, on the evidence so far:
 
 - **Tracking, not reach**: the speed range covers the commands; the
   error is a proportional overshoot (s2a-hold) or a gap between gaits
-  (s1-v06).
+  (s1-v06). Above ~4.2 m/s commanded, s2a-hold-150 holds ~4.55 m/s in one
+  fixed gait (8.33 Hz, 543 mm steps), with the left fore elbow at
+  1.41–1.43× rated and at its clamp on 17% of frames
+  (`s2a-hold-150-top.md`).
 - **The right hind and the left fore**: drives over rated and lopsided left
   to right on every judged v06 policy.
 - **The heel pad is never used**: every v06 policy and both clips run on
@@ -191,7 +197,7 @@ What binds now, on the evidence so far:
   close the overshoot.
 - What holds the slow end (700–1150 mm/s) over its command once the noise
   gap is accounted for.
-- M2's film beside S; AMP (O4) is not started.
+- AMP (O4) is not started.
 - A counterfactual for seed 1007 (its start phase with another seed's mass and kick), which would measure each part's share (`l1-dog.md`).
 - L1's judgement and its films.
 - Why v06 trains faster per iteration than v05.
