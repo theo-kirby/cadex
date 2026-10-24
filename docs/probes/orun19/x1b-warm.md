@@ -1,7 +1,8 @@
 # orun19 X1b: track_speed one-sided, warm from s2a-hold-150 (launch)
 
 Verified against source: 2026-10-23. Charter X1, second screen: the launch.
-Not judged yet. When it ends it is judged at 50 and 150 at S's commands and
+Judged at 50 and 150 in `x1b-warm-150.md` (a new top, 5.72 m/s tracked at
+6.0). As launched, it was to be judged at 50 and 150 at S's commands and
 up to 6.5 m/s, beside s2a-hold-150. That is X1's top: 4.57 m/s held at
 4.63, Fr 5.38, 0/70 falls (`s2a-hold-150-top.md`). X1a did not raise it
 (`x1a-cold-150.md`, ~4.1 m/s ceiling): it was the first X1 screen in a row

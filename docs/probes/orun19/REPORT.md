@@ -1,6 +1,6 @@
 # orun19 report: leo v06 on sphere feet, speed first
 
-Verified against source: 2026-10-23. R1, kept current as criteria close;
+Verified against source: 2026-10-24. R1, kept current as criteria close;
 not yet the closing report. Every number cites the probe note in this folder
 that holds it. Every judged run is the engine's evaluation on the 10 frozen
 seeds (C2_SEEDS 1001–1010) at each held command, by orun18's
@@ -18,7 +18,7 @@ leo v06 throughout (tag `leo-v06`, revision `62e391eb`, model XML
 | M2 | **judged** at 50 and 150 (2.76 / 3.5 / 4.23 m/s, the bundle's span; M1's commands lie above it): `m2-dog-150` (`863845a8`) holds 3.67 / 4.36 / 4.83 m/s, over every command, and tracks 2.76 and 3.5 (top tracked 4.36 m/s, Fr 4.89); at 4.23 nine seeds hold 4.80–4.85 and seed 1007 tips at 0.42 s; the clip's rotary order and stride at 2.76–3.5, stride doubled (4.35 Hz) at 4.23; fore feet miss 62–84% of strides, hind 7–12%; worst `j_scap_r` 1.29–1.52×, `j_spine` 0.75–0.90×; hind loop 2.1 mm at 4.23. At 50 it ran as v05's c3-s1-50 (1.65–1.95 against 1.60–1.94 m/s), 6/30 tip. Dog against cheetah: the dog fits v06 better on held speed and torque, and the cheetah on following the clip | `m2-dog-150.md`, `m2-retarget.md` |
 | L1 | **judged** at 250 (2.76 / 3.5 / 4.23 m/s, the bundle's span): `l1-dog-250` (`ec612b29`, warm from m2-dog-150 on M2's bundle `8e9e53fc`, 250 iterations in 4,904 s) holds 2.93 / 3.73 / 4.43 m/s with 0/30 falls, so it tracks all three (top tracked 4.43 m/s, Fr 5.05), and seed 1007 survives (pitch +15° against +23°). It is 0.4–0.7 m/s slower than m2-dog-150 on every command, nearer the clip: hind feet on every stride, the clip's 2.27 Hz stride kept at 4.23, the left fore still double-taps. Worst drive 0.94 / 1.05 / 1.22× rated (m2-dog-150 1.14–1.52), loops ≤ 1.6 mm. Below s2a-hold-150's 4.57 m/s on top tracked speed. Filmed beside m2-dog-150 and the clip | `l1-dog-250.md`, `l1-dog.md` |
 | F1 | **all films made**: v06 standing, s1-v06-180 beside b1-s2-180, the M1 and M2 clips on v06, m1-cheetah-150 and m2-dog-150 beside their clips, s2a-hold-150 at its six tracked speeds, M1 and M2 beside s2a-hold-150 at 3.5, 4.23, 4.63 and 5.0 m/s, and L1 (l1-dog-250) beside m2-dog-150 and the clip at 2.76 and 4.23 m/s | `f1-films.md` |
-| X1 | **first screen judged, no new top (1 of 2 in a row)**: `x1a-cold` (`3eb2927f`), s2a-hold's task with the command ceiling 5000 → 6500 mm/s only, cold, 150 iterations in 3,117 s. At 150 it tracks 0.7–4.23 m/s with 0/100 falls (judged to 6.5), top 4.12 m/s held at 4.23 (Fr 4.37), and holds 4.03–4.15 m/s at every command from 4.23 to 6.5: a ~4.1 m/s ceiling, below s2a-hold-150's ~4.55. A new gait (4.55 Hz stride, ~845 mm hind steps), bound at the hind hips 1.41–1.49× rated. At 50 it ran ~2 m/s whatever the command. The top stays s2a-hold-150's 4.57 m/s (Fr 5.38); `track_speed` still penalises speed past the command, and the next screen changes that only, warm from s2a-hold-150. **X1b** (`x1b-warm`, launched 23:20 on leo `6f4bbe78`): s2a-hold's task with `track_speed` paying in full at and above the command (0.75 → 0.5) and the judged range to 6.5 m/s, warm from `efe7f96b`, 150 iterations at ~17.9 s each; not judged yet | `x1a-cold.md`, `x1a-cold-150.md`, `x1b-warm.md` |
+| X1 | **new top (screen 2, X1b)**: `x1b-warm-150` (`10f197e1`), s2a-hold's task with `track_speed` paying in full at and above the command (0.75 → 0.5) and the judged range to 6.5 m/s, warm from s2a-hold-150, 150 iterations in 3,014 s. It tracks nine commands, 0.7–6.0 m/s, with 0/100 falls: **top tracked 5.72 m/s held at 6.0 (Fr 8.42)**, and **5.84 m/s held at 6.5 on all ten seeds (Fr 8.78)**, the fastest held, past its 5 m/s training goal. One gait from 3.5 up: 6.25 Hz, flight every stride, steps 616 → 931 mm; bound at the hind hips (1.74–1.85× rated at 6.0–6.5) and `j_spine_yaw` (1.60–1.71×). At 50 (`6debc30e`) it already tracked to 5.0 (4.84 m/s, Fr 6.03). The streak without a new top is reset. Before it, X1a (`x1a-cold`, ceiling 5000 → 6500 only, cold) tracked 0.7–4.23 with a ~4.1 m/s ceiling, no new top over s2a-hold-150's 4.57 (Fr 5.38) | `x1a-cold.md`, `x1a-cold-150.md`, `x1b-warm.md`, `x1b-warm-150.md` |
 | R1 | this file | |
 
 ## S1: leo v06 on speed alone
@@ -123,9 +123,9 @@ Old reading, last 2 s, median m/s (seeds within ±10%):
   4.08 m/s, Fr 4.29, on 3.5 in `o3-reread.md`), against
   v05's B1, which tracks 0.7 and 1.5 only and holds 2.59 m/s at most (Fr
   1.73), and Go1's tracked 1.53 m/s (Fr 0.80; held 2.48, Fr 2.11, past its
-  range, `../orun18/b2-ceiling.md`). The fastest v06 has held on any command
-  on all ten seeds is s2a-hold-150's 4.57 m/s (Fr 5.38) at 4.63. m2-dog-150
-  holds 4.83 m/s at 4.23 (Fr 6.01) on nine seeds, but seed 1007 tips there.
+  range, `../orun18/b2-ceiling.md`). That is S2's top. X1 has since raised
+  v06's: x1b-warm-150 tracks to 6.0 m/s, holding 5.72 (Fr 8.42), and holds
+  5.84 m/s at 6.5 on all ten seeds (Fr 8.78) (`x1b-warm-150.md`).
 
 ## M1 and M2: the motion, retargeted
 
@@ -163,8 +163,10 @@ the same commands (1 fall in 40, `../orun18/c3-s1-50.md`).
 
 On the same speed-only task and budget, v06 against v05:
 
-- it reaches 4.24 m/s held against 2.59 (S1), and s2a-hold-150 tracks to
-  4.63 m/s commanded, holding 4.57 m/s on all ten seeds;
+- it reaches 4.24 m/s held against 2.59 (S1), s2a-hold-150 tracks to
+  4.63 m/s commanded, holding 4.57 m/s on all ten seeds, and X1b's
+  x1b-warm-150 tracks to 6.0, holding 5.72 m/s (Fr 8.42), and holds 5.84
+  m/s at 6.5 (Fr 8.78);
 - its speed follows the command instead of plateauing;
 - it runs more upright (tilt 9–13° against 12–28°);
 - its fore drives stay within 1.35× rated, against v05's shoulder and
@@ -173,6 +175,9 @@ On the same speed-only task and budget, v06 against v05:
 
 What binds now, on the evidence so far:
 
+- **At the top, the hind hips**: x1b-warm-150 holds 5.7–5.8 m/s at a
+  fixed 6.25 Hz stride by lengthening its step to ~930 mm, with both hips
+  at 1.74–1.85× rated and `j_spine_yaw` at 1.71× (`x1b-warm-150.md`).
 - **Tracking, not reach**: the speed range covers the commands; the
   error is a proportional overshoot (s2a-hold) or a gap between gaits
   (s1-v06). Above ~4.2 m/s commanded, s2a-hold-150 holds ~4.55 m/s in one
@@ -202,3 +207,4 @@ What binds now, on the evidence so far:
 - A counterfactual for seed 1007 (its start phase with another seed's mass and kick), which would measure each part's share (`l1-dog.md`).
 - L1 judged above 4.23 m/s: its bundle's command range stops there (`l1-dog-250.md`).
 - Why v06 trains faster per iteration than v05.
+- x1b-warm-150 above 6.5 m/s commanded: the speed spec stops there, so the judge refuses higher.
