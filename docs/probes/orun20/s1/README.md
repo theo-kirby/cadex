@@ -50,3 +50,48 @@ skin, because the radius is taken on the sloping surface (K2's note). It clears 
   than overlapping and leaning on the grown-region trim.
 - A limb's region is a slab common with a half-space. Rounding that common rounds the corners
   at its ends.
+
+## The roll-out on leon-soft (revision `3699a3fd`)
+
+Every body region in leon-soft's script is rounded: chest, saddle, pelvis, both necks, every
+limb plate and the fourteen tail plates. The head and ears are not yet touched. The script's
+helpers are `rnd` (`part.fillet(shape, SOFT_R, on_failure="reduce")`), `rbox` and `xz_prism`.
+
+- Each region and opening is filleted on every edge. A limb's or tail's slab common its
+  half-space is rounded after the common.
+- Where a later region meets an earlier one, it starts `SEAM_E = panel_gap + 0.2` (3.2 mm) away.
+  This applies to the ribs, saddle flanks, pelvis loins, neck sides, and the right tail plates.
+- The chest's rib region (two fused boxes in leon I) is one stepped prism, so its inner corner
+  is rounded too.
+- Two taste calls changed a panel's outline:
+  - The dorsal chest panel is narrowed from y ±40 to ±30.8, inside the shoulder openings' y 34.
+    At ±40 the openings cut its front corners square (4 sharp corners in the first build).
+  - The pelvis loin panels start at z 433, the top of leon I's thigh-clearance notch, rather
+    than 412. Under the notch, leon I left a 7 mm strip that cannot take the round.
+
+Two builds were made:
+
+| Build | `SOFT_R` | Body panels with a sharp corner | Smallest body-panel corner |
+|---|---|---|---|
+| `d795741d` | 7 mm | 1 (dorsal: 4 corners cut by the shoulder openings) | 4.29 mm (rib, steep skin) |
+| `3699a3fd` | 10 mm | 0 of 37 | 6.42 mm (ribs); limbs 7.39–8.61, tails 9.94–9.98 |
+
+A 10 mm region round reads 6.4–10 mm on the skin, because a round taken on a sloping skin
+reads small. Both builds keep leon I's six static pairs, have 0 failing panels of 48, and
+a swept check of 0 failing pairs (incomplete in-build, as leon I's).
+
+Across the whole build, the counts are those of leon I before them:
+
+| Measure | leon I `092997dd` | leon-soft `3699a3fd` |
+|---|---|---|
+| Sharp corners | 313 | 153 |
+| Corners under 4 mm | 321 | 161 |
+| Rounded corners | 38 | 225 |
+| Sharp-edge share | 68.9% | 68.5% |
+
+All 153 sharp corners left are on the 11 head panels: skull ×9, both ears, the jaw plate. The
+sharp-edge share hardly moves. It sums every printed component's sharp convex edge length,
+and the frames, links, housings and panel rims dominate it, not panel outlines. Bringing it
+"well below" leon I's needs those edges rounded too.
+
+`rollout/` holds the `corners.py` JSON and K1's six views, scaled like `k1/`.
