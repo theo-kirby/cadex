@@ -1,4 +1,4 @@
-# orun19 F1: the first films
+# orun19 F1: the films
 
 Verified against source: 2026-10-23. Charter F1, first part. These films are
 made while S2a trains. They live outside the repository: `~/orun19-films/`
@@ -15,6 +15,7 @@ for policy films and `~/mocap/films/` for anything drawn from capture data
 | `~/mocap/films/m2-dog-150-vs-clip.webm` | m2-dog-150 beside the clip it trained on, at the slowest (gallop27, 2.76 m/s) and fastest (gallop42, 4.23 m/s) stride's command, seed 1001, 6–8 s, real time then 1/2 | `6e92a939` | 12.0 s, 300 frames |
 | `~/orun19-films/s2a-hold-150-tracked.webm` | s2a-hold-150 (S2) at each of its six tracked commands, 0.7, 1.5, 2.4, 3.5, 4.23 and 4.63 m/s, seed 1001, 6–8 s, real time then 1/2 | `bb22f155` | 36.0 s, 900 frames |
 | `~/orun19-films/m-vs-s2a.webm` | M2 (m2-dog-150) beside S (s2a-hold-150) at 3.5 and 4.23 m/s, M2's slow and fast shared commands; M1 (m1-cheetah-150) beside S at 4.63 and 5.0 m/s, M1's; seed 1001, 6–8 s, real time then 1/2 | `14dd6ece` | 24.0 s, 600 frames |
+| `~/mocap/films/l1-dog-250-vs-m2-clip.webm` | L1 (l1-dog-250) beside M2 (m2-dog-150) and the clip they trained on, at the slowest (gallop27, 2.76 m/s) and fastest (gallop42, 4.23 m/s) stride's command, seed 1001, 6–8 s, real time then 1/2 | `4ef0aca7` | 12.0 s, 300 frames |
 
 Every film passed its decode check: every encoded frame decodes.
 
@@ -95,7 +96,20 @@ Every film passed its decode check: every encoded frame decodes.
   this seed. On M1's, speed-only S is faster than the cheetah's policy, by
   0.16–0.32 m/s.
 
-Not yet filmed (F1's remainder): L1.
+- **L1 at its best** (iteration 19). L1's best reading is on M2's own
+  bundle, so it is filmed where it trained: beside m2-dog-150 and the dog
+  clip, with `clip_side_film.py` as in M2's film. Chest speed in the 2 s
+  window on seed 1001:
+
+  | command | L1 l1-dog-250 | M2 m2-dog-150 | clip |
+  |---|---|---|---|
+  | 2.76 m/s | 2.973 (trace `c2291b18`) | 3.596 (`c03a6592`) | 2.768 (gallop27) |
+  | 4.23 m/s | 4.387 (`5f63798f`) | 4.828 (`97e1e271`) | 4.234 (gallop42) |
+
+  L1 runs nearer the clip's speed than M2 on both commands
+  (`l1-dog-250.md`).
+
+Every film F1 names is made.
 
 ## Reproduce
 
@@ -133,6 +147,10 @@ CUDA_VISIBLE_DEVICES= PYTHONPATH=cli pixi run python docs/probes/orun18/side_fil
   "cmd 4.23 m/s@$E/s2a-hold-150-4230=S s2a-hold-150,$E/m2-dog-150-4230=M2 m2-dog-150" \
   "cmd 4.63 m/s@$E/s2a-hold-150-4630=S s2a-hold-150,$E/m1-cheetah-150-4630=M1 m1-cheetah-150" \
   "cmd 5.0 m/s@$E/s2a-hold-150-5000=S s2a-hold-150,$E/m1-cheetah-150-5000=M1 m1-cheetah-150"
+R=~/cadex-projects/leo/runs/m2-dog/train/mocap_gallop-task.json   # 8e9e53fc
+CUDA_VISIBLE_DEVICES= PYTHONPATH=cli pixi run python docs/probes/orun19/clip_side_film.py $P ~/mocap/films/l1-dog-250-vs-m2-clip.webm \
+  "cmd 2.76 m/s@$E/l1-dog-250-2760=L1 l1-dog-250,$E/m2-dog-150-2760=M2 m2-dog-150,$R#0=gallop27 clip" \
+  "cmd 4.23 m/s@$E/l1-dog-250-4230=L1 l1-dog-250,$E/m2-dog-150-4230=M2 m2-dog-150,$R#2=gallop42 clip"
 ```
 
 The side films take about 10 minutes on the CPU; the last two took about 20
