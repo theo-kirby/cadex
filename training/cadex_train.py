@@ -369,6 +369,12 @@ CURRICULUM_TASK_KEYS = frozenset({
 #: it does not get to ride along inside somebody's band change.
 CURRICULUM_EPISODE_KEYS = frozenset({"episode_seconds", "max_steps"})
 
+#: ADR-791: the keys of a ``goal`` entry a curriculum may move -- where the
+#: goal is drawn from, never its channels, kind, unit, period or ramp. The
+#: actor reads the drawn value as it is, so 5000 mm/s means the same thing
+#: whichever range it was drawn from.
+CURRICULUM_GOAL_KEYS = frozenset({"low", "high", "nominal", "sequence"})
+
 #: ADR-736: the keys a step onto (or between) courses moves. They may move
 #: only together with the conditions :func:`check_curriculum_change` holds:
 #: the robot is the same (:func:`robot_xml`), and what the actor reads is
@@ -485,8 +491,22 @@ def check_curriculum_change(
         if clip(parent) == clip(child):
             changed = [key for key in changed if key != "tracking"] + ["tracking.cadence"]
             changed.sort()
+    if "goal" in changed:
+        # ADR-791: a step that moves only where a goal is drawn from. The
+        # actor reads the drawn value itself, through the running normaliser
+        # a warm start carries and keeps updating, so a wider range is new
+        # values on an input it already has, as a harder shove band is new
+        # states.
+        def bounds(task: dict[str, Any]) -> list[dict[str, Any]]:
+            return [{key: value for key, value in entry.items()
+                     if key not in CURRICULUM_GOAL_KEYS}
+                    for entry in task.get("goal") or ()]
+
+        if bounds(parent) == bounds(child):
+            changed = [key for key in changed if key != "goal"] + ["goal.range"]
+            changed.sort()
     disallowed = sorted(set(changed) - CURRICULUM_TASK_KEYS - CURRICULUM_COURSE_KEYS
-                        - {"tracking.cadence"})
+                        - {"tracking.cadence", "goal.range"})
     if disallowed:
         refuse(
             f"these keys moved and may not: {disallowed}. A curriculum may "

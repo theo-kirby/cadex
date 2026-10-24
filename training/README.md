@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-18. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-24. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -233,7 +233,11 @@ The keys that may differ are `CURRICULUM_TASK_KEYS`: `disturbance`,
 `label`, `randomisation`, `reset_variation`, `reward`, `success` (ADR-597)
 and `termination`. None changes what the network reads or emits. Every
 other key is refused: `observations`, `actions`, `goal`, `reference` and
-the rest. One exception is a step onto a course, or between courses
+the rest. A goal's draw range is the one part of `goal` that may move
+(ADR-791): when its entries differ only in `CURRICULUM_GOAL_KEYS` (`low`,
+`high`, `nominal`, `sequence`) the step is named `goal.range` and admitted,
+because the actor reads the drawn value as it is; its channels, kind, unit,
+period and ramp may not move. One exception is a step onto a course, or between courses
 (ADR-736). There, `model`, `terrain`, `scans` and `observations` may move
 together, provided the robot is the same less everything named
 `environment/` (`robot_xml`), and only privileged rows (a height scan) come

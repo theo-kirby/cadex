@@ -30,6 +30,11 @@ The human owns this file; unattended roles never edit it.
    v06 and train leo on them.
 3. **Then from dog motion.** Do the same with the AI4Animation dog's
    strides, and compare the two.
+4. **Then push one policy as fast as it will go** (X1), for as long as
+   the run has time.
+
+Faster is always better, in every config (owner, 2026-10-23): running
+above the command is never a miss.
 
 If the loop achieves only one thing, it is **leo v06 tracking a commanded
 speed**: a speed table at four or more commands, beside v05's B1.
@@ -95,10 +100,13 @@ speed**: a speed table at four or more commands, beside v05's B1.
     reference terms.
   - Footfall order, flight, stride and the heel pad's share of stance are
     measured and reported, not rewarded.
-- **O3. Tracking means the command.** A speed policy "tracks" when its
-  speed over the last 2 s of each judged seed is within 10% of the command
-  at every judged command up to its top. Changes to make it track are, in
-  this order:
+- **O3. Tracking means at least the command; faster is better.** A speed
+  policy "tracks" when its speed over the last 2 s of each judged seed is
+  no more than 10% under the command at every judged command up to its top.
+  Running over the command is never a miss, in S, M1, M2, L1 or X1 (owner,
+  2026-10-23); report the overshoot, but rank faster policies higher.
+  Judgements made before this change are re-read under it, not re-run.
+  Changes to make it track are, in this order:
   - the command curriculum and its sampling;
   - `track_speed`'s shape and weight;
   - the regularisers' weights.
@@ -172,6 +180,16 @@ speed**: a speed table at four or more commands, beside v05's B1.
   - S against v05's B1 at the same commands;
   - M1 and M2 beside S at the slow and fast ends, and beside their clips;
   - L1 at its best.
+- [ ] **X1. Top speed.**
+  - Starting from the fastest v06 policy so far, push one policy to the
+    highest speed it holds over the last 2 s with 0 falls on the judged
+    seeds, any gait.
+  - Anything in the task may change for it: the command ceiling above
+    5 m/s, `track_speed` rewarding speed past the command, curricula,
+    regulariser weights, warm starts. v06 stays frozen (O1), and O5 and
+    O6 still apply.
+  - Each screen is judged beside the previous top, with its Froude number
+    and O6's numbers; the report gives the best beside v05's and Go1's.
 - [ ] **R1. The closing report.** `docs/probes/orun19/REPORT.md` gives:
   - each criterion's numbers;
   - what v06's body allowed against v05, and what binds it now (drive,
@@ -207,7 +225,9 @@ speed**: a speed table at four or more commands, beside v05's B1.
      better motion's clip, if L1 leaves a clear next step.
   4. Fold what this run proves into `training/RECIPE.md` (sphere feet,
      speed first, motion over reward terms) and the leo project's docs.
-  5. Keep every gate green, every doc true, `STATE.md` folded, and R1
+  5. X1: sprint screens, each warm or cold from the fastest so far,
+     raising the top speed one change at a time.
+  6. Keep every gate green, every doc true, `STATE.md` folded, and R1
      current.
 
 ## Constraints
@@ -298,8 +318,9 @@ speed**: a speed table at four or more commands, beside v05's B1.
 ## Exhaustion policy
 
 `report_done`.
-- Once every criterion has evidence, write R1 and claim done. Two
-  consecutive critic acceptances stop the run.
+- Once S1–F1 have evidence, work X1 for the rest of the run. Write R1 and
+  claim done only after two X1 screens in a row fail to raise the top
+  speed. Two consecutive critic acceptances stop the run.
 - Until then, work the highest-ranked open criterion, then the long-term
   rung.
 - If the stop arrives first, report how far each criterion got. Do not
