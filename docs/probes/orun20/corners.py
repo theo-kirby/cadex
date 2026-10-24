@@ -1,6 +1,6 @@
 """orun20 K2: a build's sharp-edge share and its shell panels' outline-corner radii.
 
-usage: pixi run python docs/probes/orun20/corners.py PROJECT [--json OUT] [--panel NAME ...]
+usage: pixi run python docs/probes/orun20/corners.py PROJECT [--json OUT] [--panel NAME ...] [--part REGEX]
 
 Reads only the project's accepted build: ``script.json`` names the accepted
 revision, digest and attempt (its pinned staging, else the attempts under
@@ -51,6 +51,7 @@ import Part  # noqa: E402
 import argparse  # noqa: E402
 import json  # noqa: E402
 import math  # noqa: E402
+import re  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 SKIN_TURN_DEG = 50.0
@@ -79,7 +80,7 @@ def accepted_attempt(project: Path) -> tuple[str, Path, dict]:
     raise SystemExit(f"{project}: no attempt under script_artifacts/{revision[:8]} carries digest {digest[:8]}")
 
 
-def sharp_share(outputs: list[dict]) -> dict:
+def sharp_share(outputs: list[dict], part=None) -> dict:
     by_name = {item["name"]: item for item in outputs}
     world = set()
     for item in outputs:
@@ -91,6 +92,8 @@ def sharp_share(outputs: list[dict]) -> dict:
     unmeasured = []
     for link in outputs:
         if link.get("type") != "component_link" or link["name"] in world:
+            continue
+        if part is not None and not part.search(link["name"]):
             continue
         source = by_name.get(link.get("source_output") or "") or {}
         if "catalog" in source:
@@ -274,7 +277,7 @@ def panel_corners(shape) -> dict:
     }
 
 
-def measure(project: Path, only=()) -> dict:
+def measure(project: Path, only=(), part=None) -> dict:
     revision, attempt, result = accepted_attempt(project)
     outputs = result["outputs"]
     by_name = {item["name"]: item for item in outputs}
@@ -286,13 +289,16 @@ def measure(project: Path, only=()) -> dict:
         name = link["source_output"]
         if only and name not in only:
             continue
+        if part is not None and not part.search(link["name"]):
+            continue
         shape = Part.Shape()
         shape.read(str(attempt / by_name[name]["artifact_path"]))
         panels[name] = panel_corners(shape)
     radii = [row["smallest_radius_mm"] for row in panels.values() if row["smallest_radius_mm"] is not None]
     return {
         "project": project.name, "revision": revision, "digest": result["digest"],
-        "sharp_edge_share": sharp_share(outputs),
+        "part": part.pattern if part is not None else None,
+        "sharp_edge_share": sharp_share(outputs, part),
         "panels": len(panels),
         "smallest_corner_radius_mm": min(radii) if radii else None,
         "corners_under_4mm": sum(row["under_4mm"] for row in panels.values()),
@@ -311,8 +317,11 @@ def main() -> None:
     parser.add_argument("project", type=Path)
     parser.add_argument("--json", type=Path, help="write the whole measurement here")
     parser.add_argument("--panel", action="append", default=[], help="measure only this panel output")
+    parser.add_argument("--part", help="measure only components whose name matches this regex, both "
+                        "measures (case-insensitive; `cadex hero`'s head focus for the head)")
     args = parser.parse_args()
-    value = measure(args.project.expanduser().resolve(), args.panel)
+    part = re.compile(args.part, re.IGNORECASE) if args.part else None
+    value = measure(args.project.expanduser().resolve(), args.panel, part)
     if args.json:
         args.json.write_text(json.dumps(value, indent=1) + "\n")
     share = value["sharp_edge_share"]
