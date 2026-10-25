@@ -45806,3 +45806,42 @@ place one.
   both rear refusals, a front housing, and every other QDD's rear circle as
   before. Before the one-segment fix it failed at `api.fuse`. Plus `pixi run
   test-engine` and `pytest cli/tests`.
+
+## ADR-827 — The worker bundle stages the modules its members import inside functions (2026-10-25, lr1)
+
+**Context.** The project worker runs in a `--safe-mode` sandbox out of a
+content-addressed bundle (`_DOMAIN_WORKER_BUNDLES["project"]`), with the
+bundle first on `sys.path` and FreeCAD's own paths after it. The bundle's
+guard, `_unstaged_member_imports`, reads module-scope imports only. Nine
+engine modules are imported by members inside functions, and were never
+staged: `cadex_library_api` (by `cadex_project_worker`), and through it
+`CadexCatalog`, `CadexMachineParts` and `CadexPanels`; `CadexEnvelope` (by
+`cadex_part_worker`); `CadexGait` (by `CadexDynamics`); `CadexPinResolution`,
+`CadexScriptStore` and `CadexTools` (by `CadexLinkedPart`); and
+`CadexParts.json`, which `CadexCatalog` reads beside itself. The worker found
+them on FreeCAD's `Mod/cadex`. In a packaged payload that is the same tree.
+In a dev tree it is the copy the environment last installed, so an edit to
+any of them is invisible to every build. Lurcher's first build on
+`lurcher/tooling` failed with "Unknown QDD actuator 'robstride-rs04'": ADR-826
+had added the row to the source tree, and the worker read the installed
+catalog, which predates it (its probe stages the library on the plain Python
+path, so it never ran through a worker).
+
+**Decision.** The ten files join the project bundle, each with the member
+that reaches it. They are keyed into the bundle's digest with the rest, so a
+catalog change makes a new bundle.
+
+**Consequences.**
+- A dev-tree build now uses the dev tree's library, catalog, panels, envelope
+  and gait reference. A packaged payload is unchanged: it stages the same
+  bytes it installed.
+- `test_every_engine_module_is_installed_by_cmake` reads `.json` as well as
+  `.py` names from `CMakeLists.txt`, so its contract (whatever the bundle
+  stages ships) covers the data file. `CadexParts.json` was already installed.
+- No protocol, tool-surface, CLI or `pixi.toml` change; no suite test is
+  added (ADR-725). Verified by `docs/probes/lurcher/worker_bundle_closure.py`,
+  which walks every import of every member at any depth and every
+  `with_name(...)` data file: before the change it names the ten files, after
+  it 41 staged files cover the 40-module closure. Plus `pixi run test-engine`
+  (157 passed, 3 skipped), `pytest cli/tests` (53 passed), and lurcher's build
+  of `script.py`, which places RS04s.

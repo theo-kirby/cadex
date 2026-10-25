@@ -125,6 +125,23 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         # sandbox as everything else here, out of the same content-addressed
         # directory, and must never be importable by the service.
         "cadex_preview_worker.py",
+        # The modules the members above import inside functions (ADR-827).
+        # The guard below reads module-scope imports only, so these were
+        # never staged: the worker found them on FreeCAD's own Mod path,
+        # which in a dev tree is the copy the environment last installed,
+        # not this tree. A catalog row added here (ADR-826's RS04) was then
+        # unknown to every build. Staged, they are keyed into the bundle's
+        # digest with everything else.
+        "cadex_library_api.py",       # cadex_project_worker: the `lib` domain
+        "CadexCatalog.py",            # cadex_library_api: every catalog row
+        "CadexParts.json",            # CadexCatalog reads it beside itself
+        "CadexMachineParts.py",       # cadex_library_api: lib.part SKUs
+        "CadexPanels.py",             # cadex_library_api: lib.housing, panels
+        "CadexEnvelope.py",           # cadex_assembly_worker: the panel check
+        "CadexGait.py",               # CadexDynamics: the gait reference
+        "CadexPinResolution.py",      # CadexLinkedPart
+        "CadexScriptStore.py",        # CadexLinkedPart
+        "CadexTools.py",              # CadexPinResolution
     ),
 }
 

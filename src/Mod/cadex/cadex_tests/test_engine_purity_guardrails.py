@@ -279,7 +279,7 @@ def test_every_engine_module_is_installed_by_cmake() -> None:
     """
 
     cmake = (MODULE_DIR / "CMakeLists.txt").read_text(encoding="utf-8")
-    installed = set(re.findall(r"([A-Za-z_][A-Za-z0-9_]*\.py)", cmake))
+    installed = set(re.findall(r"([A-Za-z_][A-Za-z0-9_]*\.(?:py|json))", cmake))
 
     from CadexScriptedRuntime import _DOMAIN_WORKER_BUNDLES
 
