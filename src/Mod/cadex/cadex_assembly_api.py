@@ -4394,6 +4394,7 @@ class AssemblyDomainAPI:
         ramp_seconds: float | None = None,
         sequence: Sequence[float] | None = None,
         bearing_deg: float | None = None,
+        bands: Sequence[Sequence[float]] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Tell the policy where to go: a number or a place drawn per episode.
@@ -4499,6 +4500,16 @@ class AssemblyDomainAPI:
         speed, then turn through 180 degrees -- and the draw is still taken
         for each scripted segment, so stating a sequence moves no other
         draw in the seed's stream.
+
+        ``bands=[[low, high, weight], ...]`` (ADR-824) weights the draw of a
+        ``value``, ``speed`` or ``yaw_rate`` goal: a segment picks a band
+        with probability its weight over the bands' total, then draws
+        uniformly inside it. The bands tile ``between`` in order -- the
+        first starts at its low, each ends where the next starts, the last
+        ends at its high -- with 1 to 16 bands, each wider than nothing and
+        weighing more than 0. It is how a speed task trains more of its
+        episodes at the speeds that are hard, without narrowing the range a
+        policy is asked. Each segment takes two draws instead of one.
 
         An episode played without a seed holds the middle of a range, or
         the point the tip already occupies.
@@ -4658,6 +4669,40 @@ class AssemblyDomainAPI:
                     f"{properties['high']:g}]", outside,
                 )
             properties["sequence"] = scripted
+        if bands is not None:
+            if clean_kind not in ("value", "speed", "yaw_rate"):
+                raise _error(
+                    operation, "bands",
+                    "weights the draw of a value, a speed or a yaw rate; "
+                    f"this is a {clean_kind}", bands,
+                )
+            if isinstance(bands, (str, bytes)) or not isinstance(bands, Sequence) \
+                    or not 1 <= len(bands) <= 16 or any(
+                        isinstance(band, (str, bytes)) or not isinstance(band, Sequence)
+                        or len(band) != 3 for band in bands):
+                raise _error(
+                    operation, "bands",
+                    "must be a list of 1 to 16 bands, each [low, high, weight]",
+                    bands,
+                )
+            weighted = [
+                [_number(operation, f"bands[{index}][{part}]", value)
+                 for part, value in enumerate(band)]
+                for index, band in enumerate(bands)
+            ]
+            edges = [properties["low"]] + [band[1] for band in weighted]
+            if any(band[0] != edge for band, edge in zip(weighted, edges)) \
+                    or edges[-1] != properties["high"] \
+                    or any(not band[1] > band[0] or not band[2] > 0.0 for band in weighted):
+                raise _error(
+                    operation, "bands",
+                    "must tile the goal's range in order: the first band "
+                    f"starts at between's low {properties['low']:g}, each ends "
+                    "where the next starts, the last ends at between's high "
+                    f"{properties['high']:g}, and each has low < high and "
+                    "weight > 0", bands,
+                )
+            properties["bands"] = weighted
         if resample_seconds is not None:
             properties["resample_seconds"] = _number(
                 operation, "resample_seconds", resample_seconds,

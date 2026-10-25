@@ -2196,7 +2196,17 @@ def draw_goals(mujoco: Any, model: Any, task: dict[str, Any], rng: Any) -> list[
         if str(entry["kind"]) != "point":
             scripted = list(entry.get("sequence") or ())
             for index in range(int(entry["segments"])):
-                value = rng.uniform(float(entry["low"]), float(entry["high"]))
+                bands = entry.get("bands")
+                if not bands:
+                    value = rng.uniform(float(entry["low"]), float(entry["high"]))
+                else:
+                    # ADR-824: pick a band by weight, then draw inside it.
+                    pick = rng.random() * sum(float(band[2]) for band in bands)
+                    for start, end, weight in bands:
+                        if pick < float(weight):
+                            break
+                        pick -= float(weight)
+                    value = rng.uniform(float(start), float(end))
                 # ADR-721: a scripted segment takes its draw, holds its script.
                 segments.append(
                     [float(scripted[index]) if index < len(scripted) else value]

@@ -1888,6 +1888,16 @@ nearest the settled command (`judged_reference`). It cannot be combined
 with `reference_cadence="speed"`, and a warm start onto a schedule is not
 a curriculum step (`reference` and `tracking` move).
 
+**Weighted command draws (ADR-824).** A speed goal drawn uniformly over a
+schedule's whole span trains each band of speeds in proportion to its
+width. `api.goal(bands=[[low, high, weight], ...])` weights it instead: the
+bands tile `between`, and a segment picks one with probability its weight
+over the total (one `random()`), then draws `uniform` inside it. The bundle's
+goal keeps its `low` and `high` and gains `bands`; its `goal_algorithm` gains
+`GOAL_BAND_ALGORITHM`'s clause, and the trainer's `draw_goals` draws the same
+two numbers per segment. A goal without bands draws as before, byte for
+byte. Refused: `goal_bands_malformed`.
+
 **Gait families: a switch inside a speed schedule (ADR-822).** A walk or
 trot and a gallop land their feet in other orders, so ADR-773 refuses to
 blend them. `api.task(reference_switches=[...])` states one entry per

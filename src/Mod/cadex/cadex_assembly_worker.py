@@ -5173,6 +5173,9 @@ def _goal_input(
         # script's sequence reached the engine.
         if properties.get("sequence") is not None:
             resolved["sequence"] = [float(v) for v in properties["sequence"]]
+        # ADR-824: present only on a goal drawn by weighted bands.
+        if properties.get("bands") is not None:
+            resolved["bands"] = [[float(v) for v in band] for band in properties["bands"]]
         # ADR-751: how far a waypoint's leg may turn; absent, any way.
         if properties.get("bearing_deg") is not None:
             resolved["bearing_deg"] = float(properties["bearing_deg"])

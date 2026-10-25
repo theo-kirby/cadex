@@ -45655,3 +45655,49 @@ negative included, is read as before (speed over command).
   the U1 screen u1s-dog-150 at iteration 50 (ten seeds, every speed
   measured, every `speed_ratio` `None`). Plus `pixi run test-engine` and
   `pytest cli/tests`.
+
+
+## ADR-824 — A value, speed or yaw-rate goal may be drawn by weighted bands (2026-10-25, l3r1)
+
+**Context.** A goal's draw is `uniform(low, high)` (ADR-462), so a speed
+task trains each band of its command range in proportion to the band's
+width. l3r1 measured on six cold screens of leon III's U1 task (0-4.5 m/s,
+one schedule of a stand, a trot and three gallops) that the fast end
+strides at a gallop's frequency when 0.89-1.00 of training episodes are
+commanded in the gallops' band, and scuttles at 4-6.5 Hz when 0.44 are. The
+share could only be moved by narrowing the range, which drops commands the
+policy must answer.
+
+**Decision.** `api.goal(bands=[[low, high, weight], ...])` on a `value`,
+`speed` or `yaw_rate` goal. The bands tile `between` in order: the first
+starts at its low, each ends where the next starts, the last ends at its
+high; 1 to 16 bands, each with low < high and weight > 0. A segment's draw
+is `pick = random() * sum(weight)`, the first band whose weight exceeds
+`pick` once the earlier bands' weights are taken off (the last if none
+does), then `uniform(band low, band high)`. The record keeps `low`, `high`
+and `nominal` as before and gains `bands`; `goal_algorithm` gains
+`GOAL_BAND_ALGORITHM`'s clause. `goal_bands_problem` states the rule, and
+`_goal_value_draw` makes the draw; the trainer's `draw_goals` carries the
+same lines (ADR-084: it cannot import the engine).
+- **Bands that tile the range, not free weights over points.** The range a
+  policy is asked and the success spec's `between` stay what they were;
+  only how often each part is trained moves.
+- **Two draws per segment, only on a banded goal.** A goal without bands
+  takes the one `uniform` it always took, so every earlier bundle draws
+  the same stream and keeps its digest.
+
+**Consequences.**
+- A task with no banded goal writes the bundle it always wrote.
+- Refused: `goal_bands_malformed`, by the engine (`_goal_records`, also for
+  bands on a point, phase or waypoint) and by the script API.
+- No protocol, tool-surface, CLI or `pixi.toml` change. No suite test is
+  added (ADR-725: the suites hold contracts only). Verified by
+  `docs/probes/l3r1/goal_bands.py`: `api.goal` through the worker's
+  `_goal_input` into `_goal_records` keeps the bands; held and resampled,
+  the engine's `draw_episode_goals` and the trainer's `draw_goals` agree at
+  200 seeds and the trainer's `goal_pool` is the engine's stream over 500
+  episodes; 20,000 held draws of `[[0, 2500, 0.11], [2500, 4500, 0.89]]`
+  put 0.8886 at 2.5-4.5 m/s, uniform inside each band; an unbanded goal
+  draws `uniform(low, high)` number for number; eight malformed band lists
+  and bands on a phase or waypoint are refused by both. Plus `pixi run
+  test-engine`, `pytest cli/tests` and the trainer's tests.

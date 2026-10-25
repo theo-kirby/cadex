@@ -9500,6 +9500,18 @@ GOAL_RAMP_ALGORITHM = (
     "and held segment k's; segment 0 is held from the start"
 )
 
+#: What a goal drawn by weighted bands adds to :data:`GOAL_ALGORITHM`
+#: (ADR-824), appended only to bundles whose goal carries ``bands``, so every
+#: earlier bundle keeps its algorithm and its digest. Its value draw is two
+#: draws instead of one, in this order.
+GOAL_BAND_ALGORITHM = (
+    "; on a goal with bands [[low_i, high_i, weight_i], ...], which tile "
+    "[low, high] in order, a segment's value is not uniform(low, high): "
+    "pick = random() * sum(weight_i), band i is the first whose weight_i "
+    "exceeds pick after the weights of the bands before it are taken off "
+    "(the last when none does), and the value is uniform(low_i, high_i)"
+)
+
 #: Everything a reward or termination expression may name beyond the
 #: observation channels themselves. ``_CONTROL_GLOBALS`` plus the three a
 #: reward actually wants: ``exp`` for a shaped bell, ``sqrt`` for a distance,
@@ -11302,6 +11314,14 @@ def _goal_records(
                           "earlier": seen_kinds[kind]},
             )
         seen_kinds[kind] = name
+        if entry.get("bands") is not None and kind not in ("value", "speed", "yaw_rate"):
+            # ADR-824: refused here, before the kinds whose draw has no value.
+            raise DynamicsError(
+                f"{what} is drawn by bands, and a {kind} has no value to weight.",
+                reason="goal_bands_malformed",
+                correction="Give bands only on a value, a speed or a yaw rate goal.",
+                observed={"goal": name, "kind": kind},
+            )
         channels = (
             [f"{name}_x", f"{name}_y", f"{name}_z"] if kind == "point"
             else [f"{name}_sin", f"{name}_cos"] if kind == "phase"
@@ -11505,6 +11525,25 @@ def _goal_records(
                         observed={"goal": name, "sequence": [repr(v) for v in values]},
                     )
                 record["sequence"] = values
+            bands = entry.get("bands")
+            if bands is not None:
+                # ADR-824: a piecewise-uniform draw over the goal's range.
+                problem = goal_bands_problem(kind, low, high, bands)
+                if problem:
+                    raise DynamicsError(
+                        f"{what} is drawn by bands {bands!r}: {problem}.",
+                        reason="goal_bands_malformed",
+                        correction=(
+                            "Give bands=[[low, high, weight], ...] on a value, a "
+                            "speed or a yaw rate: 1 to 16 bands in order, each "
+                            "low < high and weight > 0, the first starting at "
+                            "between's low, each ending where the next starts, "
+                            "and the last ending at between's high."
+                        ),
+                        observed={"goal": name, "bands": repr(bands),
+                                  "low": low, "high": high},
+                    )
+                record["bands"] = [[float(v) for v in band] for band in bands]
             ramp = entry.get("ramp_seconds")
             if ramp is not None:
                 # ADR-773: a straight line from one segment's value to the next.
@@ -13718,6 +13757,9 @@ def task_records(
         ) + (
             GOAL_RAMP_ALGORITHM
             if any(entry.get("ramp_steps") for entry in goal) else ""
+        ) + (
+            GOAL_BAND_ALGORITHM
+            if any(entry.get("bands") for entry in goal) else ""
         )} if goal else {}),
         # ADR-696: absent when the task observes no command, so its bundle
         # and digest are the ones it always had.
@@ -14474,6 +14516,64 @@ def draw_episode_variation(
     return {"reset_variation": variations, "disturbance": pushes}
 
 
+def goal_bands_problem(
+    kind: str, low: float, high: float, bands: Any
+) -> str:
+    """Why ``bands`` cannot weight a ``kind`` goal over [low, high]; empty when it can (ADR-824).
+
+    The bands tile the range exactly, in order, so a banded goal draws from
+    the same range its ``low`` and ``high`` state, and every value in it can
+    be drawn.
+    """
+
+    if kind not in ("value", "speed", "yaw_rate"):
+        return f"bands weight a value, a speed or a yaw rate, and this is a {kind}"
+    if isinstance(bands, (str, bytes)) or not isinstance(bands, Sequence) \
+            or not 1 <= len(bands) <= 16:
+        return "they are not a list of 1 to 16 bands"
+    edge = float(low)
+    for index, band in enumerate(bands):
+        if isinstance(band, (str, bytes)) or not isinstance(band, Sequence) or len(band) != 3:
+            return f"band {index} is not [low, high, weight]"
+        try:
+            start, end, weight = (float(v) for v in band)
+        except (TypeError, ValueError):
+            return f"band {index} is not three numbers"
+        if not all(math.isfinite(v) for v in (start, end, weight)):
+            return f"band {index} is not finite"
+        if start != edge:
+            return f"band {index} starts at {start:g}, not at {edge:g}"
+        if not end > start:
+            return f"band {index} ends at {end:g}, not above its start {start:g}"
+        if not weight > 0.0:
+            return f"band {index} weighs {weight:g}, not more than 0"
+        edge = end
+    if edge != float(high):
+        return f"the last band ends at {edge:g}, not at the goal's high {float(high):g}"
+    return ""
+
+
+def _goal_value_draw(entry: Mapping[str, Any], rng: Any) -> float:
+    """One segment's draw of a value, a speed or a yaw rate.
+
+    ``uniform(low, high)``; on a goal with ``bands`` (ADR-824), one
+    ``random()`` times the bands' total weight picks the first band whose
+    running weight exceeds it (the last when none does), then
+    ``uniform(band low, band high)``. The trainer's ``draw_goals`` carries
+    the same lines.
+    """
+
+    bands = entry.get("bands")
+    if not bands:
+        return rng.uniform(float(entry["low"]), float(entry["high"]))
+    pick = rng.random() * sum(float(band[2]) for band in bands)
+    for start, end, weight in bands:
+        if pick < float(weight):
+            break
+        pick -= float(weight)
+    return rng.uniform(float(start), float(end))
+
+
 def draw_episode_goals(
     mujoco: Any, model: Any, task: Mapping[str, Any], rng: Any
 ) -> list[dict[str, Any]]:
@@ -14509,7 +14609,7 @@ def draw_episode_goals(
         if str(entry["kind"]) != "point":
             scripted = list(entry.get("sequence") or ())
             for index in range(int(entry["segments"])):
-                value = rng.uniform(float(entry["low"]), float(entry["high"]))
+                value = _goal_value_draw(entry, rng)
                 # ADR-721: a scripted segment takes its draw and holds its
                 # script, so the stream after it is the unscripted one.
                 segments.append(

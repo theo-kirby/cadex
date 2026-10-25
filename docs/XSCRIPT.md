@@ -600,7 +600,14 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `resample_seconds`, at most one segment long, whole control steps) moves
   each segment's value in from the one before in a straight line instead
   of one step: `goal("cmd", kind="speed", between=[800, 4500],
-  resample_seconds=3, ramp_seconds=1.5)` accelerates through the range. The
+  resample_seconds=3, ramp_seconds=1.5)` accelerates through the range.
+  `bands=[[low, high, weight], ...]` (ADR-824; a `value`, `speed` or
+  `yaw_rate`) weights the draw: a segment picks a band with probability its
+  weight over the total, then draws uniformly inside it. The bands tile
+  `between` in order, 1 to 16 of them, each wider than nothing and weighing
+  more than 0: `goal("cmd", kind="speed", between=[0, 4500],
+  bands=[[0, 2500, 0.11], [2500, 4500, 0.89]])` trains about 0.89 of its
+  episodes at 2.5-4.5 m/s and still asks the whole range. The
   step a goal changes on is scored against the goal its action was taken
   under. A task states up to four goals in all, and a goal may not share a
   channel name with an observation. An episode played without a seed holds the middle of a
