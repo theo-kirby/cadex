@@ -45623,3 +45623,35 @@ trainer's `schedule_blend` and `schedule_nearest` read it the same way.
   `schedule_footfall_order`; and the three refusals hold in the engine and
   in the script API. Plus `pixi run test-engine`, `pytest cli/tests` and the
   trainer's tests.
+
+## ADR-823 — An evaluation held at a command of 0 is measured; its speed ratios are `None` (2026-10-24, l3r1)
+
+**Context.** Leon III's U1 judges a stand: a policy held at a speed
+command of 0 must not drift and must keep its feet planted. Every
+evaluation at command 0 failed, `float division by zero`, and wrote no
+report: `CadexEvaluation.gait_metrics` divided the measured forward and
+lateral speeds by `command_mm_s` whenever a command was given. Its own
+docstring already said an episode that asked for no speed has no speed to
+track and reads `speed_ratio` and `lateral_ratio` as `None`, but that was
+written only for a missing command (`None`), not for 0.
+
+**Decision.** A command of 0 takes the same path as no command: both
+ratios are `None`, and the speeds themselves (`mean_forward_speed_mm_s`,
+`mean_lateral_speed_mm_s`) are measured as before. Any other command,
+negative included, is read as before (speed over command).
+
+**Consequences.**
+- A command-0 evaluation now writes its report. A spec predicate on
+  `speed_ratio` reads `None` as unmeasured, so it fails rather than passes
+  at a stand. A stand is judged on the measured speeds and the feet, not on
+  a ratio (l3r1 judges it with its own `tools/realism.py` stand rule).
+- Nothing changes at a non-zero command: the evaluations l3r1 has already
+  judged are unaffected.
+- No protocol, tool-surface, CLI or `pixi.toml` change; no suite test is
+  added (ADR-725). Verified by `docs/probes/l3r1/stand_command.py`. It
+  reads `gait_metrics` with the base and feet stubbed at commands `None`,
+  0, 0.0, 1000 and -500, which fails on the parent commit with the
+  division by zero. It also reads leon III's real command-0 evaluation of
+  the U1 screen u1s-dog-150 at iteration 50 (ten seeds, every speed
+  measured, every `speed_ratio` `None`). Plus `pixi run test-engine` and
+  `pytest cli/tests`.
