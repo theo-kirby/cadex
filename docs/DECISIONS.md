@@ -45701,3 +45701,53 @@ same lines (ADR-084: it cannot import the engine).
   draws `uniform(low, high)` number for number; eight malformed band lists
   and bands on a phase or waypoint are refused by both. Plus `pixi run
   test-engine`, `pytest cli/tests` and the trainer's tests.
+
+## ADR-825 — The trainer may distil teachers into a student by command band (2026-10-25, l3r1)
+
+**Context.** l3r1's U1 asks one policy to stand and to run 0.5-4.5 m/s.
+Six cold screens could not train the stand inside the gallop's bundle: each
+lever that gave the stand training share cost the fast end, and a stand
+reward row and a stand-only termination failed (l3r1 r-0041, r-0043). The
+stand trained alone passes leon III's realism gate on two seeds, beside a
+gallop policy that passes it at 2-4.5 m/s. Joining them by warm start
+would carry one policy's weights into the other's band; the trainer had no
+way to train a policy against another policy's actions.
+
+**Decision.** `cadex_train.py --teacher LOW:HIGH:POLICY`, repeated, with
+`--teacher-goal` (default `cmd`) and `--distill-weight` (default 1). On the
+steps whose goal lies in a teacher's `[LOW, HIGH)` (the last band also takes
+its `HIGH`), the loss gains the weight times the mean over every step of
+the taught mask times the squared distance between `tanh` of the student's
+location and `tanh` of the teacher's, read by the teacher's own normaliser.
+PPO's loss is unchanged and trains every step, so a band with no teacher
+learns from the reward alone, and the student may outgrow a teacher where
+the reward pays for it.
+- **Played actions, not log-probabilities.** The engine plays `tanh` of the
+  location; matching it bounds each action's error by the box, and the
+  student's exploration width stays PPO's.
+- **Over every step, not the taught ones.** A band drawn on a fifth of the
+  steps pulls a fifth as hard, as PPO's own terms do.
+- **A teacher's task may differ; nothing else may.** A teacher is
+  `check_policy_fits` without the task digest: the same model, the bundle's
+  actor channels in order, its action table. Bands may not overlap and stay
+  inside the goal's range; a `--family` run is refused (its morph inputs
+  are not a teacher's).
+
+**Consequences.**
+- A run without `--teacher` builds the loss and writes the header it always
+  did: `teacher`, `teacher_goal` and `distill_weight` are kept out of
+  `training.hyperparameters`, and `training.distill` (goal, weight, and per
+  teacher its band, digest, label, task digest and iterations, never a
+  path) appears only on a distilled policy. The curve and iteration line
+  gain `distill_loss` and `taught` on a distilled run only.
+- No engine, protocol, tool-surface, CLI or `pixi.toml` change; no suite test
+  (ADR-725). `training/test_distill.py` (10 tests, training venv) holds the
+  routing, the loss, the refusals and the header rule.
+  `docs/probes/l3r1/distill.py` replays two real leon III teachers through
+  `load_teacher` and `teacher_actions` to their recorded witness actions
+  (1.3e-7 and 2.6e-7 against 1e-4), and routes every band and gap. A
+  three-iteration GPU run (512 envs) on leon III's U1 bundle `b3405d39`
+  with both teachers taught 0.91-0.93 of steps (the bands predict 0.92),
+  wrote a policy the trainer's witness check (1.0e-7) and the engine's
+  `verify_policy` accept, with `training.distill` in its header. On CPU the
+  same run had not finished its second iteration in 50 minutes.
