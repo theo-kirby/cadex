@@ -31,6 +31,14 @@ side by side, so the owner can pick one, or parts of several.
 If the loop achieves only one thing, it is **the soft / rounded leon**, built
 clean and shown beside leon I.
 
+**Owner, live edit (2026-10-24, about 09:15):** the owner has chosen **soft**.
+Two things come next, ahead of the other styles:
+- **More soft head variations.** The soft face still reads angular, because its
+  panels are flat facets meeting at creases. Rounding the outline corners is not
+  enough. Try several heads whose surfaces are themselves smoother.
+- **A hind hip pad.** Add a small pad above the current hind hip (thigh) panel
+  that covers the rest of that hip motor's outer face.
+
 ## The machine
 
 - **Leon I is the base:** `~/cadex-projects/leon` at tag `leon-i`, script
@@ -94,6 +102,32 @@ clean and shown beside leon I.
   - The ears are round half-discs, at least 10 mm in radius at the tip.
   - The panel surfaces keep wrapping the mechanism.
   - The sharp-edge share falls well below leon I's.
+- [ ] **S1h. Soft head variations** (in `leon-soft`, or `leon-soft-head-*`
+  projects if variants need to build side by side).
+  - At least three soft head variants are built clean and rendered from the head
+    close-up camera (and the hero), on one labelled grid beside leon I's head and
+    the current soft head.
+  - Each variant is less faceted than the current soft head: fewer and larger face
+    panels, panel surfaces that curve (domed, pillowed, lofted or revolved)
+    rather than flat facets, and soft creases. Examples to try, not rules:
+    - a pillowed face: each face panel domed so it bulges between its seams;
+    - a lofted muzzle: one continuous rounded muzzle-and-nose piece with a few
+      split lines, instead of many facets;
+    - large crease radii, like leo v01's accepted 26/18/14 mm, on every face
+      crease, with rounded seam edges;
+    - an organic, sculpted face (S3's brief) on the soft body.
+  - The report names each variant's construction and its sharp-edge share and
+    smallest radius from K2's measure on the head.
+  - Every variant keeps the head's mechanism (neck, jaw if any, sensors,
+    collision geometry) and passes G1.
+- [ ] **S1p. Hind hip pad on the soft leon.**
+  - A pad sits above the current hind hip panel, on each side. It covers the
+    rest of that hip motor's outer face that the panel leaves bare. It is soft
+    (rounded outline, rounded edges) and reads as part of the same panel family.
+  - It is a small pad, not the dropped haunch cap (leon `DECISIONS.md` ADR-002).
+    Mount it on whatever carries that motor face, so it never sweeps into the
+    thigh: swept clearance stays 0 and panels pass.
+  - The hero, side and three-quarter rear renders show it.
 - [ ] **S2. Sleek / streamlined leon** (`~/cadex-projects/leon-sleek`).
   - It has fewer panels than leon I and longer runs between seams.
   - The report gives the panel count and the longest panel against leon I.
@@ -240,7 +274,9 @@ clean and shown beside leon I.
 
 - Resolve reversible choices autonomously, with the smallest measured step
   towards the highest-ranked open criterion. The order is K1, K2, S1, G1 on
-  S1, then S2–S4, C1, R1.
+  S1, then S1h and S1p (the owner's live edit), then C1 on soft, then S2–S4,
+  C1, R1. The owner has chosen soft, so S2–S4 now matter mainly as sources of
+  head and panel ideas for soft; keep them, but never ahead of S1h or S1p.
 - Taste calls inside a style's brief are the run's to make. Make them
   visibly, so the owner can compare them, and say which were made.
 - Code and accepted artifacts outrank docs.

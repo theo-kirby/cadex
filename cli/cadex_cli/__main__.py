@@ -53,7 +53,7 @@ from .engine import Engine, EngineError, resolve_engine, source_comparison
 from .export import ExportedOutput, ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, inventory_summary, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, retained_snapshot, write_render
-from .hero import ITEMS as HERO_ITEMS, grid as hero_grid, hero_dir, make as make_hero
+from .hero import DEFAULT_ITEMS as HERO_DEFAULT_ITEMS, FOCUS as HERO_FOCUS, ITEMS as HERO_ITEMS, grid as hero_grid, hero_dir, make as make_hero
 from .review_record import PROJECT_SCRIPT_FILENAME
 from .section import write_section
 from .revision_meshes import (
@@ -318,7 +318,14 @@ def build_parser() -> argparse.ArgumentParser:
     _common(hero_parser, inherit=True)
     hero_parser.add_argument(
         "--only", default="", metavar="ITEMS",
-        help="Comma-separated subset of: " + ", ".join(HERO_ITEMS) + " (default: all).",
+        help="Comma-separated subset of: " + ", ".join(HERO_ITEMS) + " (default: all but views). "
+        "views: view-<name>.png from fixed cameras measured from the design's front, for "
+        "comparing projects shot for shot (ADR-792): hero, side, front, rear, top and head.",
+    )
+    hero_parser.add_argument(
+        "--focus", default=HERO_FOCUS, metavar="REGEX",
+        help="Parts the head view frames and the front is measured towards, by name "
+        "(case-insensitive). Default: a creature's head parts.",
     )
     hero_parser.add_argument(
         "--run", default="", metavar="NAME",
@@ -338,12 +345,16 @@ def build_parser() -> argparse.ArgumentParser:
         "hero-grid",
         help="Tile one still from several projects' hero folders into one image "
         "(ADR-677): two to a row, in the order given, left to right and top to "
-        "bottom. Run `cadex hero --only stills` on each first. No engine.",
+        "bottom, each labelled with its project's name. Run `cadex hero --only "
+        "stills` (or views) on each first. No engine.",
     )
     _common(grid_parser, inherit=True)
     grid_parser.add_argument("projects", nargs="+", metavar="PROJECT", help="Project roots, in reading order.")
     grid_parser.add_argument("--still", default="wireframe", metavar="NAME",
-                             help="Which still: studio, softbox, dramatic, aluminium or wireframe (default).")
+                             help="Which still: studio, softbox, dramatic, aluminium or wireframe (default), "
+                             "or a view: hero, side, front, rear, top or head.")
+    grid_parser.add_argument("--tile-width", dest="tile_width", type=int, default=None, metavar="PX",
+                             help="Scale each tile to this width (default: as drawn).")
     grid_parser.add_argument("--columns", type=int, default=2, metavar="N", help="Tiles to a row (default 2).")
     section_parser = subparsers.add_parser("section", help="Cut accepted geometry through a named world plane.")
     _common(section_parser, inherit=True)
@@ -1405,7 +1416,7 @@ def command_hero(args: argparse.Namespace, report: RunReport) -> int:
     root = Path(args.project).expanduser()
     if not (root / PROJECT_SCRIPT_FILENAME).is_file():
         raise ValueError(f"hero: not a project (no {PROJECT_SCRIPT_FILENAME}): {root}")
-    only = tuple(item.strip() for item in args.only.split(",") if item.strip()) or HERO_ITEMS
+    only = tuple(item.strip() for item in args.only.split(",") if item.strip()) or HERO_DEFAULT_ITEMS
     unknown = sorted(set(only) - set(HERO_ITEMS))
     if unknown:
         raise ValueError("hero: unknown --only item(s): " + ", ".join(unknown) + "; choose from " + ", ".join(HERO_ITEMS))
@@ -1423,7 +1434,7 @@ def command_hero(args: argparse.Namespace, report: RunReport) -> int:
         return {"drawn": True, "render": str(path.parent.relative_to(project_root)), "revision": value["revision"]}
 
     manifest = make_hero(root, out=Path(args.out) if args.out else None, run=args.run or None, only=only,
-                         gpu=not args.software, sheet=None if args.no_engine else draw_sheet, progress=_progress)
+                         gpu=not args.software, focus=args.focus, sheet=None if args.no_engine else draw_sheet, progress=_progress)
     report.revision = manifest.get("revision") or ""
     folder = hero_dir(root.resolve(), Path(args.out) if args.out else None)
     made = sorted(key for key in manifest["items"] if key in only)
@@ -1442,8 +1453,9 @@ def command_hero_grid(args: argparse.Namespace, report: RunReport) -> int:
 
     if not args.out:
         raise ValueError("hero-grid needs --out FILE.png")
-    made = hero_grid([Path(p) for p in args.projects], Path(args.out), still=args.still, columns=args.columns)
-    report.notes.append(f"hero-grid: {made['rows']}x{made['columns']} of still-{made['still']} "
+    made = hero_grid([Path(p) for p in args.projects], Path(args.out), still=args.still, columns=args.columns,
+                     tile_width=args.tile_width)
+    report.notes.append(f"hero-grid: {made['rows']}x{made['columns']} of {made['still']} "
                         f"({', '.join(made['projects'])}) -> {made['file']}.")
     report.ok = True
     return EXIT_OK

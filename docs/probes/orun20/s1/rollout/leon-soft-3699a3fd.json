@@ -1,0 +1,3320 @@
+{
+ "project": "leon-soft",
+ "revision": "3699a3fdf6a9c43e6d382ae819f89d124901b6ebe514cc29598983ea4a24b595",
+ "digest": "a5c81acdddf9dd01c4dc99512db3722282a754690ac40e67fd9186cdcb276d99",
+ "sharp_edge_share": {
+  "value": 0.6849,
+  "edge_length_mm": 219400.8,
+  "sharp_convex_length_mm": 150260.4,
+  "printed_components": 98,
+  "unresolved_edges": 0,
+  "unmeasured": []
+ },
+ "panels": 48,
+ "smallest_corner_radius_mm": 0.0,
+ "corners_under_4mm": 161,
+ "sharp_corners": 153,
+ "rounded_corners": 225,
+ "unresolved": 0,
+ "parameters": {
+  "skin_turn_deg": 50.0,
+  "skin_width_t": 1.5,
+  "hole_mm": 40.0,
+  "corner_deg": 30.0,
+  "round_mm": 50.0,
+  "small_mm": 4.0,
+  "samples": 24
+ },
+ "by_panel": {
+  "pnl_chest_dorsal_rear": {
+   "thickness_mm": 2.29,
+   "faces": 22,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 4,
+   "smallest_radius_mm": 9.34,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.34,
+     "at_mm": [
+      30.0,
+      -21.5,
+      523.5
+     ]
+    },
+    {
+     "radius_mm": 9.34,
+     "at_mm": [
+      30.0,
+      21.5,
+      523.5
+     ]
+    },
+    {
+     "radius_mm": 10.01,
+     "at_mm": [
+      137.7,
+      -23.4,
+      545.7
+     ]
+    },
+    {
+     "radius_mm": 10.01,
+     "at_mm": [
+      137.7,
+      23.4,
+      545.7
+     ]
+    }
+   ]
+  },
+  "pnl_chest_rib_l": {
+   "thickness_mm": 2.37,
+   "faces": 30,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 7,
+   "smallest_radius_mm": 6.42,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 6.42,
+     "at_mm": [
+      33.4,
+      98.4,
+      322.5
+     ]
+    },
+    {
+     "radius_mm": 9.55,
+     "at_mm": [
+      30.0,
+      44.0,
+      521.8
+     ]
+    },
+    {
+     "radius_mm": 9.89,
+     "at_mm": [
+      110.3,
+      38.4,
+      544.1
+     ]
+    },
+    {
+     "radius_mm": 9.93,
+     "at_mm": [
+      75.0,
+      128.9,
+      382.0
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      111.5,
+      132.5,
+      398.8
+     ]
+    },
+    {
+     "radius_mm": 10.58,
+     "at_mm": [
+      65.0,
+      114.8,
+      320.0
+     ]
+    },
+    {
+     "radius_mm": 10.58,
+     "at_mm": [
+      75.0,
+      122.0,
+      330.0
+     ]
+    }
+   ]
+  },
+  "pnl_chest_rib_r": {
+   "thickness_mm": 2.37,
+   "faces": 28,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 7,
+   "smallest_radius_mm": 6.42,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 6.42,
+     "at_mm": [
+      33.4,
+      -98.4,
+      322.5
+     ]
+    },
+    {
+     "radius_mm": 9.55,
+     "at_mm": [
+      30.0,
+      -44.0,
+      521.8
+     ]
+    },
+    {
+     "radius_mm": 9.89,
+     "at_mm": [
+      110.3,
+      -38.4,
+      544.1
+     ]
+    },
+    {
+     "radius_mm": 9.93,
+     "at_mm": [
+      75.0,
+      -128.8,
+      382.0
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      111.8,
+      -132.5,
+      400.0
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      106.5,
+      -35.1,
+      543.9
+     ]
+    },
+    {
+     "radius_mm": 10.58,
+     "at_mm": [
+      75.0,
+      -122.0,
+      330.0
+     ]
+    }
+   ]
+  },
+  "pnl_saddle": {
+   "thickness_mm": 2.34,
+   "faces": 22,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.49,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.49,
+     "at_mm": [
+      -0.0,
+      -35.0,
+      506.7
+     ]
+    },
+    {
+     "radius_mm": 9.51,
+     "at_mm": [
+      0.0,
+      35.0,
+      506.7
+     ]
+    },
+    {
+     "radius_mm": 9.52,
+     "at_mm": [
+      -70.0,
+      -45.0,
+      490.8
+     ]
+    },
+    {
+     "radius_mm": 9.52,
+     "at_mm": [
+      -70.0,
+      45.0,
+      490.8
+     ]
+    },
+    {
+     "radius_mm": 9.69,
+     "at_mm": [
+      -0.0,
+      -35.7,
+      506.6
+     ]
+    }
+   ]
+  },
+  "pnl_saddle_flank_l": {
+   "thickness_mm": 2.36,
+   "faces": 26,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 6,
+   "smallest_radius_mm": 8.77,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 8.77,
+     "at_mm": [
+      -2.0,
+      52.2,
+      501.3
+     ]
+    },
+    {
+     "radius_mm": 9.21,
+     "at_mm": [
+      -0.0,
+      107.3,
+      419.5
+     ]
+    },
+    {
+     "radius_mm": 9.6,
+     "at_mm": [
+      -80.0,
+      101.7,
+      420.0
+     ]
+    },
+    {
+     "radius_mm": 9.68,
+     "at_mm": [
+      -70.0,
+      48.2,
+      489.8
+     ]
+    },
+    {
+     "radius_mm": 9.79,
+     "at_mm": [
+      -0.9,
+      107.0,
+      415.8
+     ]
+    },
+    {
+     "radius_mm": 9.89,
+     "at_mm": [
+      -79.9,
+      101.6,
+      418.3
+     ]
+    }
+   ]
+  },
+  "pnl_saddle_flank_r": {
+   "thickness_mm": 2.36,
+   "faces": 26,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 4,
+   "smallest_radius_mm": 8.77,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 8.77,
+     "at_mm": [
+      -2.0,
+      -52.2,
+      501.3
+     ]
+    },
+    {
+     "radius_mm": 9.29,
+     "at_mm": [
+      -0.0,
+      -107.2,
+      419.3
+     ]
+    },
+    {
+     "radius_mm": 9.68,
+     "at_mm": [
+      -70.0,
+      -48.2,
+      489.8
+     ]
+    },
+    {
+     "radius_mm": 9.7,
+     "at_mm": [
+      -80.0,
+      -101.6,
+      420.0
+     ]
+    }
+   ]
+  },
+  "pnl_pelvis_croup": {
+   "thickness_mm": 2.38,
+   "faces": 22,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 8.82,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 8.82,
+     "at_mm": [
+      -299.8,
+      -32.1,
+      459.2
+     ]
+    },
+    {
+     "radius_mm": 8.82,
+     "at_mm": [
+      -299.7,
+      32.3,
+      459.2
+     ]
+    },
+    {
+     "radius_mm": 8.92,
+     "at_mm": [
+      -299.2,
+      33.8,
+      459.3
+     ]
+    },
+    {
+     "radius_mm": 9.85,
+     "at_mm": [
+      -128.0,
+      -40.0,
+      491.4
+     ]
+    },
+    {
+     "radius_mm": 9.85,
+     "at_mm": [
+      -128.0,
+      40.0,
+      491.4
+     ]
+    }
+   ]
+  },
+  "pnl_pelvis_loin_l": {
+   "thickness_mm": 2.24,
+   "faces": 20,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 4,
+   "smallest_radius_mm": 9.69,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.69,
+     "at_mm": [
+      -147.2,
+      107.7,
+      436.0
+     ]
+    },
+    {
+     "radius_mm": 9.78,
+     "at_mm": [
+      -126.0,
+      43.4,
+      490.8
+     ]
+    },
+    {
+     "radius_mm": 9.81,
+     "at_mm": [
+      -140.0,
+      43.2,
+      490.5
+     ]
+    },
+    {
+     "radius_mm": 9.97,
+     "at_mm": [
+      -128.0,
+      106.5,
+      433.0
+     ]
+    }
+   ]
+  },
+  "pnl_pelvis_loin_r": {
+   "thickness_mm": 2.24,
+   "faces": 20,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.68,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.68,
+     "at_mm": [
+      -147.6,
+      -107.6,
+      436.5
+     ]
+    },
+    {
+     "radius_mm": 9.78,
+     "at_mm": [
+      -126.0,
+      -43.4,
+      490.8
+     ]
+    },
+    {
+     "radius_mm": 9.79,
+     "at_mm": [
+      -127.3,
+      -43.2,
+      490.8
+     ]
+    },
+    {
+     "radius_mm": 9.81,
+     "at_mm": [
+      -140.0,
+      -43.2,
+      490.5
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -128.0,
+      -106.5,
+      433.0
+     ]
+    }
+   ]
+  },
+  "pnl_scapula_l_outer": {
+   "thickness_mm": 2.39,
+   "faces": 24,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 7.55,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 7.55,
+     "at_mm": [
+      248.6,
+      104.0,
+      552.4
+     ]
+    },
+    {
+     "radius_mm": 8.05,
+     "at_mm": [
+      137.4,
+      104.0,
+      519.8
+     ]
+    },
+    {
+     "radius_mm": 9.18,
+     "at_mm": [
+      151.7,
+      104.0,
+      413.2
+     ]
+    },
+    {
+     "radius_mm": 9.19,
+     "at_mm": [
+      152.0,
+      104.1,
+      412.4
+     ]
+    },
+    {
+     "radius_mm": 9.24,
+     "at_mm": [
+      293.3,
+      104.7,
+      451.1
+     ]
+    }
+   ]
+  },
+  "pnl_humerus_l_outer": {
+   "thickness_mm": 2.38,
+   "faces": 20,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 7.39,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 7.39,
+     "at_mm": [
+      147.7,
+      112.1,
+      306.3
+     ]
+    },
+    {
+     "radius_mm": 7.78,
+     "at_mm": [
+      246.3,
+      112.1,
+      255.2
+     ]
+    },
+    {
+     "radius_mm": 8.02,
+     "at_mm": [
+      169.1,
+      112.0,
+      354.9
+     ]
+    },
+    {
+     "radius_mm": 8.24,
+     "at_mm": [
+      277.3,
+      112.0,
+      299.2
+     ]
+    },
+    {
+     "radius_mm": 10.82,
+     "at_mm": [
+      287.4,
+      122.0,
+      305.3
+     ]
+    }
+   ]
+  },
+  "pnl_forearm_l_outer": {
+   "thickness_mm": 2.3,
+   "faces": 22,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 8.59,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 8.59,
+     "at_mm": [
+      235.7,
+      100.2,
+      155.7
+     ]
+    },
+    {
+     "radius_mm": 8.73,
+     "at_mm": [
+      143.6,
+      100.4,
+      144.4
+     ]
+    },
+    {
+     "radius_mm": 8.99,
+     "at_mm": [
+      236.5,
+      100.0,
+      174.1
+     ]
+    },
+    {
+     "radius_mm": 9.31,
+     "at_mm": [
+      137.5,
+      100.0,
+      162.7
+     ]
+    },
+    {
+     "radius_mm": 9.91,
+     "at_mm": [
+      240.2,
+      109.9,
+      184.6
+     ]
+    }
+   ]
+  },
+  "pnl_scapula_r_outer": {
+   "thickness_mm": 2.39,
+   "faces": 23,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 6,
+   "smallest_radius_mm": 7.59,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 7.59,
+     "at_mm": [
+      248.7,
+      -104.0,
+      552.4
+     ]
+    },
+    {
+     "radius_mm": 8.0,
+     "at_mm": [
+      137.5,
+      -104.0,
+      519.8
+     ]
+    },
+    {
+     "radius_mm": 9.21,
+     "at_mm": [
+      293.0,
+      -104.5,
+      451.6
+     ]
+    },
+    {
+     "radius_mm": 9.22,
+     "at_mm": [
+      151.5,
+      -104.0,
+      413.4
+     ]
+    },
+    {
+     "radius_mm": 10.0,
+     "at_mm": [
+      293.2,
+      -107.9,
+      446.6
+     ]
+    },
+    {
+     "radius_mm": 13.44,
+     "at_mm": [
+      245.3,
+      -104.6,
+      555.1
+     ]
+    }
+   ]
+  },
+  "pnl_humerus_r_outer": {
+   "thickness_mm": 2.39,
+   "faces": 22,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 7.39,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 7.39,
+     "at_mm": [
+      147.6,
+      -112.1,
+      306.0
+     ]
+    },
+    {
+     "radius_mm": 7.78,
+     "at_mm": [
+      246.3,
+      -112.1,
+      255.2
+     ]
+    },
+    {
+     "radius_mm": 8.03,
+     "at_mm": [
+      169.1,
+      -112.0,
+      354.9
+     ]
+    },
+    {
+     "radius_mm": 8.24,
+     "at_mm": [
+      277.3,
+      -112.0,
+      299.2
+     ]
+    },
+    {
+     "radius_mm": 11.3,
+     "at_mm": [
+      169.0,
+      -122.0,
+      366.2
+     ]
+    }
+   ]
+  },
+  "pnl_forearm_r_outer": {
+   "thickness_mm": 2.3,
+   "faces": 24,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 8.61,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 8.61,
+     "at_mm": [
+      235.8,
+      -100.2,
+      155.7
+     ]
+    },
+    {
+     "radius_mm": 8.67,
+     "at_mm": [
+      143.8,
+      -100.3,
+      144.6
+     ]
+    },
+    {
+     "radius_mm": 8.98,
+     "at_mm": [
+      236.5,
+      -100.0,
+      174.1
+     ]
+    },
+    {
+     "radius_mm": 9.35,
+     "at_mm": [
+      137.6,
+      -100.0,
+      162.7
+     ]
+    },
+    {
+     "radius_mm": 9.39,
+     "at_mm": [
+      130.6,
+      -109.9,
+      171.9
+     ]
+    }
+   ]
+  },
+  "pnl_thigh_l_outer": {
+   "thickness_mm": 2.34,
+   "faces": 24,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 7.61,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 7.61,
+     "at_mm": [
+      -315.7,
+      163.4,
+      318.3
+     ]
+    },
+    {
+     "radius_mm": 8.47,
+     "at_mm": [
+      -161.5,
+      162.8,
+      395.1
+     ]
+    },
+    {
+     "radius_mm": 10.55,
+     "at_mm": [
+      -154.4,
+      162.0,
+      327.3
+     ]
+    },
+    {
+     "radius_mm": 10.81,
+     "at_mm": [
+      -165.2,
+      167.0,
+      398.5
+     ]
+    },
+    {
+     "radius_mm": 12.09,
+     "at_mm": [
+      -254.4,
+      162.0,
+      276.6
+     ]
+    }
+   ]
+  },
+  "pnl_shin_l_outer": {
+   "thickness_mm": 2.26,
+   "faces": 20,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 8.42,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 8.42,
+     "at_mm": [
+      -262.6,
+      115.0,
+      205.5
+     ]
+    },
+    {
+     "radius_mm": 8.49,
+     "at_mm": [
+      -254.7,
+      115.0,
+      216.8
+     ]
+    },
+    {
+     "radius_mm": 8.58,
+     "at_mm": [
+      -200.0,
+      115.3,
+      158.9
+     ]
+    },
+    {
+     "radius_mm": 8.62,
+     "at_mm": [
+      -182.5,
+      123.8,
+      177.0
+     ]
+    },
+    {
+     "radius_mm": 8.7,
+     "at_mm": [
+      -189.2,
+      115.0,
+      170.9
+     ]
+    }
+   ]
+  },
+  "pnl_thigh_r_outer": {
+   "thickness_mm": 2.34,
+   "faces": 28,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 7.59,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 7.59,
+     "at_mm": [
+      -315.5,
+      -163.4,
+      318.3
+     ]
+    },
+    {
+     "radius_mm": 8.48,
+     "at_mm": [
+      -161.3,
+      -162.7,
+      394.9
+     ]
+    },
+    {
+     "radius_mm": 10.64,
+     "at_mm": [
+      -154.6,
+      -162.0,
+      327.2
+     ]
+    },
+    {
+     "radius_mm": 11.87,
+     "at_mm": [
+      -254.7,
+      -162.0,
+      276.5
+     ]
+    },
+    {
+     "radius_mm": 15.97,
+     "at_mm": [
+      -250.3,
+      -162.8,
+      274.4
+     ]
+    }
+   ]
+  },
+  "pnl_shin_r_outer": {
+   "thickness_mm": 2.25,
+   "faces": 22,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 8.45,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 8.45,
+     "at_mm": [
+      -262.7,
+      -115.0,
+      205.6
+     ]
+    },
+    {
+     "radius_mm": 8.49,
+     "at_mm": [
+      -254.7,
+      -115.0,
+      216.8
+     ]
+    },
+    {
+     "radius_mm": 8.59,
+     "at_mm": [
+      -200.0,
+      -115.3,
+      158.9
+     ]
+    },
+    {
+     "radius_mm": 8.61,
+     "at_mm": [
+      -182.5,
+      -123.2,
+      177.0
+     ]
+    },
+    {
+     "radius_mm": 8.78,
+     "at_mm": [
+      -250.6,
+      -123.8,
+      224.7
+     ]
+    }
+   ]
+  },
+  "pnl_neck1_crest": {
+   "thickness_mm": 2.34,
+   "faces": 23,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.25,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.25,
+     "at_mm": [
+      411.8,
+      44.9,
+      479.8
+     ]
+    },
+    {
+     "radius_mm": 9.25,
+     "at_mm": [
+      411.8,
+      -44.9,
+      479.8
+     ]
+    },
+    {
+     "radius_mm": 9.4,
+     "at_mm": [
+      365.5,
+      45.0,
+      508.2
+     ]
+    },
+    {
+     "radius_mm": 9.4,
+     "at_mm": [
+      365.5,
+      -45.0,
+      508.2
+     ]
+    },
+    {
+     "radius_mm": 10.52,
+     "at_mm": [
+      358.4,
+      -35.0,
+      516.3
+     ]
+    }
+   ]
+  },
+  "pnl_neck1_side_l": {
+   "thickness_mm": 2.15,
+   "faces": 22,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.09,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.09,
+     "at_mm": [
+      362.7,
+      48.5,
+      508.3
+     ]
+    },
+    {
+     "radius_mm": 9.16,
+     "at_mm": [
+      409.8,
+      48.2,
+      479.4
+     ]
+    },
+    {
+     "radius_mm": 9.94,
+     "at_mm": [
+      328.7,
+      88.1,
+      456.1
+     ]
+    },
+    {
+     "radius_mm": 10.01,
+     "at_mm": [
+      329.4,
+      88.0,
+      449.7
+     ]
+    },
+    {
+     "radius_mm": 10.03,
+     "at_mm": [
+      397.1,
+      80.9,
+      444.0
+     ]
+    }
+   ]
+  },
+  "pnl_neck1_side_r": {
+   "thickness_mm": 2.32,
+   "faces": 21,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.09,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.09,
+     "at_mm": [
+      362.7,
+      -48.5,
+      508.3
+     ]
+    },
+    {
+     "radius_mm": 9.16,
+     "at_mm": [
+      409.8,
+      -48.2,
+      479.4
+     ]
+    },
+    {
+     "radius_mm": 9.91,
+     "at_mm": [
+      328.7,
+      -88.2,
+      456.4
+     ]
+    },
+    {
+     "radius_mm": 10.01,
+     "at_mm": [
+      338.4,
+      -87.3,
+      444.0
+     ]
+    },
+    {
+     "radius_mm": 10.04,
+     "at_mm": [
+      397.1,
+      -80.9,
+      444.0
+     ]
+    }
+   ]
+  },
+  "pnl_neck2_collar": {
+   "thickness_mm": 2.32,
+   "faces": 21,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 4,
+   "smallest_radius_mm": 7.53,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 7.53,
+     "at_mm": [
+      378.6,
+      59.8,
+      352.6
+     ]
+    },
+    {
+     "radius_mm": 7.53,
+     "at_mm": [
+      378.6,
+      -59.7,
+      352.6
+     ]
+    },
+    {
+     "radius_mm": 9.21,
+     "at_mm": [
+      405.3,
+      65.4,
+      352.0
+     ]
+    },
+    {
+     "radius_mm": 9.21,
+     "at_mm": [
+      405.3,
+      -65.3,
+      352.0
+     ]
+    }
+   ]
+  },
+  "pnl_skull_brow": {
+   "thickness_mm": 2.39,
+   "faces": 52,
+   "skin_faces": 9,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 25,
+   "rounded_corners": 0,
+   "smallest_radius_mm": 0.0,
+   "under_4mm": 25,
+   "unresolved": 0,
+   "sharp_at_mm": [
+    [
+     545.2,
+     -67.7,
+     424.1
+    ],
+    [
+     544.1,
+     -68.5,
+     424.3
+    ],
+    [
+     516.7,
+     -64.4,
+     448.1
+    ],
+    [
+     515.3,
+     -62.2,
+     451.0
+    ],
+    [
+     518.9,
+     -48.8,
+     452.8
+    ],
+    [
+     549.3,
+     -53.3,
+     426.4
+    ],
+    [
+     553.5,
+     -58.8,
+     420.8
+    ],
+    [
+     587.9,
+     -0.0,
+     389.8
+    ],
+    [
+     511.3,
+     -56.8,
+     456.1
+    ],
+    [
+     498.5,
+     -40.0,
+     467.2
+    ],
+    [
+     553.5,
+     58.8,
+     420.8
+    ],
+    [
+     544.1,
+     68.5,
+     424.3
+    ],
+    [
+     545.2,
+     67.7,
+     424.1
+    ],
+    [
+     498.6,
+     39.3,
+     467.4
+    ],
+    [
+     498.5,
+     40.0,
+     467.2
+    ],
+    [
+     499.0,
+     -31.7,
+     468.5
+    ],
+    [
+     499.0,
+     31.7,
+     468.5
+    ],
+    [
+     498.6,
+     -39.3,
+     467.4
+    ],
+    [
+     505.8,
+     -31.7,
+     464.2
+    ],
+    [
+     505.8,
+     31.7,
+     464.2
+    ],
+    [
+     518.9,
+     48.8,
+     452.8
+    ],
+    [
+     515.3,
+     62.2,
+     451.0
+    ],
+    [
+     516.7,
+     64.4,
+     448.1
+    ],
+    [
+     549.3,
+     53.3,
+     426.4
+    ],
+    [
+     511.3,
+     56.8,
+     456.1
+    ]
+   ],
+   "rounded": []
+  },
+  "pnl_skull_cranium": {
+   "thickness_mm": 2.31,
+   "faces": 101,
+   "skin_faces": 29,
+   "outline_loops": 3,
+   "screw_holes_skipped": 4,
+   "sharp_corners": 24,
+   "rounded_corners": 13,
+   "smallest_radius_mm": 0.0,
+   "under_4mm": 32,
+   "unresolved": 0,
+   "sharp_at_mm": [
+    [
+     462.0,
+     -36.0,
+     469.5
+    ],
+    [
+     462.0,
+     -88.3,
+     409.9
+    ],
+    [
+     489.0,
+     -73.1,
+     445.5
+    ],
+    [
+     476.8,
+     -70.1,
+     450.0
+    ],
+    [
+     543.3,
+     -70.8,
+     422.5
+    ],
+    [
+     535.4,
+     -77.9,
+     414.6
+    ],
+    [
+     547.0,
+     -73.1,
+     415.0
+    ],
+    [
+     493.6,
+     -60.0,
+     457.0
+    ],
+    [
+     480.7,
+     -58.5,
+     458.0
+    ],
+    [
+     463.0,
+     -34.5,
+     470.3
+    ],
+    [
+     544.0,
+     -83.4,
+     390.0
+    ],
+    [
+     550.5,
+     -79.6,
+     392.0
+    ],
+    [
+     463.0,
+     34.5,
+     470.3
+    ],
+    [
+     462.0,
+     36.0,
+     469.5
+    ],
+    [
+     462.0,
+     88.3,
+     409.9
+    ],
+    [
+     480.7,
+     58.5,
+     458.0
+    ],
+    [
+     493.6,
+     60.0,
+     457.0
+    ],
+    [
+     476.8,
+     70.1,
+     450.0
+    ],
+    [
+     489.0,
+     73.1,
+     445.5
+    ],
+    [
+     544.0,
+     83.4,
+     390.0
+    ],
+    [
+     547.0,
+     73.1,
+     415.0
+    ],
+    [
+     535.4,
+     77.9,
+     414.6
+    ],
+    [
+     543.3,
+     70.8,
+     422.5
+    ],
+    [
+     550.5,
+     79.6,
+     392.0
+    ]
+   ],
+   "rounded": [
+    {
+     "radius_mm": 2.98,
+     "at_mm": [
+      543.0,
+      -70.8,
+      422.7
+     ]
+    },
+    {
+     "radius_mm": 2.98,
+     "at_mm": [
+      496.0,
+      41.7,
+      467.5
+     ]
+    },
+    {
+     "radius_mm": 2.98,
+     "at_mm": [
+      496.0,
+      -41.7,
+      467.5
+     ]
+    },
+    {
+     "radius_mm": 2.98,
+     "at_mm": [
+      543.0,
+      70.8,
+      422.7
+     ]
+    },
+    {
+     "radius_mm": 2.99,
+     "at_mm": [
+      514.4,
+      -66.3,
+      448.0
+     ]
+    },
+    {
+     "radius_mm": 2.99,
+     "at_mm": [
+      514.4,
+      66.3,
+      448.0
+     ]
+    },
+    {
+     "radius_mm": 3.02,
+     "at_mm": [
+      495.7,
+      -40.0,
+      468.2
+     ]
+    },
+    {
+     "radius_mm": 3.02,
+     "at_mm": [
+      495.7,
+      40.0,
+      468.2
+     ]
+    },
+    {
+     "radius_mm": 9.54,
+     "at_mm": [
+      487.9,
+      -73.3,
+      445.3
+     ]
+    },
+    {
+     "radius_mm": 9.54,
+     "at_mm": [
+      488.0,
+      73.3,
+      445.4
+     ]
+    },
+    {
+     "radius_mm": 9.75,
+     "at_mm": [
+      486.0,
+      73.5,
+      445.3
+     ]
+    },
+    {
+     "radius_mm": 10.5,
+     "at_mm": [
+      484.0,
+      -57.4,
+      458.7
+     ]
+    },
+    {
+     "radius_mm": 10.5,
+     "at_mm": [
+      489.8,
+      57.8,
+      458.4
+     ]
+    }
+   ]
+  },
+  "pnl_skull_mask_l": {
+   "thickness_mm": 2.22,
+   "faces": 56,
+   "skin_faces": 8,
+   "outline_loops": 2,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 16,
+   "rounded_corners": 6,
+   "smallest_radius_mm": 0.0,
+   "under_4mm": 16,
+   "unresolved": 0,
+   "sharp_at_mm": [
+    [
+     550.8,
+     78.2,
+     395.9
+    ],
+    [
+     558.3,
+     69.2,
+     394.5
+    ],
+    [
+     545.7,
+     69.7,
+     421.9
+    ],
+    [
+     551.7,
+     80.2,
+     384.9
+    ],
+    [
+     551.2,
+     79.1,
+     392.2
+    ],
+    [
+     551.6,
+     80.2,
+     384.9
+    ],
+    [
+     586.4,
+     7.2,
+     390.7
+    ],
+    [
+     555.6,
+     82.6,
+     353.2
+    ],
+    [
+     569.4,
+     68.6,
+     357.6
+    ],
+    [
+     587.2,
+     10.2,
+     385.7
+    ],
+    [
+     562.6,
+     78.7,
+     350.8
+    ],
+    [
+     564.1,
+     72.4,
+     328.1
+    ],
+    [
+     567.6,
+     66.0,
+     325.7
+    ],
+    [
+     570.7,
+     64.2,
+     328.5
+    ],
+    [
+     587.5,
+     10.2,
+     384.6
+    ],
+    [
+     568.6,
+     63.3,
+     325.3
+    ]
+   ],
+   "rounded": [
+    {
+     "radius_mm": 12.39,
+     "at_mm": [
+      571.7,
+      61.1,
+      327.9
+     ]
+    },
+    {
+     "radius_mm": 12.81,
+     "at_mm": [
+      567.3,
+      47.5,
+      396.8
+     ]
+    },
+    {
+     "radius_mm": 14.65,
+     "at_mm": [
+      580.1,
+      22.0,
+      391.9
+     ]
+    },
+    {
+     "radius_mm": 16.25,
+     "at_mm": [
+      570.2,
+      36.8,
+      402.5
+     ]
+    },
+    {
+     "radius_mm": 16.65,
+     "at_mm": [
+      570.7,
+      64.2,
+      328.5
+     ]
+    },
+    {
+     "radius_mm": 39.8,
+     "at_mm": [
+      585.0,
+      39.4,
+      348.7
+     ]
+    }
+   ]
+  },
+  "pnl_skull_mask_r": {
+   "thickness_mm": 2.22,
+   "faces": 56,
+   "skin_faces": 8,
+   "outline_loops": 2,
+   "screw_holes_skipped": 3,
+   "sharp_corners": 17,
+   "rounded_corners": 6,
+   "smallest_radius_mm": 0.0,
+   "under_4mm": 17,
+   "unresolved": 0,
+   "sharp_at_mm": [
+    [
+     550.8,
+     -78.2,
+     395.9
+    ],
+    [
+     558.3,
+     -69.2,
+     394.5
+    ],
+    [
+     551.7,
+     -80.2,
+     384.9
+    ],
+    [
+     551.2,
+     -79.1,
+     392.2
+    ],
+    [
+     545.7,
+     -69.7,
+     421.9
+    ],
+    [
+     551.6,
+     -80.2,
+     384.9
+    ],
+    [
+     555.6,
+     -82.6,
+     353.2
+    ],
+    [
+     569.4,
+     -68.6,
+     357.6
+    ],
+    [
+     586.4,
+     -7.2,
+     390.7
+    ],
+    [
+     562.6,
+     -78.7,
+     350.8
+    ],
+    [
+     566.6,
+     -75.5,
+     342.0
+    ],
+    [
+     587.2,
+     -10.2,
+     385.7
+    ],
+    [
+     587.5,
+     -10.2,
+     384.6
+    ],
+    [
+     567.6,
+     -66.0,
+     325.7
+    ],
+    [
+     570.7,
+     -64.2,
+     328.5
+    ],
+    [
+     564.1,
+     -72.4,
+     328.1
+    ],
+    [
+     568.6,
+     -63.3,
+     325.3
+    ]
+   ],
+   "rounded": [
+    {
+     "radius_mm": 12.39,
+     "at_mm": [
+      571.7,
+      -61.1,
+      327.9
+     ]
+    },
+    {
+     "radius_mm": 12.81,
+     "at_mm": [
+      567.3,
+      -47.5,
+      396.8
+     ]
+    },
+    {
+     "radius_mm": 14.65,
+     "at_mm": [
+      580.1,
+      -22.0,
+      391.9
+     ]
+    },
+    {
+     "radius_mm": 16.25,
+     "at_mm": [
+      570.2,
+      -36.8,
+      402.5
+     ]
+    },
+    {
+     "radius_mm": 16.65,
+     "at_mm": [
+      570.7,
+      -64.2,
+      328.5
+     ]
+    },
+    {
+     "radius_mm": 39.8,
+     "at_mm": [
+      585.0,
+      -39.4,
+      348.7
+     ]
+    }
+   ]
+  },
+  "pnl_skull_cheek_l": {
+   "thickness_mm": 2.32,
+   "faces": 28,
+   "skin_faces": 3,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 8,
+   "rounded_corners": 0,
+   "smallest_radius_mm": 0.0,
+   "under_4mm": 8,
+   "unresolved": 0,
+   "sharp_at_mm": [
+    [
+     462.0,
+     88.7,
+     405.8
+    ],
+    [
+     536.6,
+     84.9,
+     387.7
+    ],
+    [
+     547.7,
+     84.4,
+     350.8
+    ],
+    [
+     462.0,
+     86.7,
+     339.5
+    ],
+    [
+     547.1,
+     82.4,
+     335.2
+    ],
+    [
+     539.5,
+     84.6,
+     388.6
+    ],
+    [
+     552.7,
+     83.6,
+     352.4
+    ],
+    [
+     548.7,
+     81.8,
+     385.9
+    ]
+   ],
+   "rounded": []
+  },
+  "pnl_skull_cheek_r": {
+   "thickness_mm": 2.32,
+   "faces": 28,
+   "skin_faces": 3,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 8,
+   "rounded_corners": 0,
+   "smallest_radius_mm": 0.0,
+   "under_4mm": 8,
+   "unresolved": 0,
+   "sharp_at_mm": [
+    [
+     462.0,
+     -88.7,
+     405.8
+    ],
+    [
+     536.6,
+     -84.9,
+     387.7
+    ],
+    [
+     547.7,
+     -84.4,
+     350.8
+    ],
+    [
+     462.0,
+     -86.7,
+     339.5
+    ],
+    [
+     547.1,
+     -82.4,
+     335.2
+    ],
+    [
+     539.5,
+     -84.6,
+     388.6
+    ],
+    [
+     548.7,
+     -81.8,
+     385.9
+    ],
+    [
+     552.7,
+     -83.6,
+     352.4
+    ]
+   ],
+   "rounded": []
+  },
+  "pnl_skull_muzzle_l": {
+   "thickness_mm": 2.29,
+   "faces": 62,
+   "skin_faces": 13,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 15,
+   "rounded_corners": 7,
+   "smallest_radius_mm": 0.0,
+   "under_4mm": 15,
+   "unresolved": 0,
+   "sharp_at_mm": [
+    [
+     578.0,
+     59.4,
+     331.1
+    ],
+    [
+     624.7,
+     18.2,
+     352.7
+    ],
+    [
+     597.7,
+     60.5,
+     319.8
+    ],
+    [
+     595.2,
+     63.5,
+     312.6
+    ],
+    [
+     578.0,
+     65.2,
+     319.2
+    ],
+    [
+     626.4,
+     0.0,
+     352.3
+    ],
+    [
+     591.0,
+     0.0,
+     390.2
+    ],
+    [
+     602.8,
+     59.8,
+     312.6
+    ],
+    [
+     613.2,
+     49.0,
+     313.5
+    ],
+    [
+     616.2,
+     40.6,
+     310.5
+    ],
+    [
+     614.5,
+     0.0,
+     306.8
+    ],
+    [
+     614.5,
+     40.6,
+     306.8
+    ],
+    [
+     613.8,
+     45.1,
+     307.3
+    ],
+    [
+     613.5,
+     45.9,
+     307.4
+    ],
+    [
+     607.3,
+     52.4,
+     302.8
+    ]
+   ],
+   "rounded": [
+    {
+     "radius_mm": 11.29,
+     "at_mm": [
+      590.9,
+      2.0,
+      390.3
+     ]
+    },
+    {
+     "radius_mm": 12.85,
+     "at_mm": [
+      591.0,
+      0.2,
+      390.2
+     ]
+    },
+    {
+     "radius_mm": 15.92,
+     "at_mm": [
+      590.0,
+      11.4,
+      386.0
+     ]
+    },
+    {
+     "radius_mm": 27.44,
+     "at_mm": [
+      590.0,
+      10.9,
+      386.5
+     ]
+    },
+    {
+     "radius_mm": 31.65,
+     "at_mm": [
+      587.4,
+      41.2,
+      349.5
+     ]
+    },
+    {
+     "radius_mm": 40.54,
+     "at_mm": [
+      578.0,
+      62.5,
+      327.3
+     ]
+    },
+    {
+     "radius_mm": 49.52,
+     "at_mm": [
+      624.7,
+      18.2,
+      352.7
+     ]
+    }
+   ]
+  },
+  "pnl_skull_muzzle_r": {
+   "thickness_mm": 2.29,
+   "faces": 62,
+   "skin_faces": 13,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 15,
+   "rounded_corners": 6,
+   "smallest_radius_mm": 0.0,
+   "under_4mm": 15,
+   "unresolved": 0,
+   "sharp_at_mm": [
+    [
+     578.0,
+     -59.4,
+     331.1
+    ],
+    [
+     578.0,
+     -65.2,
+     319.2
+    ],
+    [
+     595.2,
+     -63.5,
+     312.6
+    ],
+    [
+     597.7,
+     -60.5,
+     319.8
+    ],
+    [
+     590.8,
+     -2.8,
+     390.3
+    ],
+    [
+     624.7,
+     -18.2,
+     352.7
+    ],
+    [
+     626.4,
+     -2.8,
+     352.3
+    ],
+    [
+     602.8,
+     -59.8,
+     312.6
+    ],
+    [
+     607.3,
+     -52.4,
+     302.8
+    ],
+    [
+     613.8,
+     -45.1,
+     307.3
+    ],
+    [
+     613.2,
+     -49.0,
+     313.5
+    ],
+    [
+     613.5,
+     -45.9,
+     307.4
+    ],
+    [
+     616.2,
+     -40.6,
+     310.5
+    ],
+    [
+     614.5,
+     -2.8,
+     306.8
+    ],
+    [
+     614.5,
+     -40.6,
+     306.8
+    ]
+   ],
+   "rounded": [
+    {
+     "radius_mm": 11.81,
+     "at_mm": [
+      590.8,
+      -2.8,
+      390.3
+     ]
+    },
+    {
+     "radius_mm": 15.92,
+     "at_mm": [
+      590.0,
+      -11.4,
+      386.0
+     ]
+    },
+    {
+     "radius_mm": 27.44,
+     "at_mm": [
+      590.0,
+      -10.9,
+      386.5
+     ]
+    },
+    {
+     "radius_mm": 31.65,
+     "at_mm": [
+      587.4,
+      -41.2,
+      349.5
+     ]
+    },
+    {
+     "radius_mm": 40.54,
+     "at_mm": [
+      578.0,
+      -62.5,
+      327.3
+     ]
+    },
+    {
+     "radius_mm": 49.52,
+     "at_mm": [
+      624.7,
+      -18.2,
+      352.7
+     ]
+    }
+   ]
+  },
+  "pnl_ear_l": {
+   "thickness_mm": 2.27,
+   "faces": 40,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 0,
+   "sharp_corners": 6,
+   "rounded_corners": 0,
+   "smallest_radius_mm": 0.0,
+   "under_4mm": 6,
+   "unresolved": 0,
+   "sharp_at_mm": [
+    [
+     484.0,
+     50.1,
+     467.8
+    ],
+    [
+     484.6,
+     54.8,
+     478.5
+    ],
+    [
+     473.5,
+     82.5,
+     446.3
+    ],
+    [
+     481.3,
+     73.5,
+     484.9
+    ],
+    [
+     472.9,
+     90.6,
+     454.8
+    ],
+    [
+     476.2,
+     89.1,
+     474.5
+    ]
+   ],
+   "rounded": []
+  },
+  "pnl_ear_r": {
+   "thickness_mm": 2.27,
+   "faces": 40,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 0,
+   "sharp_corners": 6,
+   "rounded_corners": 0,
+   "smallest_radius_mm": 0.0,
+   "under_4mm": 6,
+   "unresolved": 0,
+   "sharp_at_mm": [
+    [
+     473.5,
+     -82.5,
+     446.3
+    ],
+    [
+     472.9,
+     -90.6,
+     454.8
+    ],
+    [
+     484.0,
+     -50.1,
+     467.8
+    ],
+    [
+     476.2,
+     -89.1,
+     474.5
+    ],
+    [
+     484.6,
+     -54.8,
+     478.5
+    ],
+    [
+     481.3,
+     -73.5,
+     484.9
+    ]
+   ],
+   "rounded": []
+  },
+  "pnl_jaw_plate": {
+   "thickness_mm": 2.45,
+   "faces": 117,
+   "skin_faces": 40,
+   "outline_loops": 6,
+   "screw_holes_skipped": 7,
+   "sharp_corners": 13,
+   "rounded_corners": 0,
+   "smallest_radius_mm": 0.0,
+   "under_4mm": 13,
+   "unresolved": 0,
+   "sharp_at_mm": [
+    [
+     587.4,
+     32.5,
+     256.2
+    ],
+    [
+     584.7,
+     30.9,
+     254.2
+    ],
+    [
+     583.3,
+     21.1,
+     250.0
+    ],
+    [
+     594.4,
+     22.7,
+     254.8
+    ],
+    [
+     583.3,
+     -21.1,
+     250.0
+    ],
+    [
+     584.7,
+     -30.9,
+     254.2
+    ],
+    [
+     587.4,
+     -32.5,
+     256.2
+    ],
+    [
+     553.9,
+     -48.5,
+     286.9
+    ],
+    [
+     554.0,
+     -34.9,
+     300.5
+    ],
+    [
+     554.0,
+     34.9,
+     300.5
+    ],
+    [
+     553.9,
+     48.5,
+     286.9
+    ],
+    [
+     606.3,
+     20.8,
+     275.2
+    ],
+    [
+     606.6,
+     -20.5,
+     273.5
+    ]
+   ],
+   "rounded": []
+  },
+  "pnl_tail1_l": {
+   "thickness_mm": 1.72,
+   "faces": 17,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.98,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -399.7,
+      5.0,
+      431.8
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -462.1,
+      5.0,
+      420.6
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -390.3,
+      5.3,
+      379.4
+     ]
+    },
+    {
+     "radius_mm": 9.99,
+     "at_mm": [
+      -452.9,
+      5.0,
+      368.5
+     ]
+    },
+    {
+     "radius_mm": 10.0,
+     "at_mm": [
+      -392.9,
+      2.1,
+      378.8
+     ]
+    }
+   ]
+  },
+  "pnl_tail1_r": {
+   "thickness_mm": 1.72,
+   "faces": 15,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.95,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.95,
+     "at_mm": [
+      -461.3,
+      -7.1,
+      420.6
+     ]
+    },
+    {
+     "radius_mm": 9.95,
+     "at_mm": [
+      -400.4,
+      -7.2,
+      431.6
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -452.2,
+      -7.2,
+      368.8
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -391.2,
+      -7.2,
+      379.3
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -401.9,
+      -5.6,
+      431.4
+     ]
+    }
+   ]
+  },
+  "pnl_tail2_l": {
+   "thickness_mm": 1.72,
+   "faces": 20,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.98,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -540.9,
+      5.0,
+      406.8
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -480.5,
+      5.0,
+      417.6
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -471.1,
+      5.3,
+      365.1
+     ]
+    },
+    {
+     "radius_mm": 9.99,
+     "at_mm": [
+      -531.7,
+      5.0,
+      354.6
+     ]
+    },
+    {
+     "radius_mm": 10.0,
+     "at_mm": [
+      -473.7,
+      2.1,
+      364.6
+     ]
+    }
+   ]
+  },
+  "pnl_tail2_r": {
+   "thickness_mm": 1.71,
+   "faces": 21,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 2,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.94,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.94,
+     "at_mm": [
+      -481.1,
+      -7.2,
+      417.3
+     ]
+    },
+    {
+     "radius_mm": 9.95,
+     "at_mm": [
+      -540.1,
+      -7.1,
+      406.7
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -531.0,
+      -7.2,
+      354.9
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -471.9,
+      -7.2,
+      365.1
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -482.6,
+      -5.6,
+      417.2
+     ]
+    }
+   ]
+  },
+  "pnl_tail3_l": {
+   "thickness_mm": 1.71,
+   "faces": 19,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.98,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -617.7,
+      5.0,
+      393.2
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -559.3,
+      5.0,
+      403.7
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -549.9,
+      5.3,
+      351.2
+     ]
+    },
+    {
+     "radius_mm": 9.99,
+     "at_mm": [
+      -608.5,
+      5.0,
+      341.1
+     ]
+    },
+    {
+     "radius_mm": 10.0,
+     "at_mm": [
+      -552.5,
+      2.1,
+      350.7
+     ]
+    }
+   ]
+  },
+  "pnl_tail3_r": {
+   "thickness_mm": 1.73,
+   "faces": 15,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.94,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.94,
+     "at_mm": [
+      -559.9,
+      -7.2,
+      403.4
+     ]
+    },
+    {
+     "radius_mm": 9.95,
+     "at_mm": [
+      -616.9,
+      -7.2,
+      393.2
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -607.8,
+      -7.2,
+      341.3
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -550.7,
+      -7.2,
+      351.2
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -561.4,
+      -5.6,
+      403.3
+     ]
+    }
+   ]
+  },
+  "pnl_tail4_l": {
+   "thickness_mm": 1.71,
+   "faces": 20,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.98,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -692.5,
+      5.0,
+      380.0
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -636.1,
+      5.0,
+      390.2
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -626.7,
+      5.3,
+      337.7
+     ]
+    },
+    {
+     "radius_mm": 9.99,
+     "at_mm": [
+      -683.3,
+      5.0,
+      327.9
+     ]
+    },
+    {
+     "radius_mm": 10.0,
+     "at_mm": [
+      -629.3,
+      2.1,
+      337.1
+     ]
+    }
+   ]
+  },
+  "pnl_tail4_r": {
+   "thickness_mm": 1.72,
+   "faces": 18,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.94,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.94,
+     "at_mm": [
+      -636.7,
+      -7.2,
+      389.9
+     ]
+    },
+    {
+     "radius_mm": 9.95,
+     "at_mm": [
+      -691.8,
+      -7.2,
+      380.0
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -682.7,
+      -7.2,
+      328.1
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -627.5,
+      -7.2,
+      337.7
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -638.2,
+      -5.6,
+      389.7
+     ]
+    }
+   ]
+  },
+  "pnl_tail5_l": {
+   "thickness_mm": 1.71,
+   "faces": 19,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.98,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -765.4,
+      5.0,
+      367.2
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -710.9,
+      5.1,
+      377.0
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -701.5,
+      5.3,
+      324.5
+     ]
+    },
+    {
+     "radius_mm": 9.99,
+     "at_mm": [
+      -756.2,
+      5.0,
+      315.0
+     ]
+    },
+    {
+     "radius_mm": 10.0,
+     "at_mm": [
+      -704.1,
+      2.1,
+      324.0
+     ]
+    }
+   ]
+  },
+  "pnl_tail5_r": {
+   "thickness_mm": 1.71,
+   "faces": 17,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.94,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.94,
+     "at_mm": [
+      -711.6,
+      -7.2,
+      376.7
+     ]
+    },
+    {
+     "radius_mm": 9.95,
+     "at_mm": [
+      -764.7,
+      -7.2,
+      367.1
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -702.4,
+      -7.2,
+      324.5
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -713.1,
+      -5.6,
+      376.5
+     ]
+    },
+    {
+     "radius_mm": 9.97,
+     "at_mm": [
+      -755.6,
+      -7.2,
+      315.3
+     ]
+    }
+   ]
+  },
+  "pnl_tail6_l": {
+   "thickness_mm": 1.71,
+   "faces": 21,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.98,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -836.3,
+      5.0,
+      354.7
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -783.8,
+      5.0,
+      364.1
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -774.4,
+      5.3,
+      311.6
+     ]
+    },
+    {
+     "radius_mm": 9.99,
+     "at_mm": [
+      -827.1,
+      5.0,
+      302.5
+     ]
+    },
+    {
+     "radius_mm": 10.0,
+     "at_mm": [
+      -777.0,
+      2.1,
+      311.1
+     ]
+    }
+   ]
+  },
+  "pnl_tail6_r": {
+   "thickness_mm": 1.71,
+   "faces": 17,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.94,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.94,
+     "at_mm": [
+      -784.4,
+      -7.2,
+      363.8
+     ]
+    },
+    {
+     "radius_mm": 9.95,
+     "at_mm": [
+      -835.6,
+      -7.1,
+      354.6
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -775.2,
+      -7.2,
+      311.6
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -786.0,
+      -5.6,
+      363.7
+     ]
+    },
+    {
+     "radius_mm": 9.97,
+     "at_mm": [
+      -826.5,
+      -7.2,
+      302.8
+     ]
+    }
+   ]
+  },
+  "pnl_tail7_l": {
+   "thickness_mm": 1.7,
+   "faces": 22,
+   "skin_faces": 2,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.98,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -905.2,
+      5.0,
+      342.5
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -854.7,
+      5.1,
+      351.6
+     ]
+    },
+    {
+     "radius_mm": 9.98,
+     "at_mm": [
+      -845.3,
+      5.3,
+      299.1
+     ]
+    },
+    {
+     "radius_mm": 9.99,
+     "at_mm": [
+      -896.0,
+      5.0,
+      290.4
+     ]
+    },
+    {
+     "radius_mm": 10.0,
+     "at_mm": [
+      -847.9,
+      2.1,
+      298.6
+     ]
+    }
+   ]
+  },
+  "pnl_tail7_r": {
+   "thickness_mm": 1.71,
+   "faces": 18,
+   "skin_faces": 1,
+   "outline_loops": 1,
+   "screw_holes_skipped": 1,
+   "sharp_corners": 0,
+   "rounded_corners": 5,
+   "smallest_radius_mm": 9.94,
+   "under_4mm": 0,
+   "unresolved": 0,
+   "sharp_at_mm": [],
+   "rounded": [
+    {
+     "radius_mm": 9.94,
+     "at_mm": [
+      -855.3,
+      -7.2,
+      351.3
+     ]
+    },
+    {
+     "radius_mm": 9.95,
+     "at_mm": [
+      -904.5,
+      -7.2,
+      342.5
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -846.1,
+      -7.2,
+      299.1
+     ]
+    },
+    {
+     "radius_mm": 9.96,
+     "at_mm": [
+      -856.9,
+      -5.6,
+      351.2
+     ]
+    },
+    {
+     "radius_mm": 9.97,
+     "at_mm": [
+      -895.4,
+      -7.2,
+      290.6
+     ]
+    }
+   ]
+  }
+ }
+}

@@ -9,7 +9,10 @@
 //   load(url)                a model manifest (api/model/...) into the scene
 //   fitCamera(o)             the camera that frames the design at {yaw, pitch}, filling `fill` of
 //                            the frame; with `yaws`, one distance that holds at every one of them
-//                            (a turntable), pivoting on the design's centre
+//                            (a turntable), pivoting on the design's centre; with `parts`, those
+//                            parts alone are framed (a close-up)
+//   focus(pattern)           the parts whose names match the regular expression, their box's centre
+//                            and the design's, mm (where a close-up looks, and which way is front)
 //   shot({camera, layers})   one frame: `layers` [{look, style, wipe}], the first drawn whole and
 //                            each later one over it behind a diagonal at `wipe` (0..1) of the way
 //   rollout(url, o)          a rollout (api/playback/...) resampled at `fps`, with the follow rig
@@ -61,9 +64,10 @@ function basis(c) {
 }
 function mmPerPixel(c) { return 2 * c.distance * Math.tan(LENS * Math.PI / 360) / (stage.clientHeight || 1); }
 
-function fitCamera({yaw = .8, pitch = .35, fill = .78, yaws = null, views = null, centre = true, lift = 0} = {}) {
-  const b = viewer.stats().bounds;
+function fitCamera({yaw = .8, pitch = .35, fill = .78, yaws = null, views = null, centre = true, lift = 0, parts = null} = {}) {
+  const b = parts ? viewer.boundsOf(parts) : viewer.stats().bounds;
   if (!b) throw new Error('nothing to frame');
+  if (parts) b.radius = Math.hypot(...b.min.map((v, i) => b.max[i] - v)) / 2 || 1;
   const w = stage.clientWidth, h = stage.clientHeight;
   // Every view the shot will take, {yaw, pitch}: one distance must hold at all of them.
   const shots = Array.isArray(views) && views.length ? views
@@ -73,7 +77,7 @@ function fitCamera({yaw = .8, pitch = .35, fill = .78, yaws = null, views = null
     let need = 0, dx = 0, dy = 0, rise = 0;
     for (const v of shots) {
       viewer.setCamera({...c, yaw: v.yaw, pitch: v.pitch, distance: c.distance * (v.scale || 1)});
-      const box = viewer.screenBox();
+      const box = viewer.screenBox(parts);
       if (!box) continue;
       if (shots.length === 1 && centre) {
         // One view: centre the design, then fill by its own extent.
@@ -96,6 +100,12 @@ function fitCamera({yaw = .8, pitch = .35, fill = .78, yaws = null, views = null
   if (lift) { const {up} = basis(c), mm = mmPerPixel(c); c.target = c.target.map((t, i) => t - up[i] * lift * h * mm); }
   viewer.setCamera(c);
   return c;
+}
+
+function focus(pattern) {
+  const re = new RegExp(pattern, 'i'), names = viewer.parts().map(p => p.name).filter(n => re.test(n));
+  const box = names.length ? viewer.boundsOf(names) : null, all = viewer.stats().bounds;
+  return {names, center: box && box.center, design: all && all.center};
 }
 
 function paint(layer) {
@@ -323,5 +333,5 @@ function image(type = 'png', quality = .92) {
   return out.toDataURL(type === 'jpeg' ? 'image/jpeg' : 'image/png', quality).split(',')[1];
 }
 
-window.cadexHero = {available: viewer.available, size, load, fitCamera, shot, rollout, rolloutFrame, plot, image,
+window.cadexHero = {available: viewer.available, size, load, fitCamera, focus, shot, rollout, rolloutFrame, plot, image,
                     stats: () => viewer.stats(), viewer};
