@@ -9275,6 +9275,21 @@ HEIGHT_SCAN_OFFSETS_MM: tuple[tuple[float, float], ...] = tuple(
     for left in (-1, 0, 1)
 )
 
+#: The forward scan's grid (ADR-821): 15 points along the heading, from
+#: 400 mm to 1800 mm ahead at the same 100 mm spacing, by 3 across it at
+#: -150, 0 and +150 mm. ``HEIGHT_SCAN_OFFSETS_MM`` ends 300 mm ahead, less
+#: than one stride at a run; a takeoff over a hurdle or a gap is placed a
+#: stride or more before it, and 1800 mm is 0.4 s at 4.5 m/s. It starts
+#: where the near grid stops, so the two together see the ground from
+#: 100 mm behind to 1800 mm ahead with no point read twice. Channel ``_i``
+#: is ``HEIGHT_SCAN_FAR_OFFSETS_MM[i]``.
+HEIGHT_SCAN_FAR_LATERAL_MM = 150.0
+HEIGHT_SCAN_FAR_OFFSETS_MM: tuple[tuple[float, float], ...] = tuple(
+    (ahead * HEIGHT_SCAN_SPACING_MM, left * HEIGHT_SCAN_FAR_LATERAL_MM)
+    for ahead in range(4, 19)
+    for left in (-1, 0, 1)
+)
+
 #: Observation kinds that read the ground around a body (ADR-715). A
 #: ``height_scan`` is the body's height, in mm, above the ground at each
 #: point of :data:`HEIGHT_SCAN_OFFSETS_MM`, laid out in the body's heading
@@ -9285,11 +9300,21 @@ HEIGHT_SCAN_OFFSETS_MM: tuple[tuple[float, float], ...] = tuple(
 #: against ``MAXIMUM_OBSERVATION_CHANNELS``. ``role: privileged`` keeps it
 #: to the critic, the reward and the terminations (orun7 O5); ``role:
 #: policy`` gives it to the actor too, as a depth sensor's map of the ground
-#: ahead (orun8 O2, ADR-748).
+#: ahead (orun8 O2, ADR-748). A ``height_scan_far`` is the same reading at
+#: :data:`HEIGHT_SCAN_FAR_OFFSETS_MM`, the ground a run reaches in the next
+#: stride or two (ADR-821). Each kind's ``offsets_mm`` is its grid, and the
+#: bundle states it on every row, so the engine and the trainer read any
+#: kind alike.
 SCAN_OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
     "height_scan": {
         "target": "component",
         "suffixes": tuple(f"_{index}" for index in range(len(HEIGHT_SCAN_OFFSETS_MM))),
+        "offsets_mm": HEIGHT_SCAN_OFFSETS_MM,
+    },
+    "height_scan_far": {
+        "target": "component",
+        "suffixes": tuple(f"_{index}" for index in range(len(HEIGHT_SCAN_FAR_OFFSETS_MM))),
+        "offsets_mm": HEIGHT_SCAN_FAR_OFFSETS_MM,
     },
 }
 
@@ -9473,6 +9498,18 @@ GOAL_RAMP_ALGORITHM = (
     "with u = s - k * resample_steps, the value read is previous + (held - "
     "previous) * min(1, (u + 1) / r), previous being segment k - 1's value "
     "and held segment k's; segment 0 is held from the start"
+)
+
+#: What a goal drawn by weighted bands adds to :data:`GOAL_ALGORITHM`
+#: (ADR-824), appended only to bundles whose goal carries ``bands``, so every
+#: earlier bundle keeps its algorithm and its digest. Its value draw is two
+#: draws instead of one, in this order.
+GOAL_BAND_ALGORITHM = (
+    "; on a goal with bands [[low_i, high_i, weight_i], ...], which tile "
+    "[low, high] in order, a segment's value is not uniform(low, high): "
+    "pick = random() * sum(weight_i), band i is the first whose weight_i "
+    "exceeds pick after the weights of the bands before it are taken off "
+    "(the last when none does), and the value is uniform(low_i, high_i)"
 )
 
 #: Everything a reward or termination expression may name beyond the
@@ -11277,6 +11314,14 @@ def _goal_records(
                           "earlier": seen_kinds[kind]},
             )
         seen_kinds[kind] = name
+        if entry.get("bands") is not None and kind not in ("value", "speed", "yaw_rate"):
+            # ADR-824: refused here, before the kinds whose draw has no value.
+            raise DynamicsError(
+                f"{what} is drawn by bands, and a {kind} has no value to weight.",
+                reason="goal_bands_malformed",
+                correction="Give bands only on a value, a speed or a yaw rate goal.",
+                observed={"goal": name, "kind": kind},
+            )
         channels = (
             [f"{name}_x", f"{name}_y", f"{name}_z"] if kind == "point"
             else [f"{name}_sin", f"{name}_cos"] if kind == "phase"
@@ -11480,6 +11525,25 @@ def _goal_records(
                         observed={"goal": name, "sequence": [repr(v) for v in values]},
                     )
                 record["sequence"] = values
+            bands = entry.get("bands")
+            if bands is not None:
+                # ADR-824: a piecewise-uniform draw over the goal's range.
+                problem = goal_bands_problem(kind, low, high, bands)
+                if problem:
+                    raise DynamicsError(
+                        f"{what} is drawn by bands {bands!r}: {problem}.",
+                        reason="goal_bands_malformed",
+                        correction=(
+                            "Give bands=[[low, high, weight], ...] on a value, a "
+                            "speed or a yaw rate: 1 to 16 bands in order, each "
+                            "low < high and weight > 0, the first starting at "
+                            "between's low, each ending where the next starts, "
+                            "and the last ending at between's high."
+                        ),
+                        observed={"goal": name, "bands": repr(bands),
+                                  "low": low, "high": high},
+                    )
+                record["bands"] = [[float(v) for v in band] for band in bands]
             ramp = entry.get("ramp_seconds")
             if ramp is not None:
                 # ADR-773: a straight line from one segment's value to the next.
@@ -12424,6 +12488,16 @@ SCHEDULE_RULE = (
     "the blend is at least one half"
 )
 
+#: How a schedule with gait-family switches is read (ADR-822), appended to
+#: :data:`SCHEDULE_RULE` in the bundle of a schedule that states any.
+SCHEDULE_SWITCH_RULE = (
+    "; where switches_mm_s[i] is a speed s (strides i and i + 1 are of two "
+    "gait families), w is 0 while v < s and 1 from s up, so the strides of "
+    "two families are never blended; the stride a start row or a judged "
+    "evaluation picks is then i + 1 if w > 1/2 else i, the bracketing "
+    "stride nearer in w"
+)
+
 #: How an episode of a speed-scheduled task that starts at a random phase
 #: picks its start row (ADR-773), after :data:`REFERENCE_START_ALGORITHM`'s
 #: draw of ``sample``.
@@ -12443,12 +12517,21 @@ def schedule_blend(schedule: Mapping[str, Any], speed: float) -> tuple[int, floa
     index = 0
     while index < len(speeds) - 2 and speeds[index + 1] <= v:
         index += 1
+    switch = (schedule.get("switches_mm_s") or [None] * len(speeds))[index]
+    if switch is not None:
+        # ADR-822: two gait families meet here; one or the other, never a blend.
+        return index, 0.0 if v < float(switch) else 1.0
     return index, (v - speeds[index]) / (speeds[index + 1] - speeds[index])
 
 
 def schedule_nearest(schedule: Mapping[str, Any], speed: float) -> int:
-    """The stride whose speed is nearest a command, the slower on a tie (ADR-773)."""
+    """The stride whose speed is nearest a command, the slower on a tie
+    (ADR-773); on a schedule with family switches (ADR-822), the bracketing
+    stride nearer in the blend's weight, so it is of the family in force."""
 
+    if schedule.get("switches_mm_s"):
+        index, weight = schedule_blend(schedule, speed)
+        return index + 1 if weight > 0.5 else index
     speeds = [float(value) for value in schedule["speeds_mm_s"]]
     v = abs(float(speed))
     return min(range(len(speeds)), key=lambda index: abs(speeds[index] - v))
@@ -12721,6 +12804,94 @@ def judged_reference(task: Mapping[str, Any], command_mm_s: float | None) -> Any
     return strides[schedule_nearest(scheduled, command_mm_s)]
 
 
+def footfall_crossings(before: Mapping[str, Any], after: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """Every pair of feet ``(a, b)`` that lands a before b in the stride whose
+    ``phase_offsets`` are ``before`` and b before a in ``after`` (ADR-773's
+    ``schedule_footfall_order``)."""
+
+    return sorted(
+        (a, b) for a in before for b in before
+        if float(before[a]) < float(before[b]) and float(after[a]) > float(after[b])
+    )
+
+
+def schedule_switches(declared: Sequence[Any] | None, speeds_mm_s: Sequence[float], *,
+                      context: str) -> list[float | None]:
+    """A schedule's family switches (ADR-822), one entry per neighbouring
+    pair of strides: ``None`` where the two are blended, else the speed in
+    mm/s at which the reference switches from one to the next. Absent, every
+    pair is blended (ADR-773). A switch lies strictly between its two
+    strides' speeds, so each family's own strides are read where they run."""
+
+    pairs = len(speeds_mm_s) - 1
+    if declared is None:
+        return [None] * pairs
+    switches = [None if value is None else float(value) for value in declared]
+    if len(switches) != pairs:
+        raise DynamicsError(
+            f"{context}: its speed schedule has {len(speeds_mm_s)} strides and "
+            f"states {len(switches)} switches.",
+            reason="schedule_switches_count",
+            correction="State one entry per neighbouring pair of strides: None "
+                       "where they blend, a speed in mm/s where the family switches.",
+            observed={"speeds_mm_s": list(speeds_mm_s), "switches_mm_s": switches},
+        )
+    for index, switch in enumerate(switches):
+        low, high = float(speeds_mm_s[index]), float(speeds_mm_s[index + 1])
+        if switch is not None and not (low < switch < high and math.isfinite(switch)):
+            raise DynamicsError(
+                f"{context}: its switch between stride {index} ({low:g} mm/s) and "
+                f"stride {index + 1} ({high:g} mm/s) is at {switch:g} mm/s.",
+                reason="schedule_switch_outside_strides",
+                correction="Put a family switch strictly between the speeds of "
+                           "the two strides it separates.",
+                observed={"pair": index, "switch_mm_s": switch, "between": [low, high]},
+            )
+    if all(switch is None for switch in switches):
+        raise DynamicsError(
+            f"{context}: its speed schedule states switches and none is a speed.",
+            reason="schedule_switches_empty",
+            correction="Omit the switches to blend every pair (ADR-773).",
+            observed={"switches_mm_s": switches},
+        )
+    return switches
+
+
+def check_schedule_order(clips: Sequence[Mapping[str, Any]], switches_mm_s: Sequence[Any] | None,
+                         *, context: str) -> list[float | None]:
+    """Refuse a schedule whose neighbouring strides land their feet in other
+    orders (ADR-773), except across a family switch (ADR-822); return the
+    switches, one per pair."""
+
+    switches = schedule_switches(switches_mm_s,
+                                 [1000.0 * float(clip["parameters"]["speed_m_s"]) for clip in clips],
+                                 context=context)
+    for index, clip in enumerate(clips[1:], start=1):
+        if switches[index - 1] is not None:
+            # ADR-822: a family switch; the two strides are never blended.
+            continue
+        before = clips[index - 1]["parameters"]["phase_offsets"]
+        after = clip["parameters"]["phase_offsets"]
+        crossed = footfall_crossings(before, after)
+        if crossed:
+            raise DynamicsError(
+                f"{context}: stride {index} of its speed schedule lands its feet "
+                f"in another order than stride {index - 1}: "
+                + ", ".join(f"{a} before {b}, then after" for a, b in crossed) + ".",
+                reason="schedule_footfall_order",
+                correction=(
+                    "A schedule blends two strides at one phase, so each foot "
+                    "must land in the same order in both; move a lead or a lag "
+                    "towards zero rather than past it. Write every stride's "
+                    "offsets from the same foot at 0. Two gaits whose feet "
+                    "land in other orders are two families: state a switch "
+                    "between them (ADR-822)."
+                ),
+                observed={"stride": index, "before": dict(before), "after": dict(after)},
+            )
+    return switches
+
+
 def _reference_schedule_records(
     mujoco: Any,
     reloaded: Any,
@@ -12776,26 +12947,7 @@ def _reference_schedule_records(
                 observed={"stride": index, "joints": clip["joints"],
                           "first": clips[0]["joints"]},
             )
-        before = clips[index - 1]["parameters"]["phase_offsets"]
-        after = clip["parameters"]["phase_offsets"]
-        crossed = sorted(
-            (a, b) for a in before for b in before
-            if float(before[a]) < float(before[b]) and float(after[a]) > float(after[b])
-        )
-        if crossed:
-            raise DynamicsError(
-                f"{context}: stride {index} of its speed schedule lands its feet "
-                f"in another order than stride {index - 1}: "
-                + ", ".join(f"{a} before {b}, then after" for a, b in crossed) + ".",
-                reason="schedule_footfall_order",
-                correction=(
-                    "A schedule blends two strides at one phase, so each foot "
-                    "must land in the same order in both; move a lead or a lag "
-                    "towards zero rather than past it. Write every stride's "
-                    "offsets from the same foot at 0."
-                ),
-                observed={"stride": index, "before": dict(before), "after": dict(after)},
-            )
+    check_schedule_order(clips, declared.get("switches_mm_s"), context=context)
     return clips
 
 
@@ -12815,10 +12967,13 @@ def _schedule_record(
     *,
     taken: Sequence[str],
     context: str,
+    switches_mm_s: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     """The bundle's ``tracking.schedule`` (ADR-773): every stride's table on
     one phase grid, its speed and its turn per step, and the speed goal that
-    picks between them."""
+    picks between them. ``switches_mm_s`` (ADR-822) are the speeds at which
+    one gait family gives way to the next, ``None`` between strides that
+    blend; written only when given, so every earlier bundle is unchanged."""
 
     speeds_goal = [entry for entry in goal if str(entry.get("kind")) == "speed"]
     if len(speeds_goal) != 1:
@@ -12843,6 +12998,8 @@ def _schedule_record(
             ),
             observed={"between": [low, high], "speeds_mm_s": speeds},
         )
+    switches = None if switches_mm_s is None else check_schedule_order(
+        clips, switches_mm_s, context=context)
     tables = []
     reads = None
     for clip in clips:
@@ -12859,7 +13016,8 @@ def _schedule_record(
         "periods_s": [float(clip["parameters"]["period_s"]) for clip in clips],
         "turns_per_step": [interval / float(clip["parameters"]["period_s"]) for clip in clips],
         "tables": tables,
-        "rule": SCHEDULE_RULE,
+        **({"switches_mm_s": switches,
+            "rule": SCHEDULE_RULE + SCHEDULE_SWITCH_RULE} if switches else {"rule": SCHEDULE_RULE}),
         **({"start_rule": SCHEDULE_START_RULE} if clips[0].get("start") == "random" else {}),
     }
 
@@ -12887,8 +13045,8 @@ def _scan_records(
             "body": str(record["object_name"]),
             "body_id": int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY,
                                              str(record["object_name"]))),
-            "offsets_mm": [[float(ahead), float(left)]
-                           for ahead, left in HEIGHT_SCAN_OFFSETS_MM],
+            "offsets_mm": [[float(ahead), float(left)] for ahead, left
+                           in SCAN_OBSERVATION_KINDS[str(record["kind"])]["offsets_mm"]],
             "channels": [str(channel) for channel in record["channels"]],
             "unit": "mm",
             # The world position's metres to the channel's mm, so the trainer
@@ -13548,7 +13706,8 @@ def task_records(
         )
         if strides:
             tracking["schedule"] = _schedule_record(
-                strides, observations, schedule, goal, taken=taken, context=context)
+                strides, observations, schedule, goal, taken=taken, context=context,
+                switches_mm_s=task["reference"].get("switches_mm_s"))
         if reference.get("start") == "random":
             if strides:
                 starts = [_reference_start_records(mujoco, reloaded, clip) for clip in strides]
@@ -13598,6 +13757,9 @@ def task_records(
         ) + (
             GOAL_RAMP_ALGORITHM
             if any(entry.get("ramp_steps") for entry in goal) else ""
+        ) + (
+            GOAL_BAND_ALGORITHM
+            if any(entry.get("bands") for entry in goal) else ""
         )} if goal else {}),
         # ADR-696: absent when the task observes no command, so its bundle
         # and digest are the ones it always had.
@@ -14354,6 +14516,64 @@ def draw_episode_variation(
     return {"reset_variation": variations, "disturbance": pushes}
 
 
+def goal_bands_problem(
+    kind: str, low: float, high: float, bands: Any
+) -> str:
+    """Why ``bands`` cannot weight a ``kind`` goal over [low, high]; empty when it can (ADR-824).
+
+    The bands tile the range exactly, in order, so a banded goal draws from
+    the same range its ``low`` and ``high`` state, and every value in it can
+    be drawn.
+    """
+
+    if kind not in ("value", "speed", "yaw_rate"):
+        return f"bands weight a value, a speed or a yaw rate, and this is a {kind}"
+    if isinstance(bands, (str, bytes)) or not isinstance(bands, Sequence) \
+            or not 1 <= len(bands) <= 16:
+        return "they are not a list of 1 to 16 bands"
+    edge = float(low)
+    for index, band in enumerate(bands):
+        if isinstance(band, (str, bytes)) or not isinstance(band, Sequence) or len(band) != 3:
+            return f"band {index} is not [low, high, weight]"
+        try:
+            start, end, weight = (float(v) for v in band)
+        except (TypeError, ValueError):
+            return f"band {index} is not three numbers"
+        if not all(math.isfinite(v) for v in (start, end, weight)):
+            return f"band {index} is not finite"
+        if start != edge:
+            return f"band {index} starts at {start:g}, not at {edge:g}"
+        if not end > start:
+            return f"band {index} ends at {end:g}, not above its start {start:g}"
+        if not weight > 0.0:
+            return f"band {index} weighs {weight:g}, not more than 0"
+        edge = end
+    if edge != float(high):
+        return f"the last band ends at {edge:g}, not at the goal's high {float(high):g}"
+    return ""
+
+
+def _goal_value_draw(entry: Mapping[str, Any], rng: Any) -> float:
+    """One segment's draw of a value, a speed or a yaw rate.
+
+    ``uniform(low, high)``; on a goal with ``bands`` (ADR-824), one
+    ``random()`` times the bands' total weight picks the first band whose
+    running weight exceeds it (the last when none does), then
+    ``uniform(band low, band high)``. The trainer's ``draw_goals`` carries
+    the same lines.
+    """
+
+    bands = entry.get("bands")
+    if not bands:
+        return rng.uniform(float(entry["low"]), float(entry["high"]))
+    pick = rng.random() * sum(float(band[2]) for band in bands)
+    for start, end, weight in bands:
+        if pick < float(weight):
+            break
+        pick -= float(weight)
+    return rng.uniform(float(start), float(end))
+
+
 def draw_episode_goals(
     mujoco: Any, model: Any, task: Mapping[str, Any], rng: Any
 ) -> list[dict[str, Any]]:
@@ -14389,7 +14609,7 @@ def draw_episode_goals(
         if str(entry["kind"]) != "point":
             scripted = list(entry.get("sequence") or ())
             for index in range(int(entry["segments"])):
-                value = rng.uniform(float(entry["low"]), float(entry["high"]))
+                value = _goal_value_draw(entry, rng)
                 # ADR-721: a scripted segment takes its draw and holds its
                 # script, so the stream after it is the unscripted one.
                 segments.append(

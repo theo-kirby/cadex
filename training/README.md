@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-24. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-25. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -250,6 +250,29 @@ Every policy before ADR-712 is `tanh`; continue one with `--activation tanh`.
 `training/test_canonical_body.py` holds the base remap: onto its own robot
 it is the identity, and onto the same robot listed in another order with a
 joint mounted the other way round it plays the same actions.
+
+## Distilling teachers by command band (ADR-825)
+
+`--teacher LOW:HIGH:POLICY`, repeated, trains a cold student on the bundle
+while each teacher's action is a target on the steps whose goal (`--teacher-goal`,
+default `cmd`) lies in `[LOW, HIGH)`; the last band also takes its `HIGH`.
+The term is `--distill-weight` (default 1) times the mean, over every step
+of the minibatch, of the taught mask times the squared distance between
+`tanh` of the student's location and `tanh` of the teacher's: the action
+the engine plays, before the action box. It sits beside PPO's loss, which
+still trains every step, so a band with no teacher learns from the reward
+alone. Each teacher's network reads its own normaliser, as it was played.
+
+A teacher must be on the same model, read the bundle's actor channels in
+order and emit its action table (`check_policy_fits` without the task
+digest: a teacher was trained on another bundle). Bands may not overlap and
+stay inside the goal's range; a `--family` run is refused. The header
+records the teachers by digest, label, task digest and iterations under
+`training.distill`, never their paths; a run without `--teacher` writes the
+header it always wrote. The iteration line and the curve gain
+`distill_loss` and `taught` (the share of steps with a teacher).
+`training/test_distill.py` holds these rules; `docs/probes/l3r1/distill.py`
+replays real teachers through them.
 
 ## Checkpoints, and the file a run publishes while it runs (ADR-098)
 
@@ -552,8 +575,9 @@ module scope.
 
 No suite trains (ADR-725). The engine and CLI suites hold the boundary
 above and nothing of the learner. The training venv's own tests,
-`training/test_cadex_proxy.py` and `training/test_curriculum_warm_start.py`,
-cover the proxy and the warm-start rules. A change to the trainer is
+`training/test_cadex_proxy.py`, `training/test_curriculum_warm_start.py` and
+`training/test_distill.py`, cover the proxy, the warm-start rules and
+distillation's routing and refusals. A change to the trainer is
 verified by running it: a few iterations on CPU (`SETUP.md` §b), then the
 engine's own verification of the policy it wrote. The GPU is a speed
 difference, not a semantic one, and it is the same trainer file.

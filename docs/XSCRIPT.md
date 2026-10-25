@@ -486,6 +486,9 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   across, 100 mm apart. `scan_4` is under the body. It travels in the
   bundle's `scans` section, last in every vector, and it must be
   `privileged`: the critic reads it, the policy does not.
+  `"height_scan_far"` (ADR-821) is the same reading further ahead:
+  `scan_far_0` .. `scan_far_44` at 15 points along the heading, from 400 mm
+  to 1800 mm ahead, by 3 across at -150, 0 and +150 mm.
   `assembly.reward(expression, weight=...)` terms are summed and a policy
   maximises the total, reported term by term so "which part of the reward is
   doing the work" is answerable; a cost is a positive quantity with a
@@ -597,7 +600,14 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `resample_seconds`, at most one segment long, whole control steps) moves
   each segment's value in from the one before in a straight line instead
   of one step: `goal("cmd", kind="speed", between=[800, 4500],
-  resample_seconds=3, ramp_seconds=1.5)` accelerates through the range. The
+  resample_seconds=3, ramp_seconds=1.5)` accelerates through the range.
+  `bands=[[low, high, weight], ...]` (ADR-824; a `value`, `speed` or
+  `yaw_rate`) weights the draw: a segment picks a band with probability its
+  weight over the total, then draws uniformly inside it. The bands tile
+  `between` in order, 1 to 16 of them, each wider than nothing and weighing
+  more than 0: `goal("cmd", kind="speed", between=[0, 4500],
+  bands=[[0, 2500, 0.11], [2500, 4500, 0.89]])` trains about 0.89 of its
+  episodes at 2.5-4.5 m/s and still asks the whole range. The
   step a goal changes on is scored against the goal its action was taken
   under. A task states up to four goals in all, and a goal may not share a
   channel name with an observation. An episode played without a seed holds the middle of a
@@ -657,7 +667,12 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `reference` is the slowest stride (the one the dashboard plays),
   `reference_schedule` lists every stride, and `tracking.schedule` holds
   their tables, speeds, turns and the rule. An evaluation judges the gait
-  against the stride nearest the settled command. A cat whose rotary-gallop
+  against the stride nearest the settled command.
+  `reference_switches=[None, 3000, ...]` (ADR-822) splits the strides into
+  gait families: one entry per neighbouring pair, `None` to blend, or a
+  speed strictly between the two strides' at which the reference switches
+  from the one to the other without a blend. The footfall order need then
+  hold only inside each family. A cat whose rotary-gallop
   lag closes with speed:
 
   ```python
@@ -724,7 +739,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `slip_share_max`, `duty_factor_min`, `duty_factor_max` | the share of a foot's travel made while on the floor; the share of frames in stance | `feet` |
   | `flight_stride_share`, `flight_s_median`, `stride_length_mm_median`, `stride_hz_median` | stride by stride after 1 s, with the first named foot's landings as the clock: the share of strides in which some frame has every foot out of stance (1 is a flight phase every stride); the median time all feet are off per stride; the base's travel along its starting heading per stride; strides per second. The evaluation's `flight` detail keeps each stride and the footfall orders counted (ADR-771) | `feet` |
   | `mean_forward_speed_mm_s`, `mean_lateral_speed_mm_s` | speed along and across the base's heading, after 1 s | `feet` |
-  | `speed_ratio`, `lateral_ratio` | those speeds over the commanded one: the mean of the `speed` goal over the same settled frames | `feet` and a `speed` goal |
+  | `speed_ratio`, `lateral_ratio` | those speeds over the commanded one: the mean of the `speed` goal over the same settled frames; `None` at a command of 0, a stand (ADR-823) | `feet` and a `speed` goal |
   | `speed_error_rms_mm_s` | the RMS of the base's forward speed (along its heading, over a centred 0.5 s window) less the `speed` goal in force, over the frames past 1 s and not within 0.5 s after any command changed (ADR-721) | a floating base and a `speed` goal |
   | `yaw_rate_error_rms_deg_s` | the same for the base's yaw rate about world +Z against the `yaw_rate` goal (ADR-721) | a floating base and a `yaw_rate` goal |
   | `reversal_heading_error_deg_max` | for every held yaw-rate command that turns the commanded heading through 180° before it changes, the base's heading error at the moment it has (180°/\|rate\| after it was issued: 3 s at 60°/s); the worst one. Unmeasured, so failed, when the episode commanded none or ended first (ADR-721) | a floating base and a `yaw_rate` goal |

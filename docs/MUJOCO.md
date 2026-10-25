@@ -484,6 +484,18 @@ channels, after its reference clock, as a depth sensor's map of the ground
 would (orun8 O2, ADR-748); a warm start across that change is refused,
 because the actor's inputs move.
 
+**Forward scan (ADR-821, 2026-10-24).** `assembly.observation(trunk,
+"height_scan_far", name="scan_far", role="policy")` is the same reading at a
+second fixed grid, where a run places its takeoff: 15 points along the
+heading from 400 mm to 1800 mm ahead, 100 mm apart, by 3 across at -150, 0
+and +150 mm, so `scan_far_0` .. `scan_far_44`, and `scan_far_{3i+1}` is the
+centre line at `400 + 100 i` mm. It starts where `height_scan` stops, so the
+two read the ground from 100 mm behind to 1800 mm ahead with no point read
+twice. Each kind's grid is `CadexDynamics.SCAN_OBSERVATION_KINDS[kind]
+["offsets_mm"]`, stated on the bundle's `scans` row, so the engine and the
+trainer read every kind alike; `docs/probes/l3r1/scan_far.py` holds them
+equal over a hurdle at five distances, the body straight and turned.
+
 ---
 
 ## 3. Three tensions to resolve before code
@@ -1875,6 +1887,31 @@ copies of the rule; an evaluation judges the gait against the stride
 nearest the settled command (`judged_reference`). It cannot be combined
 with `reference_cadence="speed"`, and a warm start onto a schedule is not
 a curriculum step (`reference` and `tracking` move).
+
+**Weighted command draws (ADR-824).** A speed goal drawn uniformly over a
+schedule's whole span trains each band of speeds in proportion to its
+width. `api.goal(bands=[[low, high, weight], ...])` weights it instead: the
+bands tile `between`, and a segment picks one with probability its weight
+over the total (one `random()`), then draws `uniform` inside it. The bundle's
+goal keeps its `low` and `high` and gains `bands`; its `goal_algorithm` gains
+`GOAL_BAND_ALGORITHM`'s clause, and the trainer's `draw_goals` draws the same
+two numbers per segment. A goal without bands draws as before, byte for
+byte. Refused: `goal_bands_malformed`.
+
+**Gait families: a switch inside a speed schedule (ADR-822).** A walk or
+trot and a gallop land their feet in other orders, so ADR-773 refuses to
+blend them. `api.task(reference_switches=[...])` states one entry per
+neighbouring pair of strides: `None` where the two blend, or a speed in
+mm/s strictly between theirs where one family gives way to the next. Across
+a switch `w` is 0 below the speed and 1 from it up, so the reference is
+one stride or the other, never a blend; the clock keeps its phase and
+turns at the stride in force. The footfall order is checked inside each
+family only (`check_schedule_order`), and the start stride and the judged
+stride are the bracketing one nearer in `w`, so they are of the family in
+force. `tracking.schedule` then carries `switches_mm_s` and a `rule` with
+`SCHEDULE_SWITCH_RULE`'s clause; a schedule with no switch is written as
+before, byte for byte. Refused: `schedule_switches_count`,
+`schedule_switch_outside_strides`, `schedule_switches_empty`.
 
 **Screening drives against it (ADR-710).** Before a design change is
 rebuilt or trained, `training/cadex_proxy.py` swaps datasheet drives, moves

@@ -159,6 +159,41 @@ def _number(
     return result
 
 
+def _reference_switches(
+    operation: str, declared: Sequence[Any], speeds_mm_s: Sequence[float]
+) -> list[float | None]:
+    """``api.task(reference_switches=...)`` checked against the strides'
+    speeds (ADR-822): one entry per neighbouring pair, ``None`` where the two
+    blend or a speed strictly between theirs, and at least one speed."""
+
+    switches: list[float | None] = list(declared)
+    if len(switches) != len(speeds_mm_s) - 1:
+        raise _error(
+            operation, "reference_switches",
+            f"states one entry per neighbouring pair of the {len(speeds_mm_s)} "
+            "strides", len(switches),
+        )
+    for index, switch in enumerate(switches):
+        if switch is None:
+            continue
+        value = _number(operation, f"reference_switches[{index}]", switch)
+        if not speeds_mm_s[index] < value < speeds_mm_s[index + 1]:
+            raise _error(
+                operation, f"reference_switches[{index}]",
+                f"lies strictly between {speeds_mm_s[index]:g} and "
+                f"{speeds_mm_s[index + 1]:g} mm/s, the speeds of the two "
+                "strides it separates", value,
+            )
+        switches[index] = value
+    if all(switch is None for switch in switches):
+        raise _error(
+            operation, "reference_switches",
+            "names at least one switch speed; omit it to blend every pair",
+            switches,
+        )
+    return switches
+
+
 def _appearance(operation: str, value: Any) -> str:
     role = str(value).strip().lower() if isinstance(value, str) else value
     if role not in APPEARANCE_ROLES:
@@ -1130,6 +1165,8 @@ _OBSERVATION_KINDS: dict[str, str] = {
     # Not a sensor (ADR-715): the body's height above the ground at a fixed
     # grid round it. ``CadexDynamics.SCAN_OBSERVATION_KINDS``.
     "height_scan": "component_link",
+    # ADR-821: the same reading on a forward grid, 0.4 to 1.8 m ahead.
+    "height_scan_far": "component_link",
 }
 
 #: What each observation kind's declared name expands to. A vector channel
@@ -1162,6 +1199,8 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     "acceleration": ("",),
     # One per point of ``CadexDynamics.HEIGHT_SCAN_OFFSETS_MM`` (ADR-715).
     "height_scan": tuple(f"_{index}" for index in range(15)),
+    # One per point of ``CadexDynamics.HEIGHT_SCAN_FAR_OFFSETS_MM`` (ADR-821).
+    "height_scan_far": tuple(f"_{index}" for index in range(45)),
 }
 
 
@@ -3689,6 +3728,12 @@ class AssemblyDomainAPI:
           ``api.component``. ``role="privileged"`` keeps it to the critic,
           the reward and the terminations; ``role="policy"`` gives the
           actor the ground ahead as well, as a depth sensor would (ADR-748).
+        * ``height_scan_far`` -- the same reading further ahead (ADR-821):
+          45 points, 15 along its heading (from 400 mm to 1800 mm ahead,
+          100 mm apart) by 3 across (-150, 0 and +150 mm), where a run
+          places its takeoff over a hurdle or a gap. ``name="scan_far"``
+          gives ``scan_far_0`` .. ``scan_far_44``; ``_3i + 1`` is the
+          centre line at ``400 + 100 i`` mm. Roles as ``height_scan``.
 
         **A vector channel expands to suffixed names.** ``name="hand"`` on a
         ``component_position`` gives ``hand_x``, ``hand_y`` and ``hand_z``;
@@ -4349,6 +4394,7 @@ class AssemblyDomainAPI:
         ramp_seconds: float | None = None,
         sequence: Sequence[float] | None = None,
         bearing_deg: float | None = None,
+        bands: Sequence[Sequence[float]] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Tell the policy where to go: a number or a place drawn per episode.
@@ -4454,6 +4500,16 @@ class AssemblyDomainAPI:
         speed, then turn through 180 degrees -- and the draw is still taken
         for each scripted segment, so stating a sequence moves no other
         draw in the seed's stream.
+
+        ``bands=[[low, high, weight], ...]`` (ADR-824) weights the draw of a
+        ``value``, ``speed`` or ``yaw_rate`` goal: a segment picks a band
+        with probability its weight over the bands' total, then draws
+        uniformly inside it. The bands tile ``between`` in order -- the
+        first starts at its low, each ends where the next starts, the last
+        ends at its high -- with 1 to 16 bands, each wider than nothing and
+        weighing more than 0. It is how a speed task trains more of its
+        episodes at the speeds that are hard, without narrowing the range a
+        policy is asked. Each segment takes two draws instead of one.
 
         An episode played without a seed holds the middle of a range, or
         the point the tip already occupies.
@@ -4613,6 +4669,40 @@ class AssemblyDomainAPI:
                     f"{properties['high']:g}]", outside,
                 )
             properties["sequence"] = scripted
+        if bands is not None:
+            if clean_kind not in ("value", "speed", "yaw_rate"):
+                raise _error(
+                    operation, "bands",
+                    "weights the draw of a value, a speed or a yaw rate; "
+                    f"this is a {clean_kind}", bands,
+                )
+            if isinstance(bands, (str, bytes)) or not isinstance(bands, Sequence) \
+                    or not 1 <= len(bands) <= 16 or any(
+                        isinstance(band, (str, bytes)) or not isinstance(band, Sequence)
+                        or len(band) != 3 for band in bands):
+                raise _error(
+                    operation, "bands",
+                    "must be a list of 1 to 16 bands, each [low, high, weight]",
+                    bands,
+                )
+            weighted = [
+                [_number(operation, f"bands[{index}][{part}]", value)
+                 for part, value in enumerate(band)]
+                for index, band in enumerate(bands)
+            ]
+            edges = [properties["low"]] + [band[1] for band in weighted]
+            if any(band[0] != edge for band, edge in zip(weighted, edges)) \
+                    or edges[-1] != properties["high"] \
+                    or any(not band[1] > band[0] or not band[2] > 0.0 for band in weighted):
+                raise _error(
+                    operation, "bands",
+                    "must tile the goal's range in order: the first band "
+                    f"starts at between's low {properties['low']:g}, each ends "
+                    "where the next starts, the last ends at between's high "
+                    f"{properties['high']:g}, and each has low < high and "
+                    "weight > 0", bands,
+                )
+            properties["bands"] = weighted
         if resample_seconds is not None:
             properties["resample_seconds"] = _number(
                 operation, "resample_seconds", resample_seconds,
@@ -5472,6 +5562,7 @@ class AssemblyDomainAPI:
         reference_start: str = "phase0",
         reference_cadence: str = "fixed",
         reference_cadence_exponent: float | None = None,
+        reference_switches: Sequence[float | None] | None = None,
         body: Mapping[str, Any] | None = None,
         label: str = "",
     ) -> DomainValue:
@@ -5581,6 +5672,16 @@ class AssemblyDomainAPI:
         starts at a random phase of the stride nearest the opening command.
         The bundle's ``reference`` is the slowest stride (the one the
         dashboard plays); ``reference_schedule`` lists every stride.
+
+        ``reference_switches`` (ADR-822) splits a schedule into **gait
+        families**: one entry per neighbouring pair of strides, ``None``
+        where the two blend as above, or a speed in mm/s, strictly between
+        the two strides' speeds, where one family gives way to the next --
+        ``reference=[walk, trot, gallop], reference_switches=[None, 3000]``
+        blends the walk into the trot and switches to the gallop at
+        3 m/s. Across a switch the reference is one stride or the other,
+        never a blend, so the footfall order need only hold inside each
+        family; the clock keeps its phase and turns at the stride in force.
 
         Like ``api.mjcf`` and for the same reason, ``api.task`` is not under
         the "exactly one simulation" rule: a script may declare several,
@@ -5761,6 +5862,10 @@ class AssemblyDomainAPI:
                     "a list of strides is blended at the task's one speed goal, "
                     f"and this task declares {len(commanded)}",
                 )
+            if reference_switches is not None:
+                # ADR-822: where one gait family gives way to the next.
+                judged["reference_switches"] = _reference_switches(
+                    operation, reference_switches, speeds_mm_s)
             if reference_cadence != "fixed":
                 raise _error(
                     operation, "reference_cadence",
@@ -5805,6 +5910,11 @@ class AssemblyDomainAPI:
             judged["reference"] = gait_value
             if scheduled:
                 judged["reference_schedule"] = scheduled
+        if reference_switches is not None and not scheduled:
+            raise _error(operation, "reference_switches",
+                         "separates the gait families of a speed schedule, and "
+                         "this task's reference is not a list of strides",
+                         reference_switches)
         if reference_start not in ("phase0", "random"):
             raise _error(operation, "reference_start",
                          "must be 'phase0' or 'random'", reference_start)

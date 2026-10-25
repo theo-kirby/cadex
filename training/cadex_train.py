@@ -1132,6 +1132,171 @@ def check_policy_fits(
 
 
 # ---------------------------------------------------------------------------
+# Teachers: a student distilled by command band (ADR-825).
+# ---------------------------------------------------------------------------
+
+
+def parse_teacher(text: str) -> tuple[float, float, str]:
+    """``--teacher LOW:HIGH:POLICY``: the band of the goal, then the file."""
+
+    parts = str(text).split(":", 2)
+    try:
+        low, high = float(parts[0]), float(parts[1])
+        path = parts[2]
+    except (IndexError, ValueError) as error:
+        raise SystemExit(f"--teacher {text!r} is not LOW:HIGH:POLICY") from error
+    if not path or not low < high:
+        raise SystemExit(f"--teacher {text!r}: needs LOW < HIGH and a policy path")
+    return low, high, path
+
+
+def check_teachers(
+    teachers: Sequence[dict[str, Any]],
+    bundle: dict[str, Any],
+    goal: str,
+) -> int:
+    """Every refusal before a teacher is read in training; the goal's index
+    among the actor's channels.
+
+    A teacher is a policy for the same robot reading the same channels and
+    emitting the same action table -- ``check_policy_fits`` without the task
+    digest, because a teacher was trained on another bundle (that is what
+    makes it a teacher). Its bands may not overlap, so one step has at most
+    one teacher, and they sit inside the goal's range.
+    """
+
+    if not teachers:
+        return -1
+    if bundle.get("family"):
+        raise SystemExit("--teacher on a --family run: a teacher reads one "
+                         "variant's channels, not the family's morph inputs.")
+    task = bundle["task"]
+    record = next((item for item in task.get("goal") or ()
+                   if goal in [str(channel) for channel in item["channels"]]), None)
+    if record is None or len(record["channels"]) != 1:
+        raise SystemExit(f"--teacher-goal {goal!r} is not a one-channel goal of "
+                         f"this bundle (goals: {goal_channels(task)})")
+    wanted_channels = actor_channels(task)
+    wanted_actions = list(task["actions"])
+    bands = sorted((float(t["low"]), float(t["high"])) for t in teachers)
+    for (_low, high), (low, _high) in zip(bands, bands[1:]):
+        if low < high:
+            raise SystemExit(f"--teacher bands overlap at {low:g}-{high:g}: one "
+                             "step is taught by at most one teacher")
+    goal_low, goal_high = float(record["low"]), float(record["high"])
+    for teacher in teachers:
+        name = teacher["name"]
+        if teacher["low"] < goal_low or teacher["high"] > goal_high:
+            raise SystemExit(f"--teacher {name}: band {teacher['low']:g}-"
+                             f"{teacher['high']:g} leaves {goal}'s range "
+                             f"{goal_low:g}-{goal_high:g}")
+        header = teacher["header"]
+        model = (header.get("model") or {}).get("sha256")
+        if model != bundle["model_sha256"]:
+            raise SystemExit(f"--teacher {name}: model {model} is not this "
+                             f"bundle's {bundle['model_sha256']}")
+        if list(header.get("observations") or []) != wanted_channels:
+            raise SystemExit(f"--teacher {name}: its observation channels are "
+                             "not this bundle's, in order")
+        found_actions = list(header.get("actions") or [])
+        if len(found_actions) != len(wanted_actions) or any(
+                want.get(field) != got.get(field)
+                for want, got in zip(wanted_actions, found_actions)
+                for field in _POLICY_ACTION_FIELDS):
+            raise SystemExit(f"--teacher {name}: its action table is not this bundle's")
+    return wanted_channels.index(goal)
+
+
+def load_teacher(np: Any, low: float, high: float, path: str) -> dict[str, Any]:
+    """One teacher: its band, digest, header, layers and normaliser."""
+
+    source = Path(path).expanduser()
+    try:
+        blob = source.read_bytes()
+    except OSError as error:
+        raise SystemExit(f"--teacher: cannot read {source}: {error}") from error
+    decoded = decode_policy(blob, context=str(source))
+    header = decoded["header"]
+    network = header.get("network") or {}
+    shapes = [(int(a), int(b)) for a, b in network.get("layers") or ()]
+    layers = [(np.asarray(w, dtype=np.float32), np.asarray(b, dtype=np.float32))
+              for w, b in unflatten_parameters(np, decoded["weights"], shapes)]
+    stats = header.get("normaliser") or {}
+    std = np.asarray(stats.get("std") or [1.0] * shapes[0][0], dtype=np.float32)
+    return {
+        "name": source.name,
+        "low": float(low),
+        "high": float(high),
+        "sha256": hashlib.sha256(blob).hexdigest(),
+        "header": header,
+        "layers": layers,
+        "activation": str(network.get("activation") or "tanh"),
+        "mean": np.asarray(stats.get("mean") or [0.0] * shapes[0][0], dtype=np.float32),
+        "std": np.where(std == 0.0, np.float32(1.0), std),
+    }
+
+
+def teacher_provenance(teachers: Sequence[dict[str, Any]], goal: str,
+                       weight: float) -> dict[str, Any] | None:
+    """What the header records of the teachers: digests, not paths."""
+
+    if not teachers:
+        return None
+    return {
+        "goal": goal,
+        "weight": float(weight),
+        "teachers": [{
+            "low": teacher["low"],
+            "high": teacher["high"],
+            "sha256": teacher["sha256"],
+            "label": str(teacher["header"].get("label") or ""),
+            "task_sha256": str((teacher["header"].get("task") or {}).get("sha256") or ""),
+            "iterations": (teacher["header"].get("training") or {}).get("iterations"),
+        } for teacher in sorted(teachers, key=lambda t: t["low"])],
+    }
+
+
+def teacher_actions(xp: Any, teachers: Sequence[dict[str, Any]], observation: Any,
+                    goal_index: int) -> tuple[Any, Any]:
+    """Each step's teacher action and whether it has a teacher (ADR-825).
+
+    ``observation`` is the actor's raw channels, ``[..., channels]``. A step
+    is taught by the teacher whose band ``[low, high)`` holds its goal (the
+    last band also takes its ``high``); the target is ``tanh`` of the
+    teacher's location, the action before the action box's scale and bias,
+    which is what the engine plays. A step no band holds reads a target of 0
+    and a mask of 0.
+    """
+
+    goal = observation[..., goal_index]
+    actions = teachers[0]["layers"][-1][1].shape[0]
+    target = xp.zeros(observation.shape[:-1] + (actions,), dtype=observation.dtype)
+    mask = xp.zeros(observation.shape[:-1], dtype=observation.dtype)
+    top = max((teacher["high"] for teacher in teachers), default=0.0)
+    for teacher in teachers:
+        inside = (goal >= teacher["low"]) & (
+            (goal < teacher["high"]) | ((goal == teacher["high"]) & (teacher["high"] == top)))
+        normalised = (observation - xp.asarray(teacher["mean"])) / xp.asarray(teacher["std"])
+        layers = [(xp.asarray(w), xp.asarray(b)) for w, b in teacher["layers"]]
+        action = xp.tanh(forward(xp, layers, normalised, activation=teacher["activation"]))
+        target = xp.where(inside[..., None], action, target)
+        mask = xp.where(inside, 1.0, mask).astype(observation.dtype)
+    return target, mask
+
+
+def distillation_loss(xp: Any, student_location: Any, target: Any, mask: Any) -> Any:
+    """Mean over every step of ``mask`` times the squared distance between
+    the student's played action and its teacher's, averaged over actions.
+
+    Over every step, not only the taught ones: a band holding a fifth of the
+    draws pulls a fifth as hard, as PPO's own terms do.
+    """
+
+    error = xp.mean(xp.square(xp.tanh(student_location) - target), axis=-1)
+    return xp.mean(mask * error)
+
+
+# ---------------------------------------------------------------------------
 # The bundle, and the model beside it.
 # ---------------------------------------------------------------------------
 
@@ -1731,14 +1896,26 @@ def schedule_blend(xp: Any, task: dict[str, Any], told: Any) -> tuple[Any, Any]:
     v = xp.clip(xp.abs(told[..., goal_channels(task).index(str(scheduled["channel"]))]),
                 speeds[0], speeds[-1])
     index = xp.clip(xp.searchsorted(speeds, v, side="right") - 1, 0, count - 2)
-    return index, (v - speeds[index]) / (speeds[index + 1] - speeds[index])
+    weight = (v - speeds[index]) / (speeds[index + 1] - speeds[index])
+    if scheduled.get("switches_mm_s"):
+        # ADR-822: where two gait families meet, one or the other, never a blend.
+        switched = [value is not None for value in scheduled["switches_mm_s"]]
+        at = xp.asarray([float(value) if value is not None else 0.0
+                         for value in scheduled["switches_mm_s"]], dtype=told.dtype)
+        weight = xp.where(xp.asarray(switched)[index],
+                          (v >= at[index]).astype(told.dtype), weight)
+    return index, weight
 
 
 def schedule_nearest(xp: Any, task: dict[str, Any], told: Any) -> Any:
     """The stride nearest the command in ``told``, the slower on a tie
-    (ADR-773). ``CadexDynamics.schedule_nearest`` in ``xp``."""
+    (ADR-773); with family switches (ADR-822), the bracketing stride nearer
+    in the blend's weight. ``CadexDynamics.schedule_nearest`` in ``xp``."""
 
     scheduled = task["tracking"]["schedule"]
+    if scheduled.get("switches_mm_s"):
+        index, weight = schedule_blend(xp, task, told)
+        return index + (weight > 0.5).astype(index.dtype)
     speeds = xp.asarray([float(v) for v in scheduled["speeds_mm_s"]], dtype=told.dtype)
     v = xp.abs(told[..., goal_channels(task).index(str(scheduled["channel"]))])
     return xp.argmin(xp.abs(speeds - v[..., None]), axis=-1)
@@ -2184,7 +2361,17 @@ def draw_goals(mujoco: Any, model: Any, task: dict[str, Any], rng: Any) -> list[
         if str(entry["kind"]) != "point":
             scripted = list(entry.get("sequence") or ())
             for index in range(int(entry["segments"])):
-                value = rng.uniform(float(entry["low"]), float(entry["high"]))
+                bands = entry.get("bands")
+                if not bands:
+                    value = rng.uniform(float(entry["low"]), float(entry["high"]))
+                else:
+                    # ADR-824: pick a band by weight, then draw inside it.
+                    pick = rng.random() * sum(float(band[2]) for band in bands)
+                    for start, end, weight in bands:
+                        if pick < float(weight):
+                            break
+                        pick -= float(weight)
+                    value = rng.uniform(float(start), float(end))
                 # ADR-721: a scripted segment takes its draw, holds its script.
                 segments.append(
                     [float(scripted[index]) if index < len(scripted) else value]
@@ -3672,6 +3859,38 @@ def train(
         normalize_advantage=True,
         vf_coefficient=float(options.value_weight),
     )
+    # ADR-825: a student distilled by command band. Each teacher's played
+    # action is a target on the steps whose goal its band holds, beside PPO's
+    # own loss, which still trains every step (a band with no teacher learns
+    # from the reward alone).
+    teachers = [load_teacher(np, *parse_teacher(text))
+                for text in getattr(options, "teacher", None) or ()]
+    teacher_goal = str(getattr(options, "teacher_goal", "cmd") or "cmd")
+    goal_index = check_teachers(teachers, bundle, teacher_goal)
+    distill_weight = float(getattr(options, "distill_weight", 1.0))
+    distill = teacher_provenance(teachers, teacher_goal, distill_weight)
+    if teachers:
+        if not distill_weight > 0.0:
+            raise SystemExit(f"--distill-weight {distill_weight:g}: a teacher "
+                             "needs a weight above 0")
+        ppo_loss = loss_fn
+
+        def loss_fn(params, normaliser, data, key):
+            total, metrics = ppo_loss(params, normaliser, data, key)
+            logits = network.policy_network.apply(normaliser, params.policy,
+                                                  data.observation)
+            target, mask = teacher_actions(jnp, teachers, data.observation["state"],
+                                           goal_index)
+            term = distillation_loss(jnp, logits[..., :action_count],
+                                     jax.lax.stop_gradient(target), mask)
+            total = total + distill_weight * term
+            return total, {**metrics, "total_loss": total, "distill_loss": term,
+                           "taught": jnp.mean(mask)}
+
+        if not options.quiet:
+            for teacher in distill["teachers"]:
+                print(f"teacher  {teacher_goal} {teacher['low']:g}-{teacher['high']:g}  "
+                      f"{teacher['label']}  sha256={teacher['sha256'][:16]}…", flush=True)
     loss_and_grad = gradients.loss_and_pgrad(loss_fn, pmap_axis_name=None,
                                               has_aux=True)
 
@@ -3948,6 +4167,9 @@ def train(
             "action_std": action_std_of(
                 data.extras["policy_extras"]["distribution_params"]),
         }
+        if teachers:
+            report["distill_loss"] = jnp.mean(metrics["distill_loss"][-1])
+            report["taught"] = jnp.mean(metrics["taught"][-1])
         return optimizer_state, params, normaliser, env_state, key, report
 
     @jax.jit
@@ -4032,6 +4254,7 @@ def train(
             "iterations": len(curve),
             "wall_time_s": float(wall),
             "init_from": init_from_provenance,
+            "distill": distill,
             "backend": jax.default_backend(),
             "devices": [str(device) for device in jax.devices()],
             "versions": {
@@ -4078,7 +4301,9 @@ def train(
                 f"iteration {iteration:4d}  reward/step {entry['reward_per_step']:+.6g}"
                 f"  loss {entry['loss']:+.6g}"
                 f"  episode {entry['episode_steps']:.1f}"
-                f"  sigma {entry['action_std']:.4f}",
+                f"  sigma {entry['action_std']:.4f}"
+                + (f"  distill {entry['distill_loss']:.4g} on {entry['taught']:.2f}"
+                   if teachers else ""),
                 file=sys.stderr,
             )
         # Stop at the first non-finite number: diverged parameters do not
@@ -4238,7 +4463,7 @@ def policy_header(
     """
 
     task = bundle["task"]
-    return {
+    header = {
         "schema": POLICY_SCHEMA,
         "label": str(options.label or task.get("label") or ""),
         "task": {"sha256": bundle["task_sha256"],
@@ -4316,7 +4541,8 @@ def policy_header(
                 if key not in ("bundle", "out", "quiet", "label", "init_from",
                                "init_from_task_change",
                                "init_from_parent_task", "init_from_base",
-                               "family")
+                               "family", "teacher", "teacher_goal",
+                               "distill_weight")
                 # The goal pool's size means nothing to a task that states
                 # no goal, and leaving it out there keeps such a policy's
                 # header the one it always was (ADR-462).
@@ -4408,6 +4634,11 @@ def policy_header(
             "actions": trained["witness_actions"],
         },
     }
+    # ADR-825: the teachers by digest. A run without them writes the header
+    # it always wrote.
+    if trained.get("distill"):
+        header["training"]["distill"] = trained["distill"]
+    return header
 
 
 def checked_policy(
@@ -4646,6 +4877,26 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
             "--init-from-task-change"
         ),
     )
+    parser.add_argument(
+        "--teacher",
+        action="append",
+        default=[],
+        metavar="LOW:HIGH:POLICY",
+        help=(
+            "ADR-825: distil a teacher into this run on the steps whose goal "
+            "(--teacher-goal) lies in [LOW, HIGH): its played action is a "
+            "target beside PPO's loss. Repeat for one teacher per band; bands "
+            "may not overlap. A teacher reads this bundle's channels and "
+            "action table on the same model; its task may differ. Recorded "
+            "by digest under training.distill"
+        ),
+    )
+    parser.add_argument(
+        "--teacher-goal", default="cmd", metavar="CHANNEL",
+        help="the one-channel goal --teacher's bands are read on")
+    parser.add_argument(
+        "--distill-weight", type=float, default=1.0,
+        help="the distillation term's weight beside PPO's loss (ADR-825)")
     parser.add_argument(
         "--stop-on-collapse", action="store_true",
         help="stop, with the reason, once the mean episode has collapsed "

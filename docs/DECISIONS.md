@@ -45487,3 +45487,267 @@ still.
 **Evidence.** leon I (`~/cadex-projects/leon`, rev `092997dd`) rendered with
 `cadex hero --only views --software --no-engine --out <scratch>`; its six
 views and a labelled grid are under `docs/probes/orun20/k1/`.
+
+## ADR-820 — A joint sweep's child takes a share of the sweep's total, not a fixed 90 s (2026-10-24, l3r1)
+
+**Context.** Leon III (`~/cadex-projects/leon-iii`, revision `69444f8e`) is
+leon I with a soft shell: the same joints, actuators and colliding geoms,
+rounded panels. On every build its 12 tail joints (`j_tail1`–`j_tail7`,
+`j_tail3p`–`j_tail7p`) ended `runtime budget exceeded` at 85–89 s with no
+pair measured, even on an idle machine, so its swept coverage was
+`incomplete` forever: each joint's child was cut at the fixed
+`_SWEEP_JOINT_SECONDS` (90 s) while the sweep as a whole (900 s on a
+3600 s project, ADR-690) had used 316 s. Leon I's tail joints take about
+10 s each in the same budget (rev `092997dd`). A probe build with the
+per-joint cap lifted to 900 s completed every joint: the tail joints took
+149–190 s each, the sweep 791 s of its 900, 0 failing pairs.
+
+**Decision.** A joint's child is bounded by
+`max(_SWEEP_JOINT_SECONDS, _SWEEP_JOINT_FRACTION * total)`, with the fraction
+1/3, and still by what is left of the total when it starts. The sweep's
+total is computed as before (ADR-690, ADR-622), so the per-joint budget
+follows the run's: 90 s for the 180 s default sweep (unchanged), 300 s for
+a 900 s one. It is set, like the total, through the project's budget
+(`cadex budgets --set timeout_seconds=…`). The report's `per_joint_seconds`
+carries the value used.
+
+**Consequences.**
+- A project with a short budget sweeps exactly as before.
+- On a long project one slow joint can hold one of the `_SWEEP_PARALLEL`
+  slots for up to a third of the total; the joints after it still get
+  what is left, and the total still bounds the whole sweep, so a sweep
+  cannot time a build out.
+- Once a joint's pairs are in the fit cache (ADR-622) later builds sweep it
+  in seconds as before.
+- No protocol, tool-surface, CLI or `pixi.toml` change; no test pins the
+  fixed value. Verified by running: `pixi run test-engine` (157 passed, 3
+  skipped) and `pytest cli/tests` (53 passed), and leon III's build and
+  `cadex clearance --sweep` on this branch.
+
+## ADR-821 — A second height-scan kind, `height_scan_far`, reads the ground 0.4 to 1.8 m ahead (2026-10-24, l3r1)
+
+**Context.** l3r1 trains one leon III policy that must later jump hurdles
+and gaps (its charter's U4) and run box courses (U5). A warm start cannot
+cross a change in the actor's scan rows (`check_curriculum_change`), so
+every input the last stage needs has to be in the first bundle (leon III's
+ADR-003). `height_scan`'s grid is fixed (ADR-715) and ends 300 mm ahead of
+the body: 0.1 s of warning at 3 m/s, less than one stride, while a takeoff
+is placed a stride or more before an obstacle.
+
+**Decision.** A second scan kind, `height_scan_far`, with its own fixed grid
+`HEIGHT_SCAN_FAR_OFFSETS_MM`: 15 points along the heading from 400 to
+1800 mm ahead at 100 mm, by 3 across at -150, 0 and +150 mm, 45 channels
+`_0` .. `_44`. It reads exactly what `height_scan` reads (the body's height
+above the course or the plane, the grid turned with the heading), takes the
+same roles, and travels in the same `scans` section. Each kind's table row
+now carries its `offsets_mm`, and the bundle row states the kind's grid, as
+it already stated `height_scan`'s.
+- **A new kind, not a grid option.** A grid parameter would make a kind's
+  channel set depend on its arguments, and the surface keeps every kind's
+  names enumerable (`_OBSERVATION_SUFFIXES`). Fixed, the far grid is one more
+  enumerable set; `height_scan` and every bundle that declares it are
+  unchanged byte for byte.
+- **Why that grid.** At 100 mm along, a hurdle 100 mm deep or a 400 mm gap is
+  seen by at least one row; 1800 mm is 0.4 s at 4.5 m/s. It starts where the
+  near grid stops, so no point is read twice. ±150 mm across lies just
+  outside leon III's hind feet (±122 mm), so each side row reads the ground
+  a foot lands on.
+
+**Consequences.**
+- The trainer and the evaluator needed no change: both read a row's
+  `offsets_mm`, and the trainer names a scan channel by its grid's digest,
+  so a policy with both scans is canonical as before.
+- Scans are not sensors and stay outside the 128-channel cap, so 45 more
+  rows cost the actor inputs, not sensor budget.
+- No protocol, tool-surface, CLI or `pixi.toml` change. No suite test is
+  added (ADR-725: the suites hold contracts only). Verified by running:
+  `docs/probes/l3r1/scan_far.py` on leon III's MJCF (both rows state their
+  grids, the API's suffixes are the engine's, and over a 200 mm hurdle at
+  250, 450, 1020, 1750 and 2500 mm, straight and turned 30°, the engine's
+  `height_scan_values` and the trainer's `height_scan_vector` agree on all
+  60 channels and see the hurdle at exactly the grid points on it), plus
+  `pixi run test-engine` and `pytest cli/tests`.
+
+
+## ADR-822 — A speed schedule may switch between gait families at a stated speed (2026-10-24, l3r1)
+
+**Context.** ADR-773 blends every neighbouring pair of a schedule's strides
+at one phase, and so refuses a pair whose feet land in other orders
+(`schedule_footfall_order`). An animal's gaits are not one family: a walk
+and a trot are symmetric, a gallop is not, and it changes from one to the
+other at a speed rather than by a blend. l3r1 measured it on leon III's
+retargeted dog clips: trot23 crosses both gallop families (the dog's and
+the cheetah's) at every one of its 26 phase origins, under every contact
+rule tried, so leon III's ADR-003 schedule (walk, trot, gallop) cannot be
+one ADR-773 blend.
+
+**Decision.** `api.task(reference_switches=[...])`, one entry per
+neighbouring pair of strides: `None` where the two blend (ADR-773), or a
+speed in mm/s, strictly between the two strides' speeds, where one family
+gives way to the next. Across a switch the blend weight is 0 below the
+speed and 1 from it up (`schedule_blend`), so the reference is one stride or
+the other, never a blend of two footfall orders. The clock keeps its phase
+and turns at the stride in force. The footfall order is checked only inside
+a family (`check_schedule_order`, used by `_reference_schedule_records` and
+`_schedule_record`). The start stride and the judged stride
+(`schedule_nearest`) become the bracketing stride nearer in the weight, so
+they are of the family in force; on a schedule without switches it is the
+nearest by speed, as before. The bundle's `tracking.schedule` gains
+`switches_mm_s`, and its `rule` gains `SCHEDULE_SWITCH_RULE`'s clause. The
+trainer's `schedule_blend` and `schedule_nearest` read it the same way.
+- **A switch speed, not a family label.** One number per pair says both
+  where the families meet and that they meet there; a label would still
+  need the speed.
+- **Strictly between the strides.** Each family's end strides are then read
+  at their own speeds, and a command never picks a stride from beyond the
+  other family's end.
+
+**Consequences.**
+- A schedule with no switch writes the bundle it always wrote: no key is
+  added and its rule is `SCHEDULE_RULE` unchanged.
+- The reference jumps at a switch, from one stride's pose to the other's at
+  the same phase. That is the gait change; a policy that tracks the
+  reference must learn to make it.
+- Refused: `schedule_switches_count`, `schedule_switch_outside_strides`,
+  `schedule_switches_empty`; the script API refuses the same three, and
+  `reference_switches` on a task whose reference is not a list.
+- No protocol, tool-surface, CLI or `pixi.toml` change. No suite test is
+  added (ADR-725: the suites hold contracts only). Verified by running
+  `docs/probes/l3r1/schedule_switch.py` on leon III's U1 bundle (walk10,
+  trot23 | 2500 mm/s | gallop27, gallop34, gallop42) and B1's dog bundle:
+  the engine and the trainer agree on the blend, the start stride, the
+  clock turn and all 30 tracking channels at every command and phase
+  tried; below the switch the reference is trot23's own row and from it up
+  gallop27's; inside a family the blend is ADR-773's; with no switch, or
+  the switch moved to walk10 | trot23, the schedule is refused
+  `schedule_footfall_order`; and the three refusals hold in the engine and
+  in the script API. Plus `pixi run test-engine`, `pytest cli/tests` and the
+  trainer's tests.
+
+## ADR-823 — An evaluation held at a command of 0 is measured; its speed ratios are `None` (2026-10-24, l3r1)
+
+**Context.** Leon III's U1 judges a stand: a policy held at a speed
+command of 0 must not drift and must keep its feet planted. Every
+evaluation at command 0 failed, `float division by zero`, and wrote no
+report: `CadexEvaluation.gait_metrics` divided the measured forward and
+lateral speeds by `command_mm_s` whenever a command was given. Its own
+docstring already said an episode that asked for no speed has no speed to
+track and reads `speed_ratio` and `lateral_ratio` as `None`, but that was
+written only for a missing command (`None`), not for 0.
+
+**Decision.** A command of 0 takes the same path as no command: both
+ratios are `None`, and the speeds themselves (`mean_forward_speed_mm_s`,
+`mean_lateral_speed_mm_s`) are measured as before. Any other command,
+negative included, is read as before (speed over command).
+
+**Consequences.**
+- A command-0 evaluation now writes its report. A spec predicate on
+  `speed_ratio` reads `None` as unmeasured, so it fails rather than passes
+  at a stand. A stand is judged on the measured speeds and the feet, not on
+  a ratio (l3r1 judges it with its own `tools/realism.py` stand rule).
+- Nothing changes at a non-zero command: the evaluations l3r1 has already
+  judged are unaffected.
+- No protocol, tool-surface, CLI or `pixi.toml` change; no suite test is
+  added (ADR-725). Verified by `docs/probes/l3r1/stand_command.py`. It
+  reads `gait_metrics` with the base and feet stubbed at commands `None`,
+  0, 0.0, 1000 and -500, which fails on the parent commit with the
+  division by zero. It also reads leon III's real command-0 evaluation of
+  the U1 screen u1s-dog-150 at iteration 50 (ten seeds, every speed
+  measured, every `speed_ratio` `None`). Plus `pixi run test-engine` and
+  `pytest cli/tests`.
+
+
+## ADR-824 — A value, speed or yaw-rate goal may be drawn by weighted bands (2026-10-25, l3r1)
+
+**Context.** A goal's draw is `uniform(low, high)` (ADR-462), so a speed
+task trains each band of its command range in proportion to the band's
+width. l3r1 measured on six cold screens of leon III's U1 task (0-4.5 m/s,
+one schedule of a stand, a trot and three gallops) that the fast end
+strides at a gallop's frequency when 0.89-1.00 of training episodes are
+commanded in the gallops' band, and scuttles at 4-6.5 Hz when 0.44 are. The
+share could only be moved by narrowing the range, which drops commands the
+policy must answer.
+
+**Decision.** `api.goal(bands=[[low, high, weight], ...])` on a `value`,
+`speed` or `yaw_rate` goal. The bands tile `between` in order: the first
+starts at its low, each ends where the next starts, the last ends at its
+high; 1 to 16 bands, each with low < high and weight > 0. A segment's draw
+is `pick = random() * sum(weight)`, the first band whose weight exceeds
+`pick` once the earlier bands' weights are taken off (the last if none
+does), then `uniform(band low, band high)`. The record keeps `low`, `high`
+and `nominal` as before and gains `bands`; `goal_algorithm` gains
+`GOAL_BAND_ALGORITHM`'s clause. `goal_bands_problem` states the rule, and
+`_goal_value_draw` makes the draw; the trainer's `draw_goals` carries the
+same lines (ADR-084: it cannot import the engine).
+- **Bands that tile the range, not free weights over points.** The range a
+  policy is asked and the success spec's `between` stay what they were;
+  only how often each part is trained moves.
+- **Two draws per segment, only on a banded goal.** A goal without bands
+  takes the one `uniform` it always took, so every earlier bundle draws
+  the same stream and keeps its digest.
+
+**Consequences.**
+- A task with no banded goal writes the bundle it always wrote.
+- Refused: `goal_bands_malformed`, by the engine (`_goal_records`, also for
+  bands on a point, phase or waypoint) and by the script API.
+- No protocol, tool-surface, CLI or `pixi.toml` change. No suite test is
+  added (ADR-725: the suites hold contracts only). Verified by
+  `docs/probes/l3r1/goal_bands.py`: `api.goal` through the worker's
+  `_goal_input` into `_goal_records` keeps the bands; held and resampled,
+  the engine's `draw_episode_goals` and the trainer's `draw_goals` agree at
+  200 seeds and the trainer's `goal_pool` is the engine's stream over 500
+  episodes; 20,000 held draws of `[[0, 2500, 0.11], [2500, 4500, 0.89]]`
+  put 0.8886 at 2.5-4.5 m/s, uniform inside each band; an unbanded goal
+  draws `uniform(low, high)` number for number; eight malformed band lists
+  and bands on a phase or waypoint are refused by both. Plus `pixi run
+  test-engine`, `pytest cli/tests` and the trainer's tests.
+
+## ADR-825 — The trainer may distil teachers into a student by command band (2026-10-25, l3r1)
+
+**Context.** l3r1's U1 asks one policy to stand and to run 0.5-4.5 m/s.
+Six cold screens could not train the stand inside the gallop's bundle: each
+lever that gave the stand training share cost the fast end, and a stand
+reward row and a stand-only termination failed (l3r1 r-0041, r-0043). The
+stand trained alone passes leon III's realism gate on two seeds, beside a
+gallop policy that passes it at 2-4.5 m/s. Joining them by warm start
+would carry one policy's weights into the other's band; the trainer had no
+way to train a policy against another policy's actions.
+
+**Decision.** `cadex_train.py --teacher LOW:HIGH:POLICY`, repeated, with
+`--teacher-goal` (default `cmd`) and `--distill-weight` (default 1). On the
+steps whose goal lies in a teacher's `[LOW, HIGH)` (the last band also takes
+its `HIGH`), the loss gains the weight times the mean over every step of
+the taught mask times the squared distance between `tanh` of the student's
+location and `tanh` of the teacher's, read by the teacher's own normaliser.
+PPO's loss is unchanged and trains every step, so a band with no teacher
+learns from the reward alone, and the student may outgrow a teacher where
+the reward pays for it.
+- **Played actions, not log-probabilities.** The engine plays `tanh` of the
+  location; matching it bounds each action's error by the box, and the
+  student's exploration width stays PPO's.
+- **Over every step, not the taught ones.** A band drawn on a fifth of the
+  steps pulls a fifth as hard, as PPO's own terms do.
+- **A teacher's task may differ; nothing else may.** A teacher is
+  `check_policy_fits` without the task digest: the same model, the bundle's
+  actor channels in order, its action table. Bands may not overlap and stay
+  inside the goal's range; a `--family` run is refused (its morph inputs
+  are not a teacher's).
+
+**Consequences.**
+- A run without `--teacher` builds the loss and writes the header it always
+  did: `teacher`, `teacher_goal` and `distill_weight` are kept out of
+  `training.hyperparameters`, and `training.distill` (goal, weight, and per
+  teacher its band, digest, label, task digest and iterations, never a
+  path) appears only on a distilled policy. The curve and iteration line
+  gain `distill_loss` and `taught` on a distilled run only.
+- No engine, protocol, tool-surface, CLI or `pixi.toml` change; no suite test
+  (ADR-725). `training/test_distill.py` (10 tests, training venv) holds the
+  routing, the loss, the refusals and the header rule.
+  `docs/probes/l3r1/distill.py` replays two real leon III teachers through
+  `load_teacher` and `teacher_actions` to their recorded witness actions
+  (1.3e-7 and 2.6e-7 against 1e-4), and routes every band and gap. A
+  three-iteration GPU run (512 envs) on leon III's U1 bundle `b3405d39`
+  with both teachers taught 0.91-0.93 of steps (the bands predict 0.92),
+  wrote a policy the trainer's witness check (1.0e-7) and the engine's
+  `verify_policy` accept, with `training.distill` in its header. On CPU the
+  same run had not finished its second iteration in 50 minutes.

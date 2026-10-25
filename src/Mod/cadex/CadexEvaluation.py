@@ -633,9 +633,10 @@ def gait_metrics(samples, rig: Mapping[str, Any], command_mm_s: float | None = N
     """Posture, speed tracking and every foot's gait, with the worst foot named flat.
 
     ``command_mm_s`` is the forward speed the episode asked for, in the
-    base's heading frame. An episode that asked for none has no speed to
-    track: ``speed_ratio`` and ``lateral_ratio`` are then ``None`` and the
-    speeds themselves are still measured. A spec bounds the flat keys -- ``steps_min`` is the
+    base's heading frame. An episode that asked for none, or asked to stand
+    (a command of 0), has no speed to track: ``speed_ratio`` and
+    ``lateral_ratio`` are then ``None`` and the speeds themselves are still
+    measured. A spec bounds the flat keys -- ``steps_min`` is the
     foot that stepped least, ``slip_share_max`` the foot that slid most -- so
     "every foot" is one number; ``feet`` keeps each foot's own figures for
     the report. A flat key is ``None`` when it could not be measured (no foot
@@ -674,10 +675,10 @@ def gait_metrics(samples, rig: Mapping[str, Any], command_mm_s: float | None = N
         "mean_forward_speed_mm_s": mean_along,
         "mean_lateral_speed_mm_s": mean_across,
         "speed_ratio": (
-            None if mean_along is None or command_mm_s is None else mean_along / command_mm_s
+            None if mean_along is None or not command_mm_s else mean_along / command_mm_s
         ),
         "lateral_ratio": (
-            None if mean_across is None or command_mm_s is None
+            None if mean_across is None or not command_mm_s
             else abs(mean_across) / command_mm_s
         ),
         "travel_mm": [travel[0], travel[1]],
