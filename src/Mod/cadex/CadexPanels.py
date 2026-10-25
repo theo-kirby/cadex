@@ -578,6 +578,11 @@ def _qdd_housing(lib, qdd, wall, c, seat, plate, label):
     clear_r = thread_row["clearance_normal_mm"] / 2.0
     # A rear seat screws through the rear face's own circle, which may not be
     # the front's: the AK45's rear face has 4 holes on 47 mm, not 6 (ADR-687).
+    if seat == "rear" and spec.get("rear_mount_count") == 0:
+        # A drive whose rear face publishes no holes cuts none (ADR-826).
+        raise PanelError(
+            f"lib.housing: {qdd.part_number}'s rear face has no published stator "
+            "holes, so it cannot seat there; pass seat='front'.")
     if seat == "rear":
         pattern = [list(xy) for xy in spec.get("rear_mount_holes") or spec["mount_holes"]]
         pcd_r = float(spec.get("rear_mount_pcd_mm", spec["mount_pcd_mm"])) / 2.0

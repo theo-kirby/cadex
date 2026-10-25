@@ -744,6 +744,11 @@ class QddPart(_BayPart):
             stator = self._hold(operation, "front", spec["mount_thread"],
                                 spec["mount_holes"], spec["front_mount_z_mm"], 1.0,
                                 spec["front_mount_depth_mm"], stator_wall, length, label)
+        elif not spec["rear_mount_holes"]:
+            # A drive whose rear face publishes no holes cuts none (ADR-826).
+            raise LibraryError(
+                f"lib.{operation}: {self.part_number}'s rear face has no published "
+                f"stator holes; hold it by face='front'.")
         else:
             stator = self._hold(operation, "rear", spec["mount_thread"],
                                 spec["rear_mount_holes"], spec["rear_mount_z_mm"], -1.0,
@@ -1949,7 +1954,9 @@ class LibraryAPI:
                   for x, y in rears]
         holes += [part.cylinder(o_r, o_depth + 1.0, origin=(x, y, -o_depth))
                   for x, y in outputs]
-        body = part.cut(part.fuse(segments), holes, label=label)
+        # A one-cylinder envelope (the RS04, ADR-826) has nothing to fuse.
+        case = part.fuse(segments) if len(segments) > 1 else segments[0]
+        body = part.cut(case, holes, label=label)
         volume_mm3 = (
             sum(math.pi * (dia / 2.0) ** 2 * (high - low)
                 for dia, low, high in spec["segments"])

@@ -45751,3 +45751,58 @@ the reward pays for it.
   wrote a policy the trainer's witness check (1.0e-7) and the engine's
   `verify_policy` accept, with `training.distill` in its header. On CPU the
   same run had not finished its second iteration in 50 minutes.
+
+## ADR-826 — The RobStride RS04 joins the drive catalog as a 120 N·m tier (2026-10-25, lr1)
+
+**Context.** Lurcher (lr1) is a 42 kg sighthound-wolf with a 0.56 m hip.
+Its brief (lurcher ADR-001) scales leon III's measured gallop torques by
+Froude similarity: the hips, knees, elbows and spine need about 100 N·m
+wherever leon III's AK10-9s sat at their 53 N·m clamp, and on AK10-9s
+those joints would cross the torque–speed line in 19–26% of frames. The
+AK10-9 is the catalog's largest drive. The brief sizes those joints on the
+RobStride RS04, so the drive must be catalogued before the script can
+place one.
+
+**Decision.** `lib.qdd("robstride-rs04")` is catalogued.
+
+- **Ratings**, from RobStride's own product page (the figures its site
+  serves): 9:1, 48 V, rated 40 N·m at 50 rpm, peak 120 N·m, no-load
+  200 rpm, 1420 g, 120 × 120 × 56 mm. Its currents are phase peaks (27 Apk
+  rated, 90 Apk peak) and its torque constant (2.1 N·m/Arms) is output-side;
+  the row keeps the catalog's units: 19.1 and 63.6 A rms, and Kt 0.2333 N·m/A
+  motor-side.
+- **Envelope and holes.** One Ø120 × 56 mm cylinder: the page publishes no
+  dimensioned drawing, and its photograph shows a round case with the output
+  hub flush with the front face. 10-M4 × 6 on Ø106 on the front face and
+  9-M5 × 9 on Ø35.86 on the output flange, the table's "pitch circle × count
+  × depth".
+- **No rear holes.** None are published. Rather than repeat the front
+  circle (ADR-608's default) on a face nobody has drawn, the row sets
+  `rear_mount_count: 0`: `lib.qdd` cuts none, and `qdd.mounting(face="rear")`
+  and `lib.housing(drive, seat="rear")` are refused, naming the front face.
+- **Not published, so flagged** in `approximate`: rotor inertia, 2045 g·cm²
+  (the AK10-9's scaled as diameter⁴ × length, good to about a factor of 2);
+  back drive, 0.8 N·m (above the AK10-9's estimated 0.6); backlash, `None`;
+  clocking, both circles on +X.
+- `lib.qdd` places a one-segment envelope without a fuse (`api.fuse` takes
+  at least two shapes; every earlier row had two or more).
+- `docs/XSCRIPT.md`'s table, `docs/PROVENANCE.md` §8i, the catalog listing's
+  note and the creature style's drive tiers name it.
+
+**Consequences.**
+- Every earlier row is unchanged: a row without `rear_mount_count`, or with a
+  non-zero one, cuts and seats its rear face as before. The new refusals
+  fire only on a row whose rear count is 0, which only the RS04 is.
+- A design on RS04s is held by its front face, and its housings pass
+  `seat="front"`. The straight peak-to-no-load line reaches 0 at 1200°/s, so
+  a fast joint on an RS04 loses torque early; lurcher ADR-001's over-the-line
+  shares already use this line.
+- No protocol, tool-surface, CLI or `pixi.toml` change; no suite test is
+  added (ADR-725). Verified by `docs/probes/lurcher/rs04_catalog.py`, which
+  stages the library on the production part API and checks the published
+  figures, Kt × current against the rated and peak torques, the hole counts
+  and their fit inside the case, the effective density against 1420 g, the
+  reflected inertia and speed-line damping, the front and output mountings,
+  both rear refusals, a front housing, and every other QDD's rear circle as
+  before. Before the one-segment fix it failed at `api.fuse`. Plus `pixi run
+  test-engine` and `pytest cli/tests`.

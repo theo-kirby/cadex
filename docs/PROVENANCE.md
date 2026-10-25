@@ -437,9 +437,10 @@ drawing is redistributed. A STEP model was only measured, never copied in.
 ## 8i. Catalog QDD actuator data `[Cadex-new, ADR-540]`
 
 `lib.qdd("cubemars-ak10-9-v3")`, `lib.qdd("cubemars-ak70-10")`,
-`lib.qdd("cubemars-ak80-9-v3")`, `lib.qdd("cubemars-ak60-6-v3")` and
-`lib.qdd("cubemars-ak45-10-v3")` are
-independently authored from CubeMars's product pages, accessed 2026-10-04:
+`lib.qdd("cubemars-ak80-9-v3")`, `lib.qdd("cubemars-ak60-6-v3")`,
+`lib.qdd("cubemars-ak45-10-v3")` and `lib.qdd("robstride-rs04")` are
+independently authored from their manufacturers' product pages, CubeMars's
+accessed 2026-10-04:
 
 - [AK70-10 KV100](https://www.cubemars.com/product/ak70-10-kv100-robotic-actuator.html):
   10:1, 48 V, rated 8.3 N·m at 310 rpm and 7.2 A, peak 24.8 N·m at 23.2 A,
@@ -468,6 +469,21 @@ drawing, accessed 2026-10-15:
   61.7 mm overall; 6-M4×8 front and 6-M4×4 rear on Ø90; 6-M4×7 output on
   Ø24. The page publishes neither back drive nor backlash; the catalog's
   0.6 N·m back drive is an estimate, flagged in its `approximate` list.
+
+The 120 N·m tier (ADR-826), from RobStride's product page, accessed
+2026-10-25:
+
+- [RobStride 04](https://www.robstride.com/products/robStride04): 9:1,
+  48 V (15–60 V), rated 40 N·m at 50 rpm and 27 Apk on a 345 × 345 mm
+  aluminium heat sink, peak 120 N·m at 90 Apk, no-load 200 rpm, torque
+  constant 2.1 N·m/Arms (output side), 1420 ± 20 g, 120 × 120 × 56 mm;
+  stator holes "106 x 10 x 6 mm (M4)" and output flange holes
+  "35.86 x 9 x 9 mm (M5)", read as pitch circle × count × depth. No
+  dimensioned drawing, rotor inertia, back drive, backlash or rear-face
+  holes are published: the envelope is one Ø120 × 56 mm cylinder from the
+  product photograph, the rear face carries no holes, and the catalog's
+  2045 g·cm² rotor inertia (the AK10-9's scaled as diameter⁴ × length) and
+  0.8 N·m back drive are estimates, flagged in its `approximate` list.
 
 The light tier (ADR-608), from the same manufacturer's pages and 2D
 drawings, accessed 2026-10-09:
