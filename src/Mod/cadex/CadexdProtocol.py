@@ -395,7 +395,7 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
 
 assert set(OP_RESPONSE_SPECS) == set(OP_ARG_SPECS)
 
-#: Nested response shapes the Blender shell reads by name. Keyed by a dotted
+#: Nested response shapes clients read by name. Keyed by a dotted
 #: path; ``*`` matches one level of mapping keys (an output name).
 NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     # `source_output` rides only on component entries: the declared output

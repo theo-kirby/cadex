@@ -1,11 +1,11 @@
 # The cold-start recipe for a legged policy
 
-Verified against source: 2026-10-24. Provenance: `[Cadex-new]`. orun8's B1
-draft (`wild-forest-4815`), half proven: a cold quadruped that is not the cat
-followed it to its walk spec on 10/10 seeds by iteration 150 (orun9 `b1-q1`,
-`docs/probes/orun9/b1-quad.md`); the biped has not run (see *What is not
-proven*). Section 5 adds what orun19 proved on leo v06, a speed task with
-no reference (`docs/probes/orun19/REPORT.md`).
+Verified against source: 2026-10-27. Provenance: `[Cadex-new]`. orun8's B1
+draft (`wild-forest-4815`), proven on one quadruped and one biped that are
+not the cat (orun9: `b1-q1` 10/10 by iteration 150, `b1-b1` 10/10 at
+iteration 100; *Where it has been shown*). Section 5 adds what orun19 proved
+on leo v06, a speed task with no reference (`docs/probes/orun19/REPORT.md`);
+section 6 what l3r1 found asking one policy for many speeds.
 
 This is the order of work that has made a cold legged policy train quickly
 in Cadex, written from the runs that showed it. Each step names the record
@@ -60,8 +60,11 @@ the engine's (`docs/MUJOCO.md`, `docs/XSCRIPT.md`).
    the cadenced clock it ran 2.4 m/s at a 3 m/s command with no reward
    change [rec: keen-harbor-0874]. Where the stride's length and footfall
    should change with speed too, a speed schedule (`reference=[slow, ...,
-   fast]`, ADR-773) blends strides at the command instead; no run has
-   trained on one yet, so this step does not claim it.
+   fast]`, ADR-773) blends strides at the command instead, and
+   `reference_switches` (ADR-822) switches between gait families (a trot
+   and a gallop) at a stated speed where a blend cannot join them. l3r1
+   trained leon III on such a schedule (section 6); a schedule's own gain
+   over the cadenced clock has not been isolated.
 5. **Pay speed as a share of the command made good, linear up to the
    command.** A kernel round the command alone is flat far from it: at a
    3 m/s command the cat stopped (0.06 m/s); with
@@ -86,8 +89,11 @@ the engine's (`docs/MUJOCO.md`, `docs/XSCRIPT.md`).
    over 21 drives charges one drive 1/21 of its excess; the cat stood on its
    right hock at 1.22–1.73× rated while the left sat at 0.45–0.91×
    [rec: eager-haven-6416]. Gate the price off with the speed asked if a
-   sprint may exceed rated. (c1-t8 is that change's run; its result is not in
-   yet.)
+   sprint may exceed rated. c1-t8 was that change's run: the per-drive
+   price put every drive at a stand at or under 0.63× rated, but stand drift
+   rose to 291 mm against the 200 mm bar, and on the run it slowed to
+   1.9 m/s with its worst drive a quarter under rated, speed it did not
+   need to give up (`docs/probes/orun9/o8-torque.md`).
 9. **Measure height and collapse over the ground** (`scan_4`, the centre
    channel of the height scan, ADR-715), never over z = 0, once there is a
    course: the cat's `collapsed` termination and height term read
@@ -230,11 +236,42 @@ along the heading (`docs/probes/orun19/REPORT.md`). Shown on one robot.
    [rec: keen-dawn-4639]. When the worst drive sits at its peak, the next
    speed is a model change (step 0.1), not a weight.
 
+## 6. Many speeds in one policy (l3r1, leon III)
+
+l3r1 (2026-10-24/25, owner-stopped at 27.4 h) asked one policy to stand and
+to run 0.5–4.5 m/s. What it established, each as an engine or trainer
+feature with its probe in `docs/probes/l3r1/`:
+
+1. **A trot and a gallop cannot be one blended schedule.** Their footfall
+   orders differ at every phase origin; switch families at a stated speed
+   instead (`reference_switches`, ADR-822).
+2. **The fast end needs its share of training.** The fast end strode at a
+   gallop's frequency only when 0.89–1.00 of episodes were commanded in the
+   gallops' band, and scuttled at 4–6.5 Hz at 0.44. Weight the draw by
+   bands rather than narrowing the range (`api.goal(bands=...)`, ADR-824).
+3. **A stand did not train inside the gallop's bundle.** Every lever that
+   gave the stand share cost the fast end; a stand trained alone passed.
+   The trainer can now distil band teachers into one student
+   (`--teacher`, ADR-825); the run stopped before a distilled student was
+   judged, so this step does not claim it. A stand is evaluated at a
+   command of 0, where the speed ratios read `None` (ADR-823).
+
+## Where it has been shown
+
+- **The quadruped.** orun9's `b1-q1` followed steps 0.1–4.1 cold on
+  `orun9-quad` (9.27 kg, twelve AK80-9 position servos, a 250 mm/s trot
+  generated on its legs): the walk spec passed 10/10 at iterations 150,
+  200, 250 and 300, 0/10 at 50 and 100, at 4.5 s an iteration
+  (`docs/probes/orun9/b1-quad.md`).
+- **The biped.** orun9's `b1-b1` followed the same steps cold on
+  `orun9-biped` (the servo biped, STS3215 position servos, a 160 mm/s
+  two-foot walk from ADR-754's generator, step 1.1 by ADR-756/757): the
+  walk spec passed 10/10 at iteration 100, then failed step clearance from
+  150 on (4.4).
+
 ## What is not proven
 
-These are the parts of B1's criterion no run has shown yet. The recipe's
-proof (a cold walk on one new quadruped and one biped, 10 seeds, ≤ 300
-iterations) is what settles them.
+These are what no run has shown yet.
 
 - **Inverted knees: shown on one quadruped.** The generator's IK pulls
   toward the home pose, so a leg keeps the knee direction its build pose
@@ -251,14 +288,5 @@ iterations) is what settles them.
   tried legs of different length.
 - **A stand-first stage.** Only stand-and-move in one task (step 1.7) has a
   run behind it.
-- **A robot but the cat: the quadruped and the biped are proven.** orun9's
-  `b1-b1` followed the same steps cold on `orun9-biped` (the servo biped,
-  STS3215 position servos, a 160 mm/s two-foot walk from ADR-754's
-  generator, step 1.1 by ADR-756/757): the walk spec passed 10/10 at
-  iteration 100, then failed step clearance from 150 on (4.4).
-  orun9's `b1-q1` followed steps 0.1–4.1 cold on `orun9-quad` (9.27 kg,
-  twelve AK80-9 position servos, a 250 mm/s trot generated on its legs): the
-  walk spec passed 10/10 at iterations 150, 200, 250 and 300, 0/10 at 50
-  and 100, at 4.5 s an iteration (`docs/probes/orun9/b1-quad.md`). Every
-  run here used position drives about the build stance; no torque-drive
-  robot has followed the recipe.
+- **Torque drives.** Every run that followed the recipe used position
+  drives about the build stance; no torque-drive robot has.

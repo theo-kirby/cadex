@@ -6,7 +6,7 @@ This is D10 of the ot6 charter (ADR-328, `.ouroboros/goal.md`): one page
 linking the evidence for D1–D9, saying what each measured and what remains
 open. Every claim below is carried by a record node in `.hypergraph/graph/record/`
 (named `[rec: slug]`), a committed receipt under this directory or
-`docs/review-design/`, or an ADR in `docs/DECISIONS.md`. Full telemetry,
+`docs/probes/ot6/review-design/`, or an ADR in `docs/DECISIONS.md`. Full telemetry,
 traces, frame sets and logs stay in the operator's `cadex-projects` directory
 outside the repository; each receipt cites them by path and digest. The run
 is branch `ouroboros/ot6`, from the run start commit `63874b3d` to the D9
@@ -19,7 +19,7 @@ the evidence exists.
 one type scale of 12/14/17/22 px, dark-only palette tokens, spacing,
 breakpoints, §10 one palette across chrome and viewport, §11 what the viewport
 shows). Before and after screenshots at both charter widths beside it:
-`docs/review-design/before-1400.png`, `before-400x850.png`, `after-1400.png`,
+`docs/probes/ot6/review-design/before-1400.png`, `before-400x850.png`, `after-1400.png`,
 `after-400x850.png`, with the receipts [design/before.json](design/before.json)
 and [design/after.json](design/after.json). The browser half of
 `cli/tests/test_review_design.py` asserts the palette tokens by computed style,
@@ -38,7 +38,7 @@ active project.
 under touch emulation: one-finger orbit without page scroll, two-finger pinch,
 Fit by tap, legible stacked curves, playback from the page's own Play control,
 download by tap with the recorded SHA-256, on a real FFmpeg-encoded fixture.
-Seven region screenshots `docs/review-design/phone-*.png` and
+Seven region screenshots `docs/probes/ot6/review-design/phone-*.png` and
 [design/phone.json](design/phone.json), taken by
 [design/capture_page.py](design/capture_page.py) on the operator URL.
 ADR-330 (pointer events, `[data-video-play]`).

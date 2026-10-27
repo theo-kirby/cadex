@@ -1,7 +1,7 @@
 """SKF GE 6 C nominal joint qualification, not a public catalog implementation.
 
 Run at repo root:
-  build/release/bin/FreeCADCmd -c 'exec(open("docs/experiments/ge6c_joint_probe.py").read())'
+  build/release/bin/FreeCADCmd -c 'exec(open("docs/probes/experiments/ge6c_joint_probe.py").read())'
 
 Source and approximation contract: PROVENANCE.md section 8f.
 """

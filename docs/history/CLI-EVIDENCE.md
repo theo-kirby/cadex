@@ -21,7 +21,7 @@ project-agnostic treatment (`docs/probes/lark-fresh/interruption.py`) and checks
 the original's inventory again afterwards.
 
 This test uses synthetic fixtures. The separate
-[real Reed copy lifecycle](../HEADLESS-BIPED-REVIEW.md#independent-real-project-copy-d7)
+[real Reed copy lifecycle](HEADLESS-BIPED-REVIEW.md#independent-real-project-copy-d7)
 records a whole-project copy, physical revision and bounded GPU retraining,
 then engine reopen and three-design browser/video review with the original
 path unavailable and every original file unchanged.
@@ -48,7 +48,7 @@ only the initial pose, not swept motion or printable fit. One cold training
 seed at toy scale does not establish a general design ranking.
 
 See [ADR-251](../DECISIONS.md#adr-251--the-walk-reports-enginesource-differences-before-its-first-leg-2026-09-08)
-and the [immutable rehearsal record](../../.hypergraph/graph/record/mellow-quartz-8093.md)
+and the immutable rehearsal record (governor record `mellow-quartz-8093`)
 for timings, policy witness, component volumes and project commit evidence.
 
 **A third mechanism, and what its second coordinate measured (2026-09-08).**
@@ -358,7 +358,7 @@ The synthetic browser test spans committed updates without reloading and
 requires each to appear within five seconds on the test machine. One real
 observation exists: the fresh biped's first GPU probe, seven iterations shown
 within 0.21–1.4 s of their commit on the page's own poll, with the run's
-revision still unrecorded while it trained (`docs/HEADLESS-BIPED-REVIEW.md`).
+revision still unrecorded while it trained (`docs/history/HEADLESS-BIPED-REVIEW.md`).
 
 `cli/tests/test_review_server.py` pins the refusals
 and, in a headless Chromium driven over its DevTools pipe

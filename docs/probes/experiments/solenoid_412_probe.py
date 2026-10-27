@@ -1,7 +1,7 @@
 """Partial nominal exterior only; missing mounting interfaces block catalog delivery.
 
 Reproduce from repository root with the existing headless engine:
-  build/release/bin/FreeCADCmd -c 'exec(open("docs/experiments/solenoid_412_probe.py").read())'
+  build/release/bin/FreeCADCmd -c 'exec(open("docs/probes/experiments/solenoid_412_probe.py").read())'
 
 Sources, datum decisions and omitted geometry: PROVENANCE.md section 8e.
 """

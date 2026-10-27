@@ -1,7 +1,7 @@
 """ADR-235: qualify the proposed planetary mesh using the committed spur generator.
 
 Run from the repo root (no planetary API or uncommitted patch required):
-  build/release/bin/FreeCADCmd -c 'exec(open("docs/experiments/planetary_mesh_probe.py").read())'
+  build/release/bin/FreeCADCmd -c 'exec(open("docs/probes/experiments/planetary_mesh_probe.py").read())'
 
 A failed mesh is an expected experiment result, printed as qualified=false.
 This is a geometric probe, not a public mechanism or a strength qualification.

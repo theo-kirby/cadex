@@ -1,6 +1,6 @@
 # The offboard structural-analysis dependencies (docs/STRUCTURAL.md S0, ADR-141).
 #
-# Exactly pinned, for the reason training/requirements.txt pins its four: a
+# Exactly pinned, for the reason training/requirements.txt pins its seven: a
 # stress number is a claim about a part, and a claim is only reproducible if
 # the thing that computed it is. `mujoco` is pinned for the stronger reason
 # ADR-075 gives -- MuJoCo's own VERSIONING.md disclaims cross-version
@@ -9,7 +9,7 @@
 #
 # NONE of this enters pixi.toml. The engine builds and ships without a line
 # of it, `CARRIED_PYPI_PACKAGES` stays one entry long, and
-# `test_analysis_stress` asserts that no CMake rule references this tree and
+# `test_offboard_boundaries` asserts that no CMake rule references this tree and
 # that nothing from it reaches a staged payload. Install into a venv on
 # whatever machine runs the analysis:
 #

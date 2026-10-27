@@ -1,5 +1,7 @@
 # Fresh biped review evidence
 
+> **Historical (moved to docs/history/ 2026-10-27, ADR-828).** Frozen ot5 run evidence; not maintained.
+
 *Dated record of the ot5 fresh-project runs (2026-09); commands are as they ran. The product agent and `cadex -p` that authored and revised these projects are gone (ADR-538): an agent now drives Cadex through `cadex mcp`.*
 
 Verified against source: 2026-10-16. [Cadex-new]
@@ -522,7 +524,7 @@ second-device test.
 
 The retained checkpoint20 and final policies were evaluated through the public
 CLI on seeds **0–9**, each with the original **8-second / 400-step** episode.
-The [evaluation harness](probes/reed-baseline/evaluate.py) creates an independent
+The [evaluation harness](../probes/reed-baseline/evaluate.py) creates an independent
 whole-project copy and changes only the playback policy declaration and rollout
 seed. Run it from the product repository with a stopped source project and a
 destination that does not exist:
@@ -537,7 +539,7 @@ transaction verifies the policy witness. All model, task and policy hashes
 match the retained reference for that policy; both seed-0 trace objects equal
 the previous saved traces in full. The source project's non-Git file manifest
 is byte-identical before and after. No training, rendering or browser change
-was performed. The [compact results](probes/reed-baseline/results.json) retain
+was performed. The [compact results](../probes/reed-baseline/results.json) retain
 each seed's revision, trace digest, policy/model/task identity and measurements.
 Full traces and CLI receipts live in the copied project's
 `evidence/baseline-seeds/`; retain that directory with the copy.
@@ -711,7 +713,7 @@ PYTHONPATH=cli:cli/tests pixi run python docs/probes/reed-copy/verify.py \
   "$HOME/cadex-projects/ot5-biped" "$COPY"
 ```
 
-The [isolation probe](probes/reed-copy/verify.py) requires stopped writers and
+The [isolation probe](../probes/reed-copy/verify.py) requires stopped writers and
 an unchanged original inventory. It temporarily renames the source directory,
 restores it in `finally`, reopens/exports the copy through the real engine with
 its accepted revision and digest unchanged, and runs a new private-address review server with
@@ -745,7 +747,7 @@ It decodes to eight 512×512 frames at 10 fps, 0.8 encoded seconds for 0.62
 simulation seconds, with distinct endpoint frames. On seed 0 the policy falls;
 this single episode does not establish a ten-seed gait result.
 
-[Compact evidence](probes/reed-copy/evidence.json) records exact identities,
+[Compact evidence](../probes/reed-copy/evidence.json) records exact identities,
 measurements, browser observations and the full original-inventory digest.
 The complete inventory, CLI receipts, renderer logs, browser screenshots and
 original video-checker source remain project-local in `evidence/`. D9's
@@ -794,7 +796,7 @@ refusal, and restored playback/download. **418 copied run/asset/history and
 accepted-script files** remained byte-identical; a separate inventory check
 confirmed all **1,206 original project files** still matched the pre-copy
 inventory. Video SHA-256 remains `2308fe3baa4d…`. No second-device test or
-training-concurrency claim is made. [Compact evidence](probes/reed-copy/video-recovery.json)
+training-concurrency claim is made. [Compact evidence](../probes/reed-copy/video-recovery.json)
 contains the outcomes and quota limit; full outputs remain project-local.
 
 The focused browser/server suite passed 27 tests with one skip. A local
@@ -927,21 +929,21 @@ evidence each rests on, the twelve retained run identities with the model
 view the page serves for each, which training snapshots are incomplete and
 why, and the four-design common-seed comparison — is assembled from the
 project's own records by `docs/probes/reed-lifecycle/report.py` and written
-up in [`docs/probes/reed-lifecycle/README.md`](probes/reed-lifecycle/README.md).
+up in [`docs/probes/reed-lifecycle/README.md`](../probes/reed-lifecycle/README.md).
 A test held the committed report to its evidence until ADR-725 deleted it. The persistent operator URL was checked again while generating it:
 `shin55-final` selected by default, historical `probe3-final` playable, and
 a route back to the current run.
 
 ## Second fresh project: Wren
 
-Wren’s [completed lifecycle report](probes/wren-fresh/LIFECYCLE.md) links
+Wren’s [completed lifecycle report](../probes/wren-fresh/LIFECYCLE.md) links
 D1–D11 evidence and the current `wren71-final` repeat, separately from the
 historical experiments below. It names the remaining Wren-specific acceptance
 limits and the unequal training budgets in the agent revision comparison.
 
 Iteration 46 repairs the previously unrecorded Wren probe and verifies
 `ot5-wren` at accepted revision `5309bebc6597…` on the persistent port 8765.
-[Receipt and limitations](probes/wren-fresh/README.md): eight drawn components (seven biped solids plus ground),
+[Receipt and limitations](../probes/wren-fresh/README.md): eight drawn components (seven biped solids plus ground),
 twelve declared defaults, pointer orbit/zoom, empty run state across polling,
 and two accepted-identity engine reopens on a disposable full copy. Both Reed
 projects remain byte-identical across this probe. At that point Wren had no training or
@@ -954,7 +956,7 @@ checks copy reopens and read-only browsing separately.
 Iteration 48 fixed in-place restore preservation (ADR-303), with Wren's
 retained display bytes unchanged across two engine restores. Iteration 49
 then completed Wren's first bounded real GPU experiment, `wren1`, on the same
-persistent private-network dashboard. See the [experiment command and evidence](probes/wren-fresh/README.md).
+persistent private-network dashboard. See the [experiment command and evidence](../probes/wren-fresh/README.md).
 The observer has verified real telemetry updates without reload, and checkpoint
 20 has a witness-verified rollout and browser-verified video published while
 training was active. The final policy also has a verified video and was selected
@@ -962,7 +964,7 @@ by default then: it fell at 0.46 s on seed 0, whereas checkpoint 20 survived 8 s
 Both remain reviewable. This extends the repeated lifecycle; it does not yet establish Wren's
 design-change/retraining comparison or independent-copy lifecycle.
 
-Iteration 52 completes the [Wren design-change/retraining comparison](probes/wren-fresh/COMPARISON.md)
+Iteration 52 completes the [Wren design-change/retraining comparison](../probes/wren-fresh/COMPARISON.md)
 after iteration 50's public CLI foot edit from 85 to 105 mm. The persistent
 server now defaults to `wren2-final`, revision `26332a5955e3…`; both revised
 policies have verified videos and the checkpoint video played during training.
@@ -983,7 +985,7 @@ The persistent server remains on `ot5-wren-copy54`, now selecting the completed
 SIGINT interruption remains selectable with failed telemetry and CLI guidance.
 All four older videos still decode, play and download after both outcomes;
 all prior run files and original Wren files remain unchanged. See the
-[experiment, receipts and limitations](probes/wren-fresh/INTERRUPTION.md),
+[experiment, receipts and limitations](../probes/wren-fresh/INTERRUPTION.md),
 including two corrected probe defects and the initial CPU-test/GPU-training
 overlap. This is D8/D10 lifecycle evidence, not a new gait, rollout or video.
 
@@ -1004,7 +1006,7 @@ every episode; mean torso displacement is +40.1, +42.7 and +55.1 mm and mean
 reward 214.9, 213.6 and 144.9. One training seed per design and standing or
 shuffling poses: not a gait or causal claim. All 465 files inventoried before
 the agent's change remain byte-identical. See
-[REVISION66.md](probes/wren-fresh/REVISION66.md) and ADR-308.
+[REVISION66.md](../probes/wren-fresh/REVISION66.md) and ADR-308.
 
 
 ## Third fresh project: Lark (iteration 80)
@@ -1023,7 +1025,7 @@ tessellation request, with an engine-backed browser regression on a fresh
 project).
 The create/save/reopen probe then passed with identical components, meshes,
 placements, specs and viewport pixels before and after two in-place engine
-reopens. See [the Lark evidence](probes/lark-fresh/README.md).
+reopens. See [the Lark evidence](../probes/lark-fresh/README.md).
 
 Iteration 82 ran Lark's first bounded real GPU experiment, `lark1`, on the
 persistent port 8765 dashboard with the Wren driver generalised to discover
@@ -1032,8 +1034,8 @@ each trainer commit, checkpoint 20 published with a verified video while the
 trainer was active, and a verified final video; the fresh visit now selects
 `lark1-final`. On seed 0 both policies fall within a second (checkpoint 20
 at 0.98 s, final at 0.50 s after lunging +194 mm forward): a measured poor
-result, not a gait. See [the `lark1` section](probes/lark-fresh/README.md#first-bounded-real-training-probe-lark1-iteration-82)
-and [its receipt](probes/lark-fresh/training-evidence.json).
+result, not a gait. See [the `lark1` section](../probes/lark-fresh/README.md#first-bounded-real-training-probe-lark1-iteration-82)
+and [its receipt](../probes/lark-fresh/training-evidence.json).
 
 Iteration 84 completed Lark's review-driven revision: one product-agent turn
 read the `lark1` measurements and accepted `torso_h` 70 → 45 mm with
@@ -1046,7 +1048,7 @@ Lark's declared seeds 0–9 from their own retained models and policies. Both
 where `lark1-final` falls on all ten seeds after a +190 mm lunge and
 `lark1-checkpoint20` on two. One training seed per design and a shuffle, not a
 gait; the 125 pre-revision run/asset files are byte-identical. See
-[REVISION84.md](probes/lark-fresh/REVISION84.md) and ADR-313.
+[REVISION84.md](../probes/lark-fresh/REVISION84.md) and ADR-313.
 
 Iteration 85 proved D7 on Lark (ADR-314): the whole project was copied to
 `ot5-lark-copy85`, the persistent port 8765 was deliberately switched to the
@@ -1056,7 +1058,7 @@ changed only the copy (`foot_len` 80 → 90, `policy_on` 0; revision
 server and the persistent one both showed all six retained runs with their
 own revisions, curves, meshes and playable, downloadable videos; the
 original's 1,852 files are byte-identical. The copy is now the working
-project on the shared URL. See [COPY85.md](probes/lark-fresh/COPY85.md).
+project on the shared URL. See [COPY85.md](../probes/lark-fresh/COPY85.md).
 Iteration 86 completed Lark's D8 evidence on the working copy (ADR-315):
 with both gate suites finished first and the trainer-exclusion guard
 observing one trainer per attempt, `lark86-interrupt` was sent SIGINT at
@@ -1069,4 +1071,4 @@ historical interruption stays selectable with a route back to current, the
 246 prior run files are byte-identical, and the original `ot5-lark` (1,419
 files excluding `.git`) is unchanged after the copy's retraining, which
 finishes D7's retraining-isolation half. One seed and 40 updates: no gait
-claim. See [INTERRUPTION86.md](probes/lark-fresh/INTERRUPTION86.md).
+claim. See [INTERRUPTION86.md](../probes/lark-fresh/INTERRUPTION86.md).

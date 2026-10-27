@@ -53,7 +53,7 @@ EVIDENCE_INDEX = {
     },
     "D2": {
         "title": "The browser shows the right model and specs",
-        "docs": ["docs/HEADLESS-BIPED-REVIEW.md"],
+        "docs": ["docs/history/HEADLESS-BIPED-REVIEW.md"],
         "probes": ["docs/probes/reed-foot90/evidence.json", "docs/probes/reed-copy/evidence.json"],
         "tests": ["cli/tests/test_review_server.py", "cli/tests/test_walk.py"],
         "adrs": ["ADR-289", "ADR-290", "ADR-291", "ADR-293", "ADR-302"],
@@ -62,7 +62,7 @@ EVIDENCE_INDEX = {
     },
     "D3": {
         "title": "Training is visible while it runs",
-        "docs": ["docs/HEADLESS-BIPED-REVIEW.md"],
+        "docs": ["docs/history/HEADLESS-BIPED-REVIEW.md"],
         "probes": ["docs/probes/reed-agentrev/evidence.json"],
         "tests": ["cli/tests/test_review_server.py", "cli/tests/test_train.py"],
         "adrs": ["ADR-287", "ADR-288", "ADR-289", "ADR-296", "ADR-297", "ADR-298"],
@@ -71,7 +71,7 @@ EVIDENCE_INDEX = {
     },
     "D4": {
         "title": "Policy videos render, persist and play headlessly",
-        "docs": ["docs/HEADLESS-BIPED-REVIEW.md", "docs/probes/review-style/README.md"],
+        "docs": ["docs/history/HEADLESS-BIPED-REVIEW.md", "docs/probes/review-style/README.md"],
         "probes": ["docs/probes/reed-agentrev/evidence.json", "docs/probes/review-style/implementation.json"],
         "tests": ["cli/tests/test_video.py", "cli/tests/test_review_server.py"],
         "adrs": ["ADR-300", "ADR-301"],
@@ -80,7 +80,7 @@ EVIDENCE_INDEX = {
     },
     "D5": {
         "title": "Review history survives a design change",
-        "docs": ["docs/HEADLESS-BIPED-REVIEW.md"],
+        "docs": ["docs/history/HEADLESS-BIPED-REVIEW.md"],
         "probes": ["docs/probes/reed-foot90/evidence.json", "docs/probes/reed-foot90/results.json",
                    "docs/probes/reed-agentrev/evidence.json"],
         "tests": ["cli/tests/test_review_record.py", "cli/tests/test_walk.py"],
@@ -90,7 +90,7 @@ EVIDENCE_INDEX = {
     },
     "D6": {
         "title": "Save, reopen and restart preserve the project",
-        "docs": ["docs/HEADLESS-BIPED-REVIEW.md"],
+        "docs": ["docs/history/HEADLESS-BIPED-REVIEW.md"],
         "probes": ["docs/probes/reed-foot90/evidence.json"],
         "tests": ["cli/tests/test_review_lifecycle.py"],
         "adrs": ["ADR-291"],
@@ -98,7 +98,7 @@ EVIDENCE_INDEX = {
     },
     "D7": {
         "title": "Save-As/copy produces an independent project",
-        "docs": ["docs/HEADLESS-BIPED-REVIEW.md", "docs/CLI.md"],
+        "docs": ["docs/history/HEADLESS-BIPED-REVIEW.md", "docs/CLI.md"],
         "probes": ["docs/probes/reed-copy/evidence.json"],
         "tests": ["cli/tests/test_review_lifecycle.py"],
         "adrs": ["ADR-294"],
@@ -106,7 +106,7 @@ EVIDENCE_INDEX = {
     },
     "D8": {
         "title": "Interrupted and failed runs remain understandable",
-        "docs": ["docs/HEADLESS-BIPED-REVIEW.md"],
+        "docs": ["docs/history/HEADLESS-BIPED-REVIEW.md"],
         "probes": ["docs/probes/reed-copy/video-recovery.json"],
         "tests": ["cli/tests/test_review_server.py", "cli/tests/test_review_lifecycle.py"],
         "adrs": ["ADR-287", "ADR-288", "ADR-289", "ADR-295", "ADR-296"],

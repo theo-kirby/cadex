@@ -1,6 +1,6 @@
 # PERFORMANCE-AUDIT.md — Build cost on large creature assemblies
 
-Verified against source: 2026-10-19
+Verified against source: 2026-10-27
 
 What this is: a measured audit of where the time goes when an agent builds
 and reads a large catalog assembly through `cadex mcp`, done after the
@@ -106,7 +106,7 @@ This is both incidents:
 | Codex MCP client `tools/call` | **300 s** on these runs | the client — Cadex cannot see it |
 | engine budget per worker run (ADR-517) | **300 s** default; the castra projects stored none in `agent.json` | `run_process` wall timeout and `RLIMIT_CPU` |
 | sweep total (ADR-622) | min(180 s, run budget left − 20 s − ¼ of build age) | the worker |
-| sweep child | 90 s each, four at once | `subprocess.run(timeout=)` |
+| sweep child | 90 s each, four at once (since ADR-820: max(90 s, a third of the sweep total)) | `subprocess.run(timeout=)` |
 | `CadexdClient.request` | 900 s (`DEFAULT_TIMEOUT_SECONDS`) | **not enforced while the engine is silent**: `_read_frame` blocks in `readline()` and only checks its deadline between frames |
 | status script | `timeout_seconds: 900` | bounds each worker run, not the reads after it |
 
@@ -161,6 +161,19 @@ the report three times larger and the fit read ~17,600 pages. It is not in
 this branch; it should land together with R1.
 
 ## 5. What remains, ranked by impact
+
+| # | status (2026-10-27) |
+|---|---|
+| R1 | landed, ADR-692 |
+| R2 | landed, ADR-690 |
+| R3 | landed, ADR-781 (cache keyed on the measuring code) |
+| R4 | in part, ADR-686 |
+| R5 | landed, ADR-781 (one solve after joint creation) |
+| R6 | open; warm builds served by the fit cache and, since ADR-782, the part cache |
+| R7 | open |
+| R8 | open (`client.py` still blocks in `readline()`) |
+| R9 | in part, ADR-689 |
+| R10 | open; ADR-685 bears on it |
 
 **Since this audit (2026-10-13):** R1 landed as ADR-692 (a sweep publishes
 only the pairs it measured and counts the rest); R2 as ADR-690 (the pair
@@ -234,8 +247,9 @@ the same revision, outside the sweeps:
 | ADR-782, one skin's thickness edited | 158 s | 223 s |
 
 What remains: the joint sweeps, ~60 s warm, and after a fit-code change
-several builds to refill (the tail joints each meet their 90 s budget under
-load); the skin plans whenever a skin or what it wraps is edited; the panel
+several builds to refill (the tail joints each met their 90 s budget under
+load; since ADR-820 a joint's child takes max(90 s, a third of the sweep's
+total), so a long-budget project completes them); the skin plans whenever a skin or what it wraps is edited; the panel
 gap statistics (`CadexPanels._closest_on_triangles`, all samples against all
 near triangles, ~30 s); and the 24,600 per-operation `isValid` checks in
 `_build_part_shape_checked` (~30 s, on a cold part only now).

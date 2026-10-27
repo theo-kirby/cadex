@@ -737,7 +737,7 @@ writes nothing.*
       authored by the product agent on the default model after three quota
       refusals (no model override needed); a 40 × 1024 PPO probe stored its
       policy in 90 s under the memory bound, and the live dashboard was observed
-      against it (`docs/HEADLESS-BIPED-REVIEW.md`). The walk failed at declare
+      against it (`docs/history/HEADLESS-BIPED-REVIEW.md`). The walk failed at declare
       because the fresh script has no `policy_on` switch, and a running or failed
       run shows no model identity; both are open defects, D2–D9 stay open.
 

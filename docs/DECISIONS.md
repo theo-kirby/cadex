@@ -4831,7 +4831,7 @@ parameters: the same four knobs (`gauge_mm`, `pad_dia_mm`, `fillet_mm`,
 
 | before (ADR-063) | after |
 |---|---|
-| ![a straight cone](images/adr-064-joint-before-cone.png) | ![a concave meniscus](images/adr-064-joint-after-meniscus.png) |
+| ![a straight cone](probes/adr-064/adr-064-joint-before-cone.png) | ![a concave meniscus](probes/adr-064/adr-064-joint-after-meniscus.png) |
 
 **This reverses ADR-063.** That ADR fixed "a straight conical meniscus, **not**
 a revolved concave arc" and listed the concave version under *Deferred by
@@ -45845,6 +45845,65 @@ catalog change makes a new bundle.
   it 41 staged files cover the 40-module closure. Plus `pixi run test-engine`
   (157 passed, 3 skipped), `pytest cli/tests` (53 passed), and lurcher's build
   of `script.py`, which places RS04s.
+
+## ADR-828 — The docs say what is true now; history leaves the live set (2026-10-27)
+
+**Context.** The owner asked for a docs cleanup: accurate, current, much
+leaner. The live docs had grown by accretion: run anecdotes, shell-era
+history and the same material in three places (the joint-sweep and fit text
+was in `INTEGRATION.md`, `CLI.md` and `XSCRIPT.md`). Some statements were
+false: `CLI.md`'s training settings missed `critic_warmup`, `init_from_base`
+and `family` and claimed a test that ADR-725 deleted; `XSCRIPT.md` said every
+mutation re-runs the whole script (false since the ADR-782 part cache) and
+listed only part of `assembly.gait`; `PROVENANCE.md` named version 0.0.1 and a
+screenshot that does not exist; `cadex-release-packaging.md` carried an open
+CI item its own text had closed; `review_server.py` cited a `CLI.md §2c` that
+does not exist; several engine comments described the Blender shell as live.
+
+**Decision.** A live doc says what is true now and cites the ADR that made it
+so; how it got there lives in `docs/history/` or `docs/probes/`. One copy of
+each fact, the others link.
+
+- **Moved:** `docs/SHELL-PARITY.md` and `docs/HEADLESS-BIPED-REVIEW.md` →
+  `docs/history/` (with a historical banner); `docs/experiments/` →
+  `docs/probes/experiments/`; the ADR-064 images → `docs/probes/adr-064/`;
+  `docs/review-design/` → `docs/probes/ot6/review-design/`, with
+  `DASHBOARD.md` §7–§9 (the ot6 before/after record) as
+  `docs/probes/ot6/DESIGN-RECORD.md`. New history files take what left the
+  big docs: `INTEGRATION-HISTORY.md` (options, the decision gate, gate
+  status, struck questions), `PROVENANCE-QUALIFICATIONS.md` (part
+  qualification narratives and the Blender detail), `MUJOCO-HISTORY.md`
+  (tensions, the long hazards, answered questions, the rehearsal, lifecycle
+  audit, live mode; old section numbers kept so code citations land) and
+  `XSCRIPT-HISTORY.md` (Part II's direction and historical note).
+- **One copy:** `XSCRIPT.md`'s "Measured assembly fit (ADR-347)" and
+  "Sampled hinge and slider fit (ADR-349, ADR-351)" are the canonical fit and
+  sweep text, now with ADR-820's per-joint budget `max(90 s, total/3)`;
+  `INTEGRATION.md`, `CLI.md` and `MUJOCO.md` link to them. Dynamics semantics
+  live in `MUJOCO.md`; `XSCRIPT.md` says what each call takes and links.
+- **Trimmed** (lines before → after): `CLI.md` 3,257 → 1,653, `MUJOCO.md`
+  2,462 → 1,501, `XSCRIPT.md` 3,133 → 2,910, `PROVENANCE.md` 1,086 → 847,
+  `INTEGRATION.md` 751 → 543, `DASHBOARD.md` 1,294 → 1,171.
+- **Added where missing:** `MUJOCO.md` gains distillation (ADR-825),
+  evaluation at command 0 (ADR-823), base remap and family training
+  (ADR-755/759/760), warm starts across a goal range (ADR-791) and the RS04
+  tier (ADR-826); `DASHBOARD.md` the Training and Version editors;
+  `MACHINES.md` waves 2 and 3; `PERFORMANCE-AUDIT.md` which recommendations
+  landed; `ARCHITECTURE.md` ADR-827 and the store layout of a real CLI
+  project.
+
+**Consequences.**
+- No behaviour change. `tools.py`'s `train_start` settings prose now names
+  the three keys `loop.SETTING_NAMES` already accepted (no test pins the
+  prose); every other code edit is a comment or docstring.
+- `docs/DECISIONS.md` and `docs/probes/` keep their old paths as history
+  where they named moved files, except where the fix was one link.
+- `AGENTS.md`, `README.md`, `docs/VISION.md` and `docs/ROADMAP.md` are being
+  rewritten in a separate change and still name `docs/SHELL-PARITY.md` and
+  `docs/experiments/` at their old paths.
+- Verified by `pixi run test-engine`, `pytest cli/tests` (the suites that
+  parse `CLI.md`, `DASHBOARD.md`, `INTEGRATION.md` and `PROVENANCE.md`) and
+  a check that every relative link and anchor in the live docs resolves.
 
 ## ADR-833 — The North Star is a benchmark set; the roadmap is the next release (2026-10-27)
 

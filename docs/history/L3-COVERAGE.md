@@ -264,6 +264,6 @@ documentation only; it establishes no installed fit or powered behavior.
 **Planetary qualification stopped (ADR-235, 2026-09-07).** The m1 sun18 /
 planet18 / ring54 proposal fails the first real-kernel mesh phase:
 planet–ring common volume 0.000354806 mm³ against a 1e-6 bound. The
-reproducible probe is `docs/experiments/planetary_mesh_probe.py`; no planetary
+reproducible probe is `docs/probes/experiments/planetary_mesh_probe.py`; no planetary
 API is qualified by this experiment. The compound-mechanisms criterion
 stays open. No build or fresh packaged gate was attempted after failure.

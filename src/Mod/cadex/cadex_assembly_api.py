@@ -3511,7 +3511,7 @@ class AssemblyDomainAPI:
         # exactly what was asked for.
         #
         # These two numbers count what *leaves* the engine -- artifact
-        # bytes, keyframes the shell bakes, memory in Blender -- and they
+        # bytes, frames a player loads, memory in the viewer -- and they
         # are deliberately not the whole budget (M3 phase 4). What the
         # solver *does* is bounded separately, in CadexDynamics, because
         # since solver_step_s became authorable the two costs stopped being
