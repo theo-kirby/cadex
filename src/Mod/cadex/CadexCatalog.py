@@ -1303,6 +1303,42 @@ QDD_ACTUATORS = {
             "Bolt-circle clocking (front and output 30 degrees off +X, rear on +X) is read from the drawing, not dimensioned on it; the output flange turns, so its clocking is only the joint's zero.",
         ],
     },
+    # The 120 N*m tier (ADR-826): a 40 kg running machine's hips, knees,
+    # elbows, girdles and spine, where the AK10-9 sits at its clamp.
+    # ``rear_mount_count`` 0: the table publishes the front circle only, so
+    # the rear face carries no holes and a rear seat is refused.
+    "robstride-rs04": {
+        "manufacturer": "RobStride", "manufacturer_part_number": "RobStride 04",
+        "model": "RobStride 04",
+        "gear_ratio": 9.0, "rated_voltage_v": 48.0,
+        "rated_torque_nm": 40.0, "peak_torque_nm": 120.0,
+        "rated_speed_rpm": 50.0, "no_load_speed_rpm": 200.0,
+        "rated_current_a": 19.1, "peak_current_a": 63.6,
+        "kt_nm_per_a": 0.2333, "rotor_inertia_gcm2": 2045.0,
+        "back_drive_torque_nm": 0.8, "backlash_arcmin": None,
+        "mass_g": 1420.0,
+        "case_dia_mm": 120.0, "overall_length_mm": 56.0,
+        "segments": [[120.0, -56.0, 0.0]],
+        "mount_thread": "M4", "mount_count": 10, "mount_pcd_mm": 106.0,
+        "mount_angle_offset_degrees": 0.0,
+        "front_mount_z_mm": 0.0, "front_mount_depth_mm": 6.0,
+        "rear_mount_count": 0, "rear_mount_pcd_mm": 106.0,
+        "rear_mount_angle_offset_degrees": 0.0,
+        "rear_mount_z_mm": -56.0, "rear_mount_depth_mm": 0.0,
+        "output_thread": "M5", "output_count": 9, "output_pcd_mm": 35.86,
+        "output_angle_offset_degrees": 0.0, "output_depth_mm": 9.0,
+        "rating_notes": "Rated at 48 V (15-60 V range), 700 W rated output. Peak torque is a short-duty rating, rated torque the continuous one, measured at 50 rpm on a 345 x 345 mm aluminium heat sink. lib.qdd's joint_dynamics models the straight peak-to-no-load line (120 N*m at rest, none at 200 rpm), which passes 90 N*m at the 50 rpm rated speed against the rated 40 N*m. The table's currents are phase peaks (27 Apk rated, 90 Apk peak) and its torque constant 2.1 N*m/Arms is output-side: the catalog keeps Arms (19.1, 63.6) and the motor-side Kt (2.1 / 9). Peak current times Kt is 134 N*m, so the 120 N*m peak is not current-limited alone. The page publishes neither rotor inertia, back-drive torque nor backlash. No thermal model; the table's 'Max Overload' chart is not modelled.",
+        "sources": ["https://www.robstride.com/products/robStride04",
+                    "https://www.robstride.com/assets/RobStride04_parameters_img-e769eced.png"],
+        "approximate": [
+            "One 120 x 56 mm cylinder: the table gives the envelope as 120 x 120 x 56 mm and the product photograph shows a round case with the output hub flush with the front face. No dimensioned drawing is published, so the front-face steps, the cover screws, the two output dowel pins, the XT30 and GH1.25 connectors and any rear relief are omitted.",
+            "Holes are the table's 'Mechanical Installation Hole Location 106 x 10 x 6 mm (M4)' and 'Flange Hole Location 35.86 x 9 x 9 mm (M5)', read as pitch circle x count x depth on the front face and the output flange, cut at the thread's major diameter; not a screw engagement limit. Clocking is not published: both circles start on +X.",
+            "The rear face carries no holes (rear_mount_count 0): none are published, so lib.qdd cuts none and a rear seat or rear mounting is refused.",
+            "rotor_inertia_gcm2 is not published: 2045 g*cm^2 is the AK10-9's 1002 scaled as diameter^4 x length (120/98 and 56/61.7), an estimate of the reflected inertia to a factor of about 2.",
+            "back_drive_torque_nm is not published: 0.8 N*m is an estimate above the AK10-9's estimated 0.6 for the larger stage. It is the joint's friction loss.",
+            "Mass is the manufacturer's (1420 g +- 20 g); the envelope is filled at the effective density that reproduces it, so the inertia is a uniform-solid estimate, not the real rotor/stator split.",
+        ],
+    },
 }
 
 
@@ -1655,7 +1691,7 @@ def catalog_families() -> dict[str, Any]:
         },
         "qdd_actuators": {
             "skus": sorted(QDD_ACTUATORS),
-            "notes": "lib.qdd(sku): quasi-direct-drive joint actuators (motor, planetary, FOC driver) as a sourced coaxial envelope with stator and output bolt circles; methods in section=library_parts. ak70-10 621 g 24.8 N*m peak, ak80-9-v3 490 g 22 N*m, ak60-6-v3 380 g 9 N*m, ak45-10-v3 262 g 7 N*m at 24 V. No thermal model.",
+            "notes": "lib.qdd(sku): quasi-direct-drive joint actuators (motor, planetary, FOC driver) as a sourced coaxial envelope with stator and output bolt circles; methods in section=library_parts. ak70-10 621 g 24.8 N*m peak, ak80-9-v3 490 g 22 N*m, ak60-6-v3 380 g 9 N*m, ak45-10-v3 262 g 7 N*m at 24 V, robstride-rs04 1420 g 120 N*m (front face only). No thermal model.",
         },
         "gearmotors": {
             "skus": sorted(GEARMOTORS),
