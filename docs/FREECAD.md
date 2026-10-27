@@ -1,6 +1,6 @@
 # FREECAD.md — Inherited Substrate Inventory
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-27
 
 Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
 what is slated for removal, and what is already gone. It is the only
@@ -211,7 +211,7 @@ MaterialEditor.py and TestMaterialsGui.py in `d7e2b59c`, then deleted exactly
 those three sources separately (2026-09-07). App/tests/resources and TestMaterialDocument.py remain. MeshPart/InitGui.py
 was deleted after the separately verified install disable; App, Init.py,
 meshFromShape and export macros remain (ADR-224, history/PHASE8-AUDIT.md);
-Help is deleted (ADR-217, ADR-218). Start is deleted after its separate disable (ADR-220, ADR-221); neither `Mod/Start` nor `lib/Start.so` installs or stages. Test still builds and installs; its `Mod/` directory is pruned from the payload.
+Help, Start and Show are deleted and Test is built but not shipped (§1).
 The residual audit is complete at this bounded scope, not the broader ROADMAP
 exit claim that no GUI source exists. Mixed Part/PartDesign helpers and the
 shared Windows launcher need separate disposition. ADR-226 deleted only the
@@ -260,42 +260,21 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
 
 ## 5. Open questions
 
-- The offline translation-updater audit qualifies only its deleted GUI
-  translator writer. Its apply/install tail and updateTranslator dispatch are
-  disabled; the helper and exclusive PySide import are now deleted in a
-  separate verified commit
-  (ADR-232, [history/TRANSLATION-UPDATER-AUDIT.md](history/TRANSLATION-UPDATER-AUDIT.md)).
-  App and Base translations and their headless Qt consumers remain live;
-  no whole-tool removal is qualified.
-
 - Does `src/Mod/Material` reduce to just the property types the five domains
   touch, or stay whole?
-- `src/Mod/Help` is gone (ADR-217 disable, ADR-218 delete,
-  [history/HELP-AUDIT.md](history/HELP-AUDIT.md)): one whole-tree removal, counted once.
-  `Start` is also deleted after its separate disable (ADR-219..221,
-  [history/START-AUDIT.md](history/START-AUDIT.md)); it has no App or MainCmd dependant.
-  `Test` is retained: `MainCmd` depends on `TestSources` and Test installs
-  the App tests. Its standalone Tk runner source is deleted after the separate
-  verified copy/install disable (ADR-230, [history/TEST-TK-AUDIT.md](history/TEST-TK-AUDIT.md)).
-  The rest of Test remains unaudited; payload exclusion alone is insufficient.
 - Which `tests/` subtrees cover removed workbenches and go with them?
-- `cadex_assembly_worker.py` imported `CommandCreateView` — GUI-lineage
-  code used headlessly for exploded views, and the one import that made
-  deleting `src/Gui` look more than mechanical. **Answered in two steps.**
-  ADR-047 made the module importable headless (the `PySide` guard;
-  ADR-149 added the `pivy` one). ADR-197 removed the worker's import: it
-  computes the exploded view itself, FreeCAD's rule ported, and the audit
-  found `src/Mod/Assembly/CMakeLists.txt` installs `CommandCreateView.py`
-  outside its `if(BUILD_GUI)` blocks, so Phase 8 never would have removed
-  it. The publisher (`CadexScriptedDomainPublication.py`) still imports it
-  to build the native `ExplodedView` document object — that is what a
-  published view *is* — and that import is not a Phase 8 obstacle.
-- The engines we test with are not the engine that ships. When this was
-  asked, `.pixi/envs/default` carried a `FreeCADGui.so` and `build/release`
-  (`BUILD_GUI=OFF`) did not, and `test_cadexd_lifecycle.py` prefers the
-  former, so a GUI-coupling break could pass every source-tree run and only
-  appear in the payload — ADR-047 was exactly that. **Narrowed:** `pixi run
-  build-engine` now installs the `BUILD_GUI=OFF` build into that
-  environment (ADR-060), and it carries no `FreeCADGui.so` (checked
-  2026-10-10). The environment still differs from the payload in what the
-  prune removes, so the packaged gate (ADR-023) stays the proof.
+- `src/Mod/Test` is retained because `MainCmd` depends on `TestSources` and
+  Test installs the App tests; its Tk runner is deleted (ADR-230,
+  [history/TEST-TK-AUDIT.md](history/TEST-TK-AUDIT.md)). The rest of Test is
+  unaudited, and payload exclusion alone does not qualify it for removal.
+- The development environment is not the payload: `pixi run build-engine`
+  installs the `BUILD_GUI=OFF` build into it (ADR-060), so it carries no
+  `FreeCADGui.so`, but it still differs from the payload by everything the
+  prune removes. The packaged gate (ADR-023) stays the proof.
+
+Answered and closed since the last revision: the translation-updater audit
+(ADR-232, [history/TRANSLATION-UPDATER-AUDIT.md](history/TRANSLATION-UPDATER-AUDIT.md);
+App and Base translations remain live), Help and Start (deleted, ADR-217..221),
+and the worker's `CommandCreateView` import (removed by ADR-197; the publisher
+still imports it to build the native `ExplodedView`, which is not a GUI
+dependency).

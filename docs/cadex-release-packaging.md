@@ -1,6 +1,6 @@
 # Packaging — The Engine Payload
 
-Verified against source: 2026-10-16
+Verified against source: 2026-10-27
 
 **One repository builds one engine payload** (ADR-030, ADR-498). The
 *engine payload* is a relocatable directory the CLI finds by manifest
@@ -184,47 +184,20 @@ is not blocked by anything here; nobody has needed it yet.
 
 ## What is accidentally in the payload
 
-Measured 2026-07-25 on `main`, a **staged** payload is **2.3 GB**, and most
-of that is not engine:
-
-```
-lib/       2.2 GB     of which  python3.11  856 MB
-                                libLLVM.21.1  134 MB
-                                libLLVM.18.1  116 MB   (two LLVMs)
-                                libnode.137    72 MB
-                                libclang-cpp   69 MB
-share/     171 MB     gir-1.0 27 MB · locale 26 MB · cmake-4.2 22 MB
-                      icons 15 MB · mysql 11 MB
-Mod/       4.4 MB     the workbenches the domains actually load
-bin/       452 KB     freecadcmd, CadexGeometryWorker, python
-```
-
-**That measurement predates the dynamics arc.** A staged payload now
-measures **2.4 GB** (ADR-076), the difference being MuJoCo's 53.5 MB plus
-the wheel's own bundled dylibs. Everything the section says about *why* the
-figure is what it is holds unchanged: the 53.5 MB is the only line item in
-either payload that is there on purpose.
+The latest measurement: on 2026-10-04 a **staged** payload was
+**2,213,397,834 B (about 2.2 GB, 36,594 files)**, after ADR-531 pruned LLVM
+and clang (−20.6%) and ADR-532 pruned OpenCV, PCL, Node and Perl (−14.5%).
+Most of that is still not engine: the 53.5 MB of MuJoCo is the only large
+line item there on purpose, and the engine's own workbenches are a few MB.
 
 **Why.** The staged path copies `.pixi/envs/default`, which is a *development*
-environment: compilers, LLVM, node, a database client, CMake's documentation.
-The prune list in `build_engine_payload.sh` removes the things that would be
-embarrassing — Qt GUI, Coin, PySide, headers, unused workbenches — and
-nothing else, because it was written to answer "did a widget toolkit leak
-in?", not "is this small?".
-
-**LLVM and clang are pruned now (ADR-531).** No ELF in the payload links
-`libLLVM*`, `libclang*`, `libLTO`, `libRemarks` or `lib/clang`'s sanitizer
-runtimes except each other: they serve Qt's tools, PySide's generator and
-the compiler. The script deletes them and the leak gate refuses them. On
-2026-10-04 the same tree staged at **3,258,031,078 B** before and
-**2,588,443,821 B** after (−669,587,257 B, −20.6%; 40,916 → 40,578 files).
-**OpenCV, PCL, Node and Perl are pruned too (ADR-532).** No payload ELF
-links them except each other and `cv2`, which nothing in the payload
-imports; Node and Perl are pyright's and git's runtimes, and the payload
-carries neither interpreter. The same tree staged at 2,588,443,821 B before
-and **2,213,397,834 B** after (−375,045,987 B, −14.5%; 40,578 → 36,594
-files). Still copied from the development environment: the compiler's own
-`lib/gcc`, and nine libraries that lost their last user with ADR-532
+environment. The prune list in `build_engine_payload.sh` was written to answer
+"did a widget toolkit leak in?", not "is this small?": it removes Qt GUI,
+Coin, PySide, headers, unused workbenches and, since ADR-531/532, the
+toolchain libraries no payload ELF links (LLVM, clang, `libLTO`, `libRemarks`,
+`lib/clang`'s sanitizer runtimes, OpenCV, PCL, Node, Perl; the leak gate
+refuses them). Still copied from the development environment: the compiler's
+own `lib/gcc`, and nine libraries that lost their last user with ADR-532
 (listed there).
 
 Two honest consequences:
@@ -310,10 +283,6 @@ platforms. Run 38947903206 on `8f3d14c9` passed every step: Linux x64 in
 - **macOS notarization of the embedded engine.** Hardened runtime plus
   per-binary entitlements: `freecadcmd` spawns subprocesses and dlopens
   OCCT. Not yet exercised end to end.
-- **The first green CI run.** Every run so far stops at the engine suite
-  (above); the first run on the ADR-725 suite is the next data point. Nothing downstream of that step has ever executed on either
-  platform, so the first run past it is the first real report either job
-  has made — treat its output as new information, not as a regression.
 - **Windows.** The payload builds for it; no CI job gates it.
 - **A relocated payload has never been built on this machine.** The
   relocating path needs a rattler build, so every payload verified during
