@@ -1022,15 +1022,6 @@ def _param_wire(loop, surface, spacing, App, Part):
     return Part.Wire([curve.toShape(surface)])
 
 
-def _plane_wire(loop, z, spacing, App, Part):
-    """The same loop as a closed curve in the plane ``z``."""
-
-    curve = Part.BSplineCurve()
-    curve.interpolate([App.Vector(x, y, z) for x, y in _loop_points(loop, spacing)],
-                      PeriodicFlag=True)
-    return Part.Wire([curve.toShape()])
-
-
 def _opening_mask(entry, X, Y, inner, outer, R, grid, h, shape_sets, poses, local,
                   occupancy_fn, distance_fn, keepouts=None):
     """The columns an opening takes out: where its keep-out meets the panel."""

@@ -2239,48 +2239,6 @@ CLOSURE_RESIDUAL_RADIANS = 1.0e-6
 CLOSURE_EQUALITY_TOLERANCE = 1.0e-6
 
 
-def closure_residuals(
-    components: Sequence[Mapping[str, Any]],
-    joints: Sequence[Mapping[str, Any]],
-) -> list[dict[str, Any]]:
-    """Every live joint's residual against the pose its kind demands.
-
-    Cheap, exact, and available before a single line of MuJoCo runs. If the
-    solved placements and the connector frames are composed correctly, each
-    joint's two JCS coincide up to that joint's own freedom; if a frame was
-    inverted, a unit was missed or a handedness flipped, this is where it
-    shows -- in millimetres, against the joint that caused it.
-    """
-
-    placements = {
-        str(component["name"]): checked_rigid_matrix(
-            component["solved_matrix"],
-            context=f"component {component.get('name')!r} solved placement",
-        )
-        for component in components
-    }
-    results: list[dict[str, Any]] = []
-    for joint in classify_joints(joints):
-        if joint["suppressed"] or joint["kind"] in _PLACEMENT_ONLY:
-            continue
-        first, second = joint["components"]
-        transform = joint_transform(
-            placements[first],
-            joint["local_matrices"][0],
-            placements[second],
-            joint["local_matrices"][1],
-        )
-        kind = joint["kind"]
-        if kind in {"gears", "belt", "rack_pinion"}:
-            # A gear pair constrains rates, not poses: there is no residual
-            # to take, and pretending otherwise would refuse working models.
-            continue
-        results.append(
-            {"joint": joint["name"], **joint_coordinates(kind, transform, context=f"joint {joint['name']!r}")}
-        )
-    return results
-
-
 # ---------------------------------------------------------------------------
 # The model. This is where mujoco is imported, and nowhere else.
 # ---------------------------------------------------------------------------
