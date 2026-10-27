@@ -120,8 +120,9 @@ CONTENT_TYPES = {
 }
 #: The HTTP API (ADR-552): every ``GET /api/<route>`` a project's page
 #: answers, a ``<name>`` segment standing for one path segment. The router
-#: dispatches from this table and nothing else, ``docs/CLI.md`` §2c lists
-#: the same routes, and ``test_http_api.py`` holds the two together.
+#: dispatches from this table and nothing else, ``docs/CLI.md``'s "The HTTP
+#: API (ADR-552)" table lists the same routes, and ``test_http_api.py`` holds
+#: the two together.
 API_ROUTES = (
     "project",
     "run/<run>",
