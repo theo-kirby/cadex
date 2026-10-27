@@ -52,15 +52,17 @@ banded goals).
       rungs, correct `shy-sky-8568` and `crisp-cloud-1105`; `governor
       check` exits 0 and `STATE.md` is short enough to orient from.
 - [x] **Dead engine and CLI code is gone** (ADR-829).
-- [ ] **The build tree's GUI residue is gone** (ADR-830): unreachable
+- [x] **The build tree's GUI residue is gone** (ADR-830): unreachable
       `BUILD_GUI` CMake, unused Find modules and `src/Tools` scripts,
       workbench examples and test data, GUI files in kept modules,
       macOS-bundle packaging.
-- [ ] **pixi carries no GUI-era dependency** (ADR-831): coin3d, pivy,
+- [x] **pixi carries no GUI-era dependency** (ADR-831): coin3d, pivy,
       pyside6, Qt Wayland, X11 test sets, ifcopenshell, opencamlib, PCL and
       the rest, with a clean re-solve and the payload size before and after.
-- [ ] **`version.json` names Cadex** (ADR-832), or a recorded reason it
-      can't without touching the engine's binary names.
+- [ ] **`version.json` names Cadex** (ADR-832). Tried on 2026-10-27 and
+      reverted: `sync_version.py` renames the rattler package `freecad` →
+      `cadex` with it, and that recipe then fails to solve for linux-aarch64.
+      Needs the rattler recipe solved under the new name first.
 
 **Contracts** (open since the 0.2.0 audit, ADR-730)
 - [ ] **Trainer ↔ engine parity.** One test, run from the `training/` venv,

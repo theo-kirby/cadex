@@ -111,8 +111,9 @@ a build dependency that stays behind on the build machine. `mujoco == 3.10.0`
 is a **pypi wheel redistributed inside the shipped engine payload**, carried
 there by name through `CARRIED_PYPI_PACKAGES` in
 `package/rattler-build/scripts/relocate_conda_environment.py` (ADR-076),
-because the pixi manifest has not been re-solvable as conda since
-conda-forge moved past our `occt == 7.8.1` pin. It is 53.5 MB of the payload,
+because the pixi manifest was not re-solvable as conda once
+conda-forge moved past our `occt == 7.8.1` pin (it re-solves again since
+ADR-831; the move to a conda `mujoco` has not been made). It is 53.5 MB of the payload,
 it ships inside the payload, and the payload build hard-fails if it cannot
 import exactly that version out of the payload's own interpreter.
 
@@ -284,8 +285,9 @@ other docs cite them by letter (`PROVENANCE §8d`).
   they are the payload.** The engine payload is a relocated copy of the
   pixi environment, so every conda package that survives the prune ships
   inside it. The prune drops the GUI toolkit and, since ADR-531 and
-  ADR-532, LLVM, clang, OpenCV, PCL, Node and Perl, which the development
-  environment carries and the engine never loads. An earlier revision of this bullet claimed the
+  ADR-532, LLVM, clang, Node and Perl, which the development environment
+  carries and the engine never loads. OpenCV and PCL left the development
+  environment too (ADR-831). An earlier revision of this bullet claimed the
   opposite. What each shipped package's licence is, and where its text
   landed, is recorded per-package in the payload's
   `licenses/MANIFEST.json`, written by `package/engine/collect_licenses.py`

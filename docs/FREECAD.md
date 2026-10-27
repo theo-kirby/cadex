@@ -70,8 +70,8 @@ lists, Start, Help and Show, are deleted and stay here as the record:
   dynamics kernel. It is not inherited FreeCAD substrate and it is not a
   build-only dependency — it is redistributed **inside the engine payload**,
   carried there by name through `CARRIED_PYPI_PACKAGES` because the manifest
-  has not been re-solvable as conda since conda-forge moved past our `occt`
-  pin (ADR-075, ADR-076). Ledger entry: `docs/PROVENANCE.md` §4; the payload
+  was not re-solvable as conda once conda-forge moved past our `occt`
+  pin (ADR-075, ADR-076; it re-solves again since ADR-831). Ledger entry: `docs/PROVENANCE.md` §4; the payload
   build hard-fails if it cannot import it.
 - `src/Tools`, `tests/` — upstream tooling and native test trees (audited,
   not blanket-kept, during Phase 1). What remains in `src/Tools` is what the
