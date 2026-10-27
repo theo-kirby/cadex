@@ -42,16 +42,16 @@ banded goals).
 ### Must
 
 **Truth and cleanup**
-- [ ] **The identity docs agree** (ADR-833): README, VISION (broadened North
+- [x] **The identity docs agree** (ADR-833): README, VISION (broadened North
       Star and benchmark set), this roadmap, AGENTS.
-- [ ] **The doc set says what is true now** (ADR-828): false statements
+- [x] **The doc set says what is true now** (ADR-828): false statements
       fixed, history moved out, CLI/XSCRIPT/MUJOCO/INTEGRATION/PROVENANCE
       trimmed and de-duplicated.
-- [ ] **The governor frontier is the product's frontier.** Retire the ~90
+- [x] **The governor frontier is the product's frontier.** Retire the ~90
       finished-run criteria (orun9–orun20), rewrite the shell-era PLAN
       rungs, correct `shy-sky-8568` and `crisp-cloud-1105`; `governor
       check` exits 0 and `STATE.md` is short enough to orient from.
-- [ ] **Dead engine and CLI code is gone** (ADR-829).
+- [x] **Dead engine and CLI code is gone** (ADR-829).
 - [ ] **The build tree's GUI residue is gone** (ADR-830): unreachable
       `BUILD_GUI` CMake, unused Find modules and `src/Tools` scripts,
       workbench examples and test data, GUI files in kept modules,
