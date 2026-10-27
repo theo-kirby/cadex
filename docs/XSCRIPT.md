@@ -1,12 +1,15 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-19
+Verified against source: 2026-10-27
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
-worker; only validated results reach the live document. The one-script
-system below landed in Phase 2 (`docs/ROADMAP.md`, ADR-011..014) and
-replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
+worker; only validated results reach the live document (ADR-011..014).
+This document is the reference for the script's vocabulary. The dynamics
+arc it serves — why each piece exists, how a task trains, what was
+measured — is `docs/MUJOCO.md`; this file says what each call takes,
+refuses and publishes. The VibeCAD-era history is in
+`docs/history/XSCRIPT-HISTORY.md`.
 
 ---
 
@@ -42,8 +45,6 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
   `UNKNOWN_PROJECT_PARAMETER`. Pruning is digest-neutral — the worker resolves
   declared parameters by name and ignores the rest — so only the revision
   moves, and every revision the store keeps derives from the pruned dict.
-  Before this, a rewritten script left dead values behind and every later
-  `set_params` failed on a name the caller never sent, permanently.
 - Execution artifacts live under `<project>/script_artifacts/<revision>/`.
 - Revision = `project_script_revision` over `{schema, domain: "project",
   source, param_specs, param_values}` (`CadexScriptedDomains.py`) —
@@ -82,46 +83,42 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   a free joint, and the ground it stands on is the environment's plane at
   z = 0 — never a part of the script. A grounded assembly gets no such floor.
   `assembly.mjcf(..., terrain={...})` swaps that plane for a declared course
-  (ADR-714): a heightfield over `x_range_mm` × `y_range_mm` at `cell_mm`
-  (default 20) built from `features` — `bump` (`x_mm`, `y_mm`, `radius_mm`,
-  `height_mm`, a raised cosine), `step` (`x_mm`, `height_mm`, across the
-  width, negative steps down) and `slope` (`from_x_mm`, `to_x_mm`,
-  `grade_deg`, holding its height after) — which add. The ground at the
-  origin stays at z = 0, nothing lies beyond the extent, and a grounded model
-  is refused. The course is in the file and in every task bundle built on it
-  as `terrain`. A step is a one-cell ramp, so `cell_mm` is also how sharp an
-  edge is; MJX has no heightfield contact for a cylinder or an ellipsoid, so a
-  task refuses one that can touch the course. `"form": "boxes"` (ADR-716)
-  builds the same features from placed boxes on a plane at the course's
-  lowest point instead, and is **the form to train on**: MJX steps it as
-  stably as the plane, where the heightfield throws a driven rig to
-  non-finite. Steps and slopes become flat blocks and turned ramps, a bump a
-  buried sphere whose cap is the bump (ADR-744; no dips, and no taller than
-  its radius), there is no `cell_mm`, and a step down off a slope's high
-  end is refused (`terrain_step_off_slope`). Two kinds only a box course
-  builds (ADR-745; a heightfield refuses them, `terrain_kind_needs_boxes`):
-  `platform` (`x_mm`, `y_mm`, `length_mm` along x, `width_mm`, `height_mm`),
-  a block with a wall on every side standing `height_mm` over the steps and
-  slopes at its centre, the box to jump onto; and `rock` (`x_mm`, `y_mm`,
-  `radius_mm`, `height_mm` at most a quarter of the radius), a patch of up
-  to nine tilted stones on flat ground, seeded by the patch itself. Past the
-  extent the ground **runs out** (ADR-745): every level runs 50 m on across
-  y, and the first and last 50 m on along x, so leaving a course is flat
-  ground, not a fall to the plane. A box course may be
-  **drawn instead of listed** (ADR-717): `"random": {"seed", "courses",
-  "step_mm", "grade_deg", "bump_mm", ...}` in place of `features` draws
-  steps, slopes and bumps from magnitude ranges, past a flat `clear_mm`
-  (default 500) with a flat `run_mm` before each, each signed back towards
-  z = 0; `platform_mm` (with `platform_size_mm`, `platforms`) and `rock_mm`
-  (with `rock_radius_mm`, `rocks`) add platforms and rock patches, each
-  kept 100 mm clear of the bumps and of each other, a patch only on flat
-  ground (ADR-745). Course 0 is the one the model carries; the bundle's `terrain.pool`
-  holds all `courses` (default 32, at most 64) as features, the model has a
-  box geom per box of the fullest, and the trainer gives each episode a
-  pooled course of its own. `"collides_with": [group, ...]` (ADR-739) makes
-  the boxes touch only those collision groups, normally the feet's. The
-  plane still takes every geom, and MJX is spared the costly box–box and
-  capsule–box pairs (the cat ran 78 s an iteration without it).
+  (ADR-714..717, ADR-739, ADR-744, ADR-745); a grounded model is refused.
+  - **Features**, which add: `bump` (`x_mm`, `y_mm`, `radius_mm`,
+    `height_mm`), `step` (`x_mm`, `height_mm`; negative steps down) and
+    `slope` (`from_x_mm`, `to_x_mm`, `grade_deg`), over `x_range_mm` ×
+    `y_range_mm`. The ground at the origin stays at z = 0. The course is in
+    the file and in every task bundle built on it as `terrain`.
+  - **Form.** The default is a heightfield at `cell_mm` (default 20; a step
+    is a one-cell ramp; a task refuses a cylinder or ellipsoid that can
+    touch it). `"form": "boxes"` builds the same features from placed boxes
+    and is **the form to train on**: MJX steps it as stably as the plane,
+    where the heightfield throws a driven rig to non-finite. On boxes a bump
+    is a buried sphere no taller than its radius, there are no dips and no
+    `cell_mm`, a step down off a slope's high end is refused
+    (`terrain_step_off_slope`), and two kinds exist that a heightfield
+    refuses (`terrain_kind_needs_boxes`): `platform` (`x_mm`, `y_mm`,
+    `length_mm`, `width_mm`, `height_mm`), a walled block to jump onto, and
+    `rock` (`x_mm`, `y_mm`, `radius_mm`, `height_mm` ≤ radius/4), a patch of
+    up to nine tilted stones. Every level runs out 50 m past the extent, so
+    leaving a course is flat ground, not a fall.
+  - **Drawn courses.** `"random": {"seed", "courses", "step_mm",
+    "grade_deg", "bump_mm", ...}` in place of `features` draws steps, slopes
+    and bumps from magnitude ranges behind a flat `clear_mm` (default 500),
+    a flat `run_mm` before each, each signed back towards z = 0;
+    `platform_mm` (with `platform_size_mm`, `platforms`) and `rock_mm` (with
+    `rock_radius_mm`, `rocks`) add platforms and rock patches, kept 100 mm
+    clear of the bumps and of each other, a patch only on flat ground. Course
+    0 is the one the model carries; `terrain.pool` holds all `courses`
+    (default 32, at most 64), the model has a box slot per box of the
+    fullest, and the trainer gives each episode a pooled course.
+  - `"collides_with": [group, ...]` makes the boxes touch only those
+    collision groups, normally the feet's, which spares MJX the costly
+    box–box and capsule–box pairs.
+
+  The full semantics, the draw algorithm and the measurements are
+  `docs/MUJOCO.md` §2 (*Terrain*, *Box course*, *A course re-drawn per
+  episode*).
 - **`part.box`'s `origin` is a corner, not a centre.** `part.box(40, 40, 200)`
   occupies x ∈ [0, 40], y ∈ [0, 40], z ∈ [0, 200] — the origin is the
   minimum corner, and the solid is entirely on the positive side of the
@@ -132,15 +129,13 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   not in the solid's bounding box, and neither has any way to know where
   the solid was put. A corner-origin box with connector offsets written as
   if it were centred is a perfectly legal model that is half its own size
-  out of position, and nothing refuses it. The measured instance is in
-  ADR-087: a floor whose collision box stood 20 mm above the floor it was
-  drawn on, through a whole training run.
+  out of position, and nothing refuses it (ADR-087).
 - `assembly.component()` accepts same-script part/partdesign values: the
   worker records the source payload under a deterministic inline token
   (`document_uid: "xscript-project"`) and requires the value to ALSO be a
   declared output, so publication can bind each live component to a
-  published stable object. Cross-document component references are retired;
-  v0.0.1 assemblies are rigid, same-script solids (ADR-011).
+  published stable object. Components are same-script solids;
+  cross-document component references are retired (ADR-011).
 - A project publishes at most one assembly, so renaming its output key
   (`result["probe"]` to `result["robot"]`) re-keys the live assembly in
   place. Its joint group, joints and component links carry over, rather than
@@ -260,11 +255,11 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `clearance_mm`, `slack`, `cell_mm`, `min_bend_radius_mm` — means what it
   does on `part.cable` and applies to the bundle as a whole.
 - `part.solder()` builds the joint that lands a wire on the component it
-  connects to (ADR-063, **experimental**): given one terminal — never a
-  literal port — and the `gauge_mm` of the lead, it fuses the filled bore
-  barrel, the meniscus fillet and the far-face cap, and cuts the lead out of
-  the lot. One call, one joint, one `solid`, sized entirely from the terminal
-  so it moves when the terminal moves. See *Soldering a terminal* below.
+  connects to (ADR-063, ADR-117, **experimental**): given one terminal —
+  never a literal port — and the `gauge_mm` of the lead, it revolves one
+  outline: a meniscus on the face the lead lands on, a collar and a
+  round-over onto the lead. One call, one joint, one `solid`, sized entirely
+  from the terminal so it moves when the terminal moves. See *Soldering a terminal* below.
 - `assembly.dynamics()` runs the assembly as rigid-body dynamics instead of
   prescribing its motion (ADR-077, **experimental**): give every component an
   `assembly.body(component, density_kg_m3=...)` and the mechanism falls,
@@ -290,31 +285,24 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   the closing link in a `ball` joint, which a connect expresses exactly). A
   drive on a joint the loop locks is refused as `actuator_locked_by_loop`.
   An actuator on a joint the chain reaches from ground — a crank — drives
-  the whole loop; a connect is a soft constraint, so a loop driven fast holds
-  the MJCF's 0.01 mm pose contract only at a fine step (225 °/s on a 200 mm
-  four-bar: 0.045 mm at 2 ms, 0.0012 mm at `solver_step_s=0.0005`).
-  **A planar loop of pins builds live** (ADR-595). The native assembly
-  solver counts six constraints per loop and calls a four-bar of four
-  `revolute` joints redundant; that verdict is accepted when the solver
-  returned code 0 and said nothing worse, the loop's joints are revolute,
-  slider, cylindrical, ball or fixed, the rank of their screws at the solved
-  pose leaves **every linkage** -- each set of loops that share a joint --
-  at least one degree of freedom (ADR-621; ADR-595 asked for exactly one
-  over all loops together, which refused a four-bar in each of two legs and
-  every two-input five-bar), and every loop joint's connectors meet within
-  0.01 mm with hinge axes parallel. The count is in the solve's
-  diagnostics as `loop_redundancy` (`freedoms`, `rank`, `mobility`,
-  `redundancy`, `groups` with each linkage's own `mobility`,
-  `worst_gap_mm`, `accepted`); a linkage with no freedom -- a truss, or a
-  closing pin tilted out of its plane -- keeps the refusal whatever the
-  other legs do, and the refusal names it. The export closes a revolute
-  loop with a `connect`, which pins the pin and lets the axis go: exact for
-  a planar loop, and the one axis it gives up is the one ADR-593's export
-  check measures, so four parallel pins need no rod ends. A coupler on two `ball` joints (rod ends)
-  also builds, but has an undamped spin about its ball line (ADR-594).
-  Driven 450° by its crank servo, a four-pin four-bar's rocker stays within
-  0.0032° of circle intersection at 0.5 ms; the loop opens 0.70 mm at the
-  2 ms default and 0.0061 mm at 0.5 ms. A dynamics run with a loop records
+  the whole loop; a connect is a soft constraint, so a loop driven fast
+  holds the MJCF's 0.01 mm pose contract only at a fine `solver_step_s`
+  (`docs/MUJOCO.md` §2 has the measurements).
+  **A planar loop of pins builds live** (ADR-595, ADR-621). The native
+  assembly solver calls a four-bar of four `revolute` joints redundant; that
+  verdict is accepted when the solver returned code 0 and said nothing
+  worse, the loop's joints are revolute, slider, cylindrical, ball or fixed,
+  the rank of their screws at the solved pose leaves **every linkage** (each
+  set of loops that share a joint) at least one degree of freedom, and every
+  loop joint's connectors meet within 0.01 mm with hinge axes parallel. The
+  count is in the solve's diagnostics as `loop_redundancy` (`freedoms`,
+  `rank`, `mobility`, `redundancy`, `groups` with each linkage's own
+  `mobility`, `worst_gap_mm`, `accepted`); a linkage with no freedom — a
+  truss, or a closing pin tilted out of its plane — keeps the refusal and is
+  named. The export closes a revolute loop with a `connect`, exact for a
+  planar loop, so four parallel pins need no rod ends; a coupler on two
+  `ball` joints (rod ends) also builds, but has an undamped spin about its
+  ball line (ADR-594). A dynamics run with a loop records
   `closure_tolerance_mm` (0.01) and `closure_within_tolerance` beside
   `worst_closure_residual_mm`; `cadex smoke` names the step that holds it.
   `gravity_m_s2` and `solver_step_s` are authorable (ADR-079);
@@ -352,9 +340,6 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   pin went 25° past its stop at 2 N·m); smaller is stiffer. The time
   constant must be at least two solver steps (0.004 s at the default
   step), and the joint must have limits; either is refused otherwise.
-  The fit sweep moves every coordinate a coupling ties to the swept joint
-  -- an unlimited motor, pulley or screw follows, a limited joint holds --
-  and reports those followers `passive`.
 - **Passive springs** (ADR-779). `assembly.joint_dynamics(joint,
   spring_nmm_per_deg=, spring_rest_deg=)` (a slide: `spring_n_per_mm=`,
   `spring_rest_mm=`) puts a spring across the joint: a torsion spring on a
@@ -447,48 +432,33 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   worth knowing before choosing a channel: a `component_position` reads the
   component's **frame origin**, so a link hinged at its own origin never
   moves in it — `centre_of_mass` is the channel for where a part actually
-  is. One kind is **not a sensor** (ADR-696): `assembly.observation(actuator,
-  "command", name="hip")` reads `hip`, the command in force on one of the
-  task's actuators — clamped, after any filter or slew limit, in the
-  action's own unit — and `hip_rate`, its change over the last control step
-  per second. Before the first action both read the command the reset
-  keyframe holds, and the first action reports a rate of 0. As a policy
-  input it is the **previous action** and needs no `sensor=`: the
-  controller knows its own commands. In a reward it is the **action rate**,
-  `-(hip_rate / 100)^2`. No `<sensor>` carries it, so the bundle states it
-  in a `commands` section, after the goal channels, and the engine, the
-  trainer and a stock-MuJoCo runner each compute it from the commands they
-  issued; it does not count against the 128-channel sensor cap, one per
-  actuator, and an actuator the task does not act on is refused.
-  `assembly.observation(paw, "contact", name="paw", role="privileged")`
-  reads foot contact (ADR-698): `paw` is the summed normal force of every
-  contact on the component's collision shapes, in N, and `paw_down` is 1
-  while that force is above zero and 0 otherwise. The export draws an
-  invisible box round the component's colliding shapes and puts a MuJoCo
-  `touch` sensor on it, so the file carries it and MJX computes it; a
-  component with no collision shape is refused. No sensor this API declares
-  measures it, so it is `privileged`: the reward, the terminations and the
-  critic read it.
-  `assembly.observation(knee, "acceleration", name="knee_acc",
-  role="privileged")` reads a joint's acceleration (ADR-699), in deg/s^2 or
-  mm/s^2: the simulator's `qacc` after the control step, which MuJoCo has no
-  sensor for. The bundle states it in an `accelerations` section after the
-  command channels, outside the 128-channel cap, and it must be
-  `privileged`. With it every standard regulariser is a reward term: action
-  rate `-(hip_rate/100)^2`, joint acceleration `-(knee_acc/10000)^2`, torque
-  `-(knee_tau/peak)^2` on an `actuator_force`, mechanical power
-  `abs(knee_tau*knee_vel)` beside a `velocity`, and foot slip
-  `sqrt(paw_vx^2+paw_vy^2)*paw_down`.
+  is. Three kinds are computed rather than sensed, and are described in
+  full in `docs/MUJOCO.md` §7 (*Saying "smooth"*, *Saying "foot down"*):
+  `assembly.observation(actuator, "command", name="hip")` reads `hip`, the
+  command in force on one of the task's actuators (clamped, after any filter
+  or slew limit, in the action's unit) and `hip_rate`, its change per second
+  (ADR-696) — the previous action as an input, the action rate in a reward;
+  it needs no `sensor=`, travels in the bundle's `commands` section and does
+  not count against the 128-channel sensor cap; an actuator the task does
+  not act on is refused. `"contact"` (ADR-698) reads `paw`, the summed
+  normal force on the component's collision shapes in N, and `paw_down`; a
+  component with no collision shape is refused, and since no onboard sensor
+  measures it, it is declared `role="privileged"`. `"acceleration"` (ADR-699) reads a joint's `qacc` in
+  deg/s² (mm/s²), in the bundle's `accelerations` section, also privileged.
+  With them every standard regulariser is a reward term.
   `assembly.observation(trunk, "height_scan", name="scan",
   role="privileged")` reads the ground round a component (ADR-715):
   `scan_0` .. `scan_14` are its height in mm above the course (or the plane)
   at 5 points along its heading, from 100 mm behind to 300 mm ahead, by 3
   across, 100 mm apart. `scan_4` is under the body. It travels in the
-  bundle's `scans` section, last in every vector, and it must be
-  `privileged`: the critic reads it, the policy does not.
+  bundle's `scans` section, last in every vector. `role="privileged"`
+  keeps it to the critic, the reward and the terminations; `role="policy"`
+  gives the actor the ground ahead as well, as a depth sensor would
+  (ADR-748).
   `"height_scan_far"` (ADR-821) is the same reading further ahead:
   `scan_far_0` .. `scan_far_44` at 15 points along the heading, from 400 mm
-  to 1800 mm ahead, by 3 across at -150, 0 and +150 mm.
+  to 1800 mm ahead, by 3 across at -150, 0 and +150 mm; roles as
+  `height_scan`.
   `assembly.reward(expression, weight=...)` terms are summed and a policy
   maximises the total, reported term by term so "which part of the reward is
   doing the work" is answerable; a cost is a positive quantity with a
@@ -618,62 +588,67 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   seed drew before. A task with no goal writes neither key and keeps the
   digest it had. **The trainer draws its goals by the same algorithm**, on
   the host, as a pool of episodes from its own seed (`training/README.md`).
-  **`assembly.gait(feet, gait="trot", speed_mm_s=...)` says what the motion
+  **`assembly.gait(feet, speed_mm_s=..., gait=...)` says what the motion
   should look like** (ADR-702, ADR-703), and goes to
-  `assembly.task(reference=...)`. `feet` is four foot components: left fore,
-  right fore, left hind, right hind. `gait` is one of `walk`, `trot`,
-  `pace`, `canter`, `transverse_gallop`, `rotary_gallop`, `half_bound` and
-  `bound`, or `offsets={"LF": .., "RF": .., "LH": .., "RH": ..}` (touch-down
-  as a fraction of the stride after the left hind's) with `duty` states
-  the footfall. `stride_length_mm=` overrides dynamic similarity, and
-  `spine=joint, spine_amplitude_deg=` flexes a joint the legs share. The
-  engine generates one periodic stride on the exported model, about the
-  reset keyframe and inside every joint limit, into the bundle's
-  `reference` section, with every body's pose at each sample, and the
-  dashboard plays it before anything trains. A stride the legs cannot
-  reach refuses the task as `gait_unreachable`, naming the leg, the moment
-  and the joints at a stop. A task without one writes no `reference` and
-  keeps its digest. **A reference is tracked through channels** (ADR-706),
-  after every other, on a gait clock that starts at the stride's phase 0 on
-  the episode's first step: `ref_sin` and `ref_cos`, which the policy
-  reads; and, privileged, `<name>_ref` for each `position` observation of a
-  joint the stride poses (its unit), `ref_<foot>_lift` in mm above the
-  reference foot's lowest point and `ref_<foot>_down` for each foot the
-  reference names, lower-cased (`lf`, `rf`, `lh`, `rh`; a biped's `l`, `r`,
-  ADR-756). A step is scored against the reference where it lands, so
-  `exp(-((q_knee - q_knee_ref) / 15)^2)` is a joint-tracking reward term. A
-  name one of them would take is refused as `tracking_channel_clash`.
-  `assembly.task(..., reference_start="random")` (default `"phase0"`) starts
-  each seeded episode at a random sample of the stride (ADR-709): the clip's pose and
-  velocity there, over the keyframe's ground point, with the clock at that
-  phase. A reset variation composes on top, its velocities added.
-  `reference_cadence="speed"` (default `"fixed"`) turns the clock with the
-  task's one `speed` goal (ADR-752): each step it turns `(|command| / clip
-  speed) ** reference_cadence_exponent` of the clip's own turn, the
-  exponent in (0, 1], 0.4 by default (dynamic similarity). A zero command
-  stops the clock. It is refused on a task with no reference or without
-  exactly one speed goal.
-  **`reference=[slow, ..., fast]` is a speed schedule** (ADR-773): two to
-  eight `assembly.gait` values, slowest first, on the same feet and spine,
-  keeping one footfall order. The engine generates them on one phase grid;
-  each step the task's one `speed` goal picks the two strides that bracket
-  it and a weight, every `*_ref` and `ref_<foot>_*` channel is the two
-  strides blended at the same phase (a foot reads down where the blend is
-  at least one half), and the clock turns at the blended stride frequency,
-  so a change of command, stepped or ramped, never jumps the phase. The
-  goal's `between` must lie inside the strides' speeds (a command is never
-  extrapolated). With `reference_start="random"` an episode starts at a
-  random phase of the stride nearest its opening command. The bundle's
-  `reference` is the slowest stride (the one the dashboard plays),
-  `reference_schedule` lists every stride, and `tracking.schedule` holds
-  their tables, speeds, turns and the rule. An evaluation judges the gait
-  against the stride nearest the settled command.
-  `reference_switches=[None, 3000, ...]` (ADR-822) splits the strides into
-  gait families: one entry per neighbouring pair, `None` to blend, or a
-  speed strictly between the two strides' at which the reference switches
-  from the one to the other without a blend. The footfall order need then
-  hold only inside each family. A cat whose rotary-gallop
-  lag closes with speed:
+  `assembly.task(reference=...)`. The engine generates one periodic stride
+  on the exported model, about the reset keyframe and inside every joint
+  limit, into the bundle's `reference` section with every body's pose at
+  each sample, and the dashboard plays it before anything trains. A stride
+  the legs cannot reach refuses the task as `gait_unreachable`, naming the
+  leg, the moment and the joints at a stop. A task without one writes no
+  `reference` and keeps its digest. The generator, its scaling and its
+  measurements are `docs/MUJOCO.md` §7 (*Showing a gait*). Arguments:
+
+  | argument | meaning |
+  |---|---|
+  | `feet` | four foot components — left fore, right fore, left hind, right hind — or, for a biped, two: left, right (ADR-754) |
+  | `gait` | four feet: `walk`, `trot`, `pace`, `canter`, `transverse_gallop`, `rotary_gallop`, `half_bound`, `bound`; two feet: `walk` (duty 0.6), `run` (duty 0.35) |
+  | `offsets=`, `duty=` | an explicit footfall instead of `gait`, both required: each foot's touch-down as a fraction of the stride after the left hind's (`LF RF LH RH`), or after the left foot's (`L R`) on a biped; `duty` the share of the stride each foot is down |
+  | `speed_mm_s` | the forward speed (required) |
+  | `stride_length_mm=` | overrides the dynamic-similarity stride from the robot's own hip height |
+  | `swing_height_mm=`, `pitch_amplitude_deg=` | how high a foot lifts; how much the trunk pitches |
+  | `spine=`, `spine_amplitude_deg=` | a joint the legs share, and how far it flexes (0–60°; the amplitude needs `spine`) |
+  | `heels=` | a plantigrade stance (ADR-776, ADR-777): maps some feet (`{"LH": hock_l, "RH": hock_r}`) to a component above each, carried by that leg, whose lowest collision point is held on the ground too while the foot is down |
+  | `heel_from=` | where in the stance (a share in [0, 0.99], default 0) the heel goes down, held to toe-off; needs `heels` |
+  | `body_drop_mm=`, `body_pitch_deg=` | lower the trunk below its standing height; pitch it nose-up (±45°), for the whole stride |
+  | `stance_shift_mm=` | move a foot's stance forward of its standing place (`{"LH": 120, "RH": 120}`) |
+  | `flat_feet=` | `True` (ADR-780) holds each heeled foot at its standing pitch while its heel is held, so a paw on a passive pin lies flat; `"sole"` (ADR-784) at the pitch where its collision geoms reach the floor together; needs `heels` |
+  | `trail_feet=True` | (ADR-785) lays a flat foot flat only while it is down, so after toe-off it trails the leg; needs `flat_feet` |
+
+  **A reference is tracked through channels** (ADR-706), after every
+  other, on a gait clock that starts at the stride's phase 0 on the
+  episode's first step: `ref_sin` and `ref_cos`, which the policy reads;
+  and, privileged, `<name>_ref` for each `position` observation of a joint
+  the stride poses, `ref_<foot>_lift` (mm above the reference foot's lowest
+  point) and `ref_<foot>_down` for each foot, lower-cased (`lf`, `rf`,
+  `lh`, `rh`; a biped's `l`, `r`, ADR-756). A step is scored against the
+  reference where it lands, so `exp(-((q_knee - q_knee_ref) / 15)^2)` is a
+  joint-tracking term. A name one of them would take is refused as
+  `tracking_channel_clash`. Further `assembly.task` arguments
+  (`docs/MUJOCO.md` §7 has what each does and why):
+
+  - `reference_start="random"` (default `"phase0"`; ADR-709) starts each
+    seeded episode at a random sample of the stride, in the clip's pose and
+    velocity there; a reset variation composes on top.
+  - `reference_cadence="speed"` (default `"fixed"`; ADR-752) turns the clock
+    with the task's one `speed` goal, by `(|command| / clip speed) **
+    reference_cadence_exponent` (in (0, 1], default 0.4) of the clip's own
+    turn; a zero command stops it. Refused without a reference or without
+    exactly one speed goal.
+  - `reference=[slow, ..., fast]` is a **speed schedule** (ADR-773): two to
+    eight `assembly.gait` values, slowest first, on the same feet and spine
+    and in one footfall order, generated on one phase grid; each step the
+    `speed` goal blends the two bracketing strides at the same phase, so a
+    change of command never jumps the phase. The goal's `between` must lie
+    inside the strides' speeds. The bundle's `reference` is the slowest
+    stride, `reference_schedule` lists all, `tracking.schedule` holds the
+    tables; an evaluation judges against the stride nearest the settled
+    command. Not combinable with `reference_cadence="speed"`.
+  - `reference_switches=[None, 3000, ...]` (ADR-822) splits a schedule into
+    gait families: one entry per neighbouring pair, `None` to blend, or a
+    speed strictly between the two strides' at which the reference switches
+    without a blend. The footfall order need then hold only inside each
+    family.
 
   ```python
   def gallop(speed, lag, duty, stride=None):
@@ -839,10 +814,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   **A position servo may narrow what a policy is allowed to command**, with
   `command_limits_degrees=[-25, 25]` (`command_limits_mm` when it slides).
   A joint may legitimately travel further than any controller should *ask*
-  it to, and before this the only way to say so was to edit the derived task
-  bundle by hand — which puts the artifact that defines a trained policy
-  downstream of the script that is supposed to be the source of truth. Both
-  endpoints are required, the range is refused if it reaches outside the
+  it to. Both endpoints are required, the range is refused if it reaches outside the
   joint's own travel, and each endpoint is clamped independently so an
   asymmetric joint can have an asymmetric command range. It changes the
   action table and nothing else: the exported joint range is untouched, so
@@ -1542,11 +1514,7 @@ model and no corner speed. Sources and approximations: PROVENANCE §8i.
 
 #### Panels cut from the envelope of what they cover `[ADR-633..637]`
 
-A cover sized by eye floats: blind-rated robot animals scored worst on
-"every part designed, shells included", and the October `lib.panel` (a
-convex sleeve lofted along one axis, round the frame too) was tried once in
-nine creature runs and removed (`docs/history/ARCHITECTURE-REVIEW.md` §2). A panel
-is a **thin, open patch of a smooth offset surface of the mechanism it
+A panel is a **thin, open patch of a smooth offset surface of the mechanism it
 covers**, bounded by seams, screwed to the frame, clear of what moves. Two
 part ops declare it; the worker builds it on the exact solids
 (`CadexEnvelope.py`).
@@ -1954,8 +1922,7 @@ points, defaulting to world +Z (or +Y for a cage that runs along Z). A
 
 A ring is a row, so a silhouette changes through `set_params` without a
 script rewrite — which is the whole reason to spell a section table
-this way rather than as literals. (The viewport ring-drag that once wrote
-these rows went with the Blender shell, ADR-498.) `set_params(cages=[...])` replaces a
+this way rather than as literals. `set_params(cages=[...])` replaces a
 cage's rings wholesale; a ring carries **no name**, because its identity is
 its place in its cage's order.
 
@@ -2046,10 +2013,10 @@ and make a trained gait unpublishable.
 ### Terminals: ports that name geometry `[ADR-062]`
 
 `part.cable` and `part.bundle` (ADR-056, ADR-057) route a wire between two
-ports. A port used to be a literal `(point, direction)` pair, which is wrong
-by construction for a through-hole, goes stale the moment a parameter moves the
-component it was measured off, and does not say which signal it is. A
-**terminal** is a port derived from geometry and looked up by name:
+ports. A literal `(point, direction)` pair is wrong by construction for a
+through-hole, goes stale the moment a parameter moves the component it was
+measured off, and does not say which signal it is. A **terminal** is a port
+derived from geometry and looked up by name:
 
 ```python
 fc  = part.terminals(board,
@@ -2088,17 +2055,8 @@ it is left empty by design. A declared row says the same thing the other way
 round: `axis` is the drilling direction, the terminal is `origin` itself, and
 the wire leaves along `-axis`.
 
-ADR-062 landed on the *far* face instead, so that two holes wired to each
-other met in the middle rather than each stopping a board thickness short of
-it. ADR-117 reversed that: with the landing at the mouth there is no middle
-left to meet in, because `part.solder` is what closes the gap and it is at the
-mouth on both ends. The gesture a user actually has is "the rim on top of the
-hole", and the answer they want is "the wire ends there".
-
-`depth` is optional on a declared row and purely descriptive — the bore is
-still that deep and `inspect scope="wiring"` still reports it, but nothing geometric reads
-it. It used to be the classifier (`depth=0` meant a pad, and `hole_dia` with
-no `depth` was refused); it cannot be one now that it sizes nothing, so
+`depth` is optional on a declared row and purely descriptive —
+`inspect scope="wiring"` reports it, but nothing geometric reads it.
 **`hole_dia` is what makes a row a row of holes.**
 
 `order_by` is a **direction**, and it is what matches `names` to matched
@@ -2125,11 +2083,10 @@ result["sda"]       = part.cable(esp["sda"], fc["sda"], gauge_mm=0.4)
 result["sda_joint"] = part.solder(fc["sda"], gauge_mm=0.4)
 ```
 
-On a **through-hole** that is the barrel of the plating filled around the
-lead, a meniscus fillet where the lead leaves the board, and a cap over the
-lead's end on the far face. On a **pad** it is the meniscus alone. Every
-dimension is sized from the terminal, so the joint moves when the terminal
-does.
+On a through-hole and on a pad alike it is a meniscus on the face the lead
+lands on, a short collar hugging the lead and a round-over onto it (ADR-117).
+Every dimension is sized from the terminal, so the joint moves when the
+terminal does.
 
 The meniscus is **concave**: it sweeps up off the pad, flattens as it reaches
 the lead, and then runs parallel to the wire for a short collar standing a
@@ -2160,11 +2117,7 @@ joint is built from the bore's radius and the face it lands on, and a literal
 
 **A hole and a pad build the same joint** (ADR-117) — a meniscus sitting on
 the face the lead lands on, a short collar hugging the lead, and a round-over
-onto it. A through-hole used to get four extra segments: a cap cone under the
-lead's flush end, a barrel of plating and an entry annulus. That described a
-lead ending at the *bottom* of the bore, and nothing lands there any more.
-**`bore_dia_mm` went with the barrel** — it only ever sized the plating — and
-passing it is a `TypeError`.
+onto it. There is no `bore_dia_mm`; passing it is a `TypeError`.
 
 `gauge_mm` is required — the same number the `cable`/`bundle` landing there
 was given. `pad_dia_mm` defaults to twice the hole's measured diameter (or,
@@ -2244,8 +2197,7 @@ not raised on. A selector board's rows are never overridden — they come back
 from the geometry every run.
 
 **A terminal measured in world coordinates can be written straight into this
-table** (ADR-121; the viewport tool that measured one went with the Blender
-shell). The row arrives marked `frame: "world"` and the engine carries it
+table** (ADR-121). The row arrives marked `frame: "world"` and the engine carries it
 into the board's own frame through the inverse of the placement chain it
 resolved; a non-uniform scale on that chain refuses that one row by name.
 
@@ -2436,8 +2388,8 @@ measured facts from the pinned accepted attempt, so they are readable long
 after the rebuild that produced them; `assets` lists what a script can name
 by filename; the first two added in ADR-043, and `history` in ADR-045 — the
 accepted-revision undo trail that `cadex revision reject|restore` reads
-before writing the result back through `write_script`). There was one more scope, `selection`; it read the
-Qt shell's selection and died with it (ADR-021), and the engine rejects it.
+before writing the result back through `write_script`). The engine rejects
+the retired `selection` scope (ADR-021).
 
 ### Sandbox rules
 
@@ -2510,19 +2462,17 @@ Source is validated before any worker runs (AST policy in
 ### Worker isolation
 
 - One attempt = one windowless `FreeCADCmd --safe-mode -c …` subprocess
-  (runner in `CadexScriptedProcess.py`). The project bundle stages all five
-  `cadex_<domain>_{api,worker}.py` modules with entry
-  `cadex_project_worker.py` — **and seventeen more modules by filename**:
-  `CadexSubshapeQuery.py`, `CadexGeometryDigest.py` (ADR-389),
-  `CadexStress.py` (ADR-145), `CadexEvaluation.py`, `CadexScriptedProcess.py`,
-  `CadexRouting.py`, `CadexBundle.py`,
-  `CadexTerminals.py`, `CadexSolder.py`, `CadexNets.py`, `CadexBoards.py`,
-  `CadexMounts.py`, `CadexCage.py`, `CadexLinkedPart.py`,
-  `CadexDynamics.py`, `cadex_tessellation.py` and `cadex_preview_worker.py`
-  (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:44`). Copied
-  in rather than imported, so a worker module can `import` them inside the
-  sandbox while `cadexd`'s own module closure never reaches them — which for
-  `CadexDynamics.py` is an invariant rather than a convenience
+  (runner in `CadexScriptedProcess.py`). The project bundle
+  (`_DOMAIN_WORKER_BUNDLES["project"]` in `CadexScriptedRuntime.py`, entry
+  `cadex_project_worker.py`) stages the five `cadex_<domain>_{api,worker}.py`
+  modules and every engine module and data file they import, including
+  those imported only inside a function (ADR-827: the library, catalog,
+  panels, envelope and gait modules and `CadexParts.json`), so a dev-tree
+  build runs the dev tree's code. The bundle is content-addressed by its
+  members' bytes and refuses to build if a member imports an unstaged
+  sibling at module scope. Copied in rather than imported, so a worker can
+  `import` them inside the sandbox while `cadexd`'s own module closure never
+  reaches them — which for `CadexDynamics.py` is an invariant
   (`test_engine_purity_guardrails.py`).
   Plus the project's flat `assets/` directory (bounded: 64 files / 128 MB,
   known suffixes only).
@@ -2618,8 +2568,7 @@ document back to the accepted revision, and a commit keeps no undo history:
   failure).
 - **Restart determinism** is checked on every `open_project`, which re-runs
   the accepted script and asserts digest equality; `test_cadexd_lifecycle.py`
-  drives that restore pass over the protocol. The Phase 2 rebuild-twice test
-  (`test_project_rebuild.py`) was deleted by ADR-725.
+  drives that restore pass over the protocol.
 
 ### The parameter path
 
@@ -2630,11 +2579,9 @@ no model call. Its client today is `cadex params --set k=v` and the agent's
 `set_params` tool; a failed run leaves the accepted geometry untouched, and
 `rebuild` re-runs the stored script (ADR-039).
 
-There is no slider UI now. The Qt parameters panel (ADR-014) died in Phase 7
-(ADR-021), the Blender shell's sliders and its **Apply as Defaults** (ADR-040)
-with that shell (ADR-498), and the dashboard's parameter slider with ADR-537.
-The contract they all committed through — `set_params` plus the revision
-guard — is unchanged, which is why none of those swaps touched the engine.
+There is no slider UI: the dashboard is read-only (ADR-537). Every front end
+that had one committed through this same contract — `set_params` plus the
+revision guard.
 
 **In front of that path, for the parameters that drive motion**, sits
 `preview_params` (ADR-055), an engine op no current client calls. A resident `--safe-mode` worker inside cadexd
@@ -2658,7 +2605,7 @@ still the revision when it is done.
 
 `CadexReferenceContracts.py`, behind the `resolve_pin` op: a pin names
 geometry a front end picked, such as `@face-2`. No current client captures
-one (the shells that did are deleted, ADR-021 and ADR-498). A pin carries the shared handle, owning object,
+one. A pin carries the shared handle, owning object,
 subelement hint, and a **geometric fingerprint** (center of mass,
 direction/normal/radius/length). The fingerprint is authoritative: when the
 revision has moved since capture, the pin is re-resolved by fingerprint
@@ -2669,9 +2616,8 @@ Pins are a front end's vocabulary. Scripts do not use them: since ADR-029 a
 script argument names geometry with a **selector** (above), resolved through
 the same `CadexSubshapeQuery.py` vocabulary. Click and script therefore mean
 the same thing by "that face" — but only the selector is durable in a saved
-script, which is the point of the split. Nothing *writes* a selector into a
-script from a click; that round trip was half built when the shell that
-would have done it was deleted (`docs/ROADMAP.md` Phase 10b).
+script, which is the point of the split. Nothing writes a selector into a
+script from a click.
 
 **A pin is not a terminal.** The two words mean different things here and
 must not be swapped. A *pin* is this: a click-captured geometry reference
@@ -2686,58 +2632,31 @@ is a coincidence of shape, not the same concept.
 
 ## Part II — Direction
 
-- **Incremental re-execution**: today every mutation re-runs the whole
-  script (one worker attempt). Cached per-region revisions keyed by content
-  hash are a possible optimization; the revision machinery points the way.
-- ~~**Sub-modules**: whether large projects split into importable sub-modules
-  under the project root, or stay one flat script.~~ **Answered (ADR-138):
-  one flat script, and a project composes another through its *store*.**
-  `link_part` pulls one accepted solid out of another project into this one's
-  `assets/` as a `.cxpart`, and `part.import_part("sensor.cxpart")` reads it
-  back as the exact OCCT solid — same path an imported STL travels, lossless
-  instead of tessellated. So a large project splits into *projects*, each one
-  flat, each rebuildable on its own, joined by content-addressed files rather
-  than by an import graph. What crosses the boundary is a built artifact
-  whose bytes are checked, not a program this project has to run; the AST
-  policy's blanket refusal of `import` stays exactly as it is, and turns out
-  to have been the right answer rather than a limitation to route around.
-- **Interactive mesh editing**: still unscheduled, and still a decision
-  rather than an oversight. The plan used to be that it would arrive via
-  BMesh in the Blender shell. It did not, and the route closed: ADR-030
-  deleted the local bpy modes, and ADR-498 the shell itself. Editing a mesh interactively
-  would now mean either a new engine op or re-opening a second authoring
-  path — and the second is a direct contradiction of "nothing happens
-  outside the script".
-
-  What this paragraph used to also say — that the `mesh` domain is
-  deliberately minimal and *stays* that way — is **superseded by ADR-043**.
-  The charter it stated was a *modelling* one, and it held; what it
-  incidentally froze was the *ingest* path, which was not a decision anyone
-  made. External geometry is now a first-class input: `put_asset` gets a
-  file into the store, `mesh.transform` places it, `part.shape_from_mesh`
-  takes it into the BREP domains, and `inspect scope="output"` measures the
-  result. None of that is interactive mesh editing, and the "nothing happens
-  outside the script" rule is untouched — the script still names every
-  operation; the asset store is an input to it, the way a parameter value
-  is.
+- **Incremental re-execution: partly answered (ADR-622, ADR-782).** Every
+  mutation still runs the whole script in one worker attempt, but a part
+  output whose content identity and engine fingerprint are unchanged is read
+  back from `script_artifacts/part-cache/` instead of rebuilt, and every
+  exact fit pair from `script_artifacts/fit-cache/` (see *A rebuild builds
+  and measures only what changed*, below). Solving, the non-part domains,
+  the derived outputs and publication still run on every attempt.
+- **Sub-modules: answered (ADR-138).** One flat script per project; a large
+  design splits into projects joined through the store: `link_part` copies
+  one accepted solid into this project's `assets/` as a `.cxpart`, and
+  `part.import_part` reads it back as the exact OCCT solid. The AST policy's
+  refusal of `import` stands.
+- **Interactive mesh editing: not scheduled.** It would need a new engine op
+  or a second authoring path outside the script; the second contradicts
+  "nothing happens outside the script". External geometry is an *input*
+  (ADR-043: `put_asset`, `mesh.transform`, `part.shape_from_mesh`), which is
+  not the same thing.
 
 ---
 
-## Historical note
-
-The VibeCAD-era per-domain multi-program surface (eight lifecycle
-operations × four domains, program manifests `cadex-xscript-program-v2`)
-was dissolved by the Phase 2.4 tool-surface swap (ADR-013); existing v2
-program stores were not migrated (ADR-011 — conversations preserved,
-scripts start empty). The verification record for the still-earlier
-multi-engine runtime is preserved at
-`docs/history/RUNTIME_VERIFICATION.md`. Of its still-current facts, the
-failure envelope's shape is pinned by `test_response_schemas.py`; the rest
-are verified by running the engine (ADR-725).
-
 ## Measured assembly fit (ADR-347)
 
-Fit intent belongs to the assembly definition:
+This section and the next are the one description of the fit and sweep
+rows; `docs/INTEGRATION.md` and `docs/CLI.md` link here. Fit intent belongs
+to the assembly definition:
 
 ```python
 asm = assembly.assembly(
@@ -2747,170 +2666,92 @@ asm = assembly.assembly(
 )
 ```
 
-Pairs reference the component variables, whose returned output names identify
-measurements. Each pair may have one declaration, in either order; self-pairs,
-foreign components, duplicates and nonfinite or negative minima are malformed
-script arguments. Declarations are part of the hashed definition. Omitting them
-preserves the existing definition and accepted-state restore contract.
+Pairs reference the component variables, whose output names identify the
+rows. Each pair may have one declaration, in either order; self-pairs,
+foreign components, duplicates and non-finite or negative minima are refused.
+Declarations are part of the hashed definition, and omitting them leaves an
+existing definition's digest unchanged.
 
-At the initial solved pose, the published `clearance` rows carry `intent` and
-`fit_failures`. The checker reports common volume above 1e-6 mm³ on **every**
-pair, including intended contacts; contact distance above 0.001 mm; declared
-clearance below its minimum in mm; and undeclared distance below 0.1 mm.
+**The checks, at the solved pose.** Each published `clearance` row carries
+`intent` and `fit_failures`. A row fails for common volume above 1e-6 mm³
+(on **every** pair, intended contacts included), a declared contact more
+than 0.001 mm apart, a declared clearance below its minimum, or an
+undeclared pair closer than 0.1 mm. Minimum comparisons allow an absolute
+**1e-9 mm** of numerical slack (ADR-353) — no relative tolerance and no
+rounding of published numbers; apply the same slack in any other reader. An
+unmeasured pair is unknown, a row can fail more than one check, and every
+finding is advisory: a failing fit still builds and accepts.
 
-Only the near pairs are measured exactly (ADR-423). A pair whose
-exact-geometry bounding boxes are more than 10 mm apart, or more than the
-pair's declared `clearances=` minimum when that is larger, carries
-`culled: true`: its `distance_mm` is that box gap, a lower bound on the true
-distance, and its `common_volume_mm3` is 0.0, proved by the boxes. No
-verdict above can change, because every floor a culled pair is held to is
-below its bound. A reader applying its own larger floor reads such a row as
-undecided (`cadex clearance` says `unknown`), never as a breach.
+- **Welded pairs** (ADR-372, ADR-380). A pair joined by an unsuppressed
+  `fixed` joint is exempt from the undeclared 0.1 mm: its row carries the
+  implied intent `{"kind": "attached", "minimum_mm": 0.0, "joints": [...]}`.
+  Common volume and an unmeasured pair still fail, and an explicit
+  `contacts=`/`clearances=` entry on the pair wins. A `clearances=` entry on
+  a welded pair is judged by its minimum like any other (a board held 2 mm
+  over its standoffs), its intent carrying the welding `joints`. A
+  suppressed fixed joint grants nothing.
+- **World geometry** (ADR-420, ADR-427, ADR-623). Collision planes on design
+  bodies, a single planar CAD face without solids, and
+  `assembly.component(..., world=True)` are reported by name under
+  `world_geometry` (with `world_geometry_count`) and are never a failing row.
+  A pair against world geometry that is only `below clearance` at the solved
+  pose — a foot on the floor — is listed under
+  `fit.world_geometry_contacts` and does not fail; interpenetration or an
+  unmeasured pair still fails. In the sweep, a pair against world geometry
+  that overlaps or closes is listed under `world_geometry` and does not fail
+  the swept fit, because each joint is swept with the body held still.
+  Grounding alone never makes world geometry, and the checker does not infer
+  purpose from names: mark a bench `world=True`.
+- **What the fixed joints hold** (ADR-370) is measured beside the checks and
+  is never one of them. Every welded pair is listed in `attachments` with its
+  joints, its gap and `touching` (within 0.001 mm, or overlapping), `not
+  touching` or `unknown` — the report that names a servo horn floating off
+  its link. It is absent on a revision accepted before ADR-370 and an empty
+  list on an assembly with no fixed joint.
 
-A near pair is measured the way the sweep measures one (ADR-436): its distance
-between the boundary shells, when that is exact (ADR-425), and its common
-volume by the boolean `common` **only when that distance is 0.001 mm or
-less**. Two solids a measured distance apart share no volume, so a pair apart
-reads 0.0 without the boolean. On `ot10-hexapod-10` the tub and the dome sat
-2.4 mm apart, and `common` on the two lofted shells ran past 137 CPU-seconds
-without answering. Rebuilt with this rule, the accepted `ot10-hexapod-10`
-reproduces all 1,326 of its static rows exactly.
+`inspect(scope="clearance")`, the build reply's `fit` block and `cadex
+clearance` expose these rows. The summary counts each failing pair once,
+prioritising unknown, intersection, then intent.
 
-**A housing's faces are searched best first** (ADR-437). A hollow shell (a
-tub, a dome) has faces whose boxes overlap the parts it houses, and no box
-culls them, so the whole-shell distance met every such face against every
-face of the part. When the part with the smaller box has more than six faces,
-the static fit searches the other side's faces in order of a lower bound: first
-the gap between the face's exact box and the part's, then the face's distance to
-the part's box as a solid. A face is measured only while its bound is below
-the least distance found. The answer is the same number: over the
-2,850 static pairs of hexapod-10's refused build and the 1,326 of its accepted
-one, every row is identical to the last digit. Shells measured exactly 0.0 apart are not
-re-measured on the solids, which contain them. The swept fit is unchanged: it
-measures each pair at every sample on freshly placed shapes, where the bounds
-cost more than they save.
+**How a pair is measured.**
 
-**A touching pair's `common` is first run where the two can meet** (ADR-438).
-Two solids share volume only inside both their boxes, so the static fit cuts
-a side to that overlap, grown by 1 mm, when fewer than half its faces meet
-it, and runs `common` on the cut solids. The cut decides only a zero: any
-other answer, or a failed cut, runs the whole boolean as before, so every
-non-zero volume is still the uncut one. On hexapod-10's refused build the
-tub and its visor cost 103 CPU-s before and 33 after, and every static row of
-both builds is unchanged. The swept fit is unchanged.
-
-**A face is measured against one face, on its geometry's box** (ADR-678). The
-housing search splits each face it reaches into pairs with the other side's
-faces, and measures the pair with the least bound first, smaller faces first
-among equals; a panel cast onto its frame is proved touching by its boss's
-end against the frame face under it. Every box in the search, in the cut
-`common` and in the containment check is the geometry's, without tolerances:
-a `part.panel` piece can carry a boss seam of tolerance 1e15 mm, which makes
-its toleranced box unbounded and its classifier call a far point inside. A
-component whose largest tolerance is over 1 mm is culled on its geometry's
-box too; every other keeps its toleranced box and the numbers it was culled
-with. On a robot cat's frame, torso panels and head, 91 static pairs fell
-from 1,605 to 92 CPU-s, with every exactly measured row unchanged.
-
-A pair joined by an **unsuppressed `fixed` joint is not an undeclared pair**
-(ADR-372) and is exempt from that 0.1 mm: welding two components is the design
-declaring them one rigid body, so meeting face to face is what the declaration
-asks for rather than a gap that has closed. The row carries the implied intent
-`{"kind": "attached", "minimum_mm": 0.0, "joints": [...]}`, published so a
-reader reaches the same verdict the engine did. The implication is the weakest
-one available — it exempts the pair from the gap and asserts nothing else:
-common volume above 1e-6 mm³ still fails, an unmeasured pair still fails, and
-an explicit `contacts=` or `clearances=` entry on the same pair still wins.
-Whether the weld's solids actually meet stays the `attachments` fact below. A
-*suppressed* fixed joint is not an edge of the mechanism and grants no
-exemption.
-
-A **`clearances=` entry on a welded pair is judged by the minimum it
-declares**, exactly as an unwelded pair's is (ADR-380, withdrawing ADR-379).
-A fixed joint fixes the *relative pose* of two components and says nothing
-about whether their solids touch, and a declared minimum is a floor on a
-distance rather than a claim that the pair moves — so a board rigidly held
-2 mm over its standoffs, a shroud around a pulley or a magnet over its sensor
-is welded *and* meant to stay apart, and the declaration is the only place
-the design can say by how much. The row carries
-`{"kind": "clearance", "minimum_mm": …, "joints": [...]}`, the welding joints
-published beside the declared minimum as a fact a reader can join rather than
-a verdict; the `joints` key rides on a `clearance` intent only where an
-unsuppressed fixed joint welds the pair. ADR-379 briefly read that pair as a
-self-contradiction and failed it at every gap, as `clearance under weld`;
-that status no longer exists. What names a weld whose solids do not meet — a
-horn floating 0.2 mm off its link — is the `attachments` report below, beside
-the checks and never one of them.
-
-Minimum-clearance comparisons allow an absolute **1e-9 mm** numerical slack
-(ADR-353): a deficit must exceed that slack to fail. There is no relative
-tolerance and no rounding of published distances or volumes. This is comparison
-noise allowance, not the 0.001 mm contact tolerance or a manufacturing allowance.
-Swept reports retain raw minima and maxima without threshold verdicts, because
-the engine publishes measurements and the client reaches the verdict. Since
-ADR-378 the CLI's `fit.sweep` block does compare them: a pair the joint moves,
-which the solved pose found clear and which declares no contact and carries no
-weld, fails `below clearance` when its minimum through the range misses its
-declared or default minimum by more than that slack. Apply the same slack in
-any other reader.
-An unmeasured pair remains unknown. A row can fail more than one check.
-These are advisory findings: a failing fit still builds and accepts.
-
-World geometry is a separate `world_geometry` finding by component name.
-Collision planes on design bodies (including bodies nested in exports), a
-single planar CAD face without solids, and `assembly.component(..., world=True)`
-are reported. A solid bench has no geometric property that distinguishes it
-from a printable base: mark environment solids with `world=True`. Grounding
-alone never means world geometry. The checker does not infer purpose from a
-component's name. Existing floor declarations continue to build.
-
-`inspect(scope="clearance")`, build-reply `fit`, and `cadex clearance` expose
-these facts. The summary counts each failing pair once, prioritising unknown,
-intersection, then intent; the row's `fit_failures` preserves all checks.
-World findings are counted separately. This is static fit, not swept motion.
-The swept block (`fit.sweep`) keeps the same separation (ADR-420): a pair
-against world geometry that overlaps or closes during a joint sweep is listed
-under `world_geometry` and does not fail the swept fit, because each joint is
-swept with the body held still and a standing leg meets its floor.
-At the solved pose (ADR-427), a pair against world geometry that is only
-`below clearance` -- a foot standing on the floor with no common volume -- is
-listed under `fit.world_geometry_contacts` and does not fail the static fit.
-Interpenetrating world geometry at the solved pose, or an unmeasured pair
-against it, still fails. The world geometry itself is named in
-`fit.world_geometry` (with `world_geometry_count`) and is never a failing
-row (ADR-623): before this the floor's own row sat in `failing`, so a design
-that declared its floor `world=True` exactly as asked could never pass.
-
-**What the fixed joints hold** is measured beside these checks and is never one
-of them (ADR-370). Every pair joined by an unsuppressed `fixed` joint is
-reported in `attachments` with the joints that declare it, its measured gap and
-one of `touching` (within the 0.001 mm contact tolerance, or overlapping),
-`not touching`, or `unknown`. A fixed joint asserts that two components are one
-rigid body; a gap between their solids is a connection the geometry does not
-make. It is reported rather than failed because a standoff, a shim or a captive
-fastener between two welded parts is a legitimate design and only the design
-knows which it is — but a pair welded together, declared a clearance and
-measured apart passes every check above while nothing holds it, which is
-exactly how a floating servo horn survives acceptance. `attachments` is
-**absent** on a revision accepted before ADR-370 and an **empty list** on an
-assembly with no fixed joint: no published report and no welded pair are
-different facts.
+- **Only near pairs exactly** (ADR-423). A pair whose geometry boxes are more
+  than 10 mm apart (or more than its declared floor, if larger) carries
+  `culled: true`: its `distance_mm` is the box gap, a lower bound, and its
+  `common_volume_mm3` 0.0, proved by the boxes. No verdict can change, since
+  every floor the pair is held to is below its bound; a reader applying a
+  larger floor of its own reads the row as undecided (`cadex clearance` says
+  `unknown`), never as a breach.
+- **Distance first, volume only at contact** (ADR-425, ADR-436). The
+  distance is measured between the boundary shells when no solid of either
+  can lie inside the other (the same number, cheaper), else between the
+  solids; shells exactly 0.0 apart are not re-measured on the solids
+  (ADR-437). The boolean `common` runs only when the distance is 0.001 mm or
+  less.
+- **Housings searched best first** (ADR-437, ADR-678). When the part with the
+  smaller box has more than six faces, the other side's faces are measured
+  face against face in order of a lower bound and only while the bound is
+  below the least distance found — the same answer, digit for digit. A
+  touching pair's `common` is first run on both solids cut to their box
+  overlap grown 1 mm; the cut decides only a zero (ADR-438). Every box here
+  is the geometry's, without tolerances, because a panel's boss seam can
+  carry a tolerance that makes its toleranced box unbounded; a component
+  whose largest tolerance exceeds 1 mm is culled on its geometry box too.
 
 ### Panels: wrapped, clear, thin and held (ADR-633, ADR-634, ADR-636)
 
 `fit.panels` judges every component declared `role="panel"` against the
-components its `covers=[...]` names -- never against whatever lies near its
-box, and never because of its colour: `appearance="shell"` is a palette tone
-only. The assembly worker measures each panel at the solved pose
-(`/panels` in `inspect scope=clearance`): about 400 points of its faces,
-their distance to what it covers and to what it is welded to (the inner
-face's p10/median/p90/max gap, and that gap summed into `air_volume_mm3`),
-`egg_ratio` = 1 + air / covered volume, its wall by rays from its faces
-inward (p10/median/p90), `coverage` (of the covered parts' outward-facing
-surface, the share a ray along its normal finds hidden by a panel), its box,
-and a few of its points. The block then reads the pair rows at rest and
+components its `covers=[...]` names — never against whatever lies near its
+box, and never because of its colour. The assembly worker measures each
+panel at the solved pose (`/panels` in `inspect scope=clearance`): about 400
+points of its faces and their distance to what it covers and to what it is
+welded to (the inner face's p10/median/p90/max gap, summed into
+`air_volume_mm3`), `egg_ratio` = 1 + air / covered volume, its wall by rays
+inward (p10/median/p90), `coverage` (the share of the covered parts'
+outward-facing surface a ray along its normal finds hidden by a panel), its
+box and a few of its points. The block then reads the pair rows at rest and
 through every swept joint, the fixed joints, and each `part.panel` piece's
-own facts (its clearance, radius, group and piece):
+own facts:
 
 | finding | when | fails the fit |
 |---|---|---|
@@ -2926,208 +2767,144 @@ own facts (its clearance, radius, group and piece):
 | `unseated` | a closing panel (`closes=`) comes no closer than 1 mm to what it closes (the pair rows' distance) | yes |
 | `open seam` | a closing panel's seam -- the surface of what it closes within 15 mm of it whose outward normal points at it (cos ≥ 0.7: a rim, a jamb face; not a thin lip's underside) -- stands off it more than 2 mm at the median, or there is none | yes |
 
-**A closing panel** (ADR-666) -- a lid, a door, an enclosure wall, declared
-`role="panel", covers=[...], closes=[tub]` -- closes a volume, so it is far
-from what it covers by design: `floating` and `egg` are not judged (its
-`floating_at_mm` is `null`), and `unseated` and `open seam` are. The worker
-spreads 3,000 points over the closed frame's triangles near the panel's box
-(`CadexPanels.sample_triangles`) and reads `seam_samples`,
+**A closing panel** (ADR-666) — a lid, a door, an enclosure wall, declared
+`role="panel", covers=[...], closes=[tub]` — is far from what it covers by
+design: `floating` and `egg` are not judged (`floating_at_mm` is `null`),
+`unseated` and `open seam` are. The worker spreads 3,000 points over the
+closed frame's triangles near the panel's box
+(`CadexPanels.sample_triangles`) and reports `seam_samples`,
 `seam_gap_median_mm`/`_p90_mm`/`_max_mm` and `seat_gap_mm`
-(`CadexPanels.seam_statistics`); the block reports `closes`, `seat_gap_mm`
-(from the pair rows) and those. A lid seated true reads 0 at the median; one
-hinged open along a side reads about half the band; a tub's walls beside the
-lid's edge do not face it, and its floor, deeper than the band, is not rim.
-A tray shallower than 15 mm would read its floor as an open seam. Colliding,
-in motion, mounting, wall, bed and fastener checks are as for any panel.
+(`CadexPanels.seam_statistics`). A lid seated true reads 0 at the median. A
+tray shallower than 15 mm would read its floor as an open seam.
 
-Beside the findings each row carries `closest_in_motion` (the nearest a
-moving part passes it), `screws`/`held_by`, `farthest_from_fastener_mm` and
-`seam_gap_mm`; the block a `motion_note` naming the joints not swept to
-completion, through which motion clearance is unmeasured. A failing panel
-fails the fit: `fit.verdict` is `fail` and `fit.panel_failing_count` counts
-them (the pair count `failing_count` is unchanged), and the progress line
-adds `panels: N of M failing, K reported`. Rows are failing first; the build
-reply's view cuts each list to 12. A revision accepted before ADR-634 has no
-`/panels`: its rows say `"gap": "unmeasured"` and the block a `gap_note`.
-
-Measured on the probes (`docs/probes/panels/`): the electronics cover over a
-2S pack and an ESP32 comes no nearer than 1.3 mm, with a 15 mm skirt and six M2s;
-the gantry enclosure's eight pieces pass with egg ratios 1.4-1.6 and 0.6 mm
-seams; the leopard's four covers pass at p90 gaps of 3.5-10.0 mm and egg
-ratios 1.08-1.13, after the check had named the front cover through the
-neck drive and the head cover struck by the nodding neck link.
+Each row also carries `closest_in_motion`, `screws`/`held_by`,
+`farthest_from_fastener_mm` and `seam_gap_mm`; the block carries a
+`motion_note` naming the joints not swept to completion, through which
+motion clearance is unmeasured. A failing panel fails the fit: `fit.verdict`
+is `fail`, `fit.panel_failing_count` counts them (the pair count
+`failing_count` is unchanged), and the progress line adds `panels: N of M
+failing, K reported`. Rows are failing first; the build reply cuts each list
+to 12. A revision accepted before ADR-634 has no `/panels`: its rows say
+`"gap": "unmeasured"` and the block carries a `gap_note`. Probe evidence is
+in `docs/probes/panels/`.
 
 ## Sampled hinge and slider fit (ADR-349, ADR-351)
 
-`assembly.assembly(..., sweep_step_degrees=5)` requests an advisory exact-solid
-sweep of every limited hinge when the assembly builds, and
-`assembly.assembly(..., sweep_step_mm=1)` the same for every limited slider;
-either or both may be declared. The optional declarations enter the definition;
-omitting both preserves legacy definitions. The producer stores `clearance_sweep`
-on the assembly output in the accepted result **whether or not a step is
-declared** (ADR-367), so coverage is always reported: an assembly that declares
-neither step names every limited joint `incomplete` with the declaration it is
-missing, and one with no limited joint at all reports complete coverage of an
-empty set. Neither case touches geometry. Opening a retained result does
-not recompute it. `inspect(scope="clearance", path="/clearance_sweep")` and
-`cadex clearance --sweep` read it unchanged (ADR-350), and the CLI's build
-replies carry it summarised as `fit.sweep` beside the static block, with its
-own verdict (ADR-366, `docs/CLI.md`); neither `incomplete` nor an empty
-`complete` is a pass.
+`assembly.assembly(..., sweep_step_degrees=5)` requests an advisory
+exact-solid sweep of every limited hinge when the assembly builds, and
+`sweep_step_mm=1` the same for every limited slider; either or both may be
+declared, and they enter the definition. The worker stores
+`clearance_sweep` on the assembly output **whether or not a step is
+declared** (ADR-367), so coverage is always reported. Opening a retained
+result does not recompute it. `inspect(scope="clearance",
+path="/clearance_sweep")` and `cadex clearance --sweep` (which writes
+`docs/clearance-sweep.md`; exit 0 means the report was written) read it
+unchanged (ADR-350) and never rebuild; build replies summarise it as
+`fit.sweep` with its own verdict (ADR-366, ADR-378; `docs/CLI.md`). Complete
+coverage means measurements exist, **not** that fit passes.
 
-For each limited, unsuppressed revolute or slider joint in a rigid tree, the
-producer moves its descendant solids about, or along, the solved connector +Z
-axis, holding other joint coordinates at their solved values. Samples run from
-lower to upper limit in the joint's own unit, including both endpoints, at no
-more than the declared step (at least 0.000001 degree or mm). Each joint entry
-names its `kind`, its `unit` (`degrees` or `mm`), the `step` it used, its
-`range_<unit>` and `initial_<unit>`. Each pair reports minimum distance,
-maximum common volume, and the first sample at distance <= 0.001 mm
-(`first_contact_degrees` or `first_contact_mm`, null if absent). Contact at the
-lower limit is reported there. Sampling cannot exclude contact between samples
-and is not a continuous collision proof. Every pair the sweep measures
-exactly must first agree at the solved pose with static clearance within
-0.0001 mm and 0.001 mm³.
+**What is swept.** For each limited, unsuppressed revolute or slider joint
+in a rigid tree, the worker moves the descendant solids about or along the
+solved connector +Z axis, other joints held at their solved values, from
+lower to upper limit at no more than the declared step (at least 0.000001
+degree or mm), both endpoints included. Sampling is not a continuous
+collision proof. Every exactly measured pair must first agree at the solved
+pose with the static row within 0.0001 mm and 0.001 mm³.
 
-Only the pairs a joint moves are measured, and only the near ones exactly
-(ADR-419). A pair rigid for this sweep is its static solved-pose
-measurement unchanged — a bound, when that static value is one (ADR-423) —
-and is counted, not listed (ADR-692, below). A statically bounded pair the joint moves near
-is measured exactly, and must be no closer at the solved pose than its bound. A moving pair proved more than 10 mm apart at every
-sample -- or more than its declared `clearances=` floor, when that is larger
--- is culled: its minimum distance is the least of those
-per-sample lower bounds, not a measurement (published as the joint's
-`culled_minimum_distance_mm` across its culled pairs, ADR-692); its maximum common volume is 0.0
-and it has no first contact, both proved by the bounds. A lower bound can
-only make a fit verdict stricter. Each sample's bound (ADR-686) is the
-largest of: the gap between the two parts' boxes there, each moving part's
-box taken around its faces' geometry boxes carried by its motion; the gap
-between their extents along 13 directions (the axes and the diagonals of a
-cube); and, for every sample of the pair already measured, that distance
-less the furthest either part travels between the two poses -- face by face
-when neither part can lie inside the other, so a face near the axis that
-barely moves bounds its neighbourhood tightly while a far one is far anyway.
-Each component's BREP is serialised once per assembly, not once per joint.
-An exact swept distance is measured between the two parts' boundary shells
-when no solid of either can lie inside the other, which is the same number
-at a fraction of the cost (ADR-425). The solids are measured instead when a
-vertex of one lies on or inside the other, or the shells come within
-0.001 mm; shells exactly 0.0 apart are not re-measured (ADR-437).
+**The joint row** names its `kind`, `unit` (`degrees` or `mm`), the `step`
+used, `range_<unit>`, `initial_<unit>`, its timings and its `status`:
 
-A limited joint whose kind's step is undeclared (a slider under
-`sweep_step_degrees` alone, or a hinge under `sweep_step_mm` alone) is
-reported `incomplete` with that reason, never silently skipped, so a design
-that declares one step, or neither (ADR-367), still learns which limited
-joints went unswept. An
-open-ended limit (one endpoint `None`) has no bound to sweep and is reported
-the same way.
+| status | when |
+|---|---|
+| `complete` | swept through its whole range |
+| `incomplete`, with a `reason` | its kind's step is undeclared (a slider under `sweep_step_degrees` alone); a limit is open-ended or absent on a joint that can move — a wheel, a free spinner — naming the limit to declare (ADR-375); its budget ran out or the assembly is unsolved; a kind other than a hinge or slider (cylindrical included) or unsupported geometry; a loop that stopped closing, or a loop none of whose joints declares limits |
+| `skipped` | a suppressed limited joint: the solver ignores it, no child runs, and it does not make coverage incomplete (ADR-371). An assembly whose limited joints are all suppressed reads `unavailable`, never a pass |
+| `passive` | moved by other joints' sweeps, not a coverage hole: a loop joint with no limits of its own (`driven_by` the loop's inputs), an unlimited motor or pulley a coupling ties to a limited joint (`driven_by`), or a coupling joint (`gears`, `belt`, `screw`, `rack_pinion`) itself (ADR-644) |
 
-A joint that **can move and declares no limits** — a continuously
-rotating wheel, a free spinner, a loop-closure hinge — is a coverage hole too
-(ADR-375), and reads `incomplete` with the limit to declare named per kind.
-A joint **on a closed loop** is swept from the loop's inputs (ADR-621).
-Each limited `revolute` or `slider` of the loop -- the joint its actuator
-turns -- is driven through its range at the declared step, and at every
-sample every other joint of the loops that share a joint with it is solved
-again so each closure meets (a damped Gauss-Newton continued from the
-solved pose a degree or a millimetre at a time, so the mechanism stays on
-the branch it was assembled on); the loop's other limited joints -- its
-other drives -- hold their solved value unless holding one would lock this
-one, and joints off the loop keep theirs. Each closed pose is measured with
-exact solids as a serial sweep is. The row adds `loop`, `held`, `passive`,
-`reached_degrees`/`reached_mm` and `unclosed`: a sample the loop cannot
-close -- a dead point, a link too short for the range -- is listed with its
-value and residual, the samples past it are not tried, and the joint is
-`incomplete` naming where the loop stopped closing (narrow the limit to the
-reached range). A loop joint with no limits of its own is `passive`, moved
-by the inputs (`driven_by`) and not a coverage hole; a loop with no limited
-joint at all keeps every joint `incomplete`, naming the loop. A joint on no
-loop sweeps as before even when the graph has loops elsewhere: each loop
-lies wholly inside or wholly outside the subtree it turns.
-Before this it was dropped before it could be named, so a chassis whose one
-limited hinge swept clean read `complete` beside two wheels measured at the
-solved pose and nowhere else. Two joints genuinely hold no range and stay out
-of the report entirely: a `fixed` joint, whose pair the attachment block
-measures instead, and a suppressed joint the assembly also left unlimited.
+A `fixed` joint (its pair is in `attachments`) and a suppressed joint left
+unlimited have no row. The whole sweep reads `unavailable`, with a reason,
+when nothing was published (a revision accepted before ADR-367). An
+assembly with no limited joint publishes complete coverage of an empty set.
 
-A **suppressed** limited joint is a different statement and carries a
-different status (ADR-371). The solver ignores it, so it is not an edge of the
-mechanism and holds no range to move through: its row is `skipped` with that
-reason, no subprocess runs for it, and the assembly's coverage stays
-`complete`. It is not missing coverage and nothing declares it back. The
-CLI's `fit.sweep` block counts it as `joints_skipped`, apart from
-`joints_complete`, and judges its verdict over the joints that are left — so
-one suppressed joint beside a swept one no longer holds the block at
-`incomplete`. An assembly whose limited joints are *all* suppressed has rows
-and still judges none: that reads `unavailable` with its own reason, never a
-pass, because a mechanism that declares motion and then holds it still has
-not been swept.
+**The pair rows** (ADR-374, ADR-419, ADR-692). Each reports its minimum
+distance, maximum common volume and first contact — the first sample from
+the lower limit within 0.001 mm (`first_contact_degrees` /
+`first_contact_mm`, null if none). A joint's `pairs` lists only the pairs it
+moves that were measured exactly, each `relative_motion: true` (one side in
+the moving subtree, the other not): every contact, overlap and gap below a
+floor the motion makes is among them. The rest are counted on the joint row:
+`pairs_rigid` (the joint cannot change them; their numbers are the static
+rows at `/pairs`), `pairs_culled` (moving pairs proved past 10 mm, or past
+their declared floor, at every sample) with `culled_minimum_distance_mm`,
+the least of their lower bounds, and `pairs_moving`, kept plus culled. A
+lower bound can only make a verdict stricter.
 
-Every swept pair row carries `relative_motion` (ADR-374): true when one side
-sits inside the joint's moving subtree and the other does not, which is the
-only case the joint can change. A pair with both sides on the same side of it
-is rigid for this sweep and repeats its solved-pose measurement at every
-sample, so a horn welded to the link it turns with reads 0.0 mm apart at
-every angle. That is the weld, not the motion, and it is why the CLI's
-`fit.sweep` joint rows read their minimum distance, maximum common volume and
-first contact over the moving pairs alone, counting them as `pairs_moving`.
-What the gap under a weld means belongs to the `attachments` report (ADR-370),
-which measures it at the solved pose.
+**Closed loops** (ADR-621). A limited revolute or slider on a loop — the
+joint its actuator turns — is driven through its range, and at every sample
+every other joint of the loops sharing a joint with it is re-solved
+(damped Gauss-Newton continued from the solved pose, so the mechanism stays
+on its assembled branch); the loop's other limited joints hold their solved
+value unless holding one would lock this one. The row adds `loop`
+(`closures`, `joints`), `held`, `passive`, `free_freedoms`,
+`reached_degrees`/`reached_mm`, `unclosed` (each sample that did not close,
+with its value and `residual_mm`; the samples past the first are not tried),
+`worst_closure_residual_mm` and `closure_tolerance_mm`; `sample_count`
+counts closed samples. A pair's `relative_motion` is then true when the two
+bodies move differently at some closed sample. A loop with no limited joint
+keeps every joint `incomplete`, naming the loop. A joint on no loop sweeps
+as a serial one even when the graph has loops elsewhere. A swept joint
+moves every coordinate a coupling ties to it; a limited follower holds
+(ADR-644).
 
-**A joint publishes the rows a verdict can rest on, and counts the rest**
-(ADR-692). Its `pairs` are the pairs it moves that were measured exactly
-(each `relative_motion: true`): every contact, overlap and gap below a floor
-the motion makes is among them. A rigid pair is counted in `pairs_rigid`,
-not listed: its row only repeated the static row at `/pairs`, which judges
-it once, so an overlap at the solved pose fails there and not again under
-every joint. A moving pair the bounds cull (below) is counted in
-`pairs_culled`, with `culled_minimum_distance_mm` the least of their lower
-bounds: each is past 10 mm and past its own floor, so none can touch or fail.
-`pairs_moving` is the kept rows plus the culled ones. On `panel-cat-4` (307
-components, 17 swept joints) every joint had listed all 46,971 pairs, 168 MB
-of a 194 MB `result.json`; it now lists 2 to 13 per joint, 35 kB in all. A
-revision accepted before this lists every pair, and the CLI reads both.
+**Older revisions.** Every key above that a later ADR added is absent on a
+revision accepted before it, and a reader treats the row as the older shape:
+an absent `relative_motion` counts as moving, an absent `culled` as exact,
+and a revision before ADR-692 lists every pair under every joint.
 
-Each joint's native queries run in a fresh FreeCAD subprocess with a 90-second
-timeout, up to four at once (ADR-622); the assembly shares 180 seconds of
-sweep budget, or a quarter of the run's own budget where that is more, up to
-900 s (ADR-690: a 2400 s project sweeps for 600 s), cut to what the run's own wall budget leaves after a reserve
-for the outputs that follow (20 s plus a quarter of the time the build has
-taken), so a first sweep of a loop cannot turn an accepted build into a
-timed-out one. Preparation and
-process cleanup add overhead. At most 73 poses are allowed per joint, and
-2,000 moving pairs that come within reach of each other: a moving pair whose
-boxes stay apart at every sample is bound by them and does not count, so a
-screw on a thigh far from the chassis costs nothing (ADR-690), up to 40,000
-moving pairs in all. Rigid pairs are copied, not measured, and do not count
-(ADR-426). Reports carry the limits and measured elapsed seconds. Timeout, malformed
-or unsupported geometry, limited joints of any other kind (cylindrical included),
-flexible components, coupled/static-joint graphs, and unsolved
-assemblies produce explicit `incomplete` coverage and a reason.
+**Budgets** (ADR-622, ADR-690, ADR-820). Each joint's native queries run in
+a fresh FreeCAD child process, up to four at once. The sweep's total is
+180 s, or a quarter of the run's own budget where that is more, up to
+900 s, cut to what the run's wall budget leaves after a reserve for the
+outputs that follow (20 s plus a quarter of the time the build has taken),
+so a sweep cannot turn an accepted build into a timed-out one. Each joint's
+child gets `max(90 s, total / 3)` (ADR-820: 90 s on the default 180 s
+sweep, 300 s on a 900 s one), and no more than what is left of the total
+when it starts; the report carries `per_joint_seconds` and
+`total_seconds`. Both follow the project's budget
+(`cadex budgets --set timeout_seconds=…`). At most 73 poses per joint and
+2,000 moving pairs within reach of each other (a moving pair whose boxes
+stay apart at every sample costs nothing), 40,000 moving pairs in all; rigid
+pairs are copied, not measured (ADR-426). A joint that runs out is
+`incomplete` with its reason, and keeps the pairs it finished in the fit
+cache, so the next build carries on from there.
+
+**How a sample is bounded** (ADR-686). A sample's lower bound is the largest
+of: the gap between the two parts' boxes there (each moving part's box
+taken around its faces' geometry boxes carried by its motion); the gap
+between their extents along 13 directions (the axes and the cube
+diagonals); and, for each sample of the pair already measured, that distance
+less the furthest either part travels between the two poses — face by face
+when neither can lie inside the other. Samples are measured least bound
+first, and a sample whose bound exceeds both the least distance found and
+the 0.001 mm contact tolerance is skipped: it cannot change the minimum, the
+largest common volume or the first contact. A pair already at 0.0 (to
+1e-9 mm) with a known first contact is asked only for its common volume at
+later samples. Each component's BREP is serialised once per assembly.
 
 **A rebuild builds and measures only what changed** (ADR-622, ADR-782).
 Each part output's BREP and facts are kept in
-`script_artifacts/part-cache/` by the part's content identity and the
-engine's fingerprint, so an edit to one foot rebuilds that foot (and what
-is built from it) and reads every other part back, byte for byte; a part
-holding a `cable`, `bundle` or `solder` is always rebuilt. Every exact static pair
-and every swept pair is kept in the project's `script_artifacts/fit-cache/`,
-keyed by the SHA-256 of both world solids' BREPs (placement included), the
-pair's motion at every sample, and the engine's measuring code and kernel
-version; a later build of the same two solids in the same motion reads the
-earlier numbers back, every digit, and a part that moved or changed is
-measured afresh. A joint sweep that runs out of time keeps the pairs it
-finished, so the next build carries on from there. Within a pair, samples
-are measured least bound first (ADR-686), and a sample whose bound already
-exceeds both the least distance measured and the 0.001 mm contact tolerance
-is not measured: it can change none of the three numbers. A pair already
-at 0.0 (to 1e-9 mm) whose first contact is known is asked only for its
-common volume at later samples, and a sample after one that shared volume is asked for its
-volume first: solids sharing more than 1 mm³ are 0.0 apart. Every exact row
-is therefore the minimum, the largest common volume and the first contact
-over every sample, as measuring each would give; on `panel-cat-2` that is
-1,482 distance queries where nearest-box-first made 4,402, the far and
-costly ones above all. No samples means no claim about fit. Joints
-without limits are outside coverage. A sweep failure never rejects acceptance.
-The checker uses copied solids, never changes live placements, and never
-rebuilds historical scripts. It needs no dynamics declaration or MuJoCo run.
+`script_artifacts/part-cache/<fingerprint>/` by the part's content identity;
+the fingerprint covers the engine's `.py` and `.json` files, the kernel and
+OCCT versions, the attempt's assets and the request's inputs, a new
+fingerprint deletes the old folders, and the cache keeps 1 GB, least
+recently used first. An edit to one foot rebuilds that foot (and what is
+built from it) and reads every other part back byte for byte; a part holding
+a `cable`, `bundle` or `solder` is always rebuilt. Every exact static and
+swept pair is kept in `script_artifacts/fit-cache/`, keyed by the SHA-256 of
+both world solids' BREPs (placement included), the pair's motion at every
+sample, and the engine's measuring code and kernel version. Either cache is
+a cache: unreadable, it is a miss.
+
+The checker uses copied solids, never changes live placements, never
+rebuilds historical scripts, and needs no dynamics declaration or MuJoCo
+run. A sweep failure never rejects acceptance.
