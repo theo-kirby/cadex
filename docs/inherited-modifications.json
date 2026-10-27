@@ -38,6 +38,10 @@
           "notice": "comment"
         },
         {
+          "path": "cMake/FreeCAD_Helpers/SetupSwig.cmake",
+          "notice": "comment"
+        },
+        {
           "path": "src/App/ApplicationDirectories.cpp",
           "notice": "comment"
         },

@@ -45948,3 +45948,64 @@ skipped; `pytest cli/tests` 53 passed (with the built engine);
 `pixi run stage-engine` then the packaged gate
 (`test_cadexd_lifecycle.py` against the payload) 24 passed. Staged payload
 2,208,482,000 bytes.
+
+## ADR-831 — pixi carries no GUI-era dependency (2026-10-27)
+
+**Context.** `pixi.toml` still listed what the deleted FreeCAD GUI and the
+deleted workbenches needed, and its own comment said a full re-solve "fails
+on its own today" (qt6-main/occt drift against opencv, vtk, smesh). The
+audit deferred since orun2 (FREECAD.md §2) is this one.
+
+**Decision.** Remove, from `pixi.toml`, 72 entries:
+- never needed headless: `coin3d`, `pivy`, `pyside6`; on both Linux targets
+  `qt6-wayland`, `libspnav`, the `xcb-util-cursor ==0.1.5` FreeCAD#26726
+  hack, `xorg-xproto` and every CentOS 7 Mesa/X11/Xvfb sysroot package;
+- needed by no kept module (no import in `src/`, `cli/`, `tools/`,
+  `package/` or a test, no CMake lookup): `ifcopenshell`, `opencamlib`,
+  `xlutils`, `pycollada`, `opencv`, `matplotlib`, `graphviz`, `sympy`,
+  `pandas`, `nine`, `debugpy`, `conda-devenv`, `docutils`;
+- `pcl`, which was present only because `CMakePresets.json` set
+  `FREECAD_USE_PCL=ON` and the root `CMakeLists.txt` then ran
+  `find_package(PCL)` for nothing to link: no Points or ReverseEngineering
+  module remains. `SetupPCL.cmake`, its call, the option and both preset
+  entries go (with the distro preset's dead `FREECAD_USE_EXTERNAL_PIVY`).
+
+`SetupSwig.cmake` loses its SWIG/pivy runtime-compatibility probe, which
+without pivy can only warn; `find_package(SWIG)` stays because `src/Base`
+builds its SWIG runtime glue from it. The rattler-build recipe drops the
+same packages from its build/host/run lists, and its `pixi.toml` the
+`xcb-util-cursor` hack and the DMG-only `dmgbuild` and
+`pyobjc-framework-Quartz`; both lock files were re-locked.
+
+**Kept, and why.** `qt6-main`: `src/App` and `src/Base` link QtCore, Xml,
+Concurrent and Network, and `SetupQt.cmake` asks for LinguistTools and
+(developer tests) Test. `vtk` and `hdf5`: external SMESH links them.
+`swig`: above. `calculix` (analysis runs it as a subprocess),
+`pythonocc-core`, `lark`, `ply`, `six`, `lxml`, `blinker`, `defusedxml` and
+`requests` were not in this audit's scope and stay; `gmsh` and `olefile` in
+the recipe's run list likewise. The payload's prune lists and leak gate
+(ADR-531, ADR-532) stay: they pin the payload's contents whatever the
+environment holds. `training/` and `analysis/` requirements are untouched.
+
+**Consequences.**
+- `pixi install` re-solved incrementally with **no version change on any
+  platform** (linux-64 447 → 333 packages, linux-aarch64 438 → 324,
+  osx-64/arm64 350 → 270, win-64 322 → 221; the rattler lock likewise, every
+  removal and no change). `occt` stays 7.8.1 and `qt6-main` 6.8.3.
+- A from-scratch `pixi lock` of the new manifest (no lock to prefer) now
+  succeeds, with `occt`, `qt6-main`, `vtk`, `smesh`, `python` and `numpy`
+  unchanged and only leaf packages (`fmt`, `gtest`, `scipy`, `pybind11`,
+  certificates…) newer. That fresh lock was not adopted. The manifest is
+  re-solvable again, so moving `mujoco` to conda-forge `mujoco-python` is
+  now possible; it is not done here (ADR-076, ADR-084).
+- The development environment shrinks from 5,648,091,887 B to
+  4,376,495,243 B (both with the engine installed).
+- **The staged payload shrinks from 2,208,482,000 B to 1,861,510,856 B
+  (−346,971,144 B, −15.7%)**: the environment no longer holds libraries the
+  payload copied in and nothing pruned.
+
+**Verification** (fresh `build/release`): `pixi run build-release` ok;
+ctest 1,524/1,524 passed (run before `install-release`, see ADR-830);
+`pixi run test-engine` 157 passed, 3 skipped; `pytest cli/tests` 53
+passed; `pixi run stage-engine` and the packaged gate 24 passed. The
+rattler-build package itself was not built.

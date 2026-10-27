@@ -144,7 +144,6 @@ macro(InitializeFreeCADBuildOptions)
     option(BUILD_MEASURE "Build the FreeCAD Measure module" ON)
     option(ENABLE_DEVELOPER_TESTS "Build the FreeCAD unit tests suit" ON)
 
-    option(FREECAD_USE_PCL "Build the features that use PCL libs" OFF)
 
     if(BUILD_MESH_PART)
         set(FREECAD_USE_SMESH ON)

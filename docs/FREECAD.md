@@ -59,10 +59,13 @@ lists, Start, Help and Show, are deleted and stay here as the record:
 - `src/3rdParty`, `cMake`, `pixi.toml` — build substrate (OCCT and Qt6
   come from pixi/conda deps). `src/3rdParty` holds eleven trees; the
   GUI-era `3Dconnexion` SpaceMouse SDK and `OpenGL` `glext.h`, which no
-  CMake file built, are deleted with the 3Dconnexion options (ADR-632). `pixi.toml` still lists GUI-era packages the
-  headless build does not use (`coin3d`, `pivy`, `pyside6`, `opencv`,
-  `pcl`); the payload prunes what reaches it (ADR-531, ADR-532), and the
-  environment's own audit is deferred.
+  CMake file built, are deleted with the 3Dconnexion options (ADR-632).
+  `pixi.toml` carries no GUI-era package since ADR-831: `coin3d`, `pivy`,
+  `pyside6`, `qt6-wayland`, `libspnav`, the CentOS 7 Mesa/X11/Xvfb sysroot
+  sets, the `xcb-util-cursor` pin, `opencv`, `pcl` (with `SetupPCL` and
+  `FREECAD_USE_PCL`) and the packages no kept module imports went, with no
+  version change to anything kept. `qt6-main` stays: App and Base link
+  QtCore, Xml, Concurrent and Network. The payload's prunes stay as a gate.
 - **One shipping pypi wheel**: `mujoco == 3.10.0`, the
   dynamics kernel. It is not inherited FreeCAD substrate and it is not a
   build-only dependency — it is redistributed **inside the engine payload**,
