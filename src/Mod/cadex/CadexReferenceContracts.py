@@ -24,39 +24,6 @@ class ReferenceContractError(RuntimeError):
         super().__init__(message)
 
 
-def interface_selection_schema() -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": {
-            "type": {
-                "const": "published_interface",
-                "description": (
-                    "Bind to a stable semantic interface declared by a "
-                    "scripted model, not to a transient FaceN/EdgeN name."
-                ),
-            },
-            "interface_name": {
-                "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9_]*$",
-                "description": "Exact published interface name from model context.",
-            },
-        },
-        "required": ["type", "interface_name"],
-        "additionalProperties": False,
-    }
-
-
-def set_contract(obj: Any, domain: str, payload: dict[str, Any]) -> None:
-    if PROP_CONTRACT not in list(getattr(obj, "PropertiesList", []) or []):
-        obj.addProperty("App::PropertyString", PROP_CONTRACT, "Cadex References")
-    contract = {
-        "schema": CONTRACT_SCHEMA,
-        "domain": str(domain),
-        **dict(payload),
-    }
-    setattr(obj, PROP_CONTRACT, json.dumps(contract, sort_keys=True, separators=(",", ":")))
-
-
 def read_contract(obj: Any) -> dict[str, Any] | None:
     if PROP_CONTRACT not in list(getattr(obj, "PropertiesList", []) or []):
         return None
@@ -229,37 +196,6 @@ def referenced_model_ids(contract: dict[str, Any]) -> set[str]:
 
     walk(contract)
     return found
-
-
-def scripted_model_dependencies(obj: Any) -> list[str]:
-    """Find scripted models in the native dependency ancestry of ``obj``."""
-
-    candidates = [obj, *list(getattr(obj, "OutListRecursive", []) or [])]
-    seen: set[int] = set()
-    model_ids: set[str] = set()
-    for candidate in candidates:
-        if candidate is None or id(candidate) in seen:
-            continue
-        seen.add(id(candidate))
-        published = published_object(candidate)
-        if published is not None:
-            model_id = str(
-                getattr(published, publication.PROP_MODEL_ID, "") or ""
-            )
-            if model_id:
-                model_ids.add(model_id)
-        contract = read_contract(candidate)
-        if contract is not None:
-            model_ids.update(referenced_model_ids(contract))
-    return sorted(model_ids)
-
-
-def dependency_records(model_ids: list[str]) -> list[dict[str, str]]:
-    return [
-        {"type": "scripted_model", "model_id": model_id}
-        for model_id in sorted(set(model_ids))
-        if model_id
-    ]
 
 
 def validate_removed_interfaces(
@@ -623,105 +559,6 @@ def native_part_carrier_expectations(carriers: list[Any]) -> list[dict[str, Any]
     return expectations
 
 
-def capture_native_part_carriers(carriers: list[Any]) -> list[dict[str, Any]]:
-    """Capture immutable shape handles for provider-thread validation."""
-
-    return [
-        {
-            "object": str(getattr(obj, "Name", "") or ""),
-            "type": str(getattr(obj, "TypeId", "") or ""),
-            "state": [str(value) for value in list(getattr(obj, "State", []) or [])],
-            "_shape": getattr(obj, "Shape", None),
-        }
-        for obj in _native_part_carriers(carriers)
-    ]
-
-
-def native_part_carrier_facts(
-    snapshots: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Validate detached native Part shape handles on the provider worker."""
-
-    facts: list[dict[str, Any]] = []
-    for snapshot in snapshots:
-        item: dict[str, Any] = {
-            "object": str(snapshot.get("object") or ""),
-            "type": str(snapshot.get("type") or ""),
-            "state": list(snapshot.get("state") or []),
-        }
-        try:
-            shape = snapshot.get("_shape")
-            is_null = shape is None or bool(shape.isNull())
-            item.update(
-                {
-                    "shape_null": is_null,
-                    "shape_valid": False if is_null else bool(shape.isValid()),
-                    "shape_type": None if is_null else str(shape.ShapeType),
-                    "solids": 0 if is_null else len(list(shape.Solids or [])),
-                    "faces": 0 if is_null else len(list(shape.Faces or [])),
-                    "edges": 0 if is_null else len(list(shape.Edges or [])),
-                    "vertices": 0 if is_null else len(list(shape.Vertexes or [])),
-                    "volume_mm3": 0.0 if is_null else float(shape.Volume),
-                }
-            )
-        except Exception as exc:
-            item["inspection_error"] = str(exc)
-        facts.append(item)
-    return facts
-
-
-def _validate_native_part_carriers(
-    snapshots: list[dict[str, Any]],
-    expectations: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Reject invalid downstream Part features before regeneration commits."""
-
-    expected_by_name = {
-        str(item.get("object") or ""): item
-        for item in expectations
-        if isinstance(item, dict) and item.get("object")
-    }
-    checked = native_part_carrier_facts(snapshots)
-    failures: list[dict[str, Any]] = []
-    for item in checked:
-        state_values = list(item.get("state") or [])
-        before = expected_by_name.get(str(item.get("object") or ""))
-        retained_content = True
-        if before is not None:
-            expected_kind = str(before.get("expected_content_kind") or "topology")
-            if expected_kind == "solid":
-                retained_content = int(item.get("solids", 0) or 0) > 0
-            elif expected_kind == "face":
-                retained_content = int(item.get("faces", 0) or 0) > 0
-            elif expected_kind == "edge":
-                retained_content = int(item.get("edges", 0) or 0) > 0
-            elif expected_kind == "vertex":
-                retained_content = int(item.get("vertices", 0) or 0) > 0
-            else:
-                retained_content = any(
-                    int(item.get(field, 0) or 0) > 0
-                    for field in ("solids", "faces", "edges", "vertices")
-                )
-        item["pre_regeneration_shape"] = before
-        item["retained_shape_content"] = retained_content
-        item["ok"] = bool(
-            item.get("shape_null") is False
-            and item.get("shape_valid") is True
-            and not any("Invalid" in value for value in state_values)
-            and not item.get("inspection_error")
-            and retained_content
-        )
-        if not item["ok"]:
-            failures.append(item)
-    if failures:
-        raise ReferenceContractError(
-            "A downstream native Part feature became invalid after scripted-model "
-            "regeneration; the update was not accepted.",
-            details={"invalid_part_features": failures},
-        )
-    return {"ok": True, "checked": checked}
-
-
 def _is_derived_analysis_or_manufacturing_object(obj: Any) -> bool:
     type_id = str(getattr(obj, "TypeId", "") or "").lower()
     if any(
@@ -741,10 +578,3 @@ def mark_stale(obj: Any, revision: str, reason: str) -> None:
     setattr(obj, PROP_STALE_REASON, reason)
     setattr(obj, PROP_SOURCE_REVISION, revision)
 
-
-def validate_native_part_refresh(
-    snapshots: list[dict[str, Any]], expectations: list[dict[str, Any]]
-) -> dict[str, Any]:
-    """Validate recomputed detached Part carriers against preflight facts."""
-
-    return _validate_native_part_carriers(snapshots, expectations)

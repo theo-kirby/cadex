@@ -16,13 +16,9 @@ import ast
 from dataclasses import dataclass
 import hashlib
 import json
-from pathlib import Path
 import re
 from typing import Any, Mapping
 
-PROGRAM_SCHEMA = "cadex-program-v2"
-# The xscript engine reuses this identical v2 program shape; only the schema
-# tag differs so a program manifest can be attributed to its authoring engine.
 XSCRIPT_PROGRAM_SCHEMA = "cadex-xscript-program-v2"
 PROJECT_SCRIPT_SCHEMA = "cadex-xscript-project-v1"
 MAX_SOURCE_BYTES = 256_000
@@ -453,113 +449,6 @@ def project_script_revision(
     return hashlib.sha256(encoded).hexdigest()
 
 
-def get_xscript_pack(workbench: str | None) -> XScriptWorkbenchPack | None:
-    return XSCRIPT_WORKBENCH_PACKS.get(str(workbench or ""))
-
-
-#: Programs share one on-disk artifact tree; the authoring engine of each
-#: program is recorded in its manifest schema tag.
-_ARTIFACT_SUBDIR = "xscript"
-
-
-def is_xscript_program_manifest(manifest: dict[str, Any]) -> bool:
-    """True when a loaded program manifest was authored by the xscript engine."""
-
-    return str((manifest or {}).get("schema") or "") == XSCRIPT_PROGRAM_SCHEMA
-
-
-def _program_manifest_path(
-    project_root: str, domain: str, program_id: str
-) -> Path | None:
-    root = Path(project_root) / _ARTIFACT_SUBDIR
-    candidates = [root / domain / program_id / "program.json"]
-    if domain == "partdesign":
-        candidates.append(root / program_id / "program.json")
-        candidates.append(root / program_id / "manifest.json")
-    candidates.append(root / domain / program_id / "manifest.json")
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    return None
-
-
-def _manifest_engine(project_root: str, domain: str, program_id: str) -> str:
-    """Return "xscript" or "legacy" for one persisted program.
-
-    A program whose manifest still carries the pre-resync ``PROGRAM_SCHEMA`` tag
-    is reported as ``legacy`` so convert-on-open can retag it to the canonical
-    ``XSCRIPT_PROGRAM_SCHEMA``. An untagged/unreadable live program is treated as
-    xscript (the current engine)."""
-
-    path = _program_manifest_path(project_root, domain, program_id)
-    if path is None:
-        return "xscript"
-    try:
-        manifest = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return "xscript"
-    return "xscript" if is_xscript_program_manifest(manifest) else "legacy"
-
-
-def document_program_refs(doc: Any) -> list[tuple[str, str]]:
-    """(domain, program_id) for every published scripted program in a document."""
-
-    refs: list[tuple[str, str]] = []
-    for obj in list(getattr(doc, "Objects", []) or []):
-        properties = set(getattr(obj, "PropertiesList", []) or [])
-        if not {PROP_PROGRAM_ID, PROP_PROGRAM_DOMAIN} <= properties:
-            continue
-        program_id = str(getattr(obj, PROP_PROGRAM_ID, "") or "").strip()
-        domain = str(getattr(obj, PROP_PROGRAM_DOMAIN, "") or "").strip()
-        if program_id and domain and (domain, program_id) not in refs:
-            refs.append((domain, program_id))
-    return refs
-
-
-def document_engine(doc: Any, project_root: str) -> str:
-    """Classify a document as plain | xscript | xscript | mixed."""
-
-    refs = document_program_refs(doc)
-    if not refs:
-        return "plain"
-    engines = {
-        _manifest_engine(project_root, domain, program_id)
-        for domain, program_id in refs
-    }
-    if len(engines) == 1:
-        return next(iter(engines))
-    return "mixed"
-
-
-def retag_programs_to_xscript(
-    project_root: str, refs: list[tuple[str, str]]
-) -> dict[str, Any]:
-    """Rewrite each program manifest's schema tag to xscript in place."""
-
-    retagged: list[str] = []
-    skipped: list[str] = []
-    for domain, program_id in refs:
-        path = _program_manifest_path(project_root, domain, program_id)
-        if path is None:
-            skipped.append(program_id)
-            continue
-        try:
-            manifest = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            skipped.append(program_id)
-            continue
-        if str(manifest.get("schema") or "") == XSCRIPT_PROGRAM_SCHEMA:
-            continue
-        manifest["schema"] = XSCRIPT_PROGRAM_SCHEMA
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(
-            json.dumps(manifest, ensure_ascii=True, indent=2), encoding="utf-8"
-        )
-        tmp.replace(path)
-        retagged.append(program_id)
-    return {"retagged": retagged, "skipped": skipped}
-
-
 _BLOCKED_NAMES = frozenset(
     {
         "__import__",
@@ -854,9 +743,3 @@ def project_tool_specs() -> tuple[dict[str, Any], ...]:
         ),
     )
 
-
-def register_project_tools(registry: Any) -> None:
-    """Register the project pack's tools; the session runner executes them."""
-
-    for raw_spec in project_tool_specs():
-        registry.register_spec(raw_spec, None)

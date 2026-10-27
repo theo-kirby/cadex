@@ -45845,3 +45845,83 @@ catalog change makes a new bundle.
   it 41 staged files cover the 40-module closure. Plus `pixi run test-engine`
   (157 passed, 3 skipped), `pytest cli/tests` (53 passed), and lurcher's build
   of `script.py`, which places RS04s.
+
+## ADR-829 — Dead engine and CLI functions are deleted (2026-10-27)
+
+**Context.** An audit found top-level functions in `src/Mod/cadex/` and
+`cli/cadex_cli/` that nothing calls: leftovers of the per-domain program
+lifecycle, the shell-era publication boundary and the old tool-failure
+normaliser, each superseded by the project publisher (one program,
+`publish_project_candidate`) and kept alive only by being importable.
+
+**Decision.** They go, with the helpers, constants and imports that only
+they used (a second and third pass, until the scan found nothing new).
+1,277 lines leave 14 files; 1,175 of them are the 51 function bodies:
+
+- `CadexScriptedDomainPublication`: `delete_live_program` (76),
+  `mark_programs_stale_from_source` (54), `_property_content_sha256` (36),
+  `_delete_partdesign_program` (52); `_MAX_ROLLBACK_PROPERTY_UNCOMPRESSED_BYTES`
+  and the `hashlib`, `io.BytesIO` and `zipfile` imports.
+- `CadexScriptedPublication`: `model_publications` (46),
+  `model_publication_targets` (6), `model_parameter_object` (12),
+  `clear_implementation_pointer` (4), `group_implementation` (34),
+  `delete_implementation` (19), `retarget_references` (73),
+  `add_to_root_preserving_global` (5), `_replace_reference_value` (26);
+  `ROLE_PARAMETERS`.
+- `CadexReferenceContracts`: `interface_selection_schema` (20),
+  `set_contract` (9), `scripted_model_dependencies` (21),
+  `dependency_records` (6), `capture_native_part_carriers` (12),
+  `validate_native_part_refresh` (6), `_validate_native_part_carriers` (50),
+  `native_part_carrier_facts` (31).
+- `CadexScriptedDomains`: `get_xscript_pack` (2), `document_engine` (13),
+  `retag_programs_to_xscript` (27), `register_project_tools` (5),
+  `_manifest_engine` (16), `document_program_refs` (13),
+  `_program_manifest_path` (13), `is_xscript_program_manifest` (4);
+  `PROGRAM_SCHEMA` (`cadex-program-v2`, read by nothing), `_ARTIFACT_SUBDIR`
+  and the `pathlib.Path` import.
+- `CadexScriptedOwnership`: `delete_owned_model_objects` (9),
+  `owned_model_objects` (7), `delete_contained_objects` (23),
+  `contained_object_closure` (16).
+- `cadex_domain_worker`: `_assembly_worker_validation` (113),
+  `_build_isolated_sketch` (50), `_sketch_geometry` (60),
+  `_sketch_constraint` (12), `_sketch_vector` (7).
+- `CadexTools.normalize_tool_failure` (90); `CadexDynamics.closure_residuals`
+  (40; the build's `worst_closure_residual_mm` is computed elsewhere and
+  unchanged); `CadexLinkedPart.read_linked_part` (18);
+  `cadex_tessellation.read_sidecar` (15);
+  `CadexModelingSurface.infer_engine_from_names` (12);
+  `CadexEnvelope._plane_wire` (7); `cadex_assembly_worker._diagnostics_conflict`
+  (2); `cli/cadex_cli/project_docs.project_doc_paths` (3) and
+  `PROJECT_DOC_NAMES`.
+
+**How deadness was established.** Every top-level `def`/`class` in
+`src/Mod/cadex/*.py` and `cli/cadex_cli/*.py` was collected with `ast`, and
+each name counted as a whole identifier across every tracked text file of
+the repository — engine, CLI, tests, `training/`, `analysis/`, the
+dashboard's JS and HTML, `docs/probes/**/*.py`, CMake, `Init.py`, JSON — with
+the occurrences inside the definition's own span discounted. A name went
+only when nothing outside its own body named it, in code or as a string;
+mentions left only in `docs/DECISIONS.md` and `docs/history/` are history.
+The repository's string dispatchers (`cadexd`'s `_op_<op>`, the bridge's
+`_<tool>`, the server's `_api_<route>`) all resolve to methods, not to these
+module functions. None of the deleted names is a FreeCAD proxy class or
+method (no `execute`/`onChanged`/`__getstate__`, no class a saved document
+names): every one is a top-level function or a module constant.
+
+**Kept.** `CadexEvaluation.path_metrics` and `coverage_metrics`, though
+nothing calls them yet: `docs/ROADMAP.md` (*Machine tasks*) and ADR-645
+document them as the existing readings that wiring into `assembly.success`
+will use. `CadexEvaluation.load_trace`, imported by
+`docs/probes/orun11/footfall_probe.py`, `hind_asymmetry.py` and
+`docs/probes/ot11/runner/measure.py`. Shell-era *comments* naming
+`cadex_animate` or Blender in `CadexDynamics`, `cadex_assembly_worker`,
+`CadexRouting` and `CadexdProtocol` describe why a contract has its shape
+and are left; no shell-era code path was found that nothing reaches.
+
+**Consequences.** No protocol (`OP_ARG_SPECS`), response golden, tool
+surface or file list changes; no module is deleted, so `CMakeLists.txt` and
+the worker bundle are untouched. Verified: `pixi run test-engine` 157
+passed, 3 skipped (against a copy of the main checkout's `build/release`
+with this tree's `Mod/cadex` Python laid over it); `pytest cli/tests` 53
+passed; `cadex export` and `cadex params --set` on a copy of
+`orun5-fourbar` build, simulate, export and commit.

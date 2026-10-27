@@ -5869,10 +5869,6 @@ def _diagnostics_conflict_labels(diagnostics: Mapping[str, Any]) -> list[str]:
             if bool(diagnostics.get(name))]
 
 
-def _diagnostics_conflict(diagnostics: Mapping[str, Any]) -> bool:
-    return bool(_diagnostics_conflict_labels(diagnostics))
-
-
 _REDUNDANCY_LABELS = frozenset({"redundant constraints", "partially redundant constraints"})
 
 

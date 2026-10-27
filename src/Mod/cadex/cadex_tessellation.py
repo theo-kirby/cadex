@@ -289,23 +289,6 @@ def write_display_artifact(
     }
 
 
-def read_sidecar(path: Path) -> dict[str, Any]:
-    """Read and structurally validate one tessellation sidecar."""
-
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(data, dict) or data.get("schema") != TESSELLATION_SCHEMA:
-        raise ValueError(f"{path} is not a {TESSELLATION_SCHEMA} sidecar.")
-    for key in ("counts", "layout", "face_ranges", "face_keys", "edge_polylines"):
-        if key not in data:
-            raise ValueError(f"{path} sidecar is missing {key!r}.")
-    if len(data["face_keys"]) != len(data["face_ranges"]):
-        raise ValueError(
-            f"{path} sidecar has {len(data['face_keys'])} face keys for "
-            f"{len(data['face_ranges'])} face ranges; they index the same faces."
-        )
-    return data
-
-
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
