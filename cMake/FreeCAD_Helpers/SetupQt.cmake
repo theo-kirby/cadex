@@ -1,9 +1,9 @@
 # -------------------------------- Qt --------------------------------
 # Modified by the Cadex project, 2026. See docs/FREECAD.md.
 
-# LinguistTools is a *build* tool (lrelease), not a runtime library, and
-# src/App -- which builds with BUILD_GUI=OFF -- compiles its own translations
-# through qt_add_translation. It therefore belongs outside the GUI block.
+# Headless (ADR-022): no Qt GUI component is requested. LinguistTools is a
+# *build* tool (lrelease), not a runtime library: src/App compiles its own
+# translations through qt_add_translation.
 set(FREECAD_QT_COMPONENTS Core Concurrent Network Xml LinguistTools)
 
 if (FREECAD_QT_MAJOR_VERSION EQUAL 5)
@@ -18,20 +18,6 @@ endif()
 
 if (FREECAD_QT_MAJOR_VERSION EQUAL 6)
     set (Qt6Core_MOC_EXECUTABLE Qt6::moc)
-endif()
-
-if(BUILD_GUI)
-    if (FREECAD_QT_MAJOR_VERSION EQUAL 5)
-        if (WIN32)
-            list (APPEND FREECAD_QT_COMPONENTS WinExtras)
-        endif()
-    elseif (FREECAD_QT_MAJOR_VERSION EQUAL 6)
-        list (APPEND FREECAD_QT_COMPONENTS GuiTools)
-        list (APPEND FREECAD_QT_COMPONENTS SvgWidgets)
-        list (APPEND FREECAD_QT_COMPONENTS OpenGLWidgets)
-    endif()
-
-    list (APPEND FREECAD_QT_COMPONENTS OpenGL PrintSupport Svg UiTools Widgets)
 endif()
 
 if (ENABLE_DEVELOPER_TESTS)

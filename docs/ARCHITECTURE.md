@@ -539,8 +539,10 @@ vertical rather than a feature bolted on.
   numerical reproducibility, and `open_project` asserts digest equality on
   every open.
 - **It arrives as a pypi wheel, not conda.** Adding any conda package forces
-  a full re-solve, and the manifest has not been re-solvable since
-  conda-forge moved past our `occt` and `qt6-main` pins.
+  a full re-solve, and the manifest was not re-solvable once conda-forge
+  moved past our `occt` and `qt6-main` pins. Since ADR-831 dropped the
+  GUI-era packages a from-scratch solve succeeds with both pins unchanged,
+  but the move to conda has not been made.
   `CARRIED_PYPI_PACKAGES` in
   `package/rattler-build/scripts/relocate_conda_environment.py` carries it
   into the payload by name (ADR-076); the name exists so the exception is

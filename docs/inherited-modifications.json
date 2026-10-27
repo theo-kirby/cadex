@@ -22,10 +22,6 @@
           "notice": "comment"
         },
         {
-          "path": "cMake/FindPySide6.cmake",
-          "notice": "comment"
-        },
-        {
           "path": "cMake/FreeCAD_Helpers/CheckInterModuleDependencies.cmake",
           "notice": "comment"
         },
@@ -39,6 +35,10 @@
         },
         {
           "path": "cMake/FreeCAD_Helpers/SetupQt.cmake",
+          "notice": "comment"
+        },
+        {
+          "path": "cMake/FreeCAD_Helpers/SetupSwig.cmake",
           "notice": "comment"
         },
         {
@@ -76,10 +76,6 @@
         },
         {
           "path": "src/Mod/Assembly/CommandCreateView.py",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Mod/Assembly/InitGui.py",
           "notice": "comment"
         },
         {

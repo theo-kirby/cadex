@@ -45985,6 +45985,181 @@ with this tree's `Mod/cadex` Python laid over it); `pytest cli/tests` 53
 passed; `cadex export` and `cadex params --set` on a copy of
 `orun5-fourbar` build, simulate, export and commit.
 
+## ADR-830 — The build tree's GUI residue is deleted (2026-10-27)
+
+**Context.** `BUILD_GUI=ON` has been a fatal configure error since ADR-022
+and ADR-214, yet the build tree still carried what only a GUI build used:
+two `if(BUILD_GUI)` blocks in the root `CMakeLists.txt` calling five setup
+helpers (OpenGL, Coin3D/pivy, Spaceball, Shiboken/PySide, Matplotlib), the
+GUI component list in `SetupQt.cmake`, "not needed" report lines, eleven
+`cMake/Find*.cmake` modules with no live `find_package` caller (KDL, LARK,
+NETGEN, OpenCV, PySide6, PySide2Tools, PySide6Tools, Shiboken6, Matplotlib,
+Spnav, Coin3DDoc), four options nothing read (`BUILD_TEMPLATE`,
+`FREECAD_CHECK_PIVY`, `FREECAD_USE_EXTERNAL_KDL`, `FREECAD_USE_QT_DIALOGS`),
+the `dist-git` targets over `src/Tools/makedist.py`, upstream developer
+scripts nothing invokes, `data/examples` (workbench demo documents, BIM and
+FEM among them), test inputs no test loads, the macOS app-bundle and Windows
+packaging scripts, and in the kept modules every `InitGui.py` plus the
+Python tests that need `FreeCADGui`, PySide or pivy.
+
+**Decision.** Delete them under the removal protocol. Each candidate was
+checked against CMake, `package/`, `pixi.toml`, both suites, CI
+(`.github/workflows/cadex-app.yml`) and `tools/`.
+
+- *Disable commit*: the root CMake stops calling the GUI helpers and
+  `CreatePackagingTargets()` and stops adding `data/`; `src/CMakeLists.txt`
+  loses the `_TEMPLATE_` gate; Test, Part and PartDesign stop copying and
+  installing their GUI-only tests; Test's Coin snapshot baseline and font
+  copy rules go; the final report loses its GUI rows (`QtConcurrent` is now
+  reported, since it is always found); `src/Doc` stops looking for Coin3D
+  docs; Import's commented-out resource block goes.
+- *Delete commit*: 233 tracked files (about 150,000 lines) — 17 in `cMake/`
+  (the eleven Find modules, the five GUI helpers, `CreatePackagingTargets`);
+  64 in `src/Tools` (`githubstats`, `dir2qrc`, `MakeMacBundleRelocatable`,
+  `LicenseChecker`, `make_snapshot`, `catfiles`,
+  `ArchiveNameFromVersionHeader`, `fcinfo`, `doctools`, `MakeApp`,
+  `MakeAppTools`, `FCFileTools`, `MakeNewBuildNbr`, `makedist`,
+  `fcbt.py` with `fcbt/`, the `_TEMPLATE_`/`_TEMPLATEPY_` module templates
+  it copied, `ThumbnailProvider/`, `freecad-thumbnailer.in`, `xmlformat/`,
+  `InstallMsg.txt`, `entitlements.plist`); `data/CMakeLists.txt` and the 11
+  files of `data/examples`; 67 in `data/tests` (`Jt/`, `ModelRefineTests/`,
+  `Step/`, `Crank.*`, `PocketTest.fcstd`); six packaging files
+  (`package/scripts/{calculate_macos_dmg_size.py,macos_sign_and_notarize.zsh,
+  write_version_info.py}`, `package/rattler-build/scripts/
+  {resolve_macos_bundle_version.py,get_os.bash}`,
+  `package/rattler-build/windows/ssl-patch.py`); 35 GUI files in kept
+  modules (`InitGui.py` in Part, PartDesign, Sketcher, Mesh, Measure,
+  Assembly, Import and Test; `TestPartGui`, `TestPartDesignGui`,
+  `TestSketcherGui`, `MeshTestsGui`, `TestImportGui`; Part's
+  `ColorPerFaceTest`, `ColorTransparencyTest`, `TaskFaceAppearancesTest`;
+  PartDesign's `TestActiveObject`; Sketcher's `GuiTestCase`,
+  `TestConstraintPreselectionGui`, `TestOnViewParameterGui`,
+  `TestExternalFacePreselection`, `TestPlacementUpdate`; Test's
+  `GuiDocument`, `GuiRecompute`, `TestGui`, `Menu`, `Workbench`,
+  `TestTreeSelection`, `TestGraphicsViewWrapping`, `TestRubberbandSelection`,
+  `TestCoinNodeSnapshots`, `TestCoinSelectionVisual`, `TestViewProviderLink`,
+  `testPathArray`, `testPathArraySel`); and `tests/visual/` (31 Coin
+  baselines and the font only they used).
+- `.gitignore` drops Qt/MSVC/FreeCAD-era rules (`moc_*`, `qrc_*`, `ui_*`,
+  `*qrc.depends`, `*.db`, `*.vcproj`, `BuildLog.htm`, `ALL_BUILD`/`ZERO_CHECK`,
+  `OpenSCAD_rc.py`, crowdin and `tsupdate` outputs, `freecad.zip`,
+  `offlinedoc`, `CAM/research`, `conda/environment.yml`, `!/.packit.yaml`);
+  none matched local content outside ignored build trees. The bare
+  `reference/` is now an anchored, commented `/reference/`.
+
+**Kept, and why.** The fatal `BUILD_GUI` guard and its `value(BUILD_GUI)`
+report line. `src/Tools` keeps `bindings/` and `PythonToCPP.py` (the
+binding generators), `SubWCRev.py` (`src/Build`), `params_utils.py`
+(`App/LinkParams.py`), `sync_version.py`, `resolve_release_artifact_name.py`
+and its tests, `updatecrowdin.py` (in the modification ledger) and
+`typing/`. `data/tests` keeps the five files ctest loads (`PadTest.fcstd`,
+`ProjectTest.FCStd`, `TestVRMLTextures.FCStd`, `mesh.3mf`, `mesh.obj`).
+`package/rattler-build/scripts` keeps the Mach-O helpers the payload build
+calls. Mixed modules that import `FreeCADGui` behind `GuiUp` (Assembly's
+commands, Part's `BOPTools`, `AttachmentEditor`, `BasicShapes`, PartDesign's
+gear/sprocket/shaft features) stay: headless code imports them. Assembly's
+`mocks/MockGui.py` stays: it is a headless test double.
+
+**Consequences.**
+- Nothing ctest ran is gone: ctest is the gtest binaries plus two Cadex
+  pytest wrappers, and none of the deleted Python tests was registered with
+  it. The count stays 1,524.
+- `docs/inherited-modifications.json` loses its two deleted entries
+  (`cMake/FindPySide6.cmake`, `src/Mod/Assembly/InitGui.py`).
+- `src/Mod/Import/App/PlmXmlParser.py`'s developer `main()` still names
+  `data/tests/Jt/...`; it is a by-hand entry point nothing calls, left as
+  inherited code. `.pre-commit-config.yaml` keeps its own older rot
+  (Gui/Fem exclude patterns), out of scope here.
+- The payload loses only Part's three and PartDesign's one GUI test files
+  (16.5 kB); `Mod/Test` was already pruned from it.
+
+**Verification** (this worktree, fresh `pixi install --locked`):
+`pixi run build-release` (configure + build) ok; ctest **1,524/1,524
+passed**. One note on ctest: with the engine already `cmake --install`ed
+into the pixi environment, the build-tree test binaries here carry a
+RUNPATH that lists the environment's `lib/` before the build's, so 108
+tests (Sketcher's `SketchObjectTest`, `ExpressionParserTest`,
+PartDesign backward-compatibility) load two copies of `Part.so`/`Sketcher.so`
+and fail. That happens identically on the unchanged tree (`bc053485`) and
+goes away when the installed files are removed first, so the gate ran
+ctest before `install-release`. `pixi run test-engine` 157 passed, 3
+skipped; `pytest cli/tests` 53 passed (with the built engine);
+`pixi run stage-engine` then the packaged gate
+(`test_cadexd_lifecycle.py` against the payload) 24 passed. Staged payload
+2,208,482,000 bytes.
+
+## ADR-831 — pixi carries no GUI-era dependency (2026-10-27)
+
+**Context.** `pixi.toml` still listed what the deleted FreeCAD GUI and the
+deleted workbenches needed, and its own comment said a full re-solve "fails
+on its own today" (qt6-main/occt drift against opencv, vtk, smesh). The
+audit deferred since orun2 (FREECAD.md §2) is this one.
+
+**Decision.** Remove, from `pixi.toml`, 72 entries:
+- never needed headless: `coin3d`, `pivy`, `pyside6`; on both Linux targets
+  `qt6-wayland`, `libspnav`, the `xcb-util-cursor ==0.1.5` FreeCAD#26726
+  hack, `xorg-xproto` and every CentOS 7 Mesa/X11/Xvfb sysroot package;
+- needed by no kept module (no import in `src/`, `cli/`, `tools/`,
+  `package/` or a test, no CMake lookup): `ifcopenshell`, `opencamlib`,
+  `xlutils`, `pycollada`, `opencv`, `matplotlib`, `graphviz`, `sympy`,
+  `pandas`, `nine`, `debugpy`, `conda-devenv`, `docutils`;
+- `pcl`, which was present only because `CMakePresets.json` set
+  `FREECAD_USE_PCL=ON` and the root `CMakeLists.txt` then ran
+  `find_package(PCL)` for nothing to link: no Points or ReverseEngineering
+  module remains. `SetupPCL.cmake`, its call, the option and both preset
+  entries go (with the distro preset's dead `FREECAD_USE_EXTERNAL_PIVY`).
+
+`SetupSwig.cmake` loses its SWIG/pivy runtime-compatibility probe, which
+without pivy can only warn; `find_package(SWIG)` stays because `src/Base`
+builds its SWIG runtime glue from it. The rattler-build recipe drops the
+same packages from its build/host/run lists, and its `pixi.toml` the
+`xcb-util-cursor` hack and the DMG-only `dmgbuild` and
+`pyobjc-framework-Quartz`; both lock files were re-locked.
+
+One pin is added, for a reason: `sysroot_linux-64` and
+`sysroot_linux-aarch64` become `2.17.*` in `pixi.toml` and the recipe. The
+CentOS 7 packages depended on the glibc 2.17 sysroot and so held it there
+implicitly; without them a from-scratch solve takes sysroot 2.39, which
+would raise the glibc floor of every binary the engine build links, and the
+recipe's host environment for linux-aarch64 stops solving at all ("no
+candidates for `__glibc >=2.39`"). The pin restates the floor the tree
+already had; the incremental lock never moved off 2.17.
+
+**Kept, and why.** `qt6-main`: `src/App` and `src/Base` link QtCore, Xml,
+Concurrent and Network, and `SetupQt.cmake` asks for LinguistTools and
+(developer tests) Test. `vtk` and `hdf5`: external SMESH links them.
+`swig`: above. `calculix` (analysis runs it as a subprocess),
+`pythonocc-core`, `lark`, `ply`, `six`, `lxml`, `blinker`, `defusedxml` and
+`requests` were not in this audit's scope and stay; `gmsh` and `olefile` in
+the recipe's run list likewise. The payload's prune lists and leak gate
+(ADR-531, ADR-532) stay: they pin the payload's contents whatever the
+environment holds. `training/` and `analysis/` requirements are untouched.
+
+**Consequences.**
+- `pixi install` re-solved incrementally with **no version change on any
+  platform** (linux-64 447 → 333 packages, linux-aarch64 438 → 324,
+  osx-64/arm64 350 → 270, win-64 322 → 221; the rattler lock likewise, every
+  removal and no change). `occt` stays 7.8.1 and `qt6-main` 6.8.3.
+- A from-scratch `pixi lock` of the new manifest (no lock to prefer) now
+  succeeds, with `occt`, `qt6-main`, `vtk`, `smesh`, `python` and `numpy`
+  unchanged and only leaf packages (`fmt`, `gtest`, `scipy`, `pybind11`,
+  certificates…) newer and sysroot held at 2.17 by the pin. A from-scratch
+  lock of `package/rattler-build/pixi.toml` (isolated cache, no lock)
+  succeeds too. Neither fresh lock was adopted. The manifest is
+  re-solvable again, so moving `mujoco` to conda-forge `mujoco-python` is
+  now possible; it is not done here (ADR-076, ADR-084).
+- The development environment shrinks from 5,648,091,887 B to
+  4,376,495,243 B (both with the engine installed).
+- **The staged payload shrinks from 2,208,482,000 B to 1,861,510,856 B
+  (−346,971,144 B, −15.7%)**: the environment no longer holds libraries the
+  payload copied in and nothing pruned.
+
+**Verification** (fresh `build/release`): `pixi run build-release` ok;
+ctest 1,524/1,524 passed (run before `install-release`, see ADR-830);
+`pixi run test-engine` 157 passed, 3 skipped; `pytest cli/tests` 53
+passed; `pixi run stage-engine` and the packaged gate 24 passed. The
+rattler-build package itself was not built.
+
 ## ADR-833 — The North Star is a benchmark set; the roadmap is the next release (2026-10-27)
 
 **Context.** By 2026-10-27 the documents that set direction disagreed with
