@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-10-19
+Verified against source: 2026-10-27
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -197,7 +197,7 @@ Ownership closure, lint, and orphan queries live in
 
 | File | Role |
 |---|---|
-| `CadexScriptedRuntime.py` | The project lifecycle: store persistence, source policy, worker staging/exec, validation, acceptance. `shared_worker_bundle` is the content-addressed worker bundle — keyed by the bytes of every member, and since ADR-390 refusing to publish or trust one whose members cannot import each other: an engine module beside the members, imported by one of them at module scope and not itself a member, raises and names the skew instead of caching a bundle that fails identically for the life of the session. `[Cadex-new]` |
+| `CadexScriptedRuntime.py` | The project lifecycle: store persistence, source policy, worker staging/exec, validation, acceptance. `shared_worker_bundle` is the content-addressed worker bundle — keyed by the bytes of every member, and since ADR-390 refusing to publish or trust one whose members cannot import each other: an engine module beside the members, imported by one of them at module scope and not itself a member, raises and names the skew instead of caching a bundle that fails identically for the life of the session. Since ADR-827 it also stages the engine modules members import *inside functions* (`cadex_library_api`, `CadexCatalog` with `CadexParts.json`, `CadexMachineParts`, `CadexPanels`, `CadexEnvelope`, `CadexGait`, `CadexPinResolution`, `CadexScriptStore`, `CadexTools`), so a dev-tree edit to any of them reaches the worker. `[Cadex-new]` |
 | `CadexScriptedDomains.py` | `PROJECT_PACK` + the five capability packs (worker/publication contracts), project tool specs, `project_script_revision`, object-tag constants, source sandbox rules. `[Cadex-new]` |
 | `cadex_project_api.py` / `cadex_project_worker.py` | The project domain: `params`/`num` vocabulary, inline assembly-source tokens, multi-domain exec namespace, per-domain evaluation, worker-side content digest. `[Cadex-new]` |
 | `CadexGeometryDigest.py` | The digest material both halves share: the byte digest the worker computes, and the geometry digest `cadexd` falls back to when a kernel re-serializes one model to different bytes (ADR-389) or a fixed exporter re-derives one from it (ADR-396). One `_entries` builds both; they disagree only about how a BREP output is identified and whether a derived output's artifact bytes are read at all. `[Cadex-new]` |
@@ -290,13 +290,18 @@ module-by-module map is `docs/CLI.md` §4.
 
 ### Project store `[Cadex-new]`
 
-`src/Mod/cadex/CadexProject.py`. Root: `$CADEX_HOME` if set, else the
-appdata dir + `Cadex` (e.g. `~/Library/Application Support/cadex/Cadex` on
-macOS). Layout:
+A project is a directory. The CLI passes its `--project` directory to
+`cadexd` as `project_root`, so in practice a project is
+`~/cadex-projects/<name>/` (the dashboard's `--projects` /
+`$CADEX_PROJECTS` default), and the engine's store lives in it beside the
+CLI's own files. `CadexProject.py` still has a fallback root for a caller
+that names none — `$CADEX_HOME` if set, else the appdata dir + `Cadex`, as
+`projects/<slug>-<hash8>/` — which no CLI path uses. Layout:
 
 ```
-<root>/projects/<slug>-<hash8>/
-  project.cadex.json            project manifest
+<project>/
+  project.cadex.json            optional manifest, read by open_project if
+                                present; CLI projects have none
   script.py                     THE project script (sole source of truth)
   script_history/               last 25 accepted sources + history.json (ADR-045);
                                 each entry also keeps the values and the
@@ -331,6 +336,12 @@ macOS). Layout:
                                 *having an artifact* rather than on a roster
                                 of kinds — which is why M5's and M7's
                                 artifacts joined without a line of code
+  review/activity.jsonl         the CLI's: what each agent tool call did,
+                                which the dashboard's activity panel reads
+  runs/<name>/                  the CLI's: one training run each
+                                (cli/cadex_cli/loop.py)
+  evaluations/                  the CLI's: stored policy evaluations
+                                (cli/cadex_cli/evaluate.py)
   review/revisions/             the CLI's, not the engine's (ADR-546): each
                                 accepted revision's tessellation, kept after
                                 the engine prunes its attempt. parts/ holds
@@ -394,13 +405,8 @@ an engine (`review_server.py`). It has no write route (ADR-537): every
 change is the agent's, through `cadex mcp` or a `cadex` command, and the
 page follows on its next poll. `cadex revision reject|restore` writes a
 stored version from `script_history/` back through `write_script`, then its
-recorded values through `set_params` (ADR-506). Until ADR-498 the Blender shell also read
-`assets/` on Save-As to carry them into a new root through `put_asset`
-(ADR-046); a project is now copied as a directory.
-
-In practice the root is chosen by the caller, not by `$CADEX_HOME`: the CLI
-passes its `--project` directory as `project_root`, so the store lives in
-the project directory the dashboard serves.
+recorded values through `set_params` (ADR-506). A project is copied as a
+directory.
 
 `CadexProjectScriptStore` (`CadexScriptStore.py`, split out of
 `CadexProject.py` in C1) owns `script.py`/`script.json` with atomic,
@@ -410,8 +416,7 @@ accepted revision's own source stays pinned in its staging directory and is
 readable with `read_accepted_source()`, which is what the restore pass falls
 back to when the working script will not run at all (ADR-044). **Conversation history is not here**: the
 person's agent keeps its own (ADR-538). `CadexProject.py` still defines a
-conversation store, unused by any engine or CLI path since ADR-020 moved
-conversation history to the shell. VibeCAD-era
+conversation store that no engine or CLI path uses. VibeCAD-era
 per-domain program stores are not migrated (ADR-011).
 
 ### Support
@@ -424,7 +429,7 @@ every render and video is lettered in (ADR-568). No icons, no
 
 ### `training/` — outside the engine on purpose `[Cadex-new]`
 
-`training/cadex_train.py` (3,868 lines) is the offboard PPO trainer, and it is
+`training/cadex_train.py` is the offboard PPO trainer, and it is
 the one top-level directory in this repository that is **not part of the
 product** (ADR-084). CMake never installs it, no payload carries it, nothing
 in it enters `pixi.toml`, and it cannot import Cadex — it reports whether
@@ -498,7 +503,7 @@ there is new.
 
 The dashboard's and the agent's suite lives on the other side of the
 boundary: `pixi run python -m pytest cli/tests` (`test_mcp_protocol.py`,
-`test_http_api.py`, `test_dashboard_read_only.py`), whose engine-needing
+`test_http_api.py`, `test_dashboard_read_only.py`, `test_dashboard_ground.py`), whose engine-needing
 half skips without a built engine.
 
 ## 4. The substrate
@@ -534,8 +539,10 @@ vertical rather than a feature bolted on.
   numerical reproducibility, and `open_project` asserts digest equality on
   every open.
 - **It arrives as a pypi wheel, not conda.** Adding any conda package forces
-  a full re-solve, and the manifest has not been re-solvable since
-  conda-forge moved past our `occt` and `qt6-main` pins.
+  a full re-solve, and the manifest was not re-solvable once conda-forge
+  moved past our `occt` and `qt6-main` pins. Since ADR-831 dropped the
+  GUI-era packages a from-scratch solve succeeds with both pins unchanged,
+  but the move to conda has not been made.
   `CARRIED_PYPI_PACKAGES` in
   `package/rattler-build/scripts/relocate_conda_environment.py` carries it
   into the payload by name (ADR-076); the name exists so the exception is
@@ -586,22 +593,10 @@ are pure Python and vanilla JS under `cli/`, and need no build step. No step nee
 
 ## 6. Open questions
 
-- ~~**The warm-standby worker.**~~ **Closed by ADR-055.** cadexd owns one
-  resident `FreeCADCmd --safe-mode` preview worker per open project, spawned
-  lazily on the first `preview_params`, and it answers a pose-only parameter
-  change with solved placements in **33 ms** against the accepting path's
-  0.59 s on the same model. It is safe because it is a read-only oracle: it
-  never writes the project store, never publishes, and never moves a
-  revision or a digest, so every accepted byte still comes from a cold run
-  with a fresh attempt directory.
-
-  What is *not* closed is the accepting path's own ~0.42 s. A preview serves
-  the parameters that drive motion — a component placement, a joint offset, a
-  motion formula — and by construction cannot serve one that changes a
-  definition, because a placement-only reply for `part.box(p.width, …)` would
-  be a lie. Those sliders still pay a cold spawn, and the next lever for them
-  would be keeping the candidate `App::Document` alive between runs, which is
-  where every determinism guarantee gets hard and would be its own ADR.
+- **The accepting path's own ~0.42 s.** The resident preview worker
+  (ADR-055) serves pose-only parameters in 33 ms; a parameter that changes a
+  definition still pays a cold spawn. Keeping the candidate `App::Document`
+  alive between runs is the next lever, and would be its own ADR.
 - **`display` on `open_project`** (A1). Would fold the restore pass and the
   hydration rebuild into one script run; the measured cost of not having it
   is 0.49 s, paid on the first engine request against a project.

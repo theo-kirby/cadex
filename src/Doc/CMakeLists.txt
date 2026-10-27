@@ -27,15 +27,9 @@ if(DOXYGEN_FOUND)
     SET(DOXYGEN_LANGUAGE "English" CACHE STRING "Language used by doxygen")
     MARK_AS_ADVANCED(DOXYGEN_LANGUAGE)
 
-    # note: this test is obsolete if DevDoc target is used
-    if (NOT BUILD_GUI)
-        message("Note: Gui is not built. Documentation may lack some parts.")
-    endif (NOT BUILD_GUI)
-
     # directory order seems important for correct macro expansion
     # (files containing macros definitions must be parsed before the files using them)
-    SET(DOXYGEN_SOURCE_DIR ${COIN3D_INCLUDE_DIRS}/Inventor/fields/SoSubField.h
-                           ${CMAKE_SOURCE_DIR}/src/3rdParty/PyCXX/CXX
+    SET(DOXYGEN_SOURCE_DIR ${CMAKE_SOURCE_DIR}/src/3rdParty/PyCXX/CXX
                            ${CMAKE_SOURCE_DIR}/src/3rdParty/zipios++
                            ${CMAKE_SOURCE_DIR}/src/3rdParty
                            ${CMAKE_SOURCE_DIR}/src/Build
@@ -62,13 +56,6 @@ if(DOXYGEN_FOUND)
 
     SET(DOXYGEN_OUTPUT_DIR ${CMAKE_BINARY_DIR}/doc/SourceDocu)
     SET(DOXYGEN_LAYOUT_FILE ${CMAKE_SOURCE_DIR}/src/Doc/FreecadDoxygenLayout.xml)
-
-    find_package(Coin3DDoc)
-    if( COIN3D_DOC_FOUND )
-        SET(DOXYGEN_TAGFILES
-            ${COIN3D_DOC_TAGFILE}=${COIN3D_DOC_PATH}
-        )
-    endif( COIN3D_DOC_FOUND )
 
     # Try to get some git information about the source tree
     EXECUTE_PROCESS(COMMAND git rev-parse --abbrev-ref HEAD

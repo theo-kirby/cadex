@@ -162,26 +162,6 @@ def decode_linked_part(
     return dict(header), brep
 
 
-def read_linked_part(path: str | Path) -> tuple[dict[str, Any], bytes]:
-    """One stored ``.cxpart`` file as ``(header, brep_bytes)``, authenticated."""
-
-    file_path = Path(str(path))
-    try:
-        size = file_path.stat().st_size
-    except OSError as exc:
-        raise LinkedPartError(f"Could not read {file_path.name!r}: {exc}.") from exc
-    if size > MAXIMUM_CXPART_BYTES:
-        raise LinkedPartError(
-            f"{file_path.name!r} is {size} bytes; the limit for one linked "
-            f"part is {MAXIMUM_CXPART_BYTES} bytes."
-        )
-    try:
-        blob = file_path.read_bytes()
-    except OSError as exc:
-        raise LinkedPartError(f"Could not read {file_path.name!r}: {exc}.") from exc
-    return decode_linked_part(blob, context=f"{file_path.name!r}")
-
-
 def _accepted_state(root: Path) -> dict[str, Any]:
     from CadexScriptStore import CadexProjectScriptStore
 

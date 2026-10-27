@@ -201,7 +201,7 @@ list replaces the declaration" is implemented four different ways:
 The override plumbing is threaded by hand: `*_values` appears 58 times in
 `CadexScriptedRuntime` and 37 times in `cadex_project_worker`, and the four collectors are
 wired one by one at `cadex_project_worker.py:825-840`. These tables were built for the deleted
-shell's editors: ring-drag, the wiring editor, the board editor (`docs/SHELL-PARITY.md`). With
+shell's editors: ring-drag, the wiring editor, the board editor (`docs/history/SHELL-PARITY.md`). With
 the dashboard read-only (ADR-537), **stored overrides have no writer except `set_params`**,
 and the "prune drift" rule exists for edits nobody can now make. A shared `DeclaredTable` base
 would remove an estimated 700-900 lines. Dropping stored overrides entirely would remove more,

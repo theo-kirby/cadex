@@ -1,4 +1,4 @@
-> **SUPERSEDED (2026-10-03, ADR-498).** `shell/` and `mesh_agent` are deleted. The tag `v1-blender-shell` is the last tree that carries them. Kept for history only; `docs/SHELL-PARITY.md` says where each module's job went.
+> **SUPERSEDED (2026-10-03, ADR-498).** `shell/` and `mesh_agent` are deleted. The tag `v1-blender-shell` is the last tree that carries them. Kept for history only; `docs/history/SHELL-PARITY.md` says where each module's job went.
 
 # BLENDER.md — The Shell
 

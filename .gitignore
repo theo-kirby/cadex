@@ -1,4 +1,5 @@
-reference/
+# Local reference material (an untracked asset directory at the checkout root)
+/reference/
 # file types to ignore
 .*
 !*.gitattributes
@@ -21,7 +22,6 @@ reference/
 # The governor graph lives in the Flywheel local repository at the checkout root
 # (`.flywheel/`) with governor's lock and snapshot cache in `.governor/`; `.*` above
 # keeps both out of git (ADR-671, ADR-672).
-!/.packit.yaml
 !/.pre-commit-config.yaml
 !/.pylintrc
 *.clangd
@@ -39,12 +39,7 @@ reference/
 *.pch
 *.pyc
 __pycache__/
-*.vcproj
-# Ignore .db files created by Qt Designer when editing .ui files
-*.db
-*qrc.depends
 *~
-BuildLog.htm
 CMakeCache.txt
 CMakeFiles/
 CMakeLists.txt.user
@@ -52,37 +47,21 @@ Makefile
 cmake_install.cmake
 config.h
 install_manifest.txt
-moc_*.cpp
-qrc_*.cpp
-ui_*.h
 /.vscode/
-/ALL_BUILD.dir/
 /Mod/
-/ZERO_CHECK.dir/
 /bin/
 /build-*/
 /build/
 /cmake-build*/
-/conda/environment.yml
 /doc/
 /lib/
-/src/Tools/offlinedoc/*.txt
-/src/Tools/offlinedoc/localwiki/
-/src/Mod/CAM/research/
 /src/3rdParty/Clipper2/Clipper2Lib/include/clipper2/clipper.version.h
-OpenSCAD_rc.py
 tags
 /CMakeUserPresets.json
 Testing
 compile_commands.json
 *.sublime-project
 *.sublime-workspace
-
-# crowdin file
-files_to_translate.txt
-src/Tools/freecad.zip
-tsupdate_stderr.log
-tsupdate_stdout.log
 # pixi environments
 *.egg-info
 .pixi

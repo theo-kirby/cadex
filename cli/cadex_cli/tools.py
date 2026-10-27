@@ -306,9 +306,14 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
                         "complete policy every N iterations plus the best so far, so "
                         "a stopped run still leaves one), and the warm start: "
                         "init_from (a .cxpolicy path), with init_from_parent_task and "
-                        "init_from_task_change when the task changed since. A warm "
-                        "start continues at its source's exploration width unless "
-                        "initial_std is set."
+                        "init_from_task_change when the task changed since; "
+                        "critic_warmup (train only the critic for the first N "
+                        "iterations of a warm start); init_from_base (with init_from: "
+                        "the one-line reason for a warm start onto another robot of "
+                        "its family, which needs critic_warmup); and family (a list of "
+                        "the other built variants' task bundles, to train one policy "
+                        "on all of them). A warm start continues at its source's "
+                        "exploration width unless initial_std is set."
                     ),
                 },
             },

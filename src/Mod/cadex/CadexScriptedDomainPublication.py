@@ -7,13 +7,10 @@ from __future__ import annotations
 
 from array import array
 import copy
-import hashlib
-from io import BytesIO
 import json
 import math
 import re
 from typing import Any, Mapping
-import zipfile
 
 import CadexReferenceContracts as reference_contracts
 import CadexScriptedPublication as scripted_publication
@@ -113,43 +110,6 @@ _MESH_ROLLBACK_PROPERTIES = (
 )
 _MAX_MESH_ROLLBACK_PROPERTIES = 256
 _MAX_MESH_ROLLBACK_PROPERTY_BYTES = 2 * 1024 * 1024
-_MAX_ROLLBACK_PROPERTY_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
-def _property_content_sha256(content: bytes | bytearray) -> str:
-    """Hash persisted property data while ignoring ZIP container metadata."""
-
-    raw = bytes(content)
-    digest = hashlib.sha256()
-    try:
-        with zipfile.ZipFile(BytesIO(raw), "r") as archive:
-            infos = sorted(
-                archive.infolist(),
-                key=lambda item: (str(item.filename), int(item.header_offset)),
-            )
-            uncompressed_bytes = sum(int(item.file_size) for item in infos)
-            if uncompressed_bytes > _MAX_ROLLBACK_PROPERTY_UNCOMPRESSED_BYTES:
-                raise RuntimeError(
-                    "A rollback property exceeds the bounded uncompressed content limit."
-                )
-            digest.update(b"zip\0")
-            for info in infos:
-                name = str(info.filename).encode("utf-8", errors="surrogatepass")
-                with archive.open(info, "r") as handle:
-                    payload = handle.read(
-                        _MAX_ROLLBACK_PROPERTY_UNCOMPRESSED_BYTES + 1
-                    )
-                if len(payload) > _MAX_ROLLBACK_PROPERTY_UNCOMPRESSED_BYTES:
-                    raise RuntimeError(
-                        "A rollback property entry exceeds the bounded content limit."
-                    )
-                digest.update(len(name).to_bytes(8, "big"))
-                digest.update(name)
-                digest.update(len(payload).to_bytes(8, "big"))
-                digest.update(payload)
-            return digest.hexdigest()
-    except zipfile.BadZipFile:
-        digest.update(b"raw\0")
-        digest.update(raw)
-        return digest.hexdigest()
 
 
 def _properties(obj: Any) -> set[str]:
@@ -613,62 +573,6 @@ def _set_metadata(
     setattr(obj, reference_contracts.PROP_DERIVED_STATE, "accepted")
     setattr(obj, reference_contracts.PROP_STALE_REASON, "")
     setattr(obj, reference_contracts.PROP_SOURCE_REVISION, str(prepared["revision"]))
-
-
-def mark_programs_stale_from_source(source: Any, property_name: str) -> list[str]:
-    """Mark v2 outputs stale when a linked native snapshot source changes."""
-
-    changed_property = str(property_name or "")
-    if not changed_property or changed_property.startswith("Cadex"):
-        return []
-    label_only = changed_property == "Label"
-    marked: list[str] = []
-    programs: dict[tuple[str, str, str], Any] = {}
-    for output in list(getattr(source, "InList", []) or []):
-        properties = _properties(output)
-        if not ({PROP_INPUT_OBJECTS, PROP_NESTED_INPUT_OBJECTS} & properties):
-            continue
-        inputs = [
-            *list(getattr(output, PROP_INPUT_OBJECTS, []) or []),
-            *list(getattr(output, PROP_NESTED_INPUT_OBJECTS, []) or []),
-        ]
-        if not any(item is source for item in inputs):
-            continue
-        output_document = getattr(output, "Document", None)
-        program_id = str(getattr(output, contracts.PROP_PROGRAM_ID, "") or "")
-        domain = str(getattr(output, contracts.PROP_PROGRAM_DOMAIN, "") or "")
-        if label_only and domain != "assembly":
-            continue
-        if output_document is None or not program_id or not domain:
-            continue
-        programs[
-            (
-                str(getattr(output_document, "Uid", "") or ""),
-                program_id,
-                domain,
-            )
-        ] = output_document
-    for (_document_uid, program_id, domain), document in programs.items():
-        candidates = _program_objects(document, program_id, domain)
-        for output in candidates:
-            already_stale = (
-                str(getattr(output, reference_contracts.PROP_DERIVED_STATE, "") or "")
-                == "stale"
-            )
-            if not already_stale:
-                revision = str(
-                    getattr(output, contracts.PROP_PROGRAM_REVISION, "") or ""
-                )
-                reference_contracts.mark_stale(
-                    output,
-                    revision,
-                    f"Input object {getattr(source, 'Name', '<object>')}."
-                    f"{changed_property} changed after this XScript snapshot; "
-                    "regenerate the program.",
-                )
-            if not already_stale:
-                marked.append(str(getattr(output, "Name", "") or ""))
-    return sorted(set(marked))
 
 
 def _program_objects(doc: Any, program_id: str, domain: str) -> list[Any]:
@@ -4020,134 +3924,3 @@ def publish_project_candidate(
         "budget": dict(validated.get("budget") or {}),
     }
 
-
-def _delete_partdesign_program(
-    doc: Any,
-    prepared: Mapping[str, Any],
-) -> dict[str, Any]:
-    program_id = str(prepared["program_id"])
-    root = _partdesign_program_root(doc, program_id)
-    if root is None:
-        return {"ok": True, "deleted_objects": [], "recompute_deferred": True}
-    publications = _partdesign_publications(doc, root, program_id)
-    internal = [
-        root,
-        *list(getattr(root, "OutListRecursive", []) or []),
-        *publications.values(),
-    ]
-    external = _external_uses(doc, list(publications.values()), internal)
-    if external:
-        raise _reference_error(
-            "Cannot delete this Part Design XScript program while downstream "
-            "objects reference its stable publications",
-            external,
-        )
-    deleted: list[dict[str, Any]] = [
-        {
-            "object_name": str(obj.Name),
-            "label": str(obj.Label),
-            "type_id": str(obj.TypeId),
-            "output_name": str(name),
-        }
-        for name, obj in publications.items()
-    ]
-    transaction_open = False
-    try:
-        if hasattr(doc, "openTransaction"):
-            doc.openTransaction("Delete Part Design XScript program")
-            transaction_open = True
-        for published in list(publications.values()):
-            scripted_publication.delete_publication(doc, root, published)
-        for child in reversed(list(getattr(root, "Group", []) or [])):
-            child_name = str(getattr(child, "Name", "") or "")
-            if child_name and doc.getObject(child_name) is not None:
-                doc.removeObject(child_name)
-        root_name = str(root.Name)
-        if doc.getObject(root_name) is not None:
-            doc.removeObject(root_name)
-        if hasattr(doc, "commitTransaction") and transaction_open:
-            doc.commitTransaction()
-            transaction_open = False
-    except Exception:
-        if transaction_open and hasattr(doc, "abortTransaction"):
-            doc.abortTransaction()
-        raise
-    return {"ok": True, "deleted_objects": deleted, "recompute_deferred": True}
-
-
-def delete_live_program(service: Any, prepared: Mapping[str, Any]) -> dict[str, Any]:
-    _surface_still_matches(service, prepared)
-    doc = service._active_document()
-    if doc is None or str(getattr(doc, "Name", "") or "") != prepared["document_name"]:
-        raise RuntimeError("The active document changed before deletion.")
-    if str(getattr(doc, "Uid", "") or "") != str(prepared.get("document_uid") or ""):
-        raise RuntimeError("The active document identity changed before deletion.")
-    if prepared["pack"].domain == "partdesign":
-        if str(service.provider_document_revision()) != str(
-            prepared.get("document_revision") or ""
-        ):
-            raise RuntimeError(
-                "The document changed before Part Design deletion; inspect and retry."
-            )
-        return _delete_partdesign_program(doc, prepared)
-    objects = _program_objects(
-        doc, str(prepared["program_id"]), prepared["pack"].domain
-    )
-    mesh_rollbacks = (
-        _mesh_rollback_states(objects)
-        if prepared["pack"].domain == "mesh"
-        else []
-    )
-    internal = list(objects)
-    for obj in objects:
-        if str(getattr(obj, "TypeId", "")) == "Assembly::AssemblyObject":
-            joint_group = _assembly_joint_group(obj)
-            if joint_group is not None:
-                internal.append(joint_group)
-            simulation_group = _assembly_simulation_group(obj)
-            if simulation_group is not None:
-                internal.append(simulation_group)
-            view_group = _assembly_view_group(obj)
-            if view_group is not None:
-                internal.append(view_group)
-    external = _external_uses(doc, objects, internal)
-    if external:
-        raise _reference_error(
-            "Cannot delete this XScript program while human-created or foreign "
-            "document objects reference its stable outputs",
-            external,
-        )
-    deleted = [
-        {
-            "object_name": str(obj.Name),
-            "label": str(obj.Label),
-            "type_id": str(obj.TypeId),
-            "output_name": str(getattr(obj, contracts.PROP_PROGRAM_OUTPUT, "") or ""),
-        }
-        for obj in objects
-    ]
-    transaction_open = False
-    try:
-        if hasattr(doc, "openTransaction"):
-            doc.openTransaction(f"Delete {prepared['pack'].title} XScript program")
-            transaction_open = True
-        _remove_owned_objects(doc, objects)
-        if hasattr(doc, "commitTransaction") and transaction_open:
-            doc.commitTransaction()
-            transaction_open = False
-    except Exception as deletion_error:
-        if transaction_open and hasattr(doc, "abortTransaction"):
-            try:
-                doc.abortTransaction()
-            except Exception:
-                pass
-        if mesh_rollbacks:
-            try:
-                _restore_mesh_rollback_states(mesh_rollbacks)
-            except Exception as rollback_error:
-                raise RuntimeError(
-                    f"{deletion_error} Explicit Mesh deletion rollback failure: "
-                    f"{rollback_error}"
-                ) from deletion_error
-        raise
-    return {"ok": True, "deleted_objects": deleted, "recompute_deferred": True}

@@ -1,15 +1,15 @@
 # MACHINES.md — The Breadth Bench
 
-Verified against source: 2026-10-16 (a test catalogue, not a claim about the engine; the tiers are estimates made before 2026-10-10 and not re-estimated since)
+Verified against source: 2026-10-27 (a test catalogue, not a claim about the engine)
 
 These are machines to give Cadex as design briefs, chosen to test how broad
 the system is. Creatures (raptor, heron, leopard, the panel cats) and the
-mini excavator (orun5) have been tried, and so has the first wave below
-(2026-10-10, design-only). Everything else is a candidate. Each entry names:
+mini excavator (orun5) have been tried, and so have three waves of briefs
+(2026-10-10 to 12, *Waves run* below). Everything else is a candidate. Each entry names:
 
 - **Stresses**: the capability axes (codes below) the design has to get right.
 - **Autonomy**: what the machine could *do* in simulation once designed — the task, policy or check that proves it works.
-- **Tier**: an estimate of what it takes, given today's library and engine.
+- **Tier**: an estimate of what it takes, made before 2026-10-10 and **stale**: not re-estimated since the machine parts landed (see tier 2).
   - **1**: buildable with today's parts and checks.
   - **2**: needs new catalog parts or library helpers, such as rails, belts, wheels, cylinders, spindles or sheet-metal panels. Many of these now exist: `lib.part` carries rails, carriages, pulleys, belts, leadscrews and nuts, steppers, extrusion and its hardware, cylinders, spindles, casters, tyres and springs (`CadexParts.json`, ADR-646), with their mounting holes (ADR-660), and `part.envelope` and `part.panel` make covers (ADR-633..638). So many tier-2 rows may now be tier 1.
   - **3**: needs new engine capability, such as fluids, soil, deformables, aerodynamics or contact-rich process physics.
@@ -239,7 +239,9 @@ mini excavator (orun5) have been tried, and so has the first wave below
 | Inchworm climber | L C S | Climb poles and trusses | 2 | – |
 | Tail-assisted reorienting robot | K A | Mid-air reorientation | 2 | ○ |
 
-## First wave
+## Waves run
+
+### Wave 1 (2026-10-10)
 
 There are eight briefs. Together they cover every axis except P (fluids, which is tier 3), and four of them are panel-heavy (●). They were chosen to test breadth and the panel system on the same runs:
 
@@ -261,6 +263,19 @@ machine parts (ADR-660), the regions check following belts, leadscrews and
 couplings (ADR-665, from the liquid handler), `closes=[...]` for lids and
 doors (ADR-666), and a 4 MiB output definition (ADR-670, from the
 printer).
+
+### Wave 2 (2026-10-11) and wave 3 (2026-10-12)
+
+Ten runs each, with Opus 5.5 in Claude Code, on new briefs rather than
+repeats. **Wave 2** (on `704b4675`): stegosaurus, cheetah, elephant,
+kangaroo, sidewinder, goat-mower and pancake-delta designed and trained;
+straddle-tractor, tower-crane and spider-crane design-only. **Wave 3** (on
+`1da449c2`): velociraptor, bear, heron, gyro-monorail and stewart-sim
+designed and trained; trebuchet, curta, walking-excavator, combine and
+satellite-array design-only. Wave 3 was stopped by the owner the same day
+for a single biped run. The projects are `~/cadex-projects/wave2-*` and
+`wave3-*`; neither wave has been inspected or blind-rated (governor claims
+`crisp-valley-6058`, `calm-heron-3246`, both open).
 
 ## Sources
 

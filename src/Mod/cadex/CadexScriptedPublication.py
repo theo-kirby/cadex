@@ -26,7 +26,6 @@ ROLE_MODEL = "model"
 ROLE_PUBLICATION = "publication"
 ROLE_PUBLICATION_TARGET = "publication_target"
 ROLE_IMPLEMENTATION = "implementation"
-ROLE_PARAMETERS = "parameters"
 
 _LINK_PROPERTY_TYPES = {
     "App::PropertyLink",
@@ -133,82 +132,12 @@ def model_root_for(obj: Any) -> Any:
     return matches[0]
 
 
-def model_publications(root: Any) -> dict[str, Any]:
-    """Return top-level links that publish an exact subobject of this model root."""
-
-    result: dict[str, Any] = {}
-    doc = getattr(root, "Document", None)
-    if doc is None:
-        raise PublicationError(
-            "A scripted model root has no owning document.",
-            details={"model_root": str(getattr(root, "Name", "") or "")},
-        )
-    model_id = str(getattr(root, PROP_MODEL_ID, "") or "")
-    for child in list(doc.findObjects(Type="App::Link") or []):
-        linked = getattr(child, "LinkedObject", None)
-        linked_root = (
-            linked[0] if isinstance(linked, (tuple, list)) and linked else None
-        )
-        if linked_root is not root or not is_publication(child):
-            continue
-        if str(getattr(child, PROP_MODEL_ID, "") or "") != model_id:
-            raise PublicationError(
-                "A scripted publication is registered to the wrong model.",
-                details={
-                    "model_root": root.Name,
-                    "published_object": child.Name,
-                    "model_id": model_id,
-                    "published_model_id": str(
-                        getattr(child, PROP_MODEL_ID, "") or ""
-                    ),
-                },
-            )
-        key = str(getattr(child, PROP_OUTPUT_KEY, "") or "")
-        if not key:
-            raise PublicationError(
-                "A scripted publication has no output key.",
-                details={"model_root": root.Name, "published_object": child.Name},
-            )
-        if key in result:
-            raise PublicationError(
-                f"Multiple published objects claim output key {key!r}.",
-                details={
-                    "output_key": key,
-                    "objects": [result[key].Name, child.Name],
-                },
-            )
-        result[key] = child
-    return result
-
-
 def model_implementations(root: Any) -> list[Any]:
     return [
         child
         for child in list(getattr(root, "Group", []) or [])
         if role_of(child) == ROLE_IMPLEMENTATION
     ]
-
-
-def model_publication_targets(root: Any) -> list[Any]:
-    return [
-        child
-        for child in list(getattr(root, "Group", []) or [])
-        if role_of(child) == ROLE_PUBLICATION_TARGET
-    ]
-
-
-def model_parameter_object(root: Any) -> Any | None:
-    matches = [
-        child
-        for child in list(getattr(root, "Group", []) or [])
-        if role_of(child) == ROLE_PARAMETERS
-    ]
-    if len(matches) > 1:
-        raise PublicationError(
-            "A scripted model contains multiple parameter objects.",
-            details={"objects": [item.Name for item in matches]},
-        )
-    return matches[0] if matches else None
 
 
 def global_placement(obj: Any) -> Any | None:
@@ -240,13 +169,6 @@ def placement_relative_to(root: Any, obj: Any) -> Any | None:
             "published model coordinate system.",
             details={"native_error": str(exc)},
         ) from exc
-
-
-def add_to_root_preserving_global(root: Any, obj: Any) -> None:
-    relative = placement_relative_to(root, obj)
-    root.addObject(obj)
-    if relative is not None and hasattr(obj, "Placement"):
-        obj.Placement = relative
 
 
 def create_publication(
@@ -362,12 +284,6 @@ def publication_target(published: Any, root: Any | None = None) -> Any:
     return target
 
 
-def clear_implementation_pointer(published: Any) -> None:
-    target = publication_target(published)
-    ensure_string_property(published, PROP_IMPLEMENTATION)
-    setattr(published, PROP_IMPLEMENTATION, target.Name)
-
-
 def delete_publication(doc: Any, root: Any, published: Any) -> list[str]:
     target = publication_target(published, root)
     deleted: list[str] = []
@@ -377,42 +293,6 @@ def delete_publication(doc: Any, root: Any, published: Any) -> list[str]:
             doc.removeObject(name)
             deleted.append(name)
     return deleted
-
-
-def group_implementation(
-    root: Any,
-    new_objects: list[Any],
-    *,
-    engine: str,
-    model_id: str,
-    revision: str,
-) -> list[Any]:
-    new_names = {str(getattr(obj, "Name", "") or "") for obj in new_objects}
-    contained_names: set[str] = set()
-    for obj in new_objects:
-        for child in list(getattr(obj, "OutListRecursive", []) or []):
-            name = str(getattr(child, "Name", "") or "")
-            if name in new_names:
-                contained_names.add(name)
-    roots = [
-        obj
-        for obj in new_objects
-        if str(getattr(obj, "Name", "") or "") not in contained_names
-    ]
-    for obj in new_objects:
-        tag_object(
-            obj,
-            role=ROLE_IMPLEMENTATION,
-            engine=engine,
-            model_id=model_id,
-            revision=revision,
-        )
-    for obj in roots:
-        add_to_root_preserving_global(root, obj)
-        view = getattr(obj, "ViewObject", None)
-        if view is not None and hasattr(view, "Visibility"):
-            view.Visibility = False
-    return roots
 
 
 def implementation_closure(root: Any) -> list[Any]:
@@ -427,27 +307,6 @@ def implementation_closure(root: Any) -> list[Any]:
             if child_name:
                 result[child_name] = child
     return list(result.values())
-
-
-def delete_implementation(doc: Any, root: Any) -> list[str]:
-    objects = implementation_closure(root)
-    names = {str(getattr(obj, "Name", "") or "") for obj in objects}
-
-    def descendant_count(obj: Any) -> int:
-        return sum(
-            1
-            for child in list(getattr(obj, "OutListRecursive", []) or [])
-            if str(getattr(child, "Name", "") or "") in names
-        )
-
-    deleted: list[str] = []
-    for obj in sorted(objects, key=lambda item: (descendant_count(item), item.Name)):
-        name = str(obj.Name)
-        if doc.getObject(name) is None:
-            continue
-        doc.removeObject(name)
-        deleted.append(name)
-    return deleted
 
 
 def external_reference_uses(
@@ -530,81 +389,6 @@ def external_reference_uses(
     return uses
 
 
-def retarget_references(
-    doc: Any,
-    old: Any,
-    new: Any,
-    *,
-    internal_objects: list[Any] | None = None,
-) -> list[dict[str, Any]]:
-    internal_ids = {id(item) for item in list(internal_objects or [])}
-    changed: list[dict[str, Any]] = []
-    failures: list[dict[str, Any]] = []
-    owners = {
-        id(owner): owner for owner in list(getattr(old, "InList", []) or [])
-    }
-    for owner in owners.values():
-        if owner is old or owner is new or id(owner) in internal_ids:
-            continue
-        for property_name in list(getattr(owner, "PropertiesList", []) or []):
-            property_type = _property_type(owner, property_name)
-            try:
-                value = getattr(owner, property_name)
-            except Exception as exc:
-                failures.append(
-                    {
-                        "owner": str(getattr(owner, "Name", "") or ""),
-                        "property": property_name,
-                        "property_type": property_type,
-                        "stage": "read",
-                        "native_error": str(exc),
-                    }
-                )
-                continue
-            replacement, count = _replace_reference_value(
-                value, property_type, old, new
-            )
-            if count == 0:
-                continue
-            try:
-                setattr(owner, property_name, replacement)
-                changed.append(
-                    {
-                        "owner": str(getattr(owner, "Name", "") or ""),
-                        "property": property_name,
-                        "property_type": property_type,
-                        "reference_count": count,
-                    }
-                )
-            except Exception as exc:
-                failures.append(
-                    {
-                        "owner": str(getattr(owner, "Name", "") or ""),
-                        "property": property_name,
-                        "property_type": property_type,
-                        "native_error": str(exc),
-                    }
-                )
-    remaining = external_reference_uses(
-        doc,
-        [old],
-        internal_objects=[new, *(internal_objects or [])],
-    )
-    if failures or remaining:
-        raise PublicationError(
-            "Legacy output references could not all be migrated to the stable "
-            "published object.",
-            details={
-                "old_object": str(getattr(old, "Name", "") or ""),
-                "new_object": str(getattr(new, "Name", "") or ""),
-                "assignment_failures": failures,
-                "remaining_references": [_json_use(item) for item in remaining],
-                "migrated_references": changed,
-            },
-        )
-    return changed
-
-
 def json_reference_uses(uses: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [_json_use(item) for item in uses]
 
@@ -656,34 +440,6 @@ def _references_in_value(
                     )
                 )
     return matches
-
-
-def _replace_reference_value(
-    value: Any, property_type: str, old: Any, new: Any
-) -> tuple[Any, int]:
-    if property_type in _LINK_PROPERTY_TYPES:
-        return (new, 1) if value is old else (value, 0)
-    if property_type in _LINK_LIST_PROPERTY_TYPES:
-        values = list(value or [])
-        count = sum(item is old for item in values)
-        return ([new if item is old else item for item in values], count)
-    if property_type in _LINK_SUB_PROPERTY_TYPES:
-        if not isinstance(value, (tuple, list)) or not value or value[0] is not old:
-            return value, 0
-        suffix = list(value[1:])
-        return tuple([new, *suffix]), 1
-    if property_type in _LINK_SUB_LIST_PROPERTY_TYPES:
-        values = list(value or [])
-        count = 0
-        replaced = []
-        for item in values:
-            if isinstance(item, (tuple, list)) and item and item[0] is old:
-                replaced.append(tuple([new, *list(item[1:])]))
-                count += 1
-            else:
-                replaced.append(item)
-        return replaced, count
-    return value, 0
 
 
 def _subelement_names(value: Any) -> list[str]:

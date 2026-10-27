@@ -1,6 +1,6 @@
 # The Cadex design language — a base, and named styles
 
-Verified against source: 2026-10-16. Provenance: `[Cadex-new]`.
+Verified against source: 2026-10-27. Provenance: `[Cadex-new]`.
 
 This is how a machine that Cadex designs should be designed, and it is in
 two layers (ADR-560):
@@ -82,7 +82,7 @@ in a style.
 | tapered limb plates with a lightening window and round bosses | style `printed-legged-robot` | a legged look (ADR-565) |
 | compact twin-keel feet, the sole recorded against the standing height (a quarter by an eighth as a start, past it shown by the sweep); hips wide enough for the feet; the roll limit from where the feet meet; pay for the step | style `printed-legged-robot` | legged only (ADR-565, ADR-566, ADR-651) |
 | a machine in an animal's form moves like one: its anatomy is the joint list, each rigid region with a measured reason | style `creature` | moved from the base (ADR-627, ADR-652) |
-| the QDD tiers and their mounting, with the AK10-9 as the heavy tier for a running machine's girdle joints | style `creature` | the creatures' actuator (ADR-652, ADR-713) |
+| the QDD tiers and their mounting, with the AK10-9 as the heavy tier for a running machine's girdle joints and the RobStride RS04 (120 N·m peak) for a machine of about 40 kg | style `creature` | the creatures' actuator (ADR-652, ADR-713, ADR-826) |
 | the actuator is the joint and shows; panels wrap the mechanism; segments where it bends; a real sensor as the eye; likeness by silhouette | style `creature` | an animal's look (§11, ADR-626) |
 | the tool point is the spec; stiffness first; linear motion is bought; cables move with the axes; an enclosure has a job | style `gantry-machine` | gantry conventions (§12) |
 | the duty is the spec; the drivetrain from the load; steering and suspension are swept joints; stability measured; the body covers a chassis; the small wheel-and-gearmotor kit | style `vehicle` | vehicle conventions (§12, ADR-652) |
@@ -521,7 +521,7 @@ sensor read as the eye, and allows curved panels as long as they wrap what
 they cover. Its scale is set by its actuators, not by a servo horn.
 
 **Exists today versus target.** The style, the anatomy block, the panel
-check (`fit.panels`), `part.envelope` and `part.panel` (ADR-633..637, which replaced `lib.panel`), `lib.housing` and the QDD tiers (the AK10-9 since ADR-713) exist. The baseline's
+check (`fit.panels`), `part.envelope` and `part.panel` (ADR-633..637, which replaced `lib.panel`), `lib.housing` and the QDD tiers (the AK10-9 since ADR-713, the RS04's 120 N·m tier since ADR-826) exist. The baseline's
 six briefs were re-run with them on 2026-10-09 (record `small-brook-2395`):
 every design that declared its anatomy jointed a head, jaw, tail, arm or
 wing, but most runs stopped before the design was done and none has yet

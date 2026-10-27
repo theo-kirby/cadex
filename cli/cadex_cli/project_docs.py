@@ -65,7 +65,6 @@ from .export import ExportedOutput
 ARCHITECTURE_NAME = "ARCHITECTURE.md"
 DECISIONS_NAME = "DECISIONS.md"
 PROGRESS_NAME = "PROGRESS.md"
-PROJECT_DOC_NAMES = (ARCHITECTURE_NAME, DECISIONS_NAME, PROGRESS_NAME)
 
 #: Where a project's longer notes live, one file per subject.
 DOMAIN_DOCS_DIRNAME = "docs"
@@ -271,11 +270,6 @@ episode lengths match; a larger reward after changing them is not progress.
 {header}
 {rule}
 """
-
-
-def project_doc_paths(root: Path | str) -> dict[str, Path]:
-    base = Path(root)
-    return {name: base / name for name in PROJECT_DOC_NAMES}
 
 
 def _today() -> str:

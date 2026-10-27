@@ -231,16 +231,3 @@ def validate_surface_names(
                 + ", ".join(undeclared)
             )
 
-
-def infer_engine_from_names(names: Iterable[str]) -> str:
-    values = [str(name or "") for name in names]
-    engines = [
-        engine
-        for engine in SCRIPTED_ENGINES
-        if any(name.startswith(f"{engine}.") for name in values)
-    ]
-    if len(engines) > 1:
-        raise ValueError(
-            "The provider surface contains multiple modeling engines: " + ", ".join(sorted(engines))
-        )
-    return engines[0] if engines else "xscript"
