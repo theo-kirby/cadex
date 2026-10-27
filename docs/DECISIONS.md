@@ -45977,6 +45977,15 @@ same packages from its build/host/run lists, and its `pixi.toml` the
 `xcb-util-cursor` hack and the DMG-only `dmgbuild` and
 `pyobjc-framework-Quartz`; both lock files were re-locked.
 
+One pin is added, for a reason: `sysroot_linux-64` and
+`sysroot_linux-aarch64` become `2.17.*` in `pixi.toml` and the recipe. The
+CentOS 7 packages depended on the glibc 2.17 sysroot and so held it there
+implicitly; without them a from-scratch solve takes sysroot 2.39, which
+would raise the glibc floor of every binary the engine build links, and the
+recipe's host environment for linux-aarch64 stops solving at all ("no
+candidates for `__glibc >=2.39`"). The pin restates the floor the tree
+already had; the incremental lock never moved off 2.17.
+
 **Kept, and why.** `qt6-main`: `src/App` and `src/Base` link QtCore, Xml,
 Concurrent and Network, and `SetupQt.cmake` asks for LinguistTools and
 (developer tests) Test. `vtk` and `hdf5`: external SMESH links them.
@@ -45995,7 +46004,9 @@ environment holds. `training/` and `analysis/` requirements are untouched.
 - A from-scratch `pixi lock` of the new manifest (no lock to prefer) now
   succeeds, with `occt`, `qt6-main`, `vtk`, `smesh`, `python` and `numpy`
   unchanged and only leaf packages (`fmt`, `gtest`, `scipy`, `pybind11`,
-  certificates…) newer. That fresh lock was not adopted. The manifest is
+  certificates…) newer and sysroot held at 2.17 by the pin. A from-scratch
+  lock of `package/rattler-build/pixi.toml` (isolated cache, no lock)
+  succeeds too. Neither fresh lock was adopted. The manifest is
   re-solvable again, so moving `mujoco` to conda-forge `mujoco-python` is
   now possible; it is not done here (ADR-076, ADR-084).
 - The development environment shrinks from 5,648,091,887 B to

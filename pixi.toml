@@ -74,7 +74,9 @@ kernel-headers_linux-64 = "*"
 llvm-openmp = "*"
 mold = "*"
 sed = "*"
-sysroot_linux-64 = "*"
+# glibc 2.17 floor for what the engine links (ADR-831): the CentOS 7 packages
+# held it implicitly until they went.
+sysroot_linux-64 = "2.17.*"
 
 ## Linux Dependencies (aarch64)
 [target.linux-aarch64.dependencies]
@@ -84,7 +86,9 @@ kernel-headers_linux-aarch64 = "*"
 llvm-openmp = "*"
 mold = "*"
 sed = "*"
-sysroot_linux-aarch64 = "*"
+# glibc 2.17 floor for what the engine links (ADR-831): the CentOS 7 packages
+# held it implicitly until they went.
+sysroot_linux-aarch64 = "2.17.*"
 
 ## macOS Dependencies (Intel)
 [target.osx-64.dependencies]
