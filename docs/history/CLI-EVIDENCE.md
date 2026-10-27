@@ -48,7 +48,7 @@ only the initial pose, not swept motion or printable fit. One cold training
 seed at toy scale does not establish a general design ranking.
 
 See [ADR-251](../DECISIONS.md#adr-251--the-walk-reports-enginesource-differences-before-its-first-leg-2026-09-08)
-and the [immutable rehearsal record](../../.hypergraph/graph/record/mellow-quartz-8093.md)
+and the immutable rehearsal record (governor record `mellow-quartz-8093`)
 for timings, policy witness, component volumes and project commit evidence.
 
 **A third mechanism, and what its second coordinate measured (2026-09-08).**
