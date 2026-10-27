@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-25. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-27. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -125,7 +125,7 @@ Bring the file into the project store with the path that already exists —
 the `put_asset` tool, `cadex asset --put`, or `cadex train --put`. None
 performs a suffix check *of its own*: each passes the path through and lets
 the engine decide, and the engine's list (`_STORED_ASSET_SUFFIXES`,
-`CadexScriptedRuntime.py:177`) is what accepts `.cxpolicy` alongside the
+`CadexScriptedRuntime.py:194`) is what accepts `.cxpolicy` alongside the
 three mesh formats. That is the whole
 mechanism by which a policy reaches the store through a tool named for
 geometry, and why it cost no protocol change. Then rebuild. The engine verifies the policy against the task it was trained
@@ -274,6 +274,10 @@ header it always wrote. The iteration line and the curve gain
 `training/test_distill.py` holds these rules; `docs/probes/l3r1/distill.py`
 replays real teachers through them.
 
+A band whose command is 0 is a stand. The engine evaluates it as measured
+speeds with `speed_ratio` and `lateral_ratio` read as `None` (ADR-823), so
+a stand is judged on the speeds and the feet, never on a ratio.
+
 ## Checkpoints, and the file a run publishes while it runs (ADR-098)
 
 `--checkpoint-every 100` writes `walk.000100.cxpolicy`,
@@ -308,7 +312,7 @@ iteration:
 `CURVE_POINTS_CAP` (512) points with the first and last always kept —
 about 12 KB at the cap, which is what makes rewriting it every iteration
 free. Additive under the same schema, on the same terms as the two rows
-below; it is what the dashboard's 2D viewport plots and its Status charts draw, for a run
+below; it is what the dashboard's 2D viewport plots and its Training editor charts (ADR-732), for a run
 under the project's `runs/<run>/train/`.
 
 `episode_steps` is the row to actually watch (ADR-101): mean episode length,
@@ -575,9 +579,11 @@ module scope.
 
 No suite trains (ADR-725). The engine and CLI suites hold the boundary
 above and nothing of the learner. The training venv's own tests,
-`training/test_cadex_proxy.py`, `training/test_curriculum_warm_start.py` and
-`training/test_distill.py`, cover the proxy, the warm-start rules and
-distillation's routing and refusals. A change to the trainer is
+`training/test_cadex_proxy.py`, `training/test_curriculum_warm_start.py`,
+`training/test_canonical_body.py`, `training/test_terrain_pool.py` and
+`training/test_distill.py`, cover the proxy, the warm-start rules, the base
+remap, the course pool's height scan (ADR-747) and distillation's routing
+and refusals. A change to the trainer is
 verified by running it: a few iterations on CPU (`SETUP.md` §b), then the
 engine's own verification of the policy it wrote. The GPU is a speed
 difference, not a semantic one, and it is the same trainer file.

@@ -1,6 +1,6 @@
 # IDEAS.md — Parking Lot
 
-Verified against source: 2026-10-19
+Verified against source: 2026-10-27
 
 Uncommitted ideas surfaced during exploration. Nothing here is planned or
 approved — promoting an idea means writing a `docs/DECISIONS.md` entry and a
@@ -18,9 +18,11 @@ roadmap item. Add freely, prune ruthlessly.
   param values instant, and a `cadex params` sweep that revisits values
   would be free. (The dashboard already keeps each converted mesh by its
   tessellation hash, ADR-535, and the CLI keeps every accepted revision's
-  tessellation per part digest under `review/revisions/`, ADR-546; this idea
-  is the engine-side cache that would make a revisited value skip the
-  worker.)
+  tessellation per part digest under `review/revisions/`, ADR-546; and since
+  ADR-782 the worker keeps each part's BREP by content identity under
+  `script_artifacts/part-cache/`, so a revisited value rebuilds no unchanged
+  part. What is left of this idea is skipping the worker spawn, assembly and
+  tessellation for a whole revision already seen.)
 
 - **A joint gimbal in the viewport (owner, 2026-10-19).** Pick a joint (or a
   part, meaning the joint that moves it) and drag a rotation ring or slide
@@ -36,8 +38,9 @@ roadmap item. Add freely, prune ruthlessly.
   open chains.
 
 - **Script regions as undo/diff units.** If the one script is executed as
-  content-hashed regions, per-turn diffs and partial re-execution fall out
-  of the same mechanism.
+  content-hashed regions, region-level diffs between revisions and partial
+  re-execution fall out of the same mechanism (ADR-782 already caches per
+  part, below the script).
 
 Pruned on 2026-10-16 as moot, built or settled: RNA-like reflection for
 params and a Blender scene as a cache tier (no shell, no sliders: ADR-498,

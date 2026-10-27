@@ -1,6 +1,6 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-10-16. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-27. Provenance: `[Cadex-new]`. See
 ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
@@ -83,12 +83,13 @@ Each stderr line carries four numbers, and the third is the one to watch:
 iteration  419  reward/step +0.391  loss +0.0021  episode 137.5  sigma 0.3180
 ```
 
-(`sigma` is `action_std`, the exploration width, `training/README.md`.)
+(`sigma` is `action_std`, the exploration width, `training/README.md`.) A
+distillation run (`--teacher`, ADR-825) appends `distill <loss> on <share>`,
+the distillation term and the share of steps a teacher taught.
 
 `episode` is the mean episode length in control steps (ADR-101). **A reward
 that climbs while it falls is a policy failing sooner and being paid more
-for it** — the failure two runs on this branch had, with no number recording
-it. If it reads as `envs × unroll` exactly, no episode is ending at all.
+for it** — the failure two early runs had, with no number recording it. If it reads as `envs × unroll` exactly, no episode is ending at all.
 
 ## (b) CPU only
 

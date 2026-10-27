@@ -6,9 +6,7 @@
 The search behind ``part.cable``.  This module imports nothing from FreeCAD
 and knows nothing about topology: the host hands it an ``occupied(i, j, k)``
 predicate and gets back a polyline.  That is what makes the whole algorithm
-unit-testable headless against synthetic occupancy grids, the same idiom the
-shell's ``cadex_animate.curves_for_component`` uses to stay testable without
-``bpy``.
+unit-testable headless against synthetic occupancy grids.
 
 Three properties are load-bearing, in this order.
 
