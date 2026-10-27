@@ -11,7 +11,6 @@ macro(InitializeFreeCADBuildOptions)
     endif()
     option(FREECAD_USE_EXTERNAL_ZIPIOS "Use system installed zipios++ instead of the bundled." OFF)
     option(FREECAD_USE_EXTERNAL_SMESH "Use system installed smesh instead of the bundled." OFF)
-    option(FREECAD_USE_EXTERNAL_KDL "Use system installed orocos-kdl instead of the bundled." OFF)
     option(FREECAD_USE_EXTERNAL_ONDSELSOLVER "Use system installed OndselSolver instead of git submodule." OFF)
     option(FREECAD_USE_EXTERNAL_E57FORMAT "Use system installed libE57Format instead of the bundled." OFF)
     option(FREECAD_USE_EXTERNAL_PYCXX "Use system installed PyCXX, located using pkgconfig" OFF)
@@ -19,7 +18,6 @@ macro(InitializeFreeCADBuildOptions)
     option(FREECAD_USE_EXTERNAL_KDTREE "Use system installed libkdtree++" OFF)
     option(FREECAD_USE_EXTERNAL_JSON "Use system installed nlohmann_json" OFF)
     option(FREECAD_USE_FREETYPE "Builds the features using FreeType libs" ON)
-    option(FREECAD_CHECK_PIVY "Check for pivy version using Python at build time" ON)
     option(FREECAD_PARALLEL_COMPILE_JOBS "Compilation jobs pool size to fit memory limitations.")
     option(FREECAD_PARALLEL_LINK_JOBS "Linkage jobs pool size to fit memory limitations.")
     option(BUILD_WITH_CONDA "Set ON if you build FreeCAD with conda" OFF)
@@ -29,7 +27,6 @@ macro(InitializeFreeCADBuildOptions)
     option(INSTALL_TO_SITEPACKAGES "If ON the freecad root namespace (python) is installed into python's site-packages" OFF)
     option(INSTALL_PREFER_SYMLINKS "If ON then fc_copy_sources macro will create symlinks instead of copying files" OFF)
     option(OCCT_CMAKE_FALLBACK "disable usage of occt-config files" OFF)
-    option(FREECAD_USE_QT_DIALOGS "Use Qt's dialogs instead of the native one." OFF)
 
     # == Win32 is default behaviour use the LibPack copied in Source tree ==========
     if(MSVC)
@@ -129,7 +126,6 @@ macro(InitializeFreeCADBuildOptions)
         set(CMAKE_MACOSX_RPATH TRUE )
     endif(APPLE)
 
-    option(BUILD_TEMPLATE "Build the FreeCAD template module which is only for testing purposes" OFF)
     # Cadex (ADR-217, ADR-218): the FreeCAD help module was disabled, then
     # deleted. BUILD_HELP no longer exists; src/Mod/CMakeLists.txt has no
     # Help gate to consult it.

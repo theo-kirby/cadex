@@ -3,22 +3,6 @@
 
 add_subdirectory(App)
 
-#IF (BUILD_GUI)
-#    PYSIDE_WRAP_RC(Import_QRC_SRCS Resources/Import.qrc)
-#ENDIF (BUILD_GUI)
-
-#ADD_CUSTOM_TARGET(ImportRC ALL
-#    SOURCES ${Import_QRC_SRCS}
-#)
-
-
-#IF (BUILD_GUI)
-#    fc_target_copy_resource(ImportRC
-#        ${CMAKE_CURRENT_BINARY_DIR}
-#        ${CMAKE_BINARY_DIR}/Mod/Import
-#        Import_rc.py)
-#ENDIF (BUILD_GUI)
-
 SET(DXF_Plate
     DxfPlate/blocks10.rub
     DxfPlate/blocks112.rub
@@ -64,7 +48,6 @@ fc_target_copy_resource(ImportScripts
 INSTALL(
     FILES
         ${Import_Scripts}
-        #${Import_QRC_SRCS}
     DESTINATION
         Mod/Import
 )

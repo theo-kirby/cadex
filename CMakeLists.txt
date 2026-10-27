@@ -115,31 +115,13 @@ if(NOT FREECAD_LIBPACK_USE OR FREECAD_LIBPACK_CHECKFILE_CLBUNDLER OR FREECAD_LIB
     find_package(ZLIB REQUIRED)
     find_package(PyCXX REQUIRED)
     SetupOpenCasCade()
-    if(BUILD_GUI)
-        # Do this before the check for SMESH because it depends on vtk
-        # that may have its own OpenGL check but possibly fails and leaves
-        # OPENGL_gl_LIBRARY empty that results into linker errors
-        SetupOpenGL()
-    endif(BUILD_GUI)
     SetupSalomeSMESH()
-    # not needed at the moment
-    #find_package(OpenCV REQUIRED)
     SetupSwig()
     SetupEigen()
     # This file is included directly due to some cMake macros that are defined within.
     # If these macro definitions are embedded within another macro, it causes problems.
     include(cMake/FreeCAD_Helpers/SetupQt.cmake)
     SetupFreetype()
-
-    if(BUILD_GUI)
-        SetupCoin3D()
-        SetupPivy()
-        SetupSpaceball()
-        SetupShibokenAndPyside()
-        SetupMatplotlib()
-    endif(BUILD_GUI)
-
-    # SetupCoin3D can overwrite find_package(Boost) output so keep this after.
     SetupBoost()
 endif()
 
@@ -147,9 +129,6 @@ SetLibraryVersions()
 SetGlobalCompilerAndLinkerSettings()
 
 add_subdirectory(src)
-add_subdirectory(data)
-
-CreatePackagingTargets()
 
 if(MSVC AND FREECAD_LIBPACK_USE AND LIBPACK_FOUND)
     CopyLibpackDirectories()

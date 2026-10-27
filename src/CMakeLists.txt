@@ -9,9 +9,3 @@ add_subdirectory(Main)
 add_subdirectory(Mod)
 add_subdirectory(Ext)
 add_subdirectory(Doc)
-
-
-if(BUILD_TEMPLATE)
-    add_subdirectory(Tools/_TEMPLATE_)
-endif(BUILD_TEMPLATE)
-
