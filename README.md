@@ -7,226 +7,111 @@
 
 # Cadex
 
-Verified against source: 2026-10-16
+Verified against source: 2026-10-27
 
-Author:
-"Cadex is an experimental side project, far from production software.
-I've always liked Blender's interface and UX more than those of traditional CAD softwares,
-and even plenty of unrelated software. I also love its flexibility, extensibility,
-and massive range of capability. The biggest downfall for me was always the
-inability to do constraint based modeling easily, and the limitations of the armature
-based rigging system instead of proper linkages and simulation. Since both Blender
-and FreeCAD are open source, I figured why not try to mash them together and
-greedily try to achieve the best of both worlds. Also making the whole thing be
-drivable by an agent seemed like an obvious value add, since they are so capable now.
-I make no claims towards its reliability nor robustness, though anecdotally I have
-been quite satisfied. This project will forever be free and open source.
-If you are looking for a more serious project with similar themes, I highly recommend 
-checking out [VibeCAD](https://github.com/10-X-eng/vibecad) or [Smith](https://arche.co)"
+**Describe a robot or mechanism to your agent; get back a design you can
+build and a policy that moves it.**
 
-*(2026-10: the Blender half has since been deleted (ADR-498). Cadex is now
-a headless engine, a read-only dashboard in the browser, and the agent you
-already use, as below.)*
+Cadex is a headless CAD engine for robots and mechanisms, built to be driven
+by the AI agent you already use (Claude Code, Codex, Pi or any MCP client).
+The agent writes one parametric Python script; Cadex builds it into exact
+OCCT geometry, checks it, renders it, exports it, simulates it on MuJoCo and
+verifies the control policies trained on it. You watch the whole thing in a
+read-only browser dashboard.
 
-AI:
-**Cadex is an AI-native CAD app for designing robots and mechanisms, and
-it is three things** ([ADR-500](docs/DECISIONS.md)):
+> **Status:** pre-release, **0.2.0** ([`VERSION`](VERSION),
+> [release notes](docs/releases/)); 0.3.0 is planned in
+> [`docs/ROADMAP.md`](docs/ROADMAP.md). Linux x86-64 is the tested platform;
+> macOS arm64 passes CI but is not tried by hand; Windows is unsupported.
 
-1. **The engine** — a FreeCAD fork on OCCT, at the repo root. The AI
-   authors a declarative **xscript** Python program; `cadexd`, a headless
-   per-project service, runs it in sandboxed workers, and only validated
-   geometry is accepted. The script *is* the model: its declared parameters
-   rebuild without the AI in the loop, and the model is rebuildable from the
-   script at any time. The engine builds, verifies, measures, renders,
-   simulates and exports a design.
-2. **The dashboard** — `./cadex app`, a browser page and the only UI. It
-   is read-only: you watch the design there while your agent works it.
-3. **The agent** — yours. Claude Code, Codex, Pi or any MCP client drives
-   the engine through `cadex mcp`, one tool surface and one guidance text,
-   and through the `cadex` commands. Cadex has no agent, API key or model
-   loop of its own (ADR-538).
+## What it is
 
-You talk to your agent; the agent designs, the engine checks, and the
-dashboard shows you the result as it lands. There are no modeling
-toolbars and no workbench concept to learn. Until 2026-10-03 Cadex also
-had a Blender-based desktop shell; it is deleted (ADR-498), and the tag
-`v1-blender-shell` is the last tree that has it.
+Three parts in one repository, and nothing else ([ADR-500](docs/DECISIONS.md)):
 
-**Cadex has dynamics and control built in.** The
-mechanism you designed falls, collides and is actuated on
-[MuJoCo](https://github.com/google-deepmind/mujoco); `assembly.mjcf` exports
-it with *exact* OCCT inertias rather than the convex-hull guesses standard
-MJCF authoring settles for; `assembly.task` states the control problem as
-data; a trainer solves it — on a GPU box for a gait, or right on your own
-CPU for a toy-scale mechanism; and `cadex evaluate` holds the policy to its
-task's success spec and films it. See [docs/MUJOCO.md](docs/MUJOCO.md).
+| Part | Where | What it does |
+|---|---|---|
+| **The engine** | repo root, `src/Mod/cadex/` | A FreeCAD fork on OCCT. `cadexd`, a per-project headless service, runs the project script in sandboxed workers and accepts only validated geometry. Five domains (part, partdesign, sketcher, mesh, assembly); the assembly domain also carries dynamics, MJCF export with exact inertias, tasks, gait references and policy rollouts. |
+| **The dashboard** | `./cadex app` | The only UI, and read-only: model viewer, outliner, revisions, drawings, training curves, rollout playback. Standard-library Python, vanilla JS and vendored three.js. |
+| **The agent bindings** | `cadex mcp`, `cadex guidance` | One MCP tool surface and one guidance text (a domain-neutral base plus optional styles: `printed-legged-robot`, `creature`, `gantry-machine`, `vehicle`, `product`). Cadex runs no model and holds no API key. |
 
-**The North Star** — the prompt this whole product is pointed at — is:
-*"design me a quadruped robot, all 3D-printable, MG90 servos, and train it
-to walk and wave."* One prompt, carried end to end by the agent: the parts,
-the assembly, the MJCF export, the training dispatch, the policy
-iteration — ending in a part sheet, print files, a BOM, a trained policy
-and a gait video. Every vertical in this repository exists because that
-sentence needs it.
+Beside the product, not part of it: [`training/`](training/README.md), the
+offboard PPO trainer (CPU for toy mechanisms, a GPU for gaits), and
+[`analysis/`](analysis/README.md), offboard stress, topology optimisation and
+a skeleton fit that ends in an editable script.
 
-> **Status:** under active development, pre-release — currently **0.2.0**
-> ([`VERSION`](VERSION); release notes in [`docs/releases/`](docs/releases/)).
+The script is the model: delete everything else and it rebuilds. Its
+declared parameters rebuild with no agent at all (`cadex params`), and a
+trained policy is an asset the engine verifies before it plays it.
 
-Beyond dynamics, two more verticals are closed: **organic modelling**
-([docs/ORGANIC.md](docs/ORGANIC.md)) and **structural analysis** — stress,
-topology optimisation, and a skeleton fit that turns a carved density field
-back into a *parametric script* a person can edit
-([docs/STRUCTURAL.md](docs/STRUCTURAL.md)).
+## Quick start
 
-## Build and run
-
-Requires [pixi](https://pixi.sh). Built and tested on Linux x86-64; macOS
-arm64 should build but is not yet verified end to end, and Windows is not
-supported ([docs/CLI.md](docs/CLI.md) §8). The Blender shell is deleted
-(ADR-498), so git-lfs, Xcode and its 1.3 GB library checkout are not
-needed; the old application is tagged `v1-blender-shell`.
+Requires [pixi](https://pixi.sh).
 
 ```bash
 git clone <this repo> && cd cadex
-pixi run setup-engine   # the one submodule the engine compiles
-pixi run build-engine   # the headless engine (BUILD_GUI=OFF)
-pixi run app            # the dashboard at http://127.0.0.1:8765/
+pixi run setup-engine && pixi run build-engine   # the headless engine
+pixi run app                                     # dashboard at http://127.0.0.1:8765/
+
+# point your agent at a project, then ask it for something
+claude mcp add cadex -- "$PWD/cadex" mcp --project ~/cadex-projects/bracket
+#   "a mounting bracket for a NEMA17, 4 mm wall"
+
+# change a declared parameter without the agent
+./cadex params --project ~/cadex-projects/bracket --set wall=6 --out /tmp/wall6
 ```
 
-`pixi run app` (or a bare `./cadex`) serves the dashboard over a projects
-directory — `~/cadex-projects`, created if absent, unless `--projects` or
-`CADEX_PROJECTS` names another — bound to 127.0.0.1. Its home page puts
-the most recently active project in a spotlight and every project there in
-a card (ADR-605); each opens its project page. To watch from another
-device, put `tailscale serve` in front of it rather than binding a public
-address. `./cadex review --project <dir>` serves one project alone.
-
-`pixi run stage-engine` stages the engine payload into
-`build/engine/cadex-engine-<version>-<os>-<arch>/`.
-
-## How it fits together
-
-Three parts in one repository. The engine and the other two are separated
-by a process boundary:
-
-- **the engine** (repo root, a FreeCAD fork) — `cadexd`, a per-project
-  headless service speaking newline-delimited JSON over stdio. It runs
-  xscript programs in sandboxed workers, produces BREP, and streams
-  tessellation with face and edge ID maps back.
-- **the dashboard** (`cli/cadex_cli/review_server.py` and
-  `review_static/`) — a standard-library Python server, vanilla JS and the
-  vendored three.js; no npm, no bundler, no framework. It reads the project
-  directory, which is the truth. Its design spec is
-  [docs/DASHBOARD.md](docs/DASHBOARD.md).
-- **the agent bindings** (`cli/`) — `cadex mcp`, an MCP stdio server over
-  one tool surface (`cli/cadex_cli/tools.py`) and one guidance source
-  (`cli/cadex_cli/guidance.py` over the engine's base guidance and its
-  optional named styles, ADR-560), and the `cadex` commands. Any agent uses
-  them; Cadex runs none. The CLI finds an engine in the build tree or,
-  staged, by reading its `cadex-engine.json` manifest.
-
-And two directories that are deliberately none of the three:
-
-- **`training/`** — the offboard PPO trainer. It is not part of
-  the product: CMake never installs it, no payload carries it, and it cannot
-  import Cadex. A gait needs a GPU box; a toy-scale mechanism trains on
-  your own CPU in seconds to minutes
-  ([training/SETUP.md](training/SETUP.md) §b). Either way one `.cxpolicy`
-  file comes home and the engine verifies it; the engine verifies a policy
-  and never produces one. [training/README.md](training/README.md).
-- **`analysis/`** — the offboard structural analysis: a hex-grid FEA core,
-  CalculiX as an arm's-length second opinion, a SIMP topology optimiser,
-  and the skeleton fit that ends in a script rather than a mesh. Same
-  contract as the trainer, plus one rule of its own: nothing in it may
-  import a GPL package. [analysis/README.md](analysis/README.md).
-
-The protocol between the engine and the CLI is pinned by tests on both the
-request and the response side (`docs/INTEGRATION.md`), which is what keeps
-either side replaceable.
-
-## Use it
-
-Everything runs headless; your agent is where you talk and the dashboard is
-where you look ([`docs/CLI.md`](docs/CLI.md)).
-
-```bash
-claude mcp add cadex -- "$PWD/cadex" mcp --project ~/cadex-projects/bracket   # or your client's equivalent
-# the dashboard from `pixi run app` lists it from the agent's first tool call
-# ...then ask your agent: "a mounting bracket for a NEMA17, 4 mm wall"
-./cadex params --project ~/cadex-projects/bracket --set wall=6 --out /tmp/wall6   # no AI, no tokens
-```
-
-The agent writes a *parametric* script once; after that a loop sweeps
-its parameters and re-exports STEP/STL for the price of a rebuild, so an
-external simulator can drive the design and the model is asked only when the
-shape must change.
+The dashboard serves every project under `~/cadex-projects` (or
+`--projects` / `CADEX_PROJECTS`) on 127.0.0.1; put `tailscale serve` in
+front of it to watch from another device. `./cadex --help` lists the rest:
+`export`, `render`, `hero`, `section`, `clearance`, `train`, `evaluate`,
+`smoke` and more ([docs/CLI.md](docs/CLI.md)).
 
 ## Tests
 
 ```bash
-pixi run test-engine                                  # engine suite, no build needed (~35 s)
-pixi run python -m pytest cli/tests                   # the CLI suite (~10 s)
-pixi run test-release                                 # the inherited ctest
+pixi run test-engine                        # engine contracts, no build needed
+pixi run python -m pytest cli/tests         # CLI, tool surface, HTTP API, dashboard
+pixi run test-release                       # the inherited FreeCAD ctest
 ```
 
-The suites hold contracts only (ADR-725): the protocol, the tool surface,
-the HTTP API, the licence rule, the offboard boundaries and the read-only
-dashboard. Behaviour is verified by running the thing. The packaged gate
-against a staged payload is in
-[docs/cadex-release-packaging.md](docs/cadex-release-packaging.md).
+The suites pin contracts, not coverage ([ADR-725](docs/DECISIONS.md)):
+the protocol, the tool surface, the HTTP API, the licence rule, the offboard
+boundaries and the read-only dashboard. Behaviour is verified by running it.
 
 ## Documentation
 
-Start with [`AGENTS.md`](AGENTS.md) (repo map, commands, change policy) and
-the doc set under [`docs/`](docs/):
-[VISION](docs/VISION.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
-[XSCRIPT](docs/XSCRIPT.md) · [MUJOCO](docs/MUJOCO.md) ·
-[ORGANIC](docs/ORGANIC.md) · [STRUCTURAL](docs/STRUCTURAL.md) ·
-[DESIGN-LANGUAGE](docs/DESIGN-LANGUAGE.md) · [INTEGRATION](docs/INTEGRATION.md) ·
-[DASHBOARD](docs/DASHBOARD.md) · [CLI](docs/CLI.md) · [FREECAD](docs/FREECAD.md) ·
-[PROVENANCE](docs/PROVENANCE.md) ·
-[ROADMAP](docs/ROADMAP.md) · [DECISIONS](docs/DECISIONS.md).
-The trainer: [training/README.md](training/README.md).
-Packaging: [docs/cadex-release-packaging.md](docs/cadex-release-packaging.md).
-Policies: [PRIVACY_POLICY](PRIVACY_POLICY.md) · [SECURITY](SECURITY.md).
+- [`docs/VISION.md`](docs/VISION.md): what Cadex is for, its principles and non-goals.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md): where it stands and what's next.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): how it is built.
+- [`docs/XSCRIPT.md`](docs/XSCRIPT.md): the scripting model.
+- [`docs/CLI.md`](docs/CLI.md): commands and the `--json` envelope.
+- [`docs/INTEGRATION.md`](docs/INTEGRATION.md): the cadexd protocol.
+- [`docs/DASHBOARD.md`](docs/DASHBOARD.md): the dashboard's design spec.
+- The capabilities: [dynamics and control](docs/MUJOCO.md), [organic modelling](docs/ORGANIC.md), [structural analysis](docs/STRUCTURAL.md) and [design language](docs/DESIGN-LANGUAGE.md).
+- [`docs/DECISIONS.md`](docs/DECISIONS.md): every decision, ADR by ADR.
+- [`AGENTS.md`](AGENTS.md): the contract for agents working *on* this repo.
 
-## Credits
+## About
 
-Cadex is a derivative work of FreeCAD, and does not track its release
-stream — we delete from the tree rather than merge into it.
-It also depends on two kernels it does *not* fork, because we intend to keep
-them.
+*From the author:* Cadex is an experimental side project, far from
+production software. It began as an attempt to combine Blender's interface
+with FreeCAD's constraint-based modelling, and became a headless engine that
+your own agent drives, with a browser page to watch it work. I make no claims
+about its reliability or robustness, though anecdotally I have been quite
+satisfied. It will always be free and open source. If you want a more
+serious project with similar themes, look at
+[VibeCAD](https://github.com/10-X-eng/vibecad) or [Smith](https://arche.co).
 
-- The geometry kernel is [OCCT](https://dev.opencascade.org/) (LGPL-2.1),
-  reached through a fork of the [FreeCAD
-  project](https://github.com/FreeCAD/FreeCAD) and built on the work of the
-  wider [FreeCAD community](https://forum.freecad.org/).
-- Until 2026-10-03 the application shell was a fork of
-  [Blender](https://projects.blender.org/blender/blender) (GPL-2.0+). It is
-  deleted (ADR-498), and no Blender code remains.
-- The dynamics kernel is
-  [MuJoCo](https://github.com/google-deepmind/mujoco) (Apache-2.0), kept
-  upstream and unmodified and redistributed inside the engine payload.
-  Cadex is not affiliated with or endorsed by the MuJoCo project.
-- The CadexLight, CadexDark and CadexMono Qt themes were based on
-  [OpenTheme by Obelisk79](https://github.com/obelisk79/OpenTheme)
-  (LGPL-2.1); they went with `src/Gui` (ADR-214), and NOTICE keeps the
-  credit.
+## Credits and license
 
-Cadex is not affiliated with or endorsed by FreeCAD or Blender. Which code came
-from where, under which licence, and what we changed is spelled out in
-[docs/PROVENANCE.md](docs/PROVENANCE.md).
-
-## License
-
-**LGPL-2.1-or-later.** The root [`LICENSE`](LICENSE) is FreeCAD's,
-unchanged. Since the Blender shell was deleted (ADR-498) the repository
-carries no GPL code, and the licensing suite holds it that way
-([docs/PROVENANCE.md §7](docs/PROVENANCE.md)).
-
-Third-party attribution lives in [`NOTICE`](NOTICE); the component-level
-license map — vendored trees, the conda-forge payload, the one
-redistributed pypi wheel — is
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). A staged engine
-payload carries all of that at its root, plus a per-package `licenses/`
-directory with a machine-readable `MANIFEST.json`.
+**LGPL-2.1-or-later**, with no GPL code ([`LICENSE`](LICENSE),
+[docs/PROVENANCE.md](docs/PROVENANCE.md)). Cadex is a derivative of
+[FreeCAD](https://github.com/FreeCAD/FreeCAD) and is built on two kernels it
+keeps upstream: [OCCT](https://dev.opencascade.org/) (LGPL-2.1) for geometry
+and [MuJoCo](https://github.com/google-deepmind/mujoco) (Apache-2.0) for
+dynamics. Until 2026-10-03 its desktop shell was a Blender fork; that code
+is deleted (ADR-498), and tag `v1-blender-shell` keeps it. Cadex is not
+affiliated with or endorsed by FreeCAD, Blender or MuJoCo.
+Attribution: [`NOTICE`](NOTICE) and
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). Policies:
+[`SECURITY.md`](SECURITY.md), [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md).

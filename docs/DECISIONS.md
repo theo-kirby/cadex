@@ -45845,3 +45845,49 @@ catalog change makes a new bundle.
   it 41 staged files cover the 40-module closure. Plus `pixi run test-engine`
   (157 passed, 3 skipped), `pytest cli/tests` (53 passed), and lurcher's build
   of `script.py`, which places RS04s.
+
+## ADR-833 — The North Star is a benchmark set; the roadmap is the next release (2026-10-27)
+
+**Context.** By 2026-10-27 the documents that set direction disagreed with
+the work and with each other. README, VISION, AGENTS and ROADMAP were last
+verified on 2026-10-16, about 95 ADRs earlier. The README opened with a
+Blender-era pitch and then said the Blender half was deleted. The North
+Star, *"design me a quadruped robot, all 3D-printable, MG90 servos, and
+train it to walk and wave"*, had not been what the work targeted since
+orun6: nearly every run since has been a QDD cat. Its last unattended
+measurement ran through `cadex walk --prompt`, which ADR-538 removed.
+ROADMAP.md was 2,339 lines of mostly closed phases, with nothing after
+ADR-729. PLAN.md still described the shell era. The owner asked for one
+coherent statement of vision, goals and status, and a plan to 0.3.0.
+
+**Decision.**
+- **The North Star is broadened** (owner's choice): *describe a robot or
+  mechanism to your agent; get back a design you can build and a policy that
+  moves it*. It is measured on three benchmark briefs, each run from an
+  empty project by a person's agent over `cadex mcp`. B1, the printed servo
+  robot, keeps the original sentence verbatim. B2 is a QDD creature. B3 is a
+  non-legged machine from `docs/MACHINES.md`.
+- **`docs/VISION.md` is rewritten short**, at about 160 lines: the North
+  Star, the product, the principles, the scope, the non-goals and the parked
+  directions. The previous text, with its answered open questions, moves to
+  `docs/history/VISION-2026-10-16.md`. One correction is made in passing:
+  STEP import is not built, so the vision no longer says it is.
+- **`docs/ROADMAP.md` becomes status plus the next release.** It holds a
+  status table per part, where each brief got and what stops it, and the
+  0.3.0 checklist (must, nice), followed by "After 0.3.0" and "Parked". The
+  phase roadmap moves whole, every checkbox kept, to
+  `docs/history/ROADMAP-PHASES.md`.
+- **README is rewritten** at about 120 lines. It opens on the North Star,
+  then covers the three parts, the quick start, tests and the doc map. The
+  author's note is kept, shortened and updated, under "About".
+- **AGENTS.md** gains the North Star line and an updated doc table.
+  Methodology 8 now says to tick the roadmap's release checklist.
+- **The next release is 0.3.0**, not 0.2.x, because behaviour changed
+  after 0.2.0: partial rebuilds (ADR-782), the worker bundle (ADR-827), and
+  new script surface (ADR-821, ADR-822, ADR-824).
+
+**Consequences.**
+- Live docs that cite "ROADMAP Phase N" now point at the history file.
+- `STATE.md`/`PLAN.md` still need the governor frontier cleaned. That is a
+  0.3.0 must-have, done by a fold, never by hand.
+- No code, protocol, tool-surface or test change.
