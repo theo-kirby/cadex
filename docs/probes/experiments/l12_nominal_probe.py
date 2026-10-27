@@ -1,7 +1,7 @@
 """Headless OCCT experiment; not a catalog recipe or installation envelope.
 
 Run from repo root:
-  build/release/bin/FreeCADCmd -c 'exec(open("docs/experiments/l12_nominal_probe.py").read())'
+  build/release/bin/FreeCADCmd -c 'exec(open("docs/probes/experiments/l12_nominal_probe.py").read())'
 
 Dimension provenance and intentional approximations: PROVENANCE.md section 8d.
 No manufacturer CAD is imported by this construction.

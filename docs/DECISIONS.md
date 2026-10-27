@@ -4831,7 +4831,7 @@ parameters: the same four knobs (`gauge_mm`, `pad_dia_mm`, `fillet_mm`,
 
 | before (ADR-063) | after |
 |---|---|
-| ![a straight cone](images/adr-064-joint-before-cone.png) | ![a concave meniscus](images/adr-064-joint-after-meniscus.png) |
+| ![a straight cone](probes/adr-064/adr-064-joint-before-cone.png) | ![a concave meniscus](probes/adr-064/adr-064-joint-after-meniscus.png) |
 
 **This reverses ADR-063.** That ADR fixed "a straight conical meniscus, **not**
 a revolved concave arc" and listed the concave version under *Deferred by

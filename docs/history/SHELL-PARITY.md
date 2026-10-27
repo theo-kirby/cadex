@@ -1,5 +1,7 @@
 # Shell parity ledger (orun2, W1)
 
+> **Historical (moved to docs/history/ 2026-10-27, ADR-828).** The ledger of where each part of the Blender shell went when it was deleted (ADR-498). Complete; no longer maintained.
+
 Verified against source: 2026-10-16. Rows first written 2026-10-03 at
 `a375745c`, before any deletion; audited row by row on 2026-10-04 (§5);
 repointed after ADR-537 and ADR-538 the same day.

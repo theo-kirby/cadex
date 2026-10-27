@@ -803,7 +803,7 @@ Ranked by how quietly they fail.
    stands today is the contact line: the agent reads it with `inspect
    scope=contacts` after an `assembly.mjcf` export, and the server still
    computes `collision_proxies` the page no longer draws —
-   `docs/SHELL-PARITY.md`.)*
+   `docs/history/SHELL-PARITY.md`.)*
    **What is still not done**, and is kept honest here rather than implied
    away: a `mesh` or `hull` shape draws a fixed-size frame cross, not its
    geometry, because the evidence deliberately strips the vertices. So the

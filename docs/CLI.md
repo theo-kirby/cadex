@@ -713,7 +713,7 @@ A project whose first design never landed (as when a `walk --prompt` design
 turn was refused, before ADR-538) has scaffold documents and no accepted
 manifest or run record. The dashboard shows missing geometry and a next CLI
 action.
-See the [fresh biped evidence and retry procedure](HEADLESS-BIPED-REVIEW.md).
+See the [fresh biped evidence and retry procedure](history/HEADLESS-BIPED-REVIEW.md).
 The whole recorded lifecycle of that biped — its D1–D8 evidence index, every
 retained run identity and the common-seed comparison of its designs — is
 [`docs/probes/reed-lifecycle/README.md`](probes/reed-lifecycle/README.md).

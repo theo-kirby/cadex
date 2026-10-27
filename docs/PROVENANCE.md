@@ -101,7 +101,7 @@ engine code.
 its vendored `extern/`, its four `lib/<platform>` library submodules, its
 Git LFS assets and its half of `docs/inherited-modifications.json`. The
 dashboard (`cli/cadex_cli/review_server.py`) is the only user interface now,
-and [`SHELL-PARITY.md`](SHELL-PARITY.md) records, module by module, what
+and [`SHELL-PARITY.md`](history/SHELL-PARITY.md) records, module by module, what
 became of each part of the assistant package. The tag `v1-blender-shell` is the last
 tree that carries the shell, and its ledger is
 [`history/BLENDER-TREE.md`](history/BLENDER-TREE.md).
@@ -715,7 +715,7 @@ guarantee is established.
 
 ### Nominal geometry experiment (2026-09-06)
 
-[`experiments/l12_nominal_probe.py`](experiments/l12_nominal_probe.py) builds
+[`experiments/l12_nominal_probe.py`](probes/experiments/l12_nominal_probe.py) builds
 an independently authored primitive approximation with the existing OCCT
 engine. Its header gives the headless reproduction command; it imports no
 manufacturer file. Datum is the rear bore centre, travel is +Z, and both
@@ -817,7 +817,7 @@ neck diameter, cap attachment and rear head height also lack callouts.
 **Reproducible partial construction.** Run:
 
 ```bash
-build/release/bin/FreeCADCmd -c 'exec(open("docs/experiments/solenoid_412_probe.py").read())'
+build/release/bin/FreeCADCmd -c 'exec(open("docs/probes/experiments/solenoid_412_probe.py").read())'
 ```
 
 The independently authored experiment fills a box and cylinders; no supplier
@@ -943,7 +943,7 @@ friction or an actuator model. Application load direction, duty, mounting,
 fit and operating conditions require separate selection. No dynamics or
 physical inertia can be inferred from the exterior volumes below.
 
-**Independent construction.** [ge6c_joint_probe.py](experiments/ge6c_joint_probe.py)
+**Independent construction.** [ge6c_joint_probe.py](probes/experiments/ge6c_joint_probe.py)
 uses OCCT sphere/cylinder intersection and subtraction. The outer ring is
 a Ø14 × 4 cylinder with a radius-5 spherical cavity; the inner ring is that
 sphere clipped to width 6 with a Ø6 through bore. Inner tilt is about Y
@@ -1058,7 +1058,7 @@ No vendor bytes or catalog identities were added. Replan before delivery.
 **Planetary experiment (ADR-235; not qualified).** The proposal reuses the
 independently authored sampled involute above for a virtual external gear
 cutting an internal ring's tooth spaces. It introduces no outside source
-or copied geometry. `docs/experiments/planetary_mesh_probe.py` tests m1,
+or copied geometry. `docs/probes/experiments/planetary_mesh_probe.py` tests m1,
 sun18/planet18/ring54; the first planet–ring mesh overlaps by 0.000354806
 mm³, above the 1e-6 bound. This is negative evidence, not a new catalog
 part or a qualified internal-gear profile.
