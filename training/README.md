@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-27. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-28. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -573,6 +573,40 @@ A screen is a necessary condition. A held replay does not balance and a
 position servo fighting the support inflates some torques, so a
 configuration that holds goes on to a tracking run, and one that does not
 is out. Like `cadex_train.py` it imports only the standard library at
+module scope.
+
+## Training before the CAD: the concept model (ADR-834)
+
+`cadex_concept.py` writes a robot spec (`cadex-concept-v1` JSON) as a
+box-and-capsule MJCF, so the questions a legged design turns on — link
+lengths, stance angles, which way a knee bends, joint limits, where the
+drives sit — are answered by training on it before any part is designed:
+
+```bash
+~/cadex-train-venv/bin/python training/cadex_concept.py examples/concept/leon-iv.json \
+    --out concept.xml --set legs.0.joints.1.length=0.23 --set legs.0.joints.1.pitch=-32
+```
+
+- **The spec** is a trunk of boxes and capsules joined by driven joints,
+  and legs as chains of segments (`to`, or `length` + `pitch` + `dy`), each
+  a capsule with a point mass at its far end for the next drive's housing;
+  a passive joint can follow another at a ratio (a parallelogram linkage);
+  `mirror` adds the right leg. Drives are datasheets in the proxy's library
+  format plus the servo's `kp`/`kd`. The module docstring has every field.
+- **The model is the export's shape.** Body frames are the world frame at
+  the home pose, actuators are `<joint>/position`, and the sensors are the
+  engine's `obs/N` in its order, so a tool written against an exported
+  model reads a concept by name (`training/test_cadex_concept.py`).
+- **The report** says what the spec implies: each foot's height off the
+  floor (the model stands on its lowest foot), each leg's hip height, reach
+  and `bend` (a leg near 0 is a straight post and can barely slide its foot
+  along the floor), and the drives. `--set` overrides any value by dotted
+  path, as `cadex params --set` does for a script.
+
+The order (ADR-834): sweep the concept,
+train each surviving variant briefly, freeze the numbers that pass into the
+spec, build the CAD to meet them, then train the detailed model again and
+compare. Like `cadex_train.py` it imports only the standard library at
 module scope.
 
 ## What the suites do, and do not, prove

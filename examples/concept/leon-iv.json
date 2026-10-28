@@ -1,0 +1,56 @@
+{
+ "format": "cadex-concept-v1",
+ "name": "leon-iv-concept",
+ "_source": "leon IV's frozen build (training model runs/t0/train-model.xml): joint positions, segment lengths and angles, and lumped masses read off it; shapes and inertias are crude boxes and capsules.",
+ "drives": {
+  "ak10-9": {"model": "CubeMars AK10-9 V3.0 KV60", "peak_torque_nm": 53.0, "rated_torque_nm": 18.0,
+             "no_load_speed_rpm": 320.0, "gear_ratio": 9.0, "rotor_inertia_gcm2": 1002.0,
+             "back_drive_torque_nm": 0.6, "mass_g": 940.0, "kp": 143.239, "kd": 3.55234},
+  "ak80-9": {"model": "CubeMars AK80-9 V3.0", "peak_torque_nm": 22.0, "rated_torque_nm": 9.0,
+             "no_load_speed_rpm": 570.0, "gear_ratio": 9.0, "rotor_inertia_gcm2": 1118.3238,
+             "back_drive_torque_nm": 0.51, "mass_g": 490.0, "kp": 59.473, "kd": 1.4725}
+ },
+ "trunk": [
+  {"name": "c_chest_frame",
+   "boxes": [{"center": [0.165, 0, 0.375], "half": [0.175, 0.055, 0.105], "mass": 8.51, "fall": true},
+             {"center": [0.485, 0, 0.34], "half": [0.085, 0.06, 0.1], "mass": 0.70, "fall": true}]},
+  {"name": "c_loin_link", "parent": "c_chest_frame",
+   "joint": {"name": "j_spine", "at": [-0.025, 0.031, 0.396], "axis": [0, 1, 0],
+             "range": [-20, 20], "drive": "ak10-9"},
+   "boxes": [{"center": [-0.066, 0, 0.352], "half": [0.04, 0.04, 0.03], "mass": 0.961}]},
+  {"name": "c_pelvis_frame", "parent": "c_loin_link",
+   "joint": {"name": "j_spine_yaw", "at": [-0.07, 0, 0.292], "axis": [0, 0, -1],
+             "range": [-20, 20], "drive": "ak80-9"},
+   "boxes": [{"center": [-0.18, 0, 0.4], "half": [0.12, 0.05, 0.07], "mass": 2.22, "fall": true}],
+   "capsules": [{"from": [-0.310, 0, 0.382], "to": [-0.785, 0, 0.298], "radius": 0.024,
+                 "mass": 0.34, "fall": true}]}
+ ],
+ "imu": {"body": "c_imu", "parent": "c_chest_frame", "at": [0.2407, 0, 0.3928]},
+ "legs": [
+  {"mount": "c_chest_frame", "mirror": true, "start": [0.126, 0.05, 0.402],
+   "joints": [
+    {"name": "j_fhaa_{s}", "body": "c_yoke_f{s}", "axis": [1, 0, 0], "range": [-10, 10],
+     "drive": "ak80-9", "to": [0.054, 0.03, 0.016], "mass": 0.156, "end_mass": 1.0},
+    {"name": "j_shoulder_{s}", "body": "c_arm_{s}", "axis": [0, 1, 0], "range": [-35, 25],
+     "drive": "ak10-9", "length": 0.207, "pitch": -5.5, "dy": 0.008,
+     "mass": 1.016, "radius": 0.025, "end_mass": 1.0},
+    {"name": "j_elbow_{s}", "body": "c_forearm_{s}", "axis": [0, 1, 0], "range": [-40, 60],
+     "drive": "ak10-9", "length": 0.1852, "pitch": 6.5, "dy": -0.004, "mass": 0.362}
+   ],
+   "foot": {"body": "c_paw_f{s}", "radius": 0.028, "mass": 0.098}},
+  {"mount": "c_pelvis_frame", "mirror": true, "start": [-0.174, 0.05, 0.385],
+   "joints": [
+    {"name": "j_hhaa_{s}", "body": "c_yoke_h{s}", "axis": [-1, 0, 0], "range": [-10, 10],
+     "drive": "ak80-9", "to": [-0.056, 0.085, -0.025], "mass": 0.248, "end_mass": 1.0},
+    {"name": "j_hip_{s}", "body": "c_thigh_{s}", "axis": [0, 1, 0], "range": [-40, 45],
+     "drive": "ak10-9", "length": 0.1492, "pitch": 26.9, "dy": -0.0505,
+     "mass": 0.612, "radius": 0.025, "end_mass": 1.0},
+    {"name": "j_knee_{s}", "body": "c_shin_{s}", "axis": [0, 1, 0], "range": [-45, 35],
+     "drive": "ak10-9", "length": 0.1285, "pitch": -35.2, "dy": -0.0095, "mass": 0.353},
+    {"name": "j_hock_{s}", "body": "c_meta_{s}", "axis": [0, 1, 0],
+     "follows": "j_knee_{s}", "ratio": -1,
+     "length": 0.0946, "pitch": 6.7, "dy": -0.004, "mass": 0.128, "radius": 0.014}
+   ],
+   "foot": {"body": "c_paw_h{s}", "radius": 0.028, "mass": 0.099}}
+ ]
+}

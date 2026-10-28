@@ -46205,3 +46205,91 @@ coherent statement of vision, goals and status, and a plan to 0.3.0.
 - `STATE.md`/`PLAN.md` still need the governor frontier cleaned. That is a
   0.3.0 must-have, done by a fold, never by hand.
 - No code, protocol, tool-surface or test change.
+
+## ADR-834 — Train a concept model before the CAD (2026-10-28)
+
+**Context.** A legged design's first questions are link lengths, stance angles,
+which way a knee bends, joint limits and where the drives sit. Cadex answered
+them only after the CAD existed: the agent built the robot, exported it, and
+trained on it. leon IV shows the cost. l4r1 found after nine hours, with the
+body already built, that a fore paw can slide only 121 mm along the floor in
+one stance where a 4 m/s stride needs 391 mm, and that this is why its best
+policy scuttles at 3.27 m/s (leon-iv `docs/TRAINING-GAP.md`). A post from a
+robot builder (2026-10-15) described the alternative: train on a box-and-capsule
+model built from the spec, freeze the geometry that passes, build the CAD to
+meet it, then train the detailed model to confirm. The owner stopped l4r1 to
+build this.
+
+**Decision.**
+- **`training/cadex_concept.py`** writes a `cadex-concept-v1` spec as an MJCF:
+  trunk boxes and capsules joined by driven joints; legs as chains of capsule
+  segments, each given by `to` or by `length`, `pitch` and `dy`, with a point
+  mass at the far end for the next drive's housing; a passive joint that
+  follows another at a ratio (a parallelogram linkage); mirrored right legs;
+  sphere feet. Drives are datasheets in `cadex_proxy.py`'s library format,
+  converted by its `drive_constants`. `--set path=value` overrides any value.
+  The model stands on its lowest foot. The report gives each foot's height off
+  the floor, each leg's hip height, reach and `bend`, and the drives.
+- **It is written as the export is.** Body frames are the world frame at the
+  home pose, actuators are `<joint>/position`, the sensors are `obs/N` in the
+  export's order, and the keyframe is `solved`. A tool written against an
+  exported model therefore reads a concept by name.
+  `training/test_cadex_concept.py` holds this contract.
+- **It is offboard** (ADR-084): the engine, the payload and `pixi.toml` do not
+  reference it, and it imports only the standard library at module scope.
+  `examples/concept/leon-iv.json` is the reference spec.
+
+**Evidence (leon IV, seed 0 each, judged with leon IV's `t1_judge.py` on the
+model the policy trained on).**
+- **The concept matches the CAD-derived training model.** Mass 26.88 kg on
+  both. Centre of mass within 7 mm. Joint-space inertias within about 10%
+  (hip 0.070 against 0.070, spine 0.56 against 0.61 kg·m²). Same actuator and
+  sensor layout. It stands the same way.
+- **It catches the reach limit before any CAD.** `swing_reach.py` at
+  4 m/s / 3.07 Hz / duty 0.3 gives 119 mm of fore-paw floor travel on the
+  concept, against 123 mm on the CAD model. Opening the joint ranges and the
+  action box changes nothing. The cause is in the spec: the fore leg's bend is
+  0.006, a straight post.
+- **T1 reproduces.** Playground's recipe, 206 M steps, 676 s, against the CAD
+  model's two seeds: 0 falls (0, 0); starts from rest at 1.0 / 1.5 / 2.0 m/s
+  10 / 0 / 0 (1 / 0 / 0 and 10 / 0 / 0); ramped 0.94 / 1.39 / 1.77
+  (0.94 / 1.22 / 1.28 and 0.93 / 1.40 / 1.64); worst hip in a turn 1.00× rated
+  (0.98, 1.23). The start-from-rest freeze is reproduced.
+- **The gallop recipe, at 600 M steps, ranks variants but reads low at the top
+  speed.**
+
+| Model | Ramped to 3.0 / 3.5 / 4.0 m/s | Falls from rest at 3.5 / 4.0 m/s, of 10 | Worst drive (RMS / rated) |
+|---|---|---|---|
+| CAD (`414c8724`, l4r1) | 2.75 / 3.06 / 3.27 | 4 / – | hip 1.20–1.51 |
+| A: the concept as built | 2.55 / 2.65 / 0 | 0 / 1 (does not start) | hip 1.21 |
+| B: fore segments 0.23 m, bent 32° at home | 2.79 / 2.96 / 0 | 1 / 8 | elbow 1.38–1.62 |
+| C: B on RS04 shoulders and elbows (+1.9 kg) | 2.72 / 2.95 / 0 | 3 / 10 | hind hip 1.09–1.56 |
+| D1: C with hind thigh and shin 1.2× longer, same hip height and paw spot | 2.84 / 3.04 / 3.24 | 0 / 0 | hind hip 1.73–2.03 |
+| D2: D1 on RS04 hind hips and knees (30.7 kg) | 0 / 0 / 0 | 0 / 10 (does not start above 1.5 m/s) | elbow 0.96 |
+
+  A bent fore leg lifts floor travel from 119 to 348 mm in the open-loop screen.
+  In training, B starts from rest at every commanded speed up to 4 m/s, which
+  no leon IV model had done. It moved the limit to the elbows' torque; RS04s
+  there (C) move it again, to the hind hips. No variant reaches 4 m/s.
+- **The hind-leg round.** Lengthening the hind thigh and shin by k, re-angled
+  to keep the hip height and the paw's spot, takes hind floor travel from
+  233 mm (k = 1.0) to 278 / 304 / 329 mm (k = 1.1 / 1.2 / 1.3). The longer
+  segments keep their old masses. At k = 1.2 on the AK10-9s (D1) the policy
+  starts from rest at every speed with no falls, and reaches 3.24 m/s from
+  rest and ramped at a 4 m/s command, level with the CAD policy's 3.27. It
+  pays in hip torque: 2.03× rated RMS at 4 m/s. D2's RS04 hind drives take the
+  torque off but the policy goes back to standing still above 1.5 m/s, the
+  start-from-rest freeze, so the stronger drive's effect is not measured.
+
+**Consequences.**
+- The concept loop finds one binding limit per round of about 35 minutes of
+  GPU time, with no CAD rebuild. On leon IV, three rounds (fore bend, fore
+  drives, hind length) took the concept from 2.65 to 3.24 m/s; hind hip
+  torque is now the limit.
+- **The concept's absolute top speed is not yet trusted.** A sits about
+  0.6 m/s under the CAD policy at a 4 m/s command, from one seed each. A
+  second seed, and the confirming CAD retrain of a frozen variant, are what
+  would settle it.
+- Nothing in the agent's guidance or tool surface changes yet. The concept
+  step reaches `CadexAgentGuidance.md` once a design has gone spec → frozen
+  numbers → CAD → retrain and the two agree.
