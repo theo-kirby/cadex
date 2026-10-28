@@ -5374,6 +5374,19 @@ def main(argv: Sequence[str]) -> int:
 
     report(state="starting", iteration=-1, total=int(options.iterations),
            curve=[], best={}, wall=0.0, device="")
+    if getattr(options, "view_seconds", 0):
+        # The model at rest until the rollout replaces it, so a run shows its
+        # robot from its first iteration (ADR-835).
+        try:
+            import mujoco
+
+            host = mujoco.MjModel.from_xml_string(bundle["model_xml"].decode("utf-8"))
+            rest = host.key_qpos[0] if host.nkey else host.qpos0
+            write_view(progress_path.parent / "view", bundle["model_xml"], [rest, rest],
+                       float(bundle["task"]["episode"]["control_interval_s"]),
+                       source="at rest: the model before its rollout")
+        except Exception as error:  # noqa: BLE001 -- the view never fails a run
+            print(f"view: not written ({type(error).__name__}: {error})", file=sys.stderr)
     try:
         trained = train(bundle, options, emit=emit, progress=report)
 
