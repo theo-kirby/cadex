@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Entry Point
 
-Verified against source: 2026-10-27. **This is the single agent contract.**
+Verified against source: 2026-10-28. **This is the single agent contract.**
 `CLAUDE.md` only imports it (`@AGENTS.md`), so there is one file to read and
 one to edit (ADR-137).
 
@@ -157,9 +157,10 @@ The philosophy is **remove more than we add** (`docs/VISION.md`).
    — fix the doc in your PR.
 2. **The suites hold contracts, not coverage (ADR-725).** They pin the
    process boundaries, the protocol, the tool surface, the HTTP API, the
-   licence rule and the read-only dashboard, and each runs in under a
-   minute (engine: 157 passed, 3 skipped, ~34 s; CLI: 53 passed, ~38 s, on
-   2026-10-16). Add a test only for a contract, or for a regression that
+   licence rule and the read-only dashboard (engine: 157 passed, 3 skipped,
+   ~130 s, most of it `test_cadexd_lifecycle.py` through a real `cadexd`;
+   CLI: 53 passed, ~38 s; measured 2026-10-28,
+   `docs/probes/orun21/ITERATION.md` §5). Add a test only for a contract, or for a regression that
    actually happened; verify behaviour by running the thing. Live docs cite
    only surviving tests; `docs/DECISIONS.md` and `docs/probes/` are history
    and may name deleted ones.
