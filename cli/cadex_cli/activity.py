@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""What the agent is doing: one line per ``cadex mcp`` tool call (orun3 V4, ADR-549).
+"""What the agent is doing: one line per ``cadex mcp`` tool call (orun3 V4, ADR-549)
+and per ``cadex`` command on a project (ADR-836).
 
 The MCP server is the only place every call the owner's agent makes passes
 through, so it is where they are written down: ``review/activity.jsonl`` in
@@ -192,7 +193,7 @@ def read_activity(project_root: Path | str, limit: int = READ_LIMIT) -> dict[str
         raw = path.read_bytes()
     except FileNotFoundError:
         return {"available": False, "entries": [],
-                "reason": "no tool call through cadex mcp has been logged in this project"}
+                "reason": "no cadex call (MCP tool or CLI command) has been logged in this project"}
     except OSError as exc:
         return {"available": False, "entries": [], "reason": f"the activity log could not be read: {exc}"}
     entries: list[dict[str, Any]] = []

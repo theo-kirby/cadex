@@ -46389,3 +46389,22 @@ period and ramp are still refused.
 
 **Consequences.** `training/test_curriculum_warm_start.py` pins a widened
 banded range as `goal.range`. No engine, protocol or tool-surface change.
+
+## ADR-836 — A `cadex` command on a project is agent activity (2026-10-28)
+
+**Context.** The dashboard's activity line (ADR-549, ADR-553) logged only `cadex mcp` tool
+calls. An agent that drives Cadex through the CLI, as every Ouroboros run does
+(`./cadex script --project … --wait`), read as "no tool call through cadex mcp has been
+logged in this project" for hours while it built. The owner saw it on leon V during l5r1.
+
+**Decision.** `cadex_cli.__main__.main` writes every command on a project, except `app` (the
+dashboard) and `mcp` (which logs each tool call itself), into `review/activity.jsonl` with
+the same two lines a tool call writes: in flight (`running`, with the CLI's pid) when it
+starts, finished (`ok` or `error`, the error or `exit N`, its duration) when it returns.
+The tool is named `cadex <command>`, and the arguments are summarised as before, never
+written whole. Writing never fails the command. The reader, the page and the HTTP API are
+unchanged.
+
+**Consequences.** Status shows `cadex script … · running 14 min` during a build, and a CLI
+command killed mid-run reads `did not return`, as a lost tool call does.
+
