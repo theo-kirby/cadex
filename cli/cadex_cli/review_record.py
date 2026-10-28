@@ -727,6 +727,37 @@ def trainer_progress(run_dir: Path | str) -> str | None:
     return max(found)[1] if found else None
 
 
+def trainer_view(run_dir: Path | str) -> tuple[str | None, str | None]:
+    """The newest trainer ``view/`` under the run and the policy it plays (ADR-835).
+
+    A run that trains a second seed beside a finished one has telemetry from
+    the live seed, which writes its view only when it ends; until then the
+    run shows the newest seed that has one, with that seed's own policy.
+    """
+
+    directory = Path(run_dir).expanduser()
+    found: list[tuple[float, str, str | None]] = []
+    for relative in ["train/progress.json"] + sorted(
+            path.relative_to(directory).as_posix() for path in directory.glob("*/progress.json")):
+        base = Path(relative).parent
+        trace = (base / "view" / "trace.json").as_posix()
+        reference = resolve_reference(directory, trace)
+        if reference["error"] or not reference["exists"]:
+            continue
+        progress, _error = _load_json(directory / relative)
+        out = (progress or {}).get("out")
+        policy = (base / out).as_posix() if isinstance(out, str) and out and Path(out).name == out \
+            and (directory / base / out).is_file() else None
+        try:
+            found.append(((directory / trace).stat().st_mtime, trace, policy))
+        except OSError:
+            continue
+    if not found:
+        return None, None
+    _mtime, trace, policy = max(found)
+    return trace, policy
+
+
 def _trainer_gone(progress: Mapping[str, Any], progress_path: str) -> str | None:
     """Why a trainer that says it is training is gone, or None while it writes."""
 
@@ -759,12 +790,7 @@ def _trainer_record(directory: Path, progress_path: str) -> dict[str, Any] | Non
     gone = _trainer_gone(progress, progress_path)
     if gone:
         status, error = "failed", gone
-    base = Path(progress_path).parent
-    out = progress.get("out")
-    policy = (base / out).as_posix() if isinstance(out, str) and out and Path(out).name == out \
-        and (directory / base / out).is_file() else None
-    trace = (base / "view" / "trace.json").as_posix()
-    trace = trace if (directory / trace).is_file() else None
+    trace, policy = trainer_view(directory)
     try:
         recorded_at = _datetime.datetime.fromtimestamp(
             float(progress.get("started_at")), _datetime.timezone.utc
@@ -882,9 +908,9 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
         if gone:
             record = {**record, "status": "failed", "recorded_status": "running", "error": gone}
     if not artifacts.get("trace") and artifacts.get("progress"):
-        view = (Path(artifacts["progress"]).parent / "view" / "trace.json").as_posix()
-        if (directory / view).is_file():
-            artifacts["trace"] = view
+        artifacts["trace"], view_policy = trainer_view(directory)
+        if artifacts["trace"] and not artifacts.get("policy"):
+            artifacts["policy"] = view_policy
     policy_name = str((record.get("policy") or {}).get("name") or "")
     if "policy" not in artifacts and policy_name and Path(policy_name).name == policy_name:
         # A record from before ADR-326 named no run-local policy; the
