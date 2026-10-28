@@ -75,3 +75,21 @@ def test_a_datasheet_drive_is_the_proxys():
     assert model.dof_armature[dof] == pytest.approx(1002.0e-7 * 81, rel=1e-5)
     with pytest.raises(C.ConceptError):
         C.build(C.apply_sets(SPEC, ['drives.ak10-9.kp="x"']))
+
+
+def test_a_view_is_a_mesh_per_body_and_a_trace_of_them(tmp_path):
+    """ADR-835: what the trainer leaves beside progress.json is what the dashboard plays."""
+
+    import cadex_train as T
+
+    xml, _ = C.build(SPEC)
+    model = mujoco.MjModel.from_xml_string(xml)
+    poses = [model.key_qpos[0]] * 3
+    trace = json.loads(T.write_view(tmp_path, xml.encode("utf-8"), poses, 0.02, source="test")
+                       .read_text(encoding="utf-8"))
+    meshes = {path.stem for path in tmp_path.glob("*.stl")}
+    assert "c_chest_frame" in meshes and "c_paw_hl" in meshes
+    assert [frame["nominal_time_s"] for frame in trace["frames"]] == [0.0, 0.02, 0.04]
+    assert set(trace["frames"][0]["component_placements"]) == meshes
+    chest = (tmp_path / "c_chest_frame.stl").read_bytes()
+    assert len(chest) == 84 + 50 * int.from_bytes(chest[80:84], "little") == 84 + 50 * 24

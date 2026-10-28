@@ -46293,3 +46293,45 @@ model the policy trained on).**
 - Nothing in the agent's guidance or tool surface changes yet. The concept
   step reaches `CadexAgentGuidance.md` once a design has gone spec → frozen
   numbers → CAD → retrain and the two agree.
+
+## ADR-835 — Every training run shows in the dashboard (2026-10-28)
+
+**Context.** The dashboard listed a run only when a walk (`cadex train`) wrote
+its `run.json`. Training started by hand never appeared: the concept runs of
+ADR-834, and every leon IV run, which an operator's backfill script had to give
+a record, a rollout and the accepted meshes. Neither engine copy could replay
+those policies for a view, because their observations are built by the trainer.
+The owner asked that every run be visible, the light model included.
+
+**Decision.**
+- **The trainer leaves a view.** At the end of a run `training/cadex_train.py`
+  plays the final policy for `--view-seconds` (default 10) on its witness batch
+  and writes `view/` beside `progress.json`: an STL per body tessellated from that
+  body's geoms, and a `cadex-assembly-simulation-trace-v1` of the episode that
+  travelled farthest. It is the model the policy trained on. `--view POLICY`
+  writes one for a policy that already exists. A failed view is a line on
+  stderr, never a failed run. Module scope stays standard library only.
+- **A run is what a trainer wrote.** `review_record.read_run_record` reads a
+  `runs/<name>/` with no `run.json` but with a trainer `progress.json`
+  (`train/`, else the newest one a level down) as a run: `done` is `ok`,
+  `failed` is `failed`. A trainer that says it is training but has written
+  nothing for 10 minutes is read as gone. The same rule now applies to a
+  recorded run that says it is running, with the file left as written. Telemetry,
+  checkpoints and the view are read from wherever the progress file is.
+- No route, reply key or tool changes. `test_http_api.py`'s fixture gains a
+  run started by hand that every reply must still describe.
+
+**Evidence.** leon IV in the dashboard on 2026-10-28: the six concept runs
+(`runs/concept-*`) list with their curves, draw as boxes and capsules and play a
+10 s, 501-frame rollout. Thirteen backfilled CAD runs gained the curves they never
+showed. `t1mid`, recorded as running and quiet for four hours, now reads failed
+instead of holding Status at `training`. Suites: CLI 53 passed, training 65
+passed, engine boundary tests 13 passed.
+
+**Consequences.**
+- A project's own trainer copy (leon IV trains with `~/leon-iv-tooling`) writes
+  a view once it carries this trainer. Until then, `--view` from this trainer
+  makes one for the bundles it can read.
+- The view is the training model's, not the CAD's. The backfill's
+  accepted-mesh rollouts stay the way to watch a CAD body.
+

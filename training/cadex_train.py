@@ -4186,6 +4186,46 @@ def train(
         _state, seen = jax.lax.scan(one, state, jax.random.split(key, unroll))
         return seen
 
+    view_steps = 0
+    if getattr(options, "view_seconds", 0) and not bundle.get("family"):
+        interval = float(bundle["task"]["episode"]["control_interval_s"])
+        view_steps = max(1, round(float(options.view_seconds) / interval))
+
+    @jax.jit
+    def view_rollout(normaliser, policy_params, key):
+        """The deterministic policy on the witness batch, every pose (ADR-835)."""
+
+        policy = make_policy((normaliser, policy_params, None), deterministic=True)
+
+        def one(state, step_key):
+            action, _ = policy(state.obs, step_key)
+            state = witness_env.step(state, action)
+            return state, state.pipeline_state.qpos
+
+        state = witness_env.reset(key)
+        _state, poses = jax.lax.scan(one, state, jax.random.split(key, view_steps))
+        return jnp.concatenate([state.pipeline_state.qpos[None], poses])
+
+    def view_poses(params, normaliser):
+        """[step, qpos] of the witness episode that travelled farthest, or None.
+
+        The view is for watching; it never fails a run."""
+
+        if not view_steps:
+            return None
+        try:
+            poses = np.asarray(view_rollout(normaliser, params.policy, witness_key),
+                               dtype=np.float64)
+            host = mujoco.MjModel.from_xml_string(bundle["model_xml"].decode("utf-8"))
+        except Exception as error:  # noqa: BLE001
+            print(f"view: not written ({type(error).__name__}: {error})", file=sys.stderr)
+            return None
+        pick = 0
+        if host.njnt and int(host.jnt_type[0]) == int(mujoco.mjtJoint.mjJNT_FREE):
+            travel = np.linalg.norm(poses[-1, :, :2] - poses[0, :, :2], axis=-1)
+            pick = int(np.argmax(travel))
+        return poses[:, pick, :]
+
     def snapshot(params, normaliser, curve, wall):
         seen = np.asarray(witness_rollout(normaliser, params.policy, witness_key)
                           ).reshape((-1, len(env.actor_names)))
@@ -4354,7 +4394,9 @@ def train(
     if best["params"] is not None and best["written"] != best["iteration"]:
         emit("best", best["iteration"], best["reward_per_step"],
              snapshot(best["params"], best["normaliser"], curve, wall))
-    return snapshot(params, normaliser, curve, wall)
+    final = snapshot(params, normaliser, curve, wall)
+    final["view_qpos"] = view_poses(params, normaliser)
+    return final
 
 
 def _package_version(name: str) -> str:
@@ -4717,7 +4759,7 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         description="Train a control policy from a cadex-training-task-v1 bundle.",
     )
     parser.add_argument("bundle", help="path to <root>/outputs/<name>-task.json")
-    parser.add_argument("--out", required=True, help="path to write the .cxpolicy")
+    parser.add_argument("--out", default="", help="path to write the .cxpolicy (required unless --view)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--iterations", type=int, default=200)
     parser.add_argument("--envs", type=int, default=256)
@@ -4920,7 +4962,154 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
             "the dashboard read"
         ),
     )
-    return parser.parse_args(list(argv))
+    parser.add_argument(
+        "--view-seconds", type=float, default=10.0, metavar="S",
+        help=("at the end, play the policy for S seconds on the witness batch and write "
+              "the farthest-travelled episode beside progress.json as view/: a mesh per "
+              "body and a trace the dashboard plays (ADR-835). 0 disables"))
+    parser.add_argument(
+        "--view", default="", metavar="POLICY",
+        help=("train nothing: replay POLICY (trained on this bundle) and write its view/ "
+              "beside it, for a run made before ADR-835"))
+    options = parser.parse_args(list(argv))
+    if not options.out and not options.view:
+        parser.error("--out is required (or --view POLICY)")
+    return options
+
+
+#: What a view's trace says it is: the schema the engine's own rollouts
+#: carry, so the dashboard plays it unchanged (ADR-835).
+VIEW_TRACE_SCHEMA = "cadex-assembly-simulation-trace-v1"
+
+
+def _lathe(np, profile: Sequence[tuple[float, float]], segments: int = 16):
+    """A solid of revolution about z from (radius, z) rows, bottom to top."""
+
+    angles = np.linspace(0.0, 2.0 * math.pi, segments, endpoint=False)
+    rings = [np.stack([r * np.cos(angles), r * np.sin(angles), np.full(segments, z)], axis=1)
+             for r, z in profile]
+    triangles = []
+    for lower, upper in zip(rings, rings[1:]):
+        for i in range(segments):
+            j = (i + 1) % segments
+            triangles += [(lower[i], lower[j], upper[j]), (lower[i], upper[j], upper[i])]
+    return np.asarray(triangles)
+
+
+def geom_triangles(mujoco, np, model, geom: int):
+    """One geom as triangles in its body's frame, metres; None for what has no solid."""
+
+    kind, size = int(model.geom_type[geom]), model.geom_size[geom]
+    types = mujoco.mjtGeom
+    arc = [-math.pi / 2 + math.pi * k / 16 for k in range(17)]
+    if kind == types.mjGEOM_BOX:
+        corner = np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)]) * size
+        faces = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+        local = np.asarray([tri for a, b, c, d in faces
+                            for tri in ((corner[a], corner[b], corner[c]),
+                                        (corner[a], corner[c], corner[d]))])
+    elif kind in (types.mjGEOM_SPHERE, types.mjGEOM_ELLIPSOID):
+        local = _lathe(np, [(math.cos(t), math.sin(t)) for t in arc])
+        local = local * (size if kind == types.mjGEOM_ELLIPSOID else size[0])
+    elif kind == types.mjGEOM_CAPSULE:
+        r, h = float(size[0]), float(size[1])
+        local = _lathe(np, [(r * math.cos(t), r * math.sin(t) - h) for t in arc[:9]]
+                       + [(r * math.cos(t), r * math.sin(t) + h) for t in arc[8:]])
+    elif kind == types.mjGEOM_CYLINDER:
+        r, h = float(size[0]), float(size[1])
+        local = _lathe(np, [(0.0, -h), (r, -h), (r, h), (0.0, h)])
+    elif kind == types.mjGEOM_MESH:
+        mesh = int(model.geom_dataid[geom])
+        start, count = int(model.mesh_vertadr[mesh]), int(model.mesh_vertnum[mesh])
+        first, faces = int(model.mesh_faceadr[mesh]), int(model.mesh_facenum[mesh])
+        vertices = model.mesh_vert[start:start + count]
+        local = vertices[model.mesh_face[first:first + faces]]
+    else:
+        return None
+    rotation = np.zeros(9)
+    mujoco.mju_quat2Mat(rotation, model.geom_quat[geom])
+    return local @ rotation.reshape(3, 3).T + model.geom_pos[geom]
+
+
+def binary_stl(np, triangles) -> bytes:
+    """Triangles (metres) as a binary STL in millimetres, degenerate ones dropped."""
+
+    import struct
+
+    mm = np.asarray(triangles, dtype=np.float64) * 1000.0
+    normal = np.cross(mm[:, 1] - mm[:, 0], mm[:, 2] - mm[:, 0])
+    length = np.linalg.norm(normal, axis=1)
+    keep = length > 1.0e-9
+    mm, normal = mm[keep], normal[keep] / length[keep, None]
+    rows = np.zeros(len(mm), dtype=[("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])
+    rows["n"], rows["v"] = normal, mm
+    return b"cadex view".ljust(80, b" ") + struct.pack("<I", len(mm)) + rows.tobytes()
+
+
+def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
+               *, source: str) -> Path:
+    """``view/``: a mesh per body from its geoms and a trace of ``poses`` (ADR-835).
+
+    Each body's mesh is in the body's own frame, named as the body is, and each
+    trace frame places every body as the model's kinematics put it, so the
+    dashboard plays the run on the very model it trained on, primitives and all.
+    Geoms in group 3 and above (point masses, helpers) and invisible ones are left out.
+    """
+
+    import mujoco
+    import numpy as np
+
+    model = mujoco.MjModel.from_xml_string(model_xml.decode("utf-8"))
+    data = mujoco.MjData(model)
+    directory.mkdir(parents=True, exist_ok=True)
+    bodies = []
+    for body in range(1, model.nbody):
+        parts = [geom_triangles(mujoco, np, model, g) for g in range(model.ngeom)
+                 if int(model.geom_bodyid[g]) == body and int(model.geom_group[g]) < 3
+                 and float(model.geom_rgba[g][3]) > 0.0]
+        parts = [p for p in parts if p is not None and len(p)]
+        if not parts:
+            continue
+        name = model.body(body).name or f"body{body}"
+        write_atomically(directory / f"{name}.stl", binary_stl(np, np.concatenate(parts)))
+        bodies.append((body, name))
+    frames = []
+    for step, qpos in enumerate(np.asarray(poses, dtype=np.float64)):
+        data.qpos[:] = qpos
+        mujoco.mj_kinematics(model, data)
+        frames.append({"nominal_time_s": round(step * interval_s, 4), "component_placements": {
+            name: {"position_mm": [round(float(v) * 1000.0, 2) for v in data.xpos[i]],
+                   "rotation_xyzw": [round(float(v), 6)
+                                     for v in (*data.xquat[i][1:], data.xquat[i][0])]}
+            for i, name in bodies}})
+    actuators = [{"actuator": model.actuator(a).name, "unit": "rad",
+                  "low": float(model.actuator_ctrlrange[a][0]),
+                  "high": float(model.actuator_ctrlrange[a][1])} for a in range(model.nu)]
+    trace = {"schema": VIEW_TRACE_SCHEMA, "source": source,
+             "parameters": {"frames_per_second": round(1.0 / interval_s, 2)},
+             "actuator_channels": actuators, "frames": frames}
+    path = directory / "trace.json"
+    write_atomically(path, json.dumps(trace, separators=(",", ":")).encode("utf-8"))
+    return path
+
+
+def view_only(options: argparse.Namespace, bundle: dict[str, Any]) -> int:
+    """``--view POLICY``: replay a finished policy and write its ``view/``."""
+
+    policy = Path(options.view).expanduser()
+    header = decode_policy(policy.read_bytes(), context=str(policy))["header"]
+    network = header.get("network") or {}
+    options.hidden = [int(b) for _a, b in (network.get("layers") or [])[:-1]]
+    options.activation = str(network.get("activation") or options.activation)
+    options.init_from, options.iterations = str(policy), 0
+    trained = train(bundle, options)
+    if trained.get("view_qpos") is None:
+        raise SystemExit("--view: the replay produced no poses (see above)")
+    path = write_view(policy.parent / "view", bundle["model_xml"], trained["view_qpos"],
+                      float(bundle["task"]["episode"]["control_interval_s"]),
+                      source=f"cadex_train --view {policy.name}")
+    print(json.dumps({"view": str(path), "frames": len(trained["view_qpos"])}))
+    return 0
 
 
 def main(argv: Sequence[str]) -> int:
@@ -4941,6 +5130,8 @@ def main(argv: Sequence[str]) -> int:
         bundle["family"] = [bundle] + [load_bundle(path, globals_for(jnp))
                                        for path in options.family]
         check_family(bundle["family"])
+    if options.view:
+        return view_only(options, bundle)
     target = Path(options.out)
     target.parent.mkdir(parents=True, exist_ok=True)
     progress_path = (
@@ -5116,6 +5307,14 @@ def main(argv: Sequence[str]) -> int:
             wall=float(trained["wall_time_s"]),
             device=trained["backend"],
         )
+        if trained.get("view_qpos") is not None:
+            try:
+                write_view(progress_path.parent / "view", bundle["model_xml"],
+                           trained["view_qpos"],
+                           float(bundle["task"]["episode"]["control_interval_s"]),
+                           source=f"cadex_train's witness batch, {target.name}")
+            except Exception as error:  # noqa: BLE001 -- the view never fails a run
+                print(f"view: not written ({type(error).__name__}: {error})", file=sys.stderr)
 
     except BaseException as error:
         # Training or final policy publication failed. Publish the failure

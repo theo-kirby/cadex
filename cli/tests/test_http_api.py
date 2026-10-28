@@ -31,7 +31,7 @@ from review_helpers import _biped_store
 from review_helpers import _escaped_run, _get, _json, _mesh_run, _rewrite_record, _stage_accepted
 from review_helpers import _training_run as _untraced_run
 from review_helpers import reference_bundle
-from review_helpers import motor_trace, write_policy
+from review_helpers import _cube_stl, _trace, motor_trace, write_policy
 
 REPO = Path(__file__).resolve().parents[2]
 STATIC = REPO / "cli" / "cadex_cli" / "review_static"
@@ -142,13 +142,24 @@ def biped(tmp_path):
     _untraced_run(root, "borrowing", revision=REVISION_B)
     _biped_store(root)
     _passing(root)
+    # A trainer run by hand: its seed's progress, policy and view, no run.json (ADR-835).
+    seed = root / "runs" / "byhand" / "seed0"
+    (seed / "view").mkdir(parents=True)
+    write_policy(seed / "byhand.cxpolicy")
+    (seed / "progress.json").write_text(json.dumps({
+        "schema": "cadex-training-progress-v1", "state": "done", "iteration": 9, "total": 10,
+        "started_at": 1.7e9, "updated_at": 1.7e9, "out": "byhand.cxpolicy", "checkpoints": [],
+        "curve": [[0, 0.1], [9, 0.2]], "loss_curve": [], "episode_steps_curve": [], "error": ""}))
+    (seed / "view" / "torso.stl").write_text(_cube_stl(20.0))
+    (seed / "view" / "trace.json").write_text(_trace({"torso": [0.0, 0.0, 0.0]}))
     return root
 
 
 #: Each route, the paths that reach it in the fixture, and the 404s it gives.
 PROBES = {
     "project": (["api/project"], []),
-    "run/<run>": (["api/run/first", "api/run/broken", "api/run/escaped", f"api/run/{RUN}", "api/run/killed"],
+    "run/<run>": (["api/run/first", "api/run/broken", "api/run/escaped", f"api/run/{RUN}", "api/run/killed",
+                   "api/run/byhand"],
                   ["api/run/nope"]),
     "policy-origin/<run>": (["api/policy-origin/first", "api/policy-origin/escaped"],
                             ["api/policy-origin/nope"]),
@@ -157,7 +168,7 @@ PROBES = {
     "model/revision/<ordinal>": (["api/model/revision/1", "api/model/revision/2", "api/model/revision/3"],
                                  ["api/model/revision/9", "api/model/revision/x"]),
     "model/run/<run>": (["api/model/run/first", "api/model/run/broken", f"api/model/run/{RUN}",
-                         "api/model/run/borrowing"],
+                         "api/model/run/borrowing", "api/model/run/byhand"],
                         ["api/model/run/nope"]),
     "playback/run/<run>": (["api/playback/run/second", "api/playback/run/broken"], ["api/playback/run/nope"]),
     "playback/checkpoint/<run>/<stem>": (
@@ -208,6 +219,10 @@ def test_every_reply_carries_its_documented_keys_and_nothing_else(biped, tmp_pat
         assert {"meshes"} <= seen["model/accepted"] and {"compare"} <= seen["model/revision/<ordinal>"]
         assert "policy_store" in seen["run/<run>"] and "playback" in seen["model/run/<run>"]
         assert _json(server.url + "api/run/killed")["recorded_status"] == "running"
+        byhand = _json(server.url + "api/run/byhand")
+        assert byhand["status"] == "ok" and byhand["telemetry"]["state"] == "done"
+        drawn = _json(server.url + "api/model/run/byhand")
+        assert drawn["available"] and [c["mesh_status"] for c in drawn["components"]] == ["retained"]
     finally:
         server.shutdown()
         server.server_close()

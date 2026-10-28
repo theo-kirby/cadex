@@ -575,6 +575,27 @@ configuration that holds goes on to a tracking run, and one that does not
 is out. Like `cadex_train.py` it imports only the standard library at
 module scope.
 
+## Every run is watchable: `view/` (ADR-835)
+
+At the end of a run the trainer plays the final policy for `--view-seconds`
+(default 10; 0 disables) on its witness batch, takes the episode that travelled
+farthest, and writes **`view/`** beside `progress.json`: one binary STL per body,
+tessellated from that body's own geoms (boxes, capsules, spheres, cylinders,
+meshes; group 3 and above left out) in its own frame, in millimetres, and
+`trace.json`, a `cadex-assembly-simulation-trace-v1` placing every body at every
+control step. It is the model the policy trained on, so a concept model shows as
+its boxes and capsules and an export's fast training model as its collision
+shapes. The view never fails a run: anything that goes wrong is one line on stderr.
+
+`--view POLICY` trains nothing: it replays a finished policy on the bundle it was
+trained on and writes `view/` beside the policy, for a run made before this.
+
+The dashboard reads a directory under the project's `runs/` as a run when it has
+a `run.json` **or** only what a trainer wrote: `train/progress.json`, or the
+newest `*/progress.json` one level down (`seed0/`). Its curves, its policy and
+its `view/` come from there (ADR-835), so a run started by hand appears beside
+the walks.
+
 ## Training before the CAD: the concept model (ADR-834)
 
 `cadex_concept.py` writes a robot spec (`cadex-concept-v1` JSON) as a
