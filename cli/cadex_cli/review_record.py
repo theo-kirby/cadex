@@ -44,6 +44,7 @@ except ImportError:  # no advisory locks: every run's process reads as unknown
 from functools import lru_cache
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -695,6 +696,99 @@ def _legacy_record(run_dir: Path, review: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+#: The trainer's telemetry schema (``training/cadex_train.py``'s PROGRESS_SCHEMA).
+TRAINER_PROGRESS_SCHEMA = "cadex-training-progress-v1"
+#: How long a trainer's ``progress.json`` may go unwritten, while it says it is
+#: training, before a run with no record of its own is read as gone (ADR-835).
+TRAINER_QUIET_S = 600.0
+
+
+def trainer_progress(run_dir: Path | str) -> str | None:
+    """The run's trainer telemetry, relative to the run (ADR-835).
+
+    ``train/progress.json`` where a walk puts it, else the newest
+    ``*/progress.json`` one level down, where a trainer run by hand writes it
+    beside its policy (``seed0/``). Never a file reached through a symlink out.
+    """
+
+    directory = Path(run_dir).expanduser()
+    found: list[tuple[float, str]] = []
+    for relative in ["train/progress.json"] + sorted(
+            path.relative_to(directory).as_posix() for path in directory.glob("*/progress.json")):
+        reference = resolve_reference(directory, relative)
+        if reference["error"] or not reference["exists"]:
+            continue
+        if relative == "train/progress.json":
+            return relative
+        try:
+            found.append(((directory / relative).stat().st_mtime, relative))
+        except OSError:
+            continue
+    return max(found)[1] if found else None
+
+
+def _trainer_gone(progress: Mapping[str, Any], progress_path: str) -> str | None:
+    """Why a trainer that says it is training is gone, or None while it writes."""
+
+    if progress.get("state") not in ("starting", "training"):
+        return None
+    try:
+        quiet = time.time() - float(progress.get("updated_at") or 0.0)
+    except (TypeError, ValueError):
+        quiet = math.inf
+    if quiet <= TRAINER_QUIET_S:
+        return None
+    return f"the trainer stopped writing {progress_path} {quiet / 60:.0f} min ago without finishing"
+
+
+def _trainer_record(directory: Path, progress_path: str) -> dict[str, Any] | None:
+    """A run nobody recorded, read from what its trainer wrote (ADR-835).
+
+    A trainer started by hand (a concept model, a project's own script)
+    writes ``progress.json``, its policy, and since ADR-835 a ``view/`` beside
+    them, but no ``run.json``. Its status is the trainer's own: ``done`` is
+    ``ok``, ``failed`` is ``failed``, and a trainer that says it is training
+    but has written nothing for :data:`TRAINER_QUIET_S` is read as gone.
+    """
+
+    progress, _error = _load_json(directory / progress_path)
+    if not progress or progress.get("schema") != TRAINER_PROGRESS_SCHEMA:
+        return None
+    status = {"done": "ok", "failed": "failed"}.get(str(progress.get("state")), "running")
+    error = str(progress.get("error") or "") or None
+    gone = _trainer_gone(progress, progress_path)
+    if gone:
+        status, error = "failed", gone
+    base = Path(progress_path).parent
+    out = progress.get("out")
+    policy = (base / out).as_posix() if isinstance(out, str) and out and Path(out).name == out \
+        and (directory / base / out).is_file() else None
+    trace = (base / "view" / "trace.json").as_posix()
+    trace = trace if (directory / trace).is_file() else None
+    try:
+        recorded_at = _datetime.datetime.fromtimestamp(
+            float(progress.get("started_at")), _datetime.timezone.utc
+        ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    except (TypeError, ValueError, OverflowError, OSError):
+        recorded_at = None
+    receipt = {key: progress[key] for key in ("reward_per_step", "wall_time_s", "device",
+                                              "task_sha256", "state") if key in progress}
+    return {"schema": RUN_RECORD_SCHEMA, "run": directory.name, "recorded_at": recorded_at,
+            "status": status, "error": error, "mode": "train", "walk_seconds": None,
+            "model": {"accepted_revision": None, "digest": None,
+                      "identity_source": "trainer telemetry only: no run.json (ADR-835)"},
+            "params": {"values": {}, "specs": None, "specs_source": "unavailable"},
+            "project_docs": {"dir": None, "files": {}, "skipped": [], "note": "not snapshotted"},
+            "task": {"bundle": None, "sha256": progress.get("task_sha256"), "model_xml": None},
+            "training": {"requested": {"label": progress.get("label"),
+                                       "iterations": progress.get("total")},
+                         "receipt": receipt},
+            "policy": {"name": None, "sha256": None, "asset": None},
+            "rollout": {"trace": trace},
+            "artifacts": {"progress": progress_path, "trace": trace, "policy": policy},
+            "project_artifacts": {}, "videos": [], "legs": []}
+
+
 def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, Any]:
     """One run, as recorded, with every reference resolved against the disk.
 
@@ -745,9 +839,11 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
         if error:
             record["error"] = error
     else:
-        record = {"run": directory.name, "status": "empty",
-                  "error": "no run.json and no review.json", "artifacts": {},
-                  "project_artifacts": {}, "videos": [], "legs": []}
+        progress = trainer_progress(directory)
+        record = (_trainer_record(directory, progress) if progress else None) or {
+            "run": directory.name, "status": "empty",
+            "error": "no run.json and no review.json", "artifacts": {},
+            "project_artifacts": {}, "videos": [], "legs": []}
     if record.get("status") == "running" and run_process(directory) == "gone":
         # Read twice: a walk writes its verdict and then lets go (ADR-559).
         payload, _error = _load_json(record_path)
@@ -774,6 +870,21 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
         else:
             record["video_render"] = {"state": "invalid", "error": error or "unsupported video status"}
     artifacts = dict(record.get("artifacts") or {})
+    if not artifacts.get("progress"):
+        # A recorded run whose trainer wrote its telemetry beside a seed's
+        # policy rather than under train/ (ADR-835).
+        artifacts["progress"] = trainer_progress(directory)
+    if record.get("status") == "running" and artifacts.get("progress"):
+        # A run recorded as running whose trainer went quiet is gone, read
+        # as ADR-559 reads a dead walk; the file is left as written (ADR-835).
+        progress, _error = _load_json(directory / artifacts["progress"])
+        gone = _trainer_gone(progress or {}, artifacts["progress"])
+        if gone:
+            record = {**record, "status": "failed", "recorded_status": "running", "error": gone}
+    if not artifacts.get("trace") and artifacts.get("progress"):
+        view = (Path(artifacts["progress"]).parent / "view" / "trace.json").as_posix()
+        if (directory / view).is_file():
+            artifacts["trace"] = view
     policy_name = str((record.get("policy") or {}).get("name") or "")
     if "policy" not in artifacts and policy_name and Path(policy_name).name == policy_name:
         # A record from before ADR-326 named no run-local policy; the

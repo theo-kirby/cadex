@@ -65,6 +65,7 @@ from .session import AGENT_STATE_NAME, LOCK_NAME, read_agent_state
 from .studio import PRINTABLES, STUDIO
 from .review_record import (
     policy_lineage,
+    trainer_progress,
     PROJECT_ARTIFACT_KEYS,
     PROJECT_SCRIPT_FILENAME,
     PROJECT_SCRIPT_SCHEMA,
@@ -2138,8 +2139,9 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
         result["reason"] = "training run directory refused or missing"
         return finish(result)
     run_dir = root / run_ref["path"]
-    # Fixed location also works before the running record sees the first snapshot.
-    ref = resolve_reference(run_dir, "train/progress.json")
+    # train/ also works before the running record sees the first snapshot; a
+    # trainer run by hand writes beside its seed's policy instead (ADR-835).
+    ref = resolve_reference(run_dir, trainer_progress(run_dir) or "train/progress.json")
     if ref["error"] or not ref["exists"]:
         result["reason"] = "training telemetry refused or missing"
         return finish(result)
@@ -2202,7 +2204,7 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
     # Where the checkpoint bytes may be: this run's own train/ first, then the
     # training run its record names (a playback run copies the snapshot but
     # not the checkpoints). Both stay inside this project's runs/.
-    bases: list[tuple[str, Path]] = [("run", run_dir / "train")]
+    bases: list[tuple[str, Path]] = [("run", path.parent)]
     source = _checkpoint_source(root, record)
     result["checkpoint_source"] = source
     if not detail:
