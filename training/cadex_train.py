@@ -374,7 +374,8 @@ CURRICULUM_EPISODE_KEYS = frozenset({"episode_seconds", "max_steps"})
 #: actor reads the drawn value as it is, so 5000 mm/s means the same thing
 #: whichever range it was drawn from. ADR-871: ``bands`` (ADR-824's weighted
 #: draw) is a draw range too, so a banded goal's range can widen as well.
-CURRICULUM_GOAL_KEYS = frozenset({"low", "high", "nominal", "sequence", "bands"})
+#: ADR-900: so is ``bound``, which narrows a draw by another goal's value.
+CURRICULUM_GOAL_KEYS = frozenset({"low", "high", "nominal", "sequence", "bands", "bound"})
 
 #: ADR-736: the keys a step onto (or between) courses moves. They may move
 #: only together with the conditions :func:`check_curriculum_change` holds:
@@ -504,7 +505,11 @@ def check_curriculum_change(
                     for entry in task.get("goal") or ()]
 
         if bounds(parent) == bounds(child):
-            changed = [key for key in changed if key != "goal"] + ["goal.range"]
+            # ADR-900: the goal_algorithm states how the goals are drawn, and
+            # gains a clause when a draw key it describes (a bound) comes on,
+            # so it moves with the range, and only with it.
+            changed = [key for key in changed
+                       if key not in ("goal", "goal_algorithm")] + ["goal.range"]
             changed.sort()
     disallowed = sorted(set(changed) - CURRICULUM_TASK_KEYS - CURRICULUM_COURSE_KEYS
                         - {"tracking.cadence", "goal.range"})
@@ -2330,6 +2335,42 @@ def place_goal_followers(data: Any, followers: Any) -> None:
         )
 
 
+def goal_bound_scale(
+    entry: dict[str, Any], drawn: list[dict[str, Any]],
+    goals: list[dict[str, Any]], index: int,
+) -> float:
+    """What segment ``index`` of a bounded goal's draw is multiplied by (ADR-900).
+
+    ``CadexDynamics.goal_bound_scale``, written out again for ADR-084's
+    reason: ``min(1, product / (|u| * max(|low|, |high|)))``, ``u`` being
+    the same segment of the earlier goal ``bound["goal"]`` names, and 1
+    when ``u`` is 0. ``test_goal_bound`` holds the two to the same numbers.
+    """
+
+    bound = entry["bound"]
+    label = str(bound.get("goal"))
+    product = float(bound.get("product"))
+
+    def refuse(problem: str) -> SystemExit:
+        return SystemExit(f"goal {str(entry['label'])!r} is bounded by {label!r}, {problem}; "
+                          "the engine refuses the same bundle (ADR-900)")
+
+    if not product > 0:
+        raise refuse(f"with a product of {product!r}, which is not positive")
+    for other, row in zip(goals, drawn):
+        if str(other["label"]) != label:
+            continue
+        if str(other["kind"]) not in ("value", "speed", "yaw_rate") or len(other["channels"]) != 1:
+            raise refuse("which is not a one-channel value, speed or yaw rate")
+        if (int(other["segments"]) != int(entry["segments"])
+                or int(other["resample_steps"]) != int(entry["resample_steps"])):
+            raise refuse("whose segments or resample_steps differ")
+        u = abs(float(row["segments"][index][0]))
+        reach = max(abs(float(entry["low"])), abs(float(entry["high"])))
+        return 1.0 if u == 0.0 or reach == 0.0 else min(1.0, product / (u * reach))
+    raise refuse("which is not an earlier goal of this task")
+
+
 def draw_goals(mujoco: Any, model: Any, task: dict[str, Any], rng: Any) -> list[dict[str, Any]]:
     """One episode's goals, by the bundle's ``goal_algorithm``.
 
@@ -2373,6 +2414,9 @@ def draw_goals(mujoco: Any, model: Any, task: dict[str, Any], rng: Any) -> list[
                             break
                         pick -= float(weight)
                     value = rng.uniform(float(start), float(end))
+                if entry.get("bound"):
+                    # ADR-900: scaled by the earlier goal's same segment, no draw.
+                    value *= goal_bound_scale(entry, drawn, task["goal"], index)
                 # ADR-721: a scripted segment takes its draw, holds its script.
                 segments.append(
                     [float(scripted[index]) if index < len(scripted) else value]

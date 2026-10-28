@@ -251,8 +251,8 @@ def test_the_curriculum_sets_say_what_they_mean():
     assert "functions" not in CURRICULUM_TASK_KEYS
     assert "schema" not in CURRICULUM_TASK_KEYS
     assert "goal" not in CURRICULUM_TASK_KEYS
-    # ADR-871: ADR-824's weighted bands are a draw range too.
-    assert CURRICULUM_GOAL_KEYS == {"low", "high", "nominal", "sequence", "bands"}
+    # ADR-871: ADR-824's weighted bands are a draw range too; ADR-900: so is a bound.
+    assert CURRICULUM_GOAL_KEYS == {"low", "high", "nominal", "sequence", "bands", "bound"}
     assert "success" in CURRICULUM_TASK_KEYS
     assert CURRICULUM_EPISODE_KEYS == {"episode_seconds", "max_steps"}
 
@@ -310,6 +310,27 @@ def test_a_wider_banded_range_may_move(goal_parent):
     assert keys == ["goal.range"]
 
 
+def test_a_bound_may_come_onto_a_goal(goal_parent):
+    """ADR-900: a bound narrows where a goal is drawn from, so it is a draw range too."""
+
+    parent, path = goal_parent
+    parent = copy.deepcopy(parent)
+    parent["goal"].append(dict(GOAL, label="yaw", name="yaw", channels=["yaw"],
+                               low=-86.0, high=86.0, nominal=[0.0], unit="deg/s"))
+    path.write_bytes(emit(parent))
+    child = copy.deepcopy(parent)
+    child["goal"][1]["bound"] = {"goal": "cmd", "product": 280000.0}
+    child["goal_algorithm"] = str(parent.get("goal_algorithm") or "") + "; on a goal with bound"
+    header = goal_header(parent)
+    header["observations"] = ["a", "b", "cmd", "yaw"]
+    header["network"] = {"layers": [[4, 8], [8, 8], [8, 1]]}
+    keys = check_policy_fits(
+        header, bundle_of(child),
+        options(init_from_task_change="turns bounded by the speed drawn beside them",
+                init_from_parent_task=str(path)))
+    assert keys == ["goal.range"]
+
+
 @pytest.mark.parametrize("field, value", [
     ("channels", ["cmd", "yaw"]),
     ("kind", "point"),
@@ -325,3 +346,15 @@ def test_anything_else_about_a_goal_may_not_move(goal_parent, field, value):
         check_policy_fits(
             goal_header(parent), bundle_of(child),
             options(init_from_task_change="x", init_from_parent_task=str(path)))
+
+
+def test_the_goal_algorithm_alone_may_not_move(goal_parent):
+    """ADR-900: the algorithm moves only beside a goal whose draw range moved."""
+
+    parent, path = goal_parent
+    child = copy.deepcopy(parent)
+    child["goal_algorithm"] = "another algorithm"
+    with pytest.raises(SystemExit, match="goal_algorithm"):
+        check_policy_fits(
+            goal_header(parent), bundle_of(child),
+            options(init_from_task_change="a new algorithm", init_from_parent_task=str(path)))
