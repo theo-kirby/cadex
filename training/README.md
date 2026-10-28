@@ -598,7 +598,7 @@ module scope.
 
 At the end of a run the trainer plays the final policy for `--view-seconds`
 (default 10; 0 disables) on its witness batch, takes the episode that travelled
-farthest, and writes **`view/`** beside `progress.json`: one binary STL per body,
+farthest forward (along the heading it started with), and writes **`view/`** beside `progress.json`: one binary STL per body,
 tessellated from that body's own geoms (boxes, capsules, spheres, cylinders,
 meshes; group 3 and above left out) in its own frame, in millimetres, and
 `trace.json`, a `cadex-assembly-simulation-trace-v1` placing every body at every

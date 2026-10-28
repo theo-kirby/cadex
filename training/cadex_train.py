@@ -4311,7 +4311,7 @@ def train(
         return jnp.concatenate([state.pipeline_state.qpos[None], poses])
 
     def view_poses(params, normaliser):
-        """[step, qpos] of the witness episode that travelled farthest, or None.
+        """[step, qpos] of the witness episode that travelled farthest forward, or None.
 
         The view is for watching; it never fails a run."""
 
@@ -4326,8 +4326,12 @@ def train(
             return None
         pick = 0
         if host.njnt and int(host.jnt_type[0]) == int(mujoco.mjtJoint.mjJNT_FREE):
-            travel = np.linalg.norm(poses[-1, :, :2] - poses[0, :, :2], axis=-1)
-            pick = int(np.argmax(travel))
+            # Forward along the heading each episode started with, not any
+            # direction: a joystick task also commands running backwards.
+            w, x, y, z = (poses[0, :, k] for k in range(3, 7))
+            yaw = np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+            moved = poses[-1, :, :2] - poses[0, :, :2]
+            pick = int(np.argmax(moved[:, 0] * np.cos(yaw) + moved[:, 1] * np.sin(yaw)))
         return poses[:, pick, :]
 
     def snapshot(params, normaliser, curve, wall):
@@ -5069,7 +5073,7 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--view-seconds", type=float, default=10.0, metavar="S",
         help=("at the end, play the policy for S seconds on the witness batch and write "
-              "the farthest-travelled episode beside progress.json as view/: a mesh per "
+              "the episode that travelled farthest forward beside progress.json as view/: a mesh per "
               "body and a trace the dashboard plays (ADR-835). 0 disables"))
     parser.add_argument(
         "--view", default="", metavar="POLICY",
