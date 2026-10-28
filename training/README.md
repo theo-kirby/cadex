@@ -604,7 +604,8 @@ meshes; group 3 and above left out) in its own frame, in millimetres, and
 `trace.json`, a `cadex-assembly-simulation-trace-v1` placing every body at every
 control step. It is the model the policy trained on, so a concept model shows as
 its boxes and capsules and an export's fast training model as its collision
-shapes. The view never fails a run: anything that goes wrong is one line on stderr.
+shapes. Until then, from the run's start, `view/` holds the model standing at
+its keyframe, so the run shows its robot from the first iteration. The view never fails a run: anything that goes wrong is one line on stderr.
 
 `--view POLICY` trains nothing: it replays a finished policy on the bundle it was
 trained on and writes `view/` beside the policy, for a run made before this.
