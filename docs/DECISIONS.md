@@ -46264,16 +46264,28 @@ model the policy trained on).**
 | A: the concept as built | 2.55 / 2.65 / 0 | 0 / 1 (does not start) | hip 1.21 |
 | B: fore segments 0.23 m, bent 32° at home | 2.79 / 2.96 / 0 | 1 / 8 | elbow 1.38–1.62 |
 | C: B on RS04 shoulders and elbows (+1.9 kg) | 2.72 / 2.95 / 0 | 3 / 10 | hind hip 1.09–1.56 |
+| D1: C with hind thigh and shin 1.2× longer, same hip height and paw spot | 2.84 / 3.04 / 3.24 | 0 / 0 | hind hip 1.73–2.03 |
+| D2: D1 on RS04 hind hips and knees (30.7 kg) | 0 / 0 / 0 | 0 / 10 (does not start above 1.5 m/s) | elbow 0.96 |
 
   A bent fore leg lifts floor travel from 119 to 348 mm in the open-loop screen.
   In training, B starts from rest at every commanded speed up to 4 m/s, which
   no leon IV model had done. It moved the limit to the elbows' torque; RS04s
   there (C) move it again, to the hind hips. No variant reaches 4 m/s.
+- **The hind-leg round.** Lengthening the hind thigh and shin by k, re-angled
+  to keep the hip height and the paw's spot, takes hind floor travel from
+  233 mm (k = 1.0) to 278 / 304 / 329 mm (k = 1.1 / 1.2 / 1.3). The longer
+  segments keep their old masses. At k = 1.2 on the AK10-9s (D1) the policy
+  starts from rest at every speed with no falls, and reaches 3.24 m/s from
+  rest and ramped at a 4 m/s command, level with the CAD policy's 3.27. It
+  pays in hip torque: 2.03× rated RMS at 4 m/s. D2's RS04 hind drives take the
+  torque off but the policy goes back to standing still above 1.5 m/s, the
+  start-from-rest freeze, so the stronger drive's effect is not measured.
 
 **Consequences.**
 - The concept loop finds one binding limit per round of about 35 minutes of
-  GPU time, with no CAD rebuild. leon IV's next round is the hind leg: its
-  floor travel is 234 mm, and its hip drive is now the worst drive.
+  GPU time, with no CAD rebuild. On leon IV, three rounds (fore bend, fore
+  drives, hind length) took the concept from 2.65 to 3.24 m/s; hind hip
+  torque is now the limit.
 - **The concept's absolute top speed is not yet trusted.** A sits about
   0.6 m/s under the CAD policy at a 4 m/s command, from one seed each. A
   second seed, and the confirming CAD retrain of a frozen variant, are what
