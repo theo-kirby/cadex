@@ -251,7 +251,8 @@ def test_the_curriculum_sets_say_what_they_mean():
     assert "functions" not in CURRICULUM_TASK_KEYS
     assert "schema" not in CURRICULUM_TASK_KEYS
     assert "goal" not in CURRICULUM_TASK_KEYS
-    assert CURRICULUM_GOAL_KEYS == {"low", "high", "nominal", "sequence"}
+    # ADR-871: ADR-824's weighted bands are a draw range too.
+    assert CURRICULUM_GOAL_KEYS == {"low", "high", "nominal", "sequence", "bands"}
     assert "success" in CURRICULUM_TASK_KEYS
     assert CURRICULUM_EPISODE_KEYS == {"episode_seconds", "max_steps"}
 
@@ -287,6 +288,24 @@ def test_a_wider_goal_range_may_move(goal_parent):
     keys = check_policy_fits(
         goal_header(parent), bundle_of(child),
         options(init_from_task_change="a higher command ceiling",
+                init_from_parent_task=str(path)))
+    assert keys == ["goal.range"]
+
+
+def test_a_wider_banded_range_may_move(goal_parent):
+    """ADR-871: ADR-824's weighted bands are a draw range, as low and high are."""
+
+    parent, path = goal_parent
+    parent = copy.deepcopy(parent)
+    parent["goal"][0].update(low=-1500.0, high=1500.0,
+                             bands=[[0.0, 0.0, 0.1], [-1500.0, 1500.0, 0.9]])
+    path.write_bytes(emit(parent))
+    child = copy.deepcopy(parent)
+    child["goal"][0].update(low=-2000.0, high=2000.0,
+                            bands=[[0.0, 0.0, 0.1], [-2000.0, 2000.0, 0.9]])
+    keys = check_policy_fits(
+        goal_header(parent), bundle_of(child),
+        options(init_from_task_change="a wider banded vx range",
                 init_from_parent_task=str(path)))
     assert keys == ["goal.range"]
 

@@ -235,7 +235,7 @@ and `termination`. None changes what the network reads or emits. Every
 other key is refused: `observations`, `actions`, `goal`, `reference` and
 the rest. A goal's draw range is the one part of `goal` that may move
 (ADR-791): when its entries differ only in `CURRICULUM_GOAL_KEYS` (`low`,
-`high`, `nominal`, `sequence`) the step is named `goal.range` and admitted,
+`high`, `nominal`, `sequence`, and ADR-824's `bands`, ADR-871) the step is named `goal.range` and admitted,
 because the actor reads the drawn value as it is; its channels, kind, unit,
 period and ramp may not move. One exception is a step onto a course, or between courses
 (ADR-736). There, `model`, `terrain`, `scans` and `observations` may move

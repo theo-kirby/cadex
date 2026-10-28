@@ -372,8 +372,9 @@ CURRICULUM_EPISODE_KEYS = frozenset({"episode_seconds", "max_steps"})
 #: ADR-791: the keys of a ``goal`` entry a curriculum may move -- where the
 #: goal is drawn from, never its channels, kind, unit, period or ramp. The
 #: actor reads the drawn value as it is, so 5000 mm/s means the same thing
-#: whichever range it was drawn from.
-CURRICULUM_GOAL_KEYS = frozenset({"low", "high", "nominal", "sequence"})
+#: whichever range it was drawn from. ADR-871: ``bands`` (ADR-824's weighted
+#: draw) is a draw range too, so a banded goal's range can widen as well.
+CURRICULUM_GOAL_KEYS = frozenset({"low", "high", "nominal", "sequence", "bands"})
 
 #: ADR-736: the keys a step onto (or between) courses moves. They may move
 #: only together with the conditions :func:`check_curriculum_change` holds:

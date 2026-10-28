@@ -221,8 +221,8 @@ along the heading (`docs/probes/orun19/REPORT.md`). Shown on one robot.
    6.5, 0/100 falls (`x1b-warm-150.md`) [rec: twilight-river-5248]. A cold
    run with only the ceiling raised (5000 → 6500) stopped near 4.1 m/s
    (`x1a-cold-150.md`) [rec: green-bay-4654].
-6. **A warm start may widen a goal's draw range** (`goal.range`, ADR-791)
-   [rec: crisp-spark-8057]; the rest of a goal is still refused. On leo it
+6. **A warm start may widen a goal's draw range** (`goal.range`, ADR-791;
+   a banded goal's `bands` too, ADR-871) [rec: crisp-spark-8057]; the rest of a goal is still refused. On leo it
    bought nothing: asked for up to 7.5 m/s, x1b's policy held ~5.8 m/s
    whatever it was commanded to 8.0 (`x1c-ceil-150.md`)
    [rec: civic-grove-0040]. Raise the ceiling only below what the body

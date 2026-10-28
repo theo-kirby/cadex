@@ -46240,3 +46240,23 @@ that make Go1 step, so they are the first suspect.
 **Consequences.** `training/test_feet_terms.py` pins the order on a
 hand-worked swing and the refusals. No engine, protocol or tool-surface
 change.
+
+## ADR-871 — A goal's weighted bands may move across a warm start (2026-10-27, l4r1)
+
+**Context.** ADR-791 lets a curriculum step widen where a goal is drawn from
+(`low`, `high`, `nominal`, `sequence`) and refuses every other change to a
+goal. ADR-824 later added `bands`, a weighted draw (Playground's
+`uniform(-a, a) * bernoulli(b)` is a zero band and a `[-a, a]` band), and
+it was not added to `CURRICULUM_GOAL_KEYS`, so a banded goal's range could
+not widen at all: l4r1's T1 curriculum (leon IV's vx range ±1.5 → ±2.0 m/s)
+was refused as a change to `goal`.
+
+**Decision.** `bands` joins `CURRICULUM_GOAL_KEYS`. A step that moves a
+goal's bands, with or without its `low` and `high`, is named `goal.range`
+like any other draw-range step. ADR-791's reason holds unchanged: the actor
+reads the drawn value as it is, so a band changes which values arrive on an
+input it already has, never what that input means. Channels, kind, unit,
+period and ramp are still refused.
+
+**Consequences.** `training/test_curriculum_warm_start.py` pins a widened
+banded range as `goal.range`. No engine, protocol or tool-surface change.
