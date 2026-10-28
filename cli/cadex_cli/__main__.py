@@ -3127,6 +3127,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     report = RunReport(project_root=str(Path(args.project).expanduser()))
     # `cadex mcp`'s stdout is the protocol, and a script listing is its source.
     quiet = command == "mcp" or (command == "script" and not getattr(args, "source_file", ""))
+    # An agent driving the CLI is as active as one driving `cadex mcp` (ADR-836):
+    # a command on a project is a line in its activity, in flight while it runs.
+    logged = command not in ("app", "mcp")
+    if logged:
+        arguments = {key: value for key, value in vars(args).items()
+                     if key not in ("command", "project", "json") and value not in (None, False, "", [])}
+        started, call = time.monotonic(), begin_activity(args.project, f"cadex {command}", arguments)
+    code = EXIT_FAILURE
     try:
         if command == "mcp":
             code = command_mcp(args, report)
@@ -3182,6 +3190,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except KeyboardInterrupt:
         report.error = "cancelled."
         code = EXIT_FAILURE
+    finally:
+        if logged:
+            append_activity(args.project, f"cadex {command}", arguments,
+                            ok=code == EXIT_OK and report.ok,
+                            detail=report.error or f"exit {code}",
+                            ms=(time.monotonic() - started) * 1000.0, call=call)
 
     if code == EXIT_OK and report.ok and not quiet:
         _record_progress(command, args, report)
