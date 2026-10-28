@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import time
 
 import pytest
 
@@ -149,9 +150,23 @@ def biped(tmp_path):
     (seed / "progress.json").write_text(json.dumps({
         "schema": "cadex-training-progress-v1", "state": "done", "iteration": 9, "total": 10,
         "started_at": 1.7e9, "updated_at": 1.7e9, "out": "byhand.cxpolicy", "checkpoints": [],
-        "curve": [[0, 0.1], [9, 0.2]], "loss_curve": [], "episode_steps_curve": [], "error": ""}))
+        "curve": [[0, 0.1], [9, 0.2]], "loss_curve": [], "episode_steps_curve": [], "error": "",
+        # The trainer's own run record and model identity (ADR-837).
+        "run": {"driver": "shell", "argv": [], "pid": 1, "heartbeat_s": 10.0, "ended_at": 1.7e9},
+        "model": {"tier": "training", "sha256": "a" * 64, "cad_sha256": "b" * 64,
+                  "path": "outputs/m.xml", "bodies": {"torso": ["torso", "battery"]}}}))
     (seed / "view" / "torso.stl").write_text(_cube_stl(20.0))
     (seed / "view" / "trace.json").write_text(_trace({"torso": [0.0, 0.0, 0.0]}))
+    # A staged run whose trainer stopped beating two minutes ago, under
+    # runs/<name>/<stage>/<seed>/ (ADR-837).
+    stage = root / "runs" / "staged" / "s2" / "seed0"
+    stage.mkdir(parents=True)
+    (stage / "progress.json").write_text(json.dumps({
+        "schema": "cadex-training-progress-v1", "state": "starting", "iteration": -1, "total": 10,
+        "started_at": time.time() - 300, "updated_at": time.time() - 120, "checkpoints": [],
+        "curve": [], "loss_curve": [], "episode_steps_curve": [], "error": "",
+        "run": {"driver": "ouroboros", "heartbeat_s": 10.0, "ended_at": None},
+        "model": {"tier": "concept", "sha256": "c" * 64, "bodies": {}}}))
     return root
 
 
@@ -159,7 +174,7 @@ def biped(tmp_path):
 PROBES = {
     "project": (["api/project"], []),
     "run/<run>": (["api/run/first", "api/run/broken", "api/run/escaped", f"api/run/{RUN}", "api/run/killed",
-                   "api/run/byhand"],
+                   "api/run/byhand", "api/run/staged"],
                   ["api/run/nope"]),
     "policy-origin/<run>": (["api/policy-origin/first", "api/policy-origin/escaped"],
                             ["api/policy-origin/nope"]),
@@ -221,6 +236,11 @@ def test_every_reply_carries_its_documented_keys_and_nothing_else(biped, tmp_pat
         assert _json(server.url + "api/run/killed")["recorded_status"] == "running"
         byhand = _json(server.url + "api/run/byhand")
         assert byhand["status"] == "ok" and byhand["telemetry"]["state"] == "done"
+        assert byhand["telemetry"]["driver"] == "shell" and byhand["model"]["tier"] == "training"
+        assert byhand["telemetry"]["model"]["bodies"] == {"torso": ["torso", "battery"]}
+        staged = _json(server.url + "api/run/staged")
+        assert staged["status"] == "failed" and "stopped writing s2/seed0/progress.json" in staged["error"]
+        assert staged["telemetry"]["driver"] == "ouroboros" and staged["model"]["tier"] == "concept"
         drawn = _json(server.url + "api/model/run/byhand")
         assert drawn["available"] and [c["mesh_status"] for c in drawn["components"]] == ["retained"]
     finally:

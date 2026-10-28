@@ -2097,6 +2097,30 @@ def _spark(points: list[list[float]], limit: int = SPARK_POINTS) -> list[list[fl
     return [[int(i), float(f"{v:.5g}")] for i, v in points]
 
 
+#: The tiers a trainer may say its model is (``cadex_train.MODEL_TIERS``, ADR-837).
+TRAINER_MODEL_TIERS = ("concept", "training", "cad", "unstated")
+
+
+def _trainer_model(model: Any) -> dict[str, Any] | None:
+    """A trainer's ``model`` block (ADR-837), checked: its tier, digests, path
+    and the CAD bodies each body carries; None when the trainer wrote none."""
+
+    if not isinstance(model, Mapping):
+        return None
+    bodies = model.get("bodies")
+    bodies = {str(name): [str(part) for part in parts][:512]
+              for name, parts in list(bodies.items())[:2048] if isinstance(parts, list)} \
+        if isinstance(bodies, Mapping) else {}
+    tier = model.get("tier")
+
+    def digest(value: Any) -> str | None:
+        return value if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) else None
+
+    return {"tier": tier if tier in TRAINER_MODEL_TIERS else "unstated",
+            "sha256": digest(model.get("sha256")), "cad_sha256": digest(model.get("cad_sha256")),
+            "path": str(model.get("path") or "")[:240], "bodies": bodies}
+
+
 def _telemetry_summary(result: dict[str, Any], reported: int, *, spark: bool = False) -> dict[str, Any]:
     """The run-list form of a telemetry result (ADR-321): the same state,
     reason and latest metrics, with each history replaced by its sample
@@ -2108,6 +2132,9 @@ def _telemetry_summary(result: dict[str, Any], reported: int, *, spark: bool = F
 
     if spark:
         result["spark"] = {key: _spark(result.get(key) or []) for key in SPARK_KEYS}
+    if result.get("model"):
+        # The body map is the detail form's (ADR-837); the list keeps the tier.
+        result["model"] = {key: value for key, value in result["model"].items() if key != "bodies"}
     result["samples"] = {key: len(result.pop(key, []) or []) for key in HISTORY_KEYS}
     result.pop("checkpoints", None)
     result["checkpoints_reported"] = reported
@@ -2176,6 +2203,11 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
         result["warning"] = str(data.get("warning") or "")[:300]
         # The run's own label, as the trainer was given it (ADR-606).
         result["label"] = str(data.get("label") or "")[:120]
+        # ADR-837: who started the run and what its model is, as the trainer
+        # wrote them; absent from a trainer older than the contract.
+        result["driver"] = str((data.get("run") or {}).get("driver") or "")[:40] \
+            if isinstance(data.get("run"), Mapping) else ""
+        result["model"] = _trainer_model(data.get("model"))
     except (OSError, TypeError, ValueError, OverflowError):
         return finish({"state": "invalid", "reason": "training telemetry has invalid metrics",
                        "checkpoints": [], **{key: [] for key in HISTORY_KEYS}})

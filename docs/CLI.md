@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-27. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-28. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one (ADR-498):
 no display, no `bpy`, no shell code. It is how an agent, a person at a
@@ -806,7 +806,12 @@ New visits open the current run (ADR-299): the newest running or pending
 record with fresh telemetry, otherwise the latest recorded attempt; with no
 runs, the accepted view. `review_server.default_run(review)` is that rule.
 
-**Telemetry** (ADR-287) is read from each run's `runs/<name>/train/progress.json`.
+**Telemetry** (ADR-287) is read from each run's `runs/<name>/train/progress.json`,
+else the newest `progress.json` one or two levels below the run (a seed's or
+a stage's seed's directory, ADR-835, ADR-837). It carries the trainer's
+`driver` and `model` (`tier`, `sha256`, `cad_sha256`, `path`, and in the
+detail form `bodies`, each body's CAD bodies; ADR-837), or none from a
+trainer older than that.
 `GET /api/project` carries every run's telemetry as a bounded **summary**
 (state, reason, latest metrics, sample counts, checkpoint counts, `eta_s`,
 `wall_time_s`, `best_iteration`, `best_reward_per_step`, `warning`;

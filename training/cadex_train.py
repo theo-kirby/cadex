@@ -57,7 +57,9 @@ import math
 from pathlib import Path
 import platform
 import random
+import os
 import sys
+import threading
 import time
 from typing import Any, Sequence
 from xml.etree import ElementTree
@@ -93,6 +95,67 @@ PROGRESS_SCHEMA = "cadex-training-progress-v1"
 #: panel has pixels for; the full-fidelity curve still exists in memory and
 #: on stderr, this is only what the progress file republishes.
 CURVE_POINTS_CAP = 512
+
+
+#: How often a live run rewrites ``progress.json`` when nothing else has,
+#: so a reader can tell a long compile from a dead process (ADR-837).
+HEARTBEAT_S = 10.0
+
+#: The tiers a run's model may be (ADR-837): a concept's boxes and capsules
+#: (ADR-834), a fast model cut from a CAD export, or the export itself.
+MODEL_TIERS = ("concept", "training", "cad")
+
+
+def _model_tier_mark(root: ElementTree.Element) -> str | None:
+    """The tier a model says it is: ``<custom><text name="cadex:tier" data=...>``."""
+
+    for text in root.iter("text"):
+        if text.get("name") == "cadex:tier" and text.get("data") in MODEL_TIERS:
+            return str(text.get("data"))
+    return None
+
+
+def model_identity(model_xml: bytes, *, cad_xml: bytes | None = None,
+                   tier: str | None = None) -> dict[str, Any]:
+    """What the dashboard needs to draw a run's model (ADR-837).
+
+    ``tier`` is the one stated, else the model's own ``cadex:tier`` mark,
+    else, given the CAD export it came from, ``cad`` when the two are the
+    same bytes and ``training`` when not; with neither it is ``unstated``
+    and a reader matches ``sha256`` against the CAD it knows. ``bodies``
+    maps each body of the model to the CAD bodies it carries -- a Cadex
+    export names each body after its component -- folding every CAD body
+    the model dropped (a welded part merged into its parent) into its
+    nearest ancestor the model kept. Without the CAD export, each body
+    carries itself. Standard library only.
+    """
+
+    root = ElementTree.fromstring(model_xml)
+    kept = [str(body.get("name")) for body in root.iter("body") if body.get("name")]
+    digest = hashlib.sha256(model_xml).hexdigest()
+    cad_digest = hashlib.sha256(cad_xml).hexdigest() if cad_xml is not None else None
+    tier = tier or _model_tier_mark(root) or (
+        None if cad_digest is None else "cad" if cad_digest == digest else "training")
+    bodies: dict[str, list[str]] = {name: [] for name in kept}
+    if cad_xml is None:
+        for name in kept:
+            bodies[name].append(name)
+    else:
+        wanted = set(kept)
+
+        def fold(element: ElementTree.Element, owner: str | None) -> None:
+            for body in element.findall("body"):
+                name = str(body.get("name") or "")
+                here = name if name in wanted else owner
+                if here is not None and name:
+                    bodies[here].append(name)
+                fold(body, here)
+
+        world = ElementTree.fromstring(cad_xml).find("worldbody")
+        if world is not None:
+            fold(world, None)
+    return {"sha256": digest, "tier": tier or "unstated", "cad_sha256": cad_digest,
+            "bodies": bodies}
 
 
 def decimated_curve(curve, cap=CURVE_POINTS_CAP, key="reward_per_step"):
@@ -5123,6 +5186,15 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         "--view", default="", metavar="POLICY",
         help=("train nothing: replay POLICY (trained on this bundle) and write its view/ "
               "beside it, for a run made before ADR-835"))
+    parser.add_argument(
+        "--tier", choices=MODEL_TIERS, default=None,
+        help=("what the model is (ADR-837): concept, training (cut from a CAD export) or "
+              "cad (the export); by default the model's own cadex:tier mark, else read "
+              "from --cad-model"))
+    parser.add_argument(
+        "--cad-model", default="", metavar="MJCF",
+        help=("the CAD export this model was cut from: progress.json then maps each body "
+              "to the CAD bodies it carries, so the dashboard draws the CAD on it (ADR-837)"))
     options = parser.parse_args(list(argv))
     if not options.out and not options.view:
         parser.error("--out is required (or --view POLICY)")
@@ -5292,6 +5364,24 @@ def main(argv: Sequence[str]) -> int:
     )
     started_at = time.time()
     written: list[dict[str, Any]] = []
+    # ADR-837: what the run is, written at launch so every reader has it
+    # without a driver's record: who started it, its model's tier and the
+    # CAD bodies each of its bodies carries.
+    try:
+        identity = model_identity(
+            bundle["model_xml"], tier=options.tier,
+            cad_xml=Path(options.cad_model).read_bytes() if options.cad_model else None)
+    except (OSError, ElementTree.ParseError) as error:
+        raise SystemExit(f"--cad-model: {error}") from error
+    identity["path"] = bundle["model_path"]
+    run_block = {
+        "driver": os.environ.get("CADEX_RUN_DRIVER", "") or "shell",
+        "argv": [str(item) for item in argv[1:]],
+        "pid": os.getpid(),
+        "heartbeat_s": HEARTBEAT_S,
+        "ended_at": None,
+    }
+    lock = threading.Lock()
 
     def emit(tag: str, iteration: int, reward: float,
              trained: dict[str, Any]) -> None:
@@ -5337,7 +5427,13 @@ def main(argv: Sequence[str]) -> int:
         write into.
         """
 
+        with lock:
+            _report(fields)
+
+    def _report(fields: dict[str, Any]) -> None:
         last_report.update(fields)
+        if fields.get("state") in ("done", "failed"):
+            run_block["ended_at"] = time.time()
         if "curve" in fields:
             last_report["curve"] = list(fields["curve"])
         if "best" in fields:
@@ -5410,6 +5506,10 @@ def main(argv: Sequence[str]) -> int:
             # Additive under the same schema (ADR-410): the collapse the run
             # has detected, readable while it is still going.
             "warning": str(fields.get("warning", "")),
+            # Additive under the same schema (ADR-837): the run's own record
+            # and its model's identity, so no driver has to write them.
+            "run": dict(run_block),
+            "model": identity,
         }
         write_atomically(
             progress_path,
@@ -5418,6 +5518,17 @@ def main(argv: Sequence[str]) -> int:
 
     report(state="starting", iteration=-1, total=int(options.iterations),
            curve=[], best={}, wall=0.0, device="")
+    ended = threading.Event()
+
+    def heartbeat() -> None:
+        # ADR-837: the snapshot stays fresh through the compile and any long
+        # iteration; it stops before the run's last word is written.
+        while not ended.wait(HEARTBEAT_S):
+            with lock:
+                if not ended.is_set():
+                    _report({})
+
+    threading.Thread(target=heartbeat, name="progress-heartbeat", daemon=True).start()
     if getattr(options, "view_seconds", 0):
         # The model at rest until the rollout replaces it, so a run shows its
         # robot from its first iteration (ADR-835).
@@ -5459,6 +5570,7 @@ def main(argv: Sequence[str]) -> int:
             )
 
         write_atomically(target, blob)
+        ended.set()
         curve = trained["reward_curve"]
         best_row = max(curve, key=lambda row: row["reward_per_step"]) if curve else None
         report(
@@ -5486,6 +5598,7 @@ def main(argv: Sequence[str]) -> int:
         # so observers do not remain on "training". The exception is re-raised
         # unchanged: this adds a line to an artifact, it does not handle
         # anything.
+        ended.set()
         report(state="failed", wall=time.time() - started_at,
                error=f"{type(error).__name__}: {error}")
         raise

@@ -46452,3 +46452,68 @@ stream is unchanged, and checks the refusals; `test_curriculum_warm_start.py`
 admits a bound as `goal.range`. `docs/MUJOCO.md` states the key. No
 protocol change.
 
+
+## ADR-837 — The trainer writes the run contract itself (2026-10-28, orun21 D1)
+
+**Context.** Since ADR-835 the dashboard reads a run a trainer started by
+hand from its `progress.json`, but that file said nothing between launch and
+iteration 0: on the Go1 reference it stayed `starting`, iteration −1, for
+54.6 s of compile, past the dashboard's 30 s stale line, and the ~50 s after
+the last iteration (final snapshot, witness check, closing view) was just as
+silent. It did not say who started the run, what tier its model is (a
+concept, a fast model cut from the CAD, the CAD export), or which CAD parts
+each body carries, so nothing could draw the CAD on a training model's bodies.
+A run nested a level deeper (`runs/<name>/<stage>/seed0/`) was not found.
+leon IV's `leon-iv-run-records` script backfilled records to cover the
+gaps.
+
+**Decision.**
+- **`progress.json` is the run record**, written by `training/cadex_train.py`
+  at launch (`starting`) and at the end (`done`/`failed`), and it carries two
+  more blocks, additive under `cadex-training-progress-v1`:
+  - `run`: `driver` (`CADEX_RUN_DRIVER`, else `shell`), `argv`, `pid`,
+    `heartbeat_s` and `ended_at`.
+  - `model`: `tier`, `sha256`, `path`, `cad_sha256` and `bodies`, each body
+    of the model mapped to the CAD bodies it carries. `--cad-model MJCF`
+    names the export the model was cut from; each CAD body folds into its
+    nearest ancestor the model kept. The tier is `--tier`, else the model's
+    `<custom><text name="cadex:tier">` mark, else `cad` or `training` by
+    comparing digests with `--cad-model`, else `unstated`.
+    `cadex_concept.py` marks every concept model `concept`.
+- **A heartbeat.** A daemon thread rewrites the snapshot every 10 s
+  (`HEARTBEAT_S`) when nothing else has, under the same lock as the training
+  loop's writes, and stops before the final word is written.
+- **The dashboard reads it.** `review_record` finds a trainer's snapshot one
+  *or two* levels below the run (`TRAINER_PROGRESS_GLOBS`). A trainer that
+  declares a heartbeat and has been quiet for six beats (at least 60 s) is
+  read as gone; one with no heartbeat keeps ADR-835's 10 minutes. Telemetry
+  gains `driver` and `model` (its `bodies` only in `api/run/<run>`'s detail
+  form), and a run with no `run.json` reports `model.tier` and
+  `model.mjcf_sha256`. No route or top-level reply key changes.
+  `test_http_api.py`'s fixture gains the blocks on its hand-started run and a
+  staged run whose heartbeat stopped, which must read `failed`.
+- `os` (the driver variable, the pid) and `threading` (the heartbeat) join
+  `test_offboard_boundaries.py`'s module-scope list. Both are standard
+  library, so ADR-084's rule is unchanged.
+
+**Evidence.** A 3-iteration Go1 run on this checkout, `progress.json` sampled
+every 3 s: the compile now takes 30 s, then about 50 s run after the last
+iteration, and `updated_at` was never more than 10.2 s old in either stretch
+(before: 54.6 s). The written `run` and `model`
+blocks read back through `read_run_record` and `training_telemetry` from a
+`runs/<name>/stage1/seed0/` copy. On leon V, the derived training model
+(24 bodies) against its CAD export folds all 101 CAD bodies; the export
+against itself reads `cad`; a concept from `leon-v-d1.json` reads `concept`
+and compiles in MuJoCo with the mark.
+
+**Consequences.**
+- No driver needs to write a record for a run to show its liveness, driver,
+  model tier and checkpoints. A `leon-iv-run-records`-style backfill is no
+  longer needed for any of these. Drawing the CAD on a training model's bodies
+  from `model.bodies` is the next step of D1. Until it lands, the backfill's
+  accepted-mesh rollout is still how a CAD body is watched.
+- A trainer copied into a project before this writes neither block. Its runs
+  read as before.
+- Found while testing: the Go1 reference bundle puts every geom in group 3,
+  so its `view/` has a trace and no meshes (ADR-835's view leaves group 3
+  out). This is recorded for D2.

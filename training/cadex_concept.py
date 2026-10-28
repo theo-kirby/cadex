@@ -210,6 +210,8 @@ def build(spec: Mapping[str, Any]) -> tuple[str, dict]:
                            ls_iterations=str(opts["ls_iterations"]))
     ET.SubElement(option, "flag", island="disable", eulerdamp="disable")
     ET.SubElement(root, "size", nkey="1")
+    # ADR-837: the model says it is a concept, so a run on it says so too.
+    ET.SubElement(ET.SubElement(root, "custom"), "text", name="cadex:tier", data="concept")
     world = ET.SubElement(root, "worldbody")
     ET.SubElement(world, "geom", name="environment/floor", size="0 0 0.1", type="plane",
                   solref=solref, contype="1", conaffinity="0")

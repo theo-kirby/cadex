@@ -307,6 +307,27 @@ iteration:
  "checkpoints": [...]}
 ```
 
+**The run record (ADR-837).** The trainer is its own record, so whoever
+starts it (a shell, Ouroboros, an MCP agent, `cadex train`) shows the same in
+the dashboard. The first `progress.json` is written at launch (`state:
+starting`) and the last at the end (`done` or `failed`), and two blocks ride
+in every one, additive under the same schema:
+
+- `run`: `driver` (the `CADEX_RUN_DRIVER` environment variable, else
+  `shell`), `argv`, `pid`, `heartbeat_s` and `ended_at`. A **heartbeat**
+  rewrites the file every `heartbeat_s` (10 s) when nothing else has, so
+  `updated_at` stays fresh through the JIT compile and the closing view; a
+  trainer six beats quiet (at least 60 s) is read as gone.
+- `model`: `tier` (`concept`, `training` or `cad`; `--tier`, else the model's
+  own `<custom><text name="cadex:tier">` mark, which `cadex_concept.py`
+  writes, else read from `--cad-model`; `unstated` when none says), `sha256`,
+  `path`, `cad_sha256` and `bodies`, a map from each body of the model to the
+  CAD bodies it carries. `--cad-model MJCF` names the CAD export the model was
+  cut from: each CAD body is folded into its nearest ancestor the model kept,
+  so a welded part merged away still has a home; with no `--cad-model` each
+  body carries only itself. A Cadex export names each body after its
+  component, so the map is in component names.
+
 `curve` is the whole run's reward so far, as compact
 `[iteration, reward_per_step]` pairs decimated to at most
 `CURVE_POINTS_CAP` (512) points with the first and last always kept —
@@ -612,7 +633,8 @@ trained on and writes `view/` beside the policy, for a run made before this.
 
 The dashboard reads a directory under the project's `runs/` as a run when it has
 a `run.json` **or** only what a trainer wrote: `train/progress.json`, or the
-newest `*/progress.json` one level down (`seed0/`). Its curves, its policy and
+newest `progress.json` one or two levels down (`seed0/`, `stage2/seed0/`,
+ADR-837). Its curves, its policy and
 its `view/` come from there (ADR-835), so a run started by hand appears beside
 the walks. A run training a further seed beside a finished one charts the live
 seed and shows the newest seed that has a view, with that seed's policy.
