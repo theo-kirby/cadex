@@ -9470,6 +9470,18 @@ GOAL_BAND_ALGORITHM = (
     "(the last when none does), and the value is uniform(low_i, high_i)"
 )
 
+#: What a goal bounded by an earlier goal adds to :data:`GOAL_ALGORITHM`
+#: (ADR-900), appended only to bundles whose goal carries ``bound``, so every
+#: earlier bundle keeps its algorithm and its digest. No draw is added: the
+#: drawn value is scaled after its draw, so the stream is the unbounded one.
+GOAL_BOUND_ALGORITHM = (
+    "; on a goal with bound {goal, product}, segment k's drawn value v is "
+    "v * min(1, product / (|u| * max(|low|, |high|))), u being segment k's "
+    "value of the earlier goal labelled `goal` (v unchanged when u is 0), so "
+    "a symmetric draw of half-width a becomes one of half-width min(a, "
+    "product / |u|); a scripted segment holds its script"
+)
+
 #: Everything a reward or termination expression may name beyond the
 #: observation channels themselves. ``_CONTROL_GLOBALS`` plus the three a
 #: reward actually wants: ``exp`` for a shaped bell, ``sqrt`` for a distance,
@@ -13718,6 +13730,9 @@ def task_records(
         ) + (
             GOAL_BAND_ALGORITHM
             if any(entry.get("bands") for entry in goal) else ""
+        ) + (
+            GOAL_BOUND_ALGORITHM
+            if any(entry.get("bound") for entry in goal) else ""
         )} if goal else {}),
         # ADR-696: absent when the task observes no command, so its bundle
         # and digest are the ones it always had.
@@ -14532,6 +14547,51 @@ def _goal_value_draw(entry: Mapping[str, Any], rng: Any) -> float:
     return rng.uniform(float(start), float(end))
 
 
+def goal_bound_scale(
+    entry: Mapping[str, Any], drawn: Sequence[Mapping[str, Any]],
+    goals: Sequence[Mapping[str, Any]], index: int,
+) -> float:
+    """What segment ``index`` of a bounded goal's draw is multiplied by (ADR-900).
+
+    ``bound = {"goal": label, "product": P}`` names an earlier value, speed
+    or yaw-rate goal with the same segments and resample_steps; the scale is
+    ``min(1, P / (|u| * max(|low|, |high|)))`` with ``u`` that goal's value
+    in the same segment, and 1 when ``u`` is 0. A turn drawn within
+    ``|w| <= min(a, P / |v|)`` of the speed drawn beside it is this with
+    ``P`` the largest ``|v * w|`` asked for. ``drawn`` and ``goals`` are the
+    rows drawn so far and their entries. The trainer's ``draw_goals``
+    carries the same lines.
+    """
+
+    def refuse(problem: str) -> DynamicsError:
+        return DynamicsError(
+            f"Goal {str(entry['label'])!r} is bounded by {label!r}, {problem}.",
+            reason="goal_bound_malformed",
+            correction="Give bound={'goal': <label of an earlier one-channel value, "
+            "speed or yaw-rate goal with the same segments and resample_steps>, "
+            "'product': <a positive number>}.",
+            observed={"goal": str(entry["label"]), "bound": repr(entry["bound"])},
+        )
+
+    bound = entry["bound"]
+    label = str(bound.get("goal"))
+    product = float(bound.get("product"))
+    if not product > 0:
+        raise refuse(f"with a product of {product!r}, which is not positive")
+    for other, row in zip(goals, drawn):
+        if str(other["label"]) != label:
+            continue
+        if str(other["kind"]) not in ("value", "speed", "yaw_rate") or len(other["channels"]) != 1:
+            raise refuse("which is not a one-channel value, speed or yaw rate")
+        if (int(other["segments"]) != int(entry["segments"])
+                or int(other["resample_steps"]) != int(entry["resample_steps"])):
+            raise refuse("whose segments or resample_steps differ")
+        u = abs(float(row["segments"][index][0]))
+        reach = max(abs(float(entry["low"])), abs(float(entry["high"])))
+        return 1.0 if u == 0.0 or reach == 0.0 else min(1.0, product / (u * reach))
+    raise refuse("which is not an earlier goal of this task")
+
+
 def draw_episode_goals(
     mujoco: Any, model: Any, task: Mapping[str, Any], rng: Any
 ) -> list[dict[str, Any]]:
@@ -14568,6 +14628,9 @@ def draw_episode_goals(
             scripted = list(entry.get("sequence") or ())
             for index in range(int(entry["segments"])):
                 value = _goal_value_draw(entry, rng)
+                if entry.get("bound"):
+                    # ADR-900: scaled by the earlier goal's same segment, no draw.
+                    value *= goal_bound_scale(entry, drawn, task["goal"], index)
                 # ADR-721: a scripted segment takes its draw and holds its
                 # script, so the stream after it is the unscripted one.
                 segments.append(

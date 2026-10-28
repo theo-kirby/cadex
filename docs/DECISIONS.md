@@ -46408,3 +46408,47 @@ unchanged.
 **Consequences.** Status shows `cadex script … · running 14 min` during a build, and a CLI
 command killed mid-run reads `did not return`, as a lost tool call does.
 
+## ADR-900 — A goal's draw may be bounded by an earlier goal's value (2026-10-28, l5r1)
+
+**Context.** A task's goals are drawn each on its own (`GOAL_ALGORITHM`): a
+yaw-rate command is drawn without regard to the forward speed drawn beside
+it. leon V's two-stage running recipe (forward commands to ±4 m/s, turns to
+±1.5 rad/s, each zeroed by ADR-824 bands) trained a policy that tracks turns
+at a walk and turns at most 0.38 rad/s at 4 m/s whatever it is asked
+(l5r1, leon V's `docs/TRAINING-GAP.md`, "T4 at the sprint"). Two causes are
+written there: a turn at a sprint is asked for in about 2% of command
+segments, and much of what is asked is not a turn a body can make (1.5 rad/s
+at 4 m/s is a 6 m/s² lateral acceleration). Testing them needs a turn drawn
+*with* the speed, within a lateral-acceleration bound, and no bundle could
+say so.
+
+**Decision.** A value, speed or yaw-rate goal in a bundle may carry
+`bound: {"goal": label, "product": P}`. Segment k's drawn value is
+multiplied by `min(1, P / (|u| * max(|low|, |high|)))`, `u` being segment
+k's value of the earlier goal labelled `label` (unchanged when `u` is 0):
+a draw of half-width `a` becomes one of half-width `min(a, P / |u|)`. It
+scales and does not redraw, so the random stream is the unbounded one and
+every other number in the episode is unchanged. The bounding goal must come
+earlier, have one channel and the same `segments` and `resample_steps`;
+anything else is refused (`goal_bound_malformed` in the engine, a
+`SystemExit` in the trainer). A scripted segment holds its script. The
+bundle's `goal_algorithm` gains `GOAL_BOUND_ALGORITHM`'s clause when a goal
+is bounded, so every earlier bundle keeps its digest. `bound` joins
+`CURRICULUM_GOAL_KEYS`: like `bands` (ADR-871) it moves where a goal is
+drawn from, never what the actor reads. Because a bound coming on also adds
+its clause to `goal_algorithm`, a warm start whose goal moved only in those
+keys may move `goal_algorithm` with it, and names both `goal.range`; the
+algorithm moving on its own is still refused.
+
+**Scope.** The engine's `draw_episode_goals` and the trainer's `draw_goals`
+honour it. `api.goal` does not author it: the bundles that need it are
+written by a project's own bundle tool (leon V's `tools/t1_bundle.py`), and
+an authoring keyword is a tool-surface change for when an xscript task needs
+one.
+
+**Consequences.** `training/test_goal_bound.py` holds the trainer and the
+engine to the same numbers over 200 seeds, checks the bound and that the
+stream is unchanged, and checks the refusals; `test_curriculum_warm_start.py`
+admits a bound as `goal.range`. `docs/MUJOCO.md` states the key. No
+protocol change.
+

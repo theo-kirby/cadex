@@ -1228,6 +1228,22 @@ goal keeps its `low` and `high` and gains `bands`; its `goal_algorithm` gains
 two numbers per segment. A goal without bands draws as before, byte for
 byte. Refused: `goal_bands_malformed`.
 
+**A goal bounded by another (ADR-900).** A turn asked for at a sprint can
+be one no body makes: 1.5 rad/s at 4 m/s is 0.6 g sideways. A bundle goal
+may carry `bound: {"goal": label, "product": P}`, naming an earlier
+one-channel value, speed or yaw-rate goal with the same `segments` and
+`resample_steps`; segment k's drawn value is multiplied by
+`min(1, P / (|u| * max(|low|, |high|)))`, `u` being that goal's value in
+segment k (unchanged when `u` is 0), so a turn of half-width `a` drawn
+beside a speed `v` is drawn within `min(a, P / |v|)`. No draw is added, so
+every other number in the episode is the unbounded one; a scripted segment
+holds its script. The `goal_algorithm` gains `GOAL_BOUND_ALGORITHM`'s
+clause, and `CadexDynamics.goal_bound_scale` and the trainer's copy are held
+to the same numbers by `training/test_goal_bound.py`. A bound is a draw
+range across a warm start (`CURRICULUM_GOAL_KEYS`). The authoring API does
+not write it: a task bundle written by hand carries it. Refused:
+`goal_bound_malformed`.
+
 **Gait families: a switch inside a speed schedule (ADR-822).** A walk or
 trot and a gallop land their feet in other orders, so ADR-773 refuses to
 blend them. `api.task(reference_switches=[...])` states one entry per
