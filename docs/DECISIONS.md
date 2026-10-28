@@ -46205,3 +46205,38 @@ coherent statement of vision, goals and status, and a plan to 0.3.0.
 - `STATE.md`/`PLAN.md` still need the governor frontier cleaned. That is a
   0.3.0 must-have, done by a fold, never by hand.
 - No code, protocol, tool-surface or test change.
+
+## ADR-870 — A task can pay Playground's stateful foot terms (2026-10-27, l4r1)
+
+**Context.** MuJoCo Playground's Go1 joystick recipe pays two terms that read
+a per-foot memory: `feet_air_time`, the time since lift-off less 0.1 s, and
+`feet_height`, the squared shortfall of the swing's peak height from a
+target, each paid once at first contact and only while the command is not
+zero. A reward expression reads one step's channels, so a bundle cannot say
+either. leon IV's run l4r1 ported the recipe without them (T1 seed 0,
+`gaps.json`): its policy never fell and turned well but would not take a
+first step under a straight command of 1.0 m/s or more. Those are the terms
+that make Go1 step, so they are the first suspect.
+
+**Decision.**
+- **A task may carry a `feet` block**, read by `cadex_train.py` only:
+  `contacts` (one `_down` channel per foot), `heights` with `height_scale`
+  to metres, an optional `active` expression with `active_above` (the
+  gate), and `air_time` (`weight`, `threshold_s`) and/or `swing_height`
+  (`weight`, `target_m`). Weights are per step, like a reward term's.
+- **The memory is Playground's, in Playground's order** (`feet_step`):
+  first contact is the filtered contact (this step's or the last) where the
+  timer is running; the timer and the peak advance; the terms are paid; both
+  are cleared where the foot is down. It is carried in the environment's
+  `info` and zeroed where an episode ends.
+- **The floor applies to the whole sum.** With a `feet` block, ADR-700's
+  `--reward-floor` is applied after the foot terms join the reward, as
+  Playground clips its whole sum.
+- **Training-only.** The engine's `evaluate_episode` does not score the
+  block, as it does not apply the floor: the reward is training's, and a
+  policy is judged on its behaviour. A task without the block traces the
+  graph and the carry it always did.
+
+**Consequences.** `training/test_feet_terms.py` pins the order on a
+hand-worked swing and the refusals. No engine, protocol or tool-surface
+change.

@@ -509,6 +509,25 @@ The same discipline covers the container: `encode_policy` here and
 engine decodes and verifies every policy this file writes, witness
 included, so a drift is a refusal on rebuild.
 
+## Stateful foot terms (ADR-870)
+
+Two of MuJoCo Playground's locomotion terms read a per-foot memory, which a
+reward expression cannot: `feet_air_time` (time since lift-off less a
+threshold) and `feet_height` (the swing peak's squared shortfall from a
+target), each paid at first contact while the command is not zero. A task's
+optional `feet` block names the channels they read:
+
+```json
+"feet": {"contacts": ["kfl_down", ...], "heights": ["pfl_z", ...],
+         "height_scale": 0.001, "active": "sqrt((cx/1000)**2+...)",
+         "active_above": 0.01,
+         "air_time": {"weight": 0.002, "threshold_s": 0.1},
+         "swing_height": {"weight": -0.004, "target_m": 0.12}}
+```
+
+`feet_step` keeps the memory in Playground's order, and `--reward-floor`
+then clips the whole sum. Training-only: no evaluator scores it.
+
 ## A saturated servo is the engine's machine (ADR-465)
 
 MJX and stock MuJoCo are the same physics only where they agree, and a
