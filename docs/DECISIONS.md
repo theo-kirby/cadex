@@ -46335,3 +46335,57 @@ passed, engine boundary tests 13 passed.
 - The view is the training model's, not the CAD's. The backfill's
   accepted-mesh rollouts stay the way to watch a CAD body.
 
+## ADR-870 — A task can pay Playground's stateful foot terms (2026-10-27, l4r1)
+
+**Context.** MuJoCo Playground's Go1 joystick recipe pays two terms that read
+a per-foot memory: `feet_air_time`, the time since lift-off less 0.1 s, and
+`feet_height`, the squared shortfall of the swing's peak height from a
+target, each paid once at first contact and only while the command is not
+zero. A reward expression reads one step's channels, so a bundle cannot say
+either. leon IV's run l4r1 ported the recipe without them (T1 seed 0,
+`gaps.json`): its policy never fell and turned well but would not take a
+first step under a straight command of 1.0 m/s or more. Those are the terms
+that make Go1 step, so they are the first suspect.
+
+**Decision.**
+- **A task may carry a `feet` block**, read by `cadex_train.py` only:
+  `contacts` (one `_down` channel per foot), `heights` with `height_scale`
+  to metres, an optional `active` expression with `active_above` (the
+  gate), and `air_time` (`weight`, `threshold_s`) and/or `swing_height`
+  (`weight`, `target_m`). Weights are per step, like a reward term's.
+- **The memory is Playground's, in Playground's order** (`feet_step`):
+  first contact is the filtered contact (this step's or the last) where the
+  timer is running; the timer and the peak advance; the terms are paid; both
+  are cleared where the foot is down. It is carried in the environment's
+  `info` and zeroed where an episode ends.
+- **The floor applies to the whole sum.** With a `feet` block, ADR-700's
+  `--reward-floor` is applied after the foot terms join the reward, as
+  Playground clips its whole sum.
+- **Training-only.** The engine's `evaluate_episode` does not score the
+  block, as it does not apply the floor: the reward is training's, and a
+  policy is judged on its behaviour. A task without the block traces the
+  graph and the carry it always did.
+
+**Consequences.** `training/test_feet_terms.py` pins the order on a
+hand-worked swing and the refusals. No engine, protocol or tool-surface
+change.
+
+## ADR-871 — A goal's weighted bands may move across a warm start (2026-10-27, l4r1)
+
+**Context.** ADR-791 lets a curriculum step widen where a goal is drawn from
+(`low`, `high`, `nominal`, `sequence`) and refuses every other change to a
+goal. ADR-824 later added `bands`, a weighted draw (Playground's
+`uniform(-a, a) * bernoulli(b)` is a zero band and a `[-a, a]` band), and
+it was not added to `CURRICULUM_GOAL_KEYS`, so a banded goal's range could
+not widen at all: l4r1's T1 curriculum (leon IV's vx range ±1.5 → ±2.0 m/s)
+was refused as a change to `goal`.
+
+**Decision.** `bands` joins `CURRICULUM_GOAL_KEYS`. A step that moves a
+goal's bands, with or without its `low` and `high`, is named `goal.range`
+like any other draw-range step. ADR-791's reason holds unchanged: the actor
+reads the drawn value as it is, so a band changes which values arrive on an
+input it already has, never what that input means. Channels, kind, unit,
+period and ramp are still refused.
+
+**Consequences.** `training/test_curriculum_warm_start.py` pins a widened
+banded range as `goal.range`. No engine, protocol or tool-surface change.

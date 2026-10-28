@@ -372,8 +372,9 @@ CURRICULUM_EPISODE_KEYS = frozenset({"episode_seconds", "max_steps"})
 #: ADR-791: the keys of a ``goal`` entry a curriculum may move -- where the
 #: goal is drawn from, never its channels, kind, unit, period or ramp. The
 #: actor reads the drawn value as it is, so 5000 mm/s means the same thing
-#: whichever range it was drawn from.
-CURRICULUM_GOAL_KEYS = frozenset({"low", "high", "nominal", "sequence"})
+#: whichever range it was drawn from. ADR-871: ``bands`` (ADR-824's weighted
+#: draw) is a draw range too, so a banded goal's range can widen as well.
+CURRICULUM_GOAL_KEYS = frozenset({"low", "high", "nominal", "sequence", "bands"})
 
 #: ADR-736: the keys a step onto (or between) courses moves. They may move
 #: only together with the conditions :func:`check_curriculum_change` holds:
@@ -2696,6 +2697,80 @@ def resolved_command_slew_deg(options) -> float:
     return value if value > 0.0 else 0.0
 
 
+def feet_terms(task: dict[str, Any], names: Sequence[str]) -> dict[str, Any] | None:
+    """ADR-870: the task's stateful foot terms, checked, or ``None`` for none.
+
+    MuJoCo Playground's locomotion tasks pay two terms an expression cannot
+    say, because each reads a per-foot memory: ``feet_air_time``, the time
+    since lift-off less a threshold, and ``feet_height``, the squared
+    shortfall of the swing's peak from a target, both paid at first contact
+    and only while the command is not zero. The bundle's ``feet`` block names
+    the channels they read; the weights are per step, like a reward term's.
+    Training-only: the engine's ``evaluate_episode`` does not score them.
+    """
+
+    feet = task.get("feet")
+    if not feet:
+        return None
+    contacts = [str(c) for c in feet.get("contacts") or ()]
+    heights = [str(c) for c in feet.get("heights") or ()]
+    if not contacts:
+        raise SystemExit("the task's feet block names no contact channel")
+    missing = [c for c in contacts + heights if c not in names]
+    if missing:
+        raise SystemExit(f"the task's feet block names channels the task lacks: {missing}")
+    air = feet.get("air_time")
+    swing = feet.get("swing_height")
+    if not air and not swing:
+        raise SystemExit("the task's feet block pays neither air_time nor swing_height")
+    if swing and len(heights) != len(contacts):
+        raise SystemExit(
+            f"swing_height needs one height channel per foot: {len(heights)} for "
+            f"{len(contacts)} contacts")
+    if swing and float(swing["target_m"]) <= 0.0:
+        raise SystemExit("swing_height's target_m must be above 0")
+    import numpy as np
+
+    return {
+        "contacts": np.asarray([names.index(c) for c in contacts], dtype=np.int32),
+        "heights": np.asarray([names.index(c) for c in heights], dtype=np.int32),
+        "height_scale": float(feet.get("height_scale", 1.0)),
+        "active": str(feet["active"]) if feet.get("active") else None,
+        "active_above": float(feet.get("active_above", 0.0)),
+        "air_weight": float(air["weight"]) if air else 0.0,
+        "air_threshold_s": float(air.get("threshold_s", 0.1)) if air else 0.0,
+        "swing_weight": float(swing["weight"]) if swing else 0.0,
+        "swing_target_m": float(swing["target_m"]) if swing else 1.0,
+    }
+
+
+def feet_step(xp: Any, terms: dict[str, Any], memory: Sequence[Any], contact: Any,
+              height_m: Any, active: Any, dt: float) -> tuple[Any, tuple[Any, Any, Any]]:
+    """ADR-870: one control step of Playground's foot memory and its pay.
+
+    ``memory`` is ``(air_time_s, last_contact, swing_peak_m)``, each
+    ``(..., feet)``; ``contact`` is this step's down flags as bools and
+    ``height_m`` the feet's heights; ``active`` gates the pay (Playground's
+    ``|command| > 0.01``). The order is ``joystick.py``'s ``step``: first
+    contact against the filtered contact and the timer before it runs, the
+    timer and the peak advanced, the terms paid, then both cleared where the
+    foot is down. Returns the weighted pay and the new memory.
+    """
+
+    air, last, peak = memory
+    filtered = xp.logical_or(contact, last)
+    first = xp.logical_and(air > 0.0, filtered).astype(air.dtype)
+    air = air + dt
+    peak = xp.maximum(peak, height_m) if terms["swing_weight"] else peak
+    pay = terms["air_weight"] * xp.sum((air - terms["air_threshold_s"]) * first, axis=-1)
+    if terms["swing_weight"]:
+        error = peak / terms["swing_target_m"] - 1.0
+        pay = pay + terms["swing_weight"] * xp.sum(error * error * first, axis=-1)
+    pay = pay * active.astype(air.dtype)
+    down = contact.astype(air.dtype)
+    return pay, (air * (1.0 - down), contact, peak * (1.0 - down))
+
+
 def resolved_reward_floor(options) -> float | None:
     """ADR-700's per-step reward floor, resolved once, or ``None`` for none.
 
@@ -2885,6 +2960,11 @@ def build_environment(
     # ADR-700: a PYTHON value branched on at trace time, so no floor is the
     # graph this trainer always emitted.
     reward_floor = resolved_reward_floor(options)
+    # ADR-870: a PYTHON value on the same terms; a task without a feet block
+    # emits the graph and the carry it always did.
+    feet = feet_terms(task, names)
+    feet_active = (compile_expression(feet["active"], names, table)
+                   if feet and feet["active"] else None)
     reward_terms = [
         (float(term["weight"]),
          compile_expression(str(term["expression"]), names, table))
@@ -3106,7 +3186,9 @@ def build_environment(
         total = jnp.float32(0.0)
         for weight, code in reward_terms:
             total = total + weight * eval(code, table, dict(values))
-        if reward_floor is not None:
+        # ADR-870: with a feet block the floor is applied in ``step``, after
+        # the foot terms join the sum, as Playground clips the whole sum.
+        if reward_floor is not None and feet is None:
             total = jnp.maximum(total, jnp.float32(reward_floor))
         return total
 
@@ -3538,6 +3620,12 @@ def build_environment(
             # ADR-696: both carried commands start at the reset's.
             carry = (jnp.tile(reset_command, (envs, 1)),) * 2
         info["carry"] = carry
+        if feet:
+            # ADR-870: (air time, last contact, swing peak), per foot.
+            count = int(feet["contacts"].shape[0])
+            info["feet"] = (jnp.zeros((envs, count), dtype=jnp.float32),
+                            jnp.zeros((envs, count), dtype=jnp.bool_),
+                            jnp.zeros((envs, count), dtype=jnp.float32))
         key, vector = sensed(key, data, picks, steps, origin, carry, course, turned)
         info["key"] = key
         return State(pipeline_state=data, obs=observation(vector),
@@ -3598,6 +3686,19 @@ def build_environment(
         # clean solver warm start. Without this one environment's NaN reaches
         # the batch's advantages and the whole run diverges (orun7 r1-t5, at
         # iteration 2). The count travels in `info` for the log.
+        if feet:
+            # ADR-870: Playground's foot memory, read from the landed reading.
+            contact = jnp.take(landed, feet["contacts"], axis=-1) > 0.5
+            height = (jnp.take(landed, feet["heights"], axis=-1) * feet["height_scale"]
+                      if feet["swing_weight"] else jnp.zeros(contact.shape, jnp.float32))
+            active = (jax.vmap(lambda v: eval(feet_active, table, named(v)))(landed)
+                      > feet["active_above"] if feet_active is not None
+                      else jnp.ones((envs,), dtype=jnp.bool_))
+            pay, feet_memory = feet_step(jnp, feet, info["feet"], contact, height,
+                                         active, control_interval)
+            reward = reward + pay
+            if reward_floor is not None:
+                reward = jnp.maximum(reward, jnp.float32(reward_floor))
         blown = jnp.logical_not(
             jnp.isfinite(data.qpos).all(axis=-1) & jnp.isfinite(data.qvel).all(axis=-1)
             & jnp.isfinite(landed).all(axis=-1) & jnp.isfinite(reward))
@@ -3670,6 +3771,9 @@ def build_environment(
         if cadenced:
             turned = jnp.where(done, 0.0, turned)
             info["turned"] = turned
+        if feet:
+            info["feet"] = tuple(jnp.where(done[:, None], jnp.zeros_like(part), part)
+                                 for part in feet_memory)
         if carrying:
             carry = (jnp.where(done[:, None], 0.0, issued),)
         if commanding:
