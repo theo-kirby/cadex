@@ -613,7 +613,8 @@ The dashboard reads a directory under the project's `runs/` as a run when it has
 a `run.json` **or** only what a trainer wrote: `train/progress.json`, or the
 newest `*/progress.json` one level down (`seed0/`). Its curves, its policy and
 its `view/` come from there (ADR-835), so a run started by hand appears beside
-the walks.
+the walks. A run training a further seed beside a finished one charts the live
+seed and shows the newest seed that has a view, with that seed's policy.
 
 ## Training before the CAD: the concept model (ADR-834)
 
