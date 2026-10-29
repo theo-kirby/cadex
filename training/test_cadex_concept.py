@@ -3,8 +3,8 @@
 
 """ADR-834: a concept spec is written as the engine writes a model, so tools read it by name.
 
-Needs ``mujoco`` (the training venv); no jax, no GPU. The spec is
-``examples/concept/leon-iv.json``.
+Needs ``mujoco`` (the training venv); no jax, no GPU. The specs are
+``examples/concept/leon-iv.json`` and, for a flat foot, ``orun9-biped.json``.
 """
 
 from __future__ import annotations
@@ -54,6 +54,21 @@ def test_feet_rest_on_the_floor_and_right_mirrors_left():
     left, right = (mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, n) for n in ("j_hip_l", "j_hip_r"))
     assert list(model.jnt_range[right]) == pytest.approx([-model.jnt_range[left][1], -model.jnt_range[left][0]])
     assert model.jnt_pos[right][1] == pytest.approx(-model.jnt_pos[left][1])
+
+
+def test_a_flat_foot_stands_on_its_soles():
+    """ADR-844: soles rest on the floor, inside the touch box, and carry the robot at zero action."""
+    spec = json.loads((Path(__file__).resolve().parents[1] / "examples" / "concept" / "orun9-biped.json")
+                      .read_text(encoding="utf-8"))
+    model, data, _ = compiled(spec)
+    bottoms = [data.geom_xpos[g][2] - model.geom_size[g][0] for g in range(model.ngeom)
+               if model.geom_type[g] == mujoco.mjtGeom.mjGEOM_CAPSULE and "/collision" in model.geom(g).name]
+    assert len(bottoms) == 4 and max(bottoms) == pytest.approx(0.0, abs=1e-6)
+    for _ in range(int(2.0 / model.opt.timestep)):
+        mujoco.mj_step(model, data)
+    touch = [data.sensordata[model.sensor_adr[i]] for i in range(model.nsensor)
+             if model.sensor_type[i] == mujoco.mjtSensor.mjSENS_TOUCH]
+    assert len(touch) == 2 and sum(touch) == pytest.approx(9.81 * model.body_subtreemass[1], rel=0.02)
 
 
 def test_a_set_moves_the_stance():

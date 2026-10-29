@@ -46871,3 +46871,65 @@ names nothing per robot:
   fuses into the thighs, the legs are found from the touch sites and every
   row of export against cut is equal.
 - The tier decision still waits on the biped's concept against its cut.
+
+## ADR-844 — The biped's concept, written from its CAD, and a flat foot for concepts (2026-10-28, orun21 P1)
+
+**Context.** P1 asks that the biped go through the route with only Cadex's
+tools, and it has no concept spec: writing one from its CAD is part of the
+proof. A concept foot was a sphere (ADR-834). The biped stands on two 40 mm
+capsule soles per foot, and on a sphere it would be a point-footed robot
+that cannot stand still: a different robot, not a crude copy of this one.
+
+**Decision.**
+- `cadex_concept.py`'s `foot` takes optional `soles`, each a `from`/`to`
+  offset from the foot point: capsules of the foot's radius sharing its
+  mass, mirrored with the leg. The model is dropped to the lowest sole, and
+  the touch box grows to hold every sole. A foot without soles is the sphere
+  as before (leon IV's spec writes the same model).
+- `examples/concept/orun9-biped.json` is the biped's concept, written from
+  its accepted export (`2b9c8268`, revision `605e9bc8`) to the CAD's names
+  (`c_pelvis`, `c_hip_bracket_{l,r}` / `j_roll_*`, `c_thigh_*` / `j_pitch_*`,
+  `c_shin_*` / `j_knee_*`, `c_foot_*`): joint anchors, ranges and the
+  servo's MJCF numbers from the export, each segment's mass from its bodies
+  with their screws, each servo housing an end mass at the next joint, the
+  trunk the pelvis collision box with the battery and roll servos as point
+  masses, implicitfast at 2 ms (ADR-841: Euler blows up on these servos).
+- Both legs are written out, unmirrored. The biped's export gives the pitch
+  and knee axes as +y on both sides with the same ranges; the concept's
+  mirror rule reflects axes and ranges, which moves the same leg but flips
+  the right joints' sign against the CAD's.
+- The concept docstring and README no longer say a concept's sensors come
+  in the export's order: an export orders them by its task's observations
+  (the biped's start with the IMU, leon V's with the joints), so a CAD task
+  bundle does not run on a concept, or on a cut whose bodies were fused,
+  without its ids and sensors being re-laid.
+
+**Evidence** (`~/cadex-projects/orun21-lab/p1-biped-concept/`, CPU):
+- The concept (`e66e290f`) against the biped's cut (`b1e12e2d`),
+  `cadex_cad_vs_concept.py`: **4 of 45 rows flagged**. Mass 0.6458 against
+  0.6459 kg, trunk equal to 0.04 g; hip height, reach, bend and foot x within
+  0.05 mm; every joint anchor within 0.04 mm. Flagged: the pitch load
+  inertia +7.2% and the knee's +6.5% (concept over CAD): the servo housings
+  sit as points at the next joint, where the CAD's lie up to 19 mm off. CoM x is 3.3 mm forward of the CAD's, under the 10 mm flag.
+- `cadex_training_model.py fidelity` against the export (`2b9c8268`): the
+  concept **stands** 10 s at zero action (tilt 0.31°, 3.2 N on each foot,
+  weight carried exactly) and is **5.6 mm** off on the one signal the export
+  is converged on (1 Hz, 0.025 rad), against 5 mm tolerance; the cut is 1.1
+  mm there. The other 11 signals are chaotic on the export itself (its own
+  half-step differs by 3–84 mm) and are not gated: the biped's dynamic
+  fidelity rests on one signal for any model (`sandy-acorn-7218`).
+- The biped export reports armature 0 on every joint, roll, pitch and knee:
+  the servo's rotor inertia is not reaching its MJCF, so the concept carries
+  0 to match, and both understate the reflected inertia of a geared servo.
+
+**Consequences.**
+- The biped is the second robot with a concept written to its CAD's names
+  and compared to its cut; leon V (ADR-843) was the first.
+- `training/test_cadex_concept.py` gains one test: the biped spec's four
+  soles rest on the floor, inside the touch boxes, and carry its weight at
+  zero action.
+- Not done here: a concept training screen on the biped. Its task bundle
+  (`b1_walk`) names body ids, sensor addresses and the battery's mass
+  randomisation from the export, which the concept does not have; running a
+  CAD task on a concept (or on a cut) needs a re-laying step, the next P1
+  unit. The tier decision waits on it.

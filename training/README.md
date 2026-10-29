@@ -700,12 +700,20 @@ drives sit — are answered by training on it before any part is designed:
   and legs as chains of segments (`to`, or `length` + `pitch` + `dy`), each
   a capsule with a point mass at its far end for the next drive's housing;
   a passive joint can follow another at a ratio (a parallelogram linkage);
-  `mirror` adds the right leg. Drives are datasheets in the proxy's library
-  format plus the servo's `kp`/`kd`. The module docstring has every field.
+  `mirror` adds the right leg. A foot is a sphere, or capsule `soles` for
+  a flat foot that stands still (ADR-844). Drives are datasheets in the
+  proxy's library format plus the servo's `kp`/`kd`, or raw MJCF numbers.
+  The module docstring has every field.
 - **The model is the export's shape.** Body frames are the world frame at
-  the home pose, actuators are `<joint>/position`, and the sensors are the
-  engine's `obs/N` in its order, so a tool written against an exported
-  model reads a concept by name (`training/test_cadex_concept.py`).
+  the home pose, actuators are `<joint>/position`, and the sensors are
+  `obs/N` with foot `touch` sites, so a tool written against an exported
+  model reads a concept by name (`training/test_cadex_concept.py`). The
+  export lays its sensors out per its task (the biped's start with the
+  IMU), so a CAD task bundle does not run on a concept unchanged.
+- **Two worked specs**, each written from a CAD export to its names:
+  `examples/concept/leon-iv.json` and `examples/concept/orun9-biped.json`
+  (ADR-844; both legs written out, since the biped's pitch axes are +y on
+  both sides and the mirror rule would flip them).
 - **The report** says what the spec implies: each foot's height off the
   floor (the model stands on its lowest foot), each leg's hip height, reach
   and `bend` (a leg near 0 is a straight post and can barely slide its foot
@@ -783,7 +791,7 @@ above and nothing of the learner. The training venv's own tests,
 `training/test_cadex_proxy.py`, `training/test_cadex_training_model.py`,
 `training/test_curriculum_warm_start.py`,
 `training/test_canonical_body.py`, `training/test_terrain_pool.py` and
-`training/test_distill.py`, cover the proxy, the training model's cut, the bench's solver override and the comparison's leg discovery, the warm-start rules, the base
+`training/test_distill.py`, and `training/test_cadex_concept.py`, cover the proxy, the concept's layout and flat feet, the training model's cut, the bench's solver override and the comparison's leg discovery, the warm-start rules, the base
 remap, the course pool's height scan (ADR-747) and distillation's routing
 and refusals. A change to the trainer is
 verified by running it: a few iterations on CPU (`SETUP.md` §b), then the

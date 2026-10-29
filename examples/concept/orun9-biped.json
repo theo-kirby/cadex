@@ -1,0 +1,294 @@
+{
+ "format": "cadex-concept-v1",
+ "name": "orun9-biped-concept",
+ "_source": "Written from orun9-biped's accepted export (2b9c8268, revision 605e9bc8) for orun21 P1: the CAD's body and joint names, joint anchors, ranges and drive numbers; each segment's mass read off its bodies (screws included), each servo housing an end mass at the next joint, the trunk the pelvis collision box carrying the electronics with the battery and the roll servos (their screws are in the box) as point masses, the feet the CAD's two 40 mm capsule soles. Both legs are written out: the CAD's pitch and knee axes are +y on both sides, which the mirror rule would flip.",
+ "drives": {
+  "servo": {
+   "model": "the export's hobby servo (orun9-biped), raw MJCF numbers",
+   "peak_nm": 1.6181,
+   "kp": 18.542,
+   "kd": 0.927101,
+   "armature": 0.0,
+   "damping": 0.36775,
+   "frictionloss": 0.0
+  }
+ },
+ "trunk": [
+  {
+   "name": "c_pelvis",
+   "boxes": [
+    {
+     "center": [
+      -0.0105,
+      0,
+      0.2846
+     ],
+     "half": [
+      0.0495,
+      0.0673,
+      0.0275
+     ],
+     "mass": 0.0859,
+     "fall": true
+    }
+   ],
+   "masses": [
+    {
+     "at": [
+      -0.018,
+      0,
+      0.266
+     ],
+     "kg": 0.064
+    },
+    {
+     "at": [
+      -0.0034,
+      0.052,
+      0.2826
+     ],
+     "kg": 0.055
+    },
+    {
+     "at": [
+      -0.0034,
+      -0.052,
+      0.2826
+     ],
+     "kg": 0.055
+    }
+   ]
+  }
+ ],
+ "imu": {
+  "body": "c_imu",
+  "parent": "c_pelvis",
+  "at": [
+   -0.002,
+   0.0154,
+   0.28
+  ],
+  "kg": 0.0017
+ },
+ "legs": [
+  {
+   "mount": "c_pelvis",
+   "start": [
+    0.0111,
+    0.052,
+    0.2701
+   ],
+   "joints": [
+    {
+     "name": "j_roll_l",
+     "body": "c_hip_bracket_l",
+     "axis": [
+      1,
+      0,
+      0
+     ],
+     "range": [
+      -8,
+      20
+     ],
+     "drive": "servo",
+     "to": [
+      -0.0111,
+      0.0145,
+      -0.042
+     ],
+     "mass": 0.0199,
+     "radius": 0.01,
+     "end_mass": 0.055
+    },
+    {
+     "name": "j_pitch_l",
+     "body": "c_thigh_l",
+     "axis": [
+      0,
+      1,
+      0
+     ],
+     "range": [
+      -50,
+      40
+     ],
+     "drive": "servo",
+     "to": [
+      0.0376,
+      -0.0287,
+      -0.1033
+     ],
+     "mass": 0.0238,
+     "radius": 0.01,
+     "end_mass": 0.055
+    },
+    {
+     "name": "j_knee_l",
+     "body": "c_shin_l",
+     "axis": [
+      0,
+      1,
+      0
+     ],
+     "range": [
+      -40,
+      80
+     ],
+     "drive": "servo",
+     "to": [
+      -0.035,
+      -0.0033,
+      -0.1128
+     ],
+     "mass": 0.0238,
+     "radius": 0.01
+    }
+   ],
+   "foot": {
+    "body": "c_foot_l",
+    "radius": 0.012,
+    "mass": 0.0146,
+    "soles": [
+     {
+      "from": [
+       -0.02,
+       -0.004,
+       0
+      ],
+      "to": [
+       0.02,
+       -0.004,
+       0
+      ]
+     },
+     {
+      "from": [
+       -0.02,
+       0.004,
+       0
+      ],
+      "to": [
+       0.02,
+       0.004,
+       0
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "mount": "c_pelvis",
+   "start": [
+    0.0111,
+    -0.052,
+    0.2701
+   ],
+   "joints": [
+    {
+     "name": "j_roll_r",
+     "body": "c_hip_bracket_r",
+     "axis": [
+      1,
+      0,
+      0
+     ],
+     "range": [
+      -20,
+      8
+     ],
+     "drive": "servo",
+     "to": [
+      -0.0111,
+      -0.0145,
+      -0.042
+     ],
+     "mass": 0.0199,
+     "radius": 0.01,
+     "end_mass": 0.055
+    },
+    {
+     "name": "j_pitch_r",
+     "body": "c_thigh_r",
+     "axis": [
+      0,
+      1,
+      0
+     ],
+     "range": [
+      -50,
+      40
+     ],
+     "drive": "servo",
+     "to": [
+      0.0376,
+      0.0287,
+      -0.1033
+     ],
+     "mass": 0.0238,
+     "radius": 0.01,
+     "end_mass": 0.055
+    },
+    {
+     "name": "j_knee_r",
+     "body": "c_shin_r",
+     "axis": [
+      0,
+      1,
+      0
+     ],
+     "range": [
+      -40,
+      80
+     ],
+     "drive": "servo",
+     "to": [
+      -0.035,
+      0.0033,
+      -0.1128
+     ],
+     "mass": 0.0238,
+     "radius": 0.01
+    }
+   ],
+   "foot": {
+    "body": "c_foot_r",
+    "radius": 0.012,
+    "mass": 0.0146,
+    "soles": [
+     {
+      "from": [
+       -0.02,
+       -0.004,
+       0
+      ],
+      "to": [
+       0.02,
+       -0.004,
+       0
+      ]
+     },
+     {
+      "from": [
+       -0.02,
+       0.004,
+       0
+      ],
+      "to": [
+       0.02,
+       0.004,
+       0
+      ]
+     }
+    ]
+   }
+  }
+ ],
+ "options": {
+  "timestep": 0.002,
+  "iterations": 2,
+  "ls_iterations": 3,
+  "integrator": "implicitfast",
+  "solref": 0.004
+ }
+}
