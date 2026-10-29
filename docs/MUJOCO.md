@@ -237,7 +237,15 @@ them `radius_mm` from it, so a mogul is round; one taller than its radius
 steps and slopes at its centre, and a `rock` patch a 3 × 3 grid of cells
 each holding a stone (or, but the centre, left empty), a box tilted about x
 or y by 10–25° and buried so its peak stands up to `height_mm` proud, in
-the box slots as `shape: "stone"` (ADR-745). Every level of a course runs
+the box slots as `shape: "stone"` (ADR-745). Two kinds lay out in x and y
+(ADR-853), both blocks on flat ground: a `tiles` patch (`x_mm`, `y_mm`,
+`length_mm`, `width_mm`, `cell_mm`, `height_mm`) is a grid of
+`round(length/cell)` × `round(width/cell)` blocks, at most 64, each standing
+a seeded 0.1–1.0 of `height_mm`; a `maze` (`x_mm`, `y_mm`, `cells_x`,
+`cells_y` ≤ 6, `cell_mm`, `height_mm`, `thickness_mm`) is a grid of cells
+opened by a seeded depth-first walk into one path between a door in its
+-x side and one in its +x side, its walls merged where collinear. One row
+of cells is a corridor. Every level of a course runs
 out 50 m past its extent (`TERRAIN_RUNOUT_MM`), so there is no cliff an
 episode reaches. A dip is
 refused (`terrain_dip_needs_heightfield`), as is a step down off a slope's
@@ -258,7 +266,11 @@ and at most `bumps`). Course *k* is drawn by
 `random.Random('cadex-terrain:<seed>:<k>')` (`TERRAIN_RANDOM_ALGORITHM`):
 steps and slopes along x until the extent ends, each signed down while the
 course is above z = 0 and up while below, so a long course climbs and
-descends; then one to `bumps` bumps. Every course is validated like a listed
+descends; then one to `bumps` bumps; then platforms and rock patches
+(ADR-745); then, with `tile_mm` (and `tile_size_mm`, `tile_cell_mm`,
+`tiles`), tile patches, and with `wall_mm` (and `maze_cell_mm`,
+`maze_cells`, `mazes`), mazes of 60 mm walls, each placed on flat ground
+clear of the rest (ADR-853). Every course is validated like a listed
 one. Course 0 is what the descriptor's `features` and `boxes` describe and
 what the model and `rollout_policy` stand on; evaluation draws its own
 (ADR-718, below).
@@ -272,7 +284,7 @@ cost about six times the features' bytes (a 32-course pool on an 11 m
 course, 78 KB to 482 KB indented) inside the 4 MB bundle cap (ADR-738). The
 trainer builds no course: it reads each course's placed boxes
 (`course_geoms`), `training/test_terrain_pool.py` holds what it places and
-scans to the engine's on a pool of every box kind, and at
+scans to the engine's on two pools that draw every feature kind, and at
 every reset gives each environment a course by `jax.random.randint` folded
 with 717; `place_course` writes that course's positions, turns, sizes and
 derived bounds into the MJX model's terrain geoms inside the vmapped step,

@@ -6,8 +6,9 @@ pool of moguls alone keeps its slot axis (ADR-747).
 
 ADR-852 made the engine the one terrain builder: each pooled course carries
 its boxes and domes placed, and the trainer only reads them. The parity test
-draws a pool through ``CadexDynamics`` itself with every box kind (steps,
-slopes, bumps, platforms, rocks) and holds the trainer's arrays to the
+draws two pools through ``CadexDynamics`` itself with every feature kind
+(steps, slopes, bumps, platforms, rocks, and since ADR-853 tile patches and
+mazes) and holds the trainer's arrays to the
 engine's ``terrain_box_geoms`` and ``terrain_dome_geoms``, so the two cannot
 drift. No jax: ``terrain_pool`` and the scan are numpy.
 """
@@ -33,20 +34,40 @@ TERRAIN = {
 }
 
 
+#: Two pools between them draw every box kind: steps, slopes, bumps,
+#: platforms and rocks along x; tile patches and mazes laid out in x and y
+#: (ADR-853), which need flat ground the first pool's steps leave no room for.
+DECLARED = [
+    {"form": "boxes", "x_range_mm": [-2000.0, 9000.0], "y_range_mm": [-2000.0, 2000.0],
+     "random": {"seed": 7, "courses": 6, "step_mm": [40.0, 120.0], "grade_deg": [5.0, 15.0],
+                "bump_mm": [20.0, 60.0], "bumps": 3, "platform_mm": [80.0, 200.0],
+                "rock_mm": [30.0, 60.0]}},
+    {"form": "boxes", "x_range_mm": [-2000.0, 9000.0], "y_range_mm": [-2000.0, 2000.0],
+     "random": {"seed": 10, "courses": 6, "tile_mm": [40.0, 120.0], "tiles": 2,
+                "wall_mm": [300.0, 500.0], "maze_cells": [1, 3]}},
+]
+
+
 def test_the_trainer_places_every_pooled_course_where_the_engine_does():
     for name in ("TERRAIN_BASE_MM", "TERRAIN_PARKED_DEPTH_MM", "TERRAIN_PARKED_HALF_MM"):
         assert getattr(cadex_train, name) == getattr(CadexDynamics, name), name
-    declared = {
-        "form": "boxes", "x_range_mm": [-2000.0, 9000.0], "y_range_mm": [-2000.0, 2000.0],
-        "random": {"seed": 7, "courses": 6, "step_mm": [40.0, 120.0], "grade_deg": [5.0, 15.0],
-                   "bump_mm": [20.0, 60.0], "bumps": 3, "platform_mm": [80.0, 200.0],
-                   "rock_mm": [30.0, 60.0]},
-    }
-    terrain = CadexDynamics.terrain_grid(declared)["descriptor"]
-    shapes = {box["shape"] for course in terrain["pool"] for box in course["boxes"]}
+    terrains = [CadexDynamics.terrain_grid(declared)["descriptor"] for declared in DECLARED]
+    pooled = [course for terrain in terrains for course in terrain["pool"]]
+    shapes = {box["shape"] for course in pooled for box in course["boxes"]}
     assert shapes == {"block", "ramp", "stone"}, shapes
-    assert any(course["domes"] for course in terrain["pool"])
+    assert any(course["domes"] for course in pooled)
+    kinds = {feature["kind"] for course in pooled for feature in course["features"]}
+    assert kinds == set(CadexDynamics.TERRAIN_FEATURE_KINDS), kinds
+    mazes = [feature for course in pooled for feature in course["features"]
+             if feature["kind"] == "maze"]
+    assert any(maze["cells_x"] > 1 and maze["cells_y"] == 1 for maze in mazes)  # a corridor
+    assert any(maze["cells_x"] > 1 and maze["cells_y"] > 1 for maze in mazes)
 
+    for terrain in terrains:
+        _hold_pool_to_the_engine(terrain)
+
+
+def _hold_pool_to_the_engine(terrain):
     pool = terrain_pool(np, terrain)
     for index, course in enumerate(terrain["pool"]):
         lowest = float(course["lowest_mm"])
@@ -56,14 +77,15 @@ def test_the_trainer_places_every_pooled_course_where_the_engine_does():
         assert np.allclose(pool["quat"][index], boxes["quat"], atol=1e-12)
         assert np.allclose(pool["size"][index], boxes["size_m"], atol=1e-12)
         domes = CadexDynamics.terrain_dome_geoms(course["domes"], lowest, terrain["dome_slots"])
-        assert np.allclose(pool["dome_pos"][index], domes["pos_m"], atol=1e-12)
+        assert np.allclose(pool["dome_pos"][index], np.reshape(domes["pos_m"], (-1, 3)), atol=1e-12)
         assert np.allclose(pool["dome_size"][index][:, 0], domes["radius_m"], atol=1e-12)
 
-    # The scan reads the ground the engine reads, on each course.
+    # The scan reads the ground the engine reads, on each course: across y too,
+    # so a maze's walls and a tile patch's rows are crossed.
     task = {"terrain": terrain,
             "scans": [{"body_id": 0, "scale": 1000.0,
                        "offsets_mm": [[x, y] for x in range(-1500, 8500, 250)
-                                      for y in (-600.0, 0.0, 600.0)]}]}
+                                      for y in range(-1900, 2000, 190)]}]}
     xpos, xmat = np.zeros((1, 1, 3)), np.eye(3).reshape(1, 1, 9)
     for index, course in enumerate(terrain["pool"]):
         placed = (pool["scan"][[index]], pool["lowest"][[index]], pool["dome_scan"][[index]])

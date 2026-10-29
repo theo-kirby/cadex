@@ -3539,13 +3539,33 @@ ENVIRONMENT_TERRAIN_GEOM = "environment/terrain"
 #: function of position that adds to the ground height, so a course is their
 #: sum and the order a script lists them in changes nothing. A platform and a
 #: rock patch (ADR-745) stand on the steps and slopes under them, and only a
-#: box course builds them.
-TERRAIN_FEATURE_KINDS = ("bump", "step", "slope", "platform", "rock")
+#: box course builds them. A tile patch and a maze (ADR-853) lay out in
+#: both x and y, and only a box course builds them too.
+TERRAIN_FEATURE_KINDS = ("bump", "step", "slope", "platform", "rock", "tiles", "maze")
 
-#: The kinds only ``form="boxes"`` builds (ADR-745): a platform is a block
-#: with walls on every side, a rock patch turned boxes, neither a sum of
-#: heights a heightfield samples.
-TERRAIN_BOX_ONLY_KINDS = ("platform", "rock")
+#: The kinds only ``form="boxes"`` builds (ADR-745, ADR-853): a platform is
+#: a block with walls on every side, a rock patch turned boxes, a tile patch
+#: a grid of blocks and a maze its walls, none a sum of heights a
+#: heightfield samples.
+TERRAIN_BOX_ONLY_KINDS = ("platform", "rock", "tiles", "maze")
+
+#: A tile patch (ADR-853) is a grid of square-ish blocks over its
+#: footprint, ``round(length / cell)`` by ``round(width / cell)``, each
+#: standing a seeded ``uniform(TERRAIN_TILE_RISE)`` of ``height_mm`` over
+#: the ground: the "random grid" of Isaac Lab's terrain generator. A patch
+#: is at most :data:`TERRAIN_TILES_MAXIMUM` blocks, each a box slot.
+TERRAIN_TILES_MAXIMUM = 64
+TERRAIN_TILE_RISE = (0.1, 1.0)
+
+#: A maze (ADR-853) is ``cells_x`` by ``cells_y`` square cells of
+#: ``cell_mm``, its walls ``thickness_mm`` thick and ``height_mm`` high,
+#: opened by a seeded depth-first walk into a spanning tree, with a door in
+#: its -x side and one in its +x side. One row of cells is a corridor. A
+#: side is at most :data:`TERRAIN_MAZE_MAXIMUM_CELLS` cells; collinear
+#: walls merge into one block. A drawn maze's walls are
+#: :data:`TERRAIN_WALL_THICKNESS_MM` thick.
+TERRAIN_MAZE_MAXIMUM_CELLS = 6
+TERRAIN_WALL_THICKNESS_MM = 60.0
 
 #: How far a box course's ground runs on past its extent (ADR-745): the
 #: segments' boxes run this far beyond it across y, and the first and last
@@ -3691,6 +3711,9 @@ def _terrain_feature(entry: Any, index: int, context: str) -> dict[str, Any]:
         "slope": {"kind", "from_x_mm", "to_x_mm", "grade_deg"},
         "platform": {"kind", "x_mm", "y_mm", "length_mm", "width_mm", "height_mm"},
         "rock": {"kind", "x_mm", "y_mm", "radius_mm", "height_mm"},
+        "tiles": {"kind", "x_mm", "y_mm", "length_mm", "width_mm", "cell_mm", "height_mm"},
+        "maze": {"kind", "x_mm", "y_mm", "cells_x", "cells_y", "cell_mm", "height_mm",
+                 "thickness_mm"},
     }[str(kind)]
     extra = sorted(str(key) for key in entry if key not in expected)
     if extra:
@@ -3748,6 +3771,44 @@ def _terrain_feature(entry: Any, index: int, context: str) -> dict[str, Any]:
             ),
             observed={"height_mm": record["height_mm"], "radius_mm": record["radius_mm"]},
         )
+    if kind == "tiles":
+        if min(record["length_mm"], record["width_mm"], record["cell_mm"]) <= 0.0:
+            raise DynamicsError(
+                f"{where} (tiles) is {record['length_mm']:g} x {record['width_mm']:g} mm "
+                f"in {record['cell_mm']:g} mm cells.",
+                reason="malformed_terrain",
+                correction="A tile patch's length_mm, width_mm and cell_mm are positive.",
+                observed={key: record[key] for key in ("length_mm", "width_mm", "cell_mm")},
+            )
+        count = math.prod(_terrain_tile_counts(record))
+        if count > TERRAIN_TILES_MAXIMUM:
+            raise DynamicsError(
+                f"{where} (tiles) is {count} tiles; a patch is at most "
+                f"{TERRAIN_TILES_MAXIMUM}.",
+                reason="terrain_too_large",
+                correction="Each tile is a box slot: widen cell_mm or shrink the patch.",
+                observed={"tiles": count, "maximum": TERRAIN_TILES_MAXIMUM},
+            )
+    if kind == "maze":
+        for key in ("cells_x", "cells_y"):
+            if (record[key] != int(record[key])
+                    or not 1 <= record[key] <= TERRAIN_MAZE_MAXIMUM_CELLS):
+                raise DynamicsError(
+                    f"{where} (maze) gives {key} {record[key]:g}.",
+                    reason="malformed_terrain",
+                    correction=(f"{key} is a whole number of cells from 1 to "
+                                f"{TERRAIN_MAZE_MAXIMUM_CELLS}."),
+                    observed={key: record[key]},
+                )
+            record[key] = int(record[key])
+        if not 0.0 < record["thickness_mm"] < record["cell_mm"]:
+            raise DynamicsError(
+                f"{where} (maze) has {record['thickness_mm']:g} mm walls in "
+                f"{record['cell_mm']:g} mm cells.",
+                reason="malformed_terrain",
+                correction="A wall's thickness_mm is positive and less than cell_mm.",
+                observed={"thickness_mm": record["thickness_mm"], "cell_mm": record["cell_mm"]},
+            )
     if kind == "slope":
         if not record["from_x_mm"] < record["to_x_mm"]:
             raise DynamicsError(
@@ -3909,22 +3970,31 @@ def terrain_boxes(
                           feature["x_mm"] + feature["length_mm"] / 2.0),
                 (feature["y_mm"] - feature["width_mm"] / 2.0,
                  feature["y_mm"] + feature["width_mm"] / 2.0), (top, top))
-        elif feature["kind"] == "rock":
-            reach = (feature["x_mm"] - feature["radius_mm"], feature["x_mm"] + feature["radius_mm"])
+        elif feature["kind"] in ("rock", "tiles", "maze"):
+            half = terrain_feature_footprint_mm(feature)[0]
+            reach = (feature["x_mm"] - half, feature["x_mm"] + half)
             levels = {round(_terrain_profile_mm(features, x), 6) for x in reach}
             if len(levels) > 1 or any(
                     reach[0] < edge < reach[1] for edge in cuts if edge not in (x0, x1)):
+                named = {"rock": "a rock patch", "tiles": "a tile patch", "maze": "a maze"}
                 raise DynamicsError(
-                    f"{context} puts a rock patch at x {feature['x_mm']:g} mm across a "
-                    "step or a slope.",
+                    f"{context} puts {named[feature['kind']]} at x {feature['x_mm']:g} mm "
+                    "across a step or a slope.",
                     reason="terrain_rock_off_flat",
                     correction=(
-                        "A rock patch lies on flat ground: move it onto a flat run "
-                        "at least its radius from any step or slope."
+                        f"{named[feature['kind']].capitalize()} lies on flat ground: move "
+                        "it onto a flat run clear of any step or slope by half its length."
                     ),
-                    observed={"x_mm": feature["x_mm"], "radius_mm": feature["radius_mm"]},
+                    observed={"x_mm": feature["x_mm"], "half_length_mm": half},
                 )
-            boxes.extend(terrain_rock_stones(feature, _terrain_profile_mm(features, feature["x_mm"])))
+            ground = _terrain_profile_mm(features, feature["x_mm"])
+            if feature["kind"] == "rock":
+                boxes.extend(terrain_rock_stones(feature, ground))
+            else:
+                blocks = (terrain_tile_blocks(feature, ground) if feature["kind"] == "tiles"
+                          else terrain_maze_walls(feature, ground))
+                for xs, ys, top in blocks:
+                    box("block", xs, ys, (top, top))
     domes: list[dict[str, Any]] = []
     for feature in features:
         if feature["kind"] != "bump":
@@ -4001,6 +4071,114 @@ def _terrain_runout(segments: Sequence[tuple[float, float, float, float]],
     else:
         out.append((x1, x1 + TERRAIN_RUNOUT_MM, zb, zb))
     return out
+
+
+def terrain_feature_footprint_mm(feature: Mapping[str, Any]) -> tuple[float, float]:
+    """Half the plan extent, along x then y, of a feature standing on the
+    ground about its ``x_mm``, ``y_mm`` (ADR-745, ADR-853)."""
+
+    kind = feature["kind"]
+    if kind in ("platform", "tiles"):
+        return float(feature["length_mm"]) / 2.0, float(feature["width_mm"]) / 2.0
+    if kind == "maze":
+        cell, wall = float(feature["cell_mm"]), float(feature["thickness_mm"])
+        return ((int(feature["cells_x"]) * cell + wall) / 2.0,
+                (int(feature["cells_y"]) * cell + wall) / 2.0)
+    return float(feature["radius_mm"]), float(feature["radius_mm"])
+
+
+def _terrain_tile_counts(tiles: Mapping[str, Any]) -> tuple[int, int]:
+    cell = float(tiles["cell_mm"])
+    return (max(1, round(float(tiles["length_mm"]) / cell)),
+            max(1, round(float(tiles["width_mm"]) / cell)))
+
+
+def terrain_tile_blocks(tiles: Mapping[str, Any], ground_mm: float
+                        ) -> list[tuple[tuple[float, float], tuple[float, float], float]]:
+    """A tile patch's blocks (ADR-853), pure and seeded by the patch itself:
+    ``random.Random('cadex-tiles:<x>:<y>:<length>:<width>:<cell>:<height>')``
+    over its :func:`_terrain_tile_counts` grid, which fills the footprint
+    exactly, column by column from -x -y; each tile's top is ``ground_mm``
+    plus ``uniform(TERRAIN_TILE_RISE) * height_mm``. Each is an ``x`` range,
+    a ``y`` range and a top, in mm."""
+
+    import random
+
+    x, y, length, width, cell, height = (float(tiles[key]) for key in (
+        "x_mm", "y_mm", "length_mm", "width_mm", "cell_mm", "height_mm"))
+    rng = random.Random(
+        f"cadex-tiles:{x!r}:{y!r}:{length!r}:{width!r}:{cell!r}:{height!r}")
+    columns, rows = _terrain_tile_counts(tiles)
+    dx, dy = length / columns, width / rows
+    x0, y0 = x - length / 2.0, y - width / 2.0
+    return [((x0 + i * dx, x0 + (i + 1) * dx), (y0 + j * dy, y0 + (j + 1) * dy),
+             float(ground_mm) + rng.uniform(*TERRAIN_TILE_RISE) * height)
+            for i in range(columns) for j in range(rows)]
+
+
+def terrain_maze_walls(maze: Mapping[str, Any], ground_mm: float
+                       ) -> list[tuple[tuple[float, float], tuple[float, float], float]]:
+    """A maze's walls (ADR-853), pure and seeded by the maze itself:
+    ``random.Random('cadex-maze:<x>:<y>:<cells_x>:<cells_y>:<cell>')``
+    picks the -x door's row then the +x door's row (``randrange(cells_y)``),
+    then walks depth first from the -x door's cell, opening the wall to a
+    neighbour chosen by ``choice`` among the unvisited ones (in the order
+    -x, +x, -y, +y) and backing up when there is none, so every cell is
+    reached by one path. The walls left, and the outer walls but the two
+    doors, merge where collinear and touching into blocks a thickness wide
+    that overlap at the corners: each an ``x`` range, a ``y`` range and a top
+    ``height_mm`` over ``ground_mm``, in mm."""
+
+    import random
+
+    x, y, cell, wall, height = (float(maze[key]) for key in (
+        "x_mm", "y_mm", "cell_mm", "thickness_mm", "height_mm"))
+    nx, ny = int(maze["cells_x"]), int(maze["cells_y"])
+    rng = random.Random(f"cadex-maze:{x!r}:{y!r}:{nx}:{ny}:{cell!r}")
+    enter, leave = rng.randrange(ny), rng.randrange(ny)
+    # across[i][j]: the wall along y at x-line i, beside cell row j;
+    # along[i][j]: the wall along x at y-line j, beside cell column i.
+    across = [[True] * ny for _ in range(nx + 1)]
+    along = [[True] * (ny + 1) for _ in range(nx)]
+    across[0][enter] = across[nx][leave] = False
+    seen, path = {(0, enter)}, [(0, enter)]
+    while path:
+        i, j = path[-1]
+        ways = [(di, dj) for di, dj in ((-1, 0), (1, 0), (0, -1), (0, 1))
+                if 0 <= i + di < nx and 0 <= j + dj < ny and (i + di, j + dj) not in seen]
+        if not ways:
+            path.pop()
+            continue
+        di, dj = rng.choice(ways)
+        if di:
+            across[max(i, i + di)][j] = False
+        else:
+            along[i][max(j, j + dj)] = False
+        seen.add((i + di, j + dj))
+        path.append((i + di, j + dj))
+    x0, y0, half = x - nx * cell / 2.0, y - ny * cell / 2.0, wall / 2.0
+    top = float(ground_mm) + height
+    walls = []
+
+    def runs(present: Sequence[bool]) -> list[tuple[int, int]]:
+        out, start = [], None
+        for k, on in enumerate([*present, False]):
+            if on and start is None:
+                start = k
+            elif not on and start is not None:
+                out.append((start, k))
+                start = None
+        return out
+
+    for i in range(nx + 1):
+        for a, b in runs(across[i]):
+            walls.append(((x0 + i * cell - half, x0 + i * cell + half),
+                          (y0 + a * cell - half, y0 + b * cell + half), top))
+    for j in range(ny + 1):
+        for a, b in runs([along[i][j] for i in range(nx)]):
+            walls.append(((x0 + a * cell - half, x0 + b * cell + half),
+                          (y0 + j * cell - half, y0 + j * cell + half), top))
+    return walls
 
 
 def terrain_rock_stones(rock: Mapping[str, Any], ground_mm: float) -> list[dict[str, Any]]:
@@ -4134,6 +4312,14 @@ TERRAIN_RANDOM_DEFAULTS: dict[str, Any] = {
     "rock_mm": None,
     "rock_radius_mm": [250.0, 400.0],
     "rocks": 1,
+    "tile_mm": None,
+    "tile_size_mm": [800.0, 1600.0],
+    "tile_cell_mm": [200.0, 400.0],
+    "tiles": 1,
+    "wall_mm": None,
+    "maze_cell_mm": [700.0, 1000.0],
+    "maze_cells": [1, 3],
+    "mazes": 1,
 }
 
 #: How many places :func:`terrain_random_features` tries for one platform or
@@ -4180,7 +4366,14 @@ TERRAIN_RANDOM_ALGORITHM = (
     "at up to 8 centres uniform(clear_mm + half, x1 - half), uniform(y0 + "
     "half, y1 - half) and kept at the first whose square keeps 100 mm clear "
     "of every bump's, platform's and patch's (and, a patch, lies on flat "
-    "steps and slopes), else left out. Course 0 is the one the model carries"
+    "steps and slopes), else left out; then (ADR-853), if tile_mm, "
+    "randint(1, tiles) tile patches of uniform(tile_mm) high, "
+    "uniform(tile_size_mm) long then wide (at most the extent's width) in "
+    "uniform(tile_cell_mm) cells, and, if wall_mm, randint(1, mazes) mazes "
+    "of uniform(wall_mm) high walls 60 mm thick, uniform(maze_cell_mm) "
+    "cells, randint(maze_cells) cells along x then along y (fewer along y "
+    "until it fits the extent's width), each placed as a rock patch is, on "
+    "flat ground. Course 0 is the one the model carries"
 )
 
 
@@ -4226,7 +4419,8 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
     merged = {**TERRAIN_RANDOM_DEFAULTS, **dict(spec)}
     for key, low, high in (("seed", 0, 2**31 - 1), ("courses", 1, MAXIMUM_TERRAIN_COURSES),
                            ("bumps", 1, MAXIMUM_TERRAIN_FEATURES // 2),
-                           ("platforms", 1, 8), ("rocks", 1, 8)):
+                           ("platforms", 1, 8), ("rocks", 1, 8), ("tiles", 1, 8),
+                           ("mazes", 1, 8)):
         value = merged[key]
         if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
             raise DynamicsError(
@@ -4239,7 +4433,8 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
             )
     record: dict[str, Any] = {"seed": merged["seed"], "courses": merged["courses"],
                               "bumps": merged["bumps"], "platforms": merged["platforms"],
-                              "rocks": merged["rocks"]}
+                              "rocks": merged["rocks"], "tiles": merged["tiles"],
+                              "mazes": merged["mazes"]}
     record["clear_mm"] = _terrain_number(merged, "clear_mm", where)
     if record["clear_mm"] < TERRAIN_MINIMUM_RUN_MM:
         raise DynamicsError(
@@ -4251,8 +4446,39 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
             ),
             observed={"clear_mm": record["clear_mm"]},
         )
-    for key in ("run_mm", "slope_mm", "bump_radius_mm", "platform_size_mm", "rock_radius_mm"):
+    for key in ("run_mm", "slope_mm", "bump_radius_mm", "platform_size_mm", "rock_radius_mm",
+                "tile_size_mm", "tile_cell_mm", "maze_cell_mm"):
         record[key] = _terrain_random_range(merged, key, where)
+    cells = merged["maze_cells"]
+    if (not isinstance(cells, (list, tuple)) or len(cells) != 2
+            or any(isinstance(v, bool) or not isinstance(v, int) for v in cells)
+            or not 1 <= cells[0] <= cells[1] <= TERRAIN_MAZE_MAXIMUM_CELLS):
+        raise DynamicsError(
+            f"{where} gives 'maze_cells' as {cells!r}.",
+            reason="malformed_terrain",
+            correction=("'maze_cells' is [low, high], whole numbers with "
+                        f"1 <= low <= high <= {TERRAIN_MAZE_MAXIMUM_CELLS}."),
+            observed={"maze_cells": repr(cells)},
+        )
+    record["maze_cells"] = [int(v) for v in cells]
+    if record["maze_cell_mm"][0] <= TERRAIN_WALL_THICKNESS_MM:
+        raise DynamicsError(
+            f"{where} gives maze_cell_mm from {record['maze_cell_mm'][0]:g} mm.",
+            reason="malformed_terrain",
+            correction=f"A maze cell is wider than its {TERRAIN_WALL_THICKNESS_MM:g} mm walls.",
+            observed={"maze_cell_mm": record["maze_cell_mm"]},
+        )
+    widest = max(1, round(record["tile_size_mm"][1] / record["tile_cell_mm"][0]))
+    if widest * widest > TERRAIN_TILES_MAXIMUM:
+        raise DynamicsError(
+            f"{where} draws tile patches up to {record['tile_size_mm'][1]:g} mm in cells "
+            f"from {record['tile_cell_mm'][0]:g} mm, up to {widest * widest} tiles.",
+            reason="terrain_too_large",
+            correction=(f"A patch is at most {TERRAIN_TILES_MAXIMUM} tiles: raise "
+                        "tile_cell_mm's bottom or lower tile_size_mm's top."),
+            observed={"tile_size_mm": record["tile_size_mm"],
+                      "tile_cell_mm": record["tile_cell_mm"]},
+        )
     if record["run_mm"][0] < TERRAIN_MINIMUM_RUN_MM:
         raise DynamicsError(
             f"{where} gives run_mm from {record['run_mm'][0]:g} mm.",
@@ -4267,7 +4493,9 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
                        ("grade_deg", TERRAIN_MAXIMUM_GRADE_DEG),
                        ("bump_mm", TERRAIN_MAXIMUM_HEIGHT_MM),
                        ("platform_mm", TERRAIN_MAXIMUM_HEIGHT_MM),
-                       ("rock_mm", TERRAIN_MAXIMUM_HEIGHT_MM)):
+                       ("rock_mm", TERRAIN_MAXIMUM_HEIGHT_MM),
+                       ("tile_mm", TERRAIN_MAXIMUM_HEIGHT_MM),
+                       ("wall_mm", TERRAIN_MAXIMUM_HEIGHT_MM)):
         if merged[key] is None:
             record[key] = None
             continue
@@ -4301,7 +4529,7 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
             ),
             observed={"rock_mm": record["rock_mm"], "rock_radius_mm": record["rock_radius_mm"]},
         )
-    drawn = ("step_mm", "grade_deg", "bump_mm", "platform_mm", "rock_mm")
+    drawn = ("step_mm", "grade_deg", "bump_mm", "platform_mm", "rock_mm", "tile_mm", "wall_mm")
     if all(record[key] is None for key in drawn):
         raise DynamicsError(
             f"{where} draws nothing: it gives none of {', '.join(drawn)}.",
@@ -4337,7 +4565,8 @@ def terrain_random_features(
     level, x = 0.0, float(spec["clear_mm"])
     limit = MAXIMUM_TERRAIN_FEATURES - sum(
         int(spec.get(count) or 0) for count, key in
-        (("bumps", "bump_mm"), ("platforms", "platform_mm"), ("rocks", "rock_mm"))
+        (("bumps", "bump_mm"), ("platforms", "platform_mm"), ("rocks", "rock_mm"),
+         ("tiles", "tile_mm"), ("mazes", "wall_mm"))
         if spec.get(key) is not None)
 
     def signed(magnitude: float) -> float:
@@ -4419,6 +4648,31 @@ def terrain_random_features(
             if at is not None:
                 features.append({"kind": "rock", "x_mm": at[0], "y_mm": at[1],
                                  "radius_mm": radius, "height_mm": height})
+    # ADR-853: tile patches, then mazes, placed as rock patches are.
+    if spec.get("tile_mm") is not None:
+        for _ in range(rng.randint(1, int(spec["tiles"]))):
+            height = rng.uniform(*spec["tile_mm"])
+            length = rng.uniform(*spec["tile_size_mm"])
+            width = min(rng.uniform(*spec["tile_size_mm"]), y1 - y0)
+            cell = rng.uniform(*spec["tile_cell_mm"])
+            at = place(length / 2.0, width / 2.0, True)
+            if at is not None:
+                features.append({"kind": "tiles", "x_mm": at[0], "y_mm": at[1],
+                                 "length_mm": length, "width_mm": width, "cell_mm": cell,
+                                 "height_mm": height})
+    if spec.get("wall_mm") is not None:
+        for _ in range(rng.randint(1, int(spec["mazes"]))):
+            height = rng.uniform(*spec["wall_mm"])
+            cell = rng.uniform(*spec["maze_cell_mm"])
+            nx, ny = (rng.randint(*spec["maze_cells"]) for _ in range(2))
+            while ny > 1 and ny * cell + TERRAIN_WALL_THICKNESS_MM > y1 - y0:
+                ny -= 1
+            maze = {"kind": "maze", "x_mm": 0.0, "y_mm": 0.0, "cells_x": nx, "cells_y": ny,
+                    "cell_mm": cell, "height_mm": height,
+                    "thickness_mm": TERRAIN_WALL_THICKNESS_MM}
+            at = place(*terrain_feature_footprint_mm(maze), True)
+            if at is not None:
+                features.append({**maze, "x_mm": at[0], "y_mm": at[1]})
     return features
 
 
@@ -4958,8 +5212,8 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             f"{context} puts {' and '.join(boxed)} features on a heightfield.",
             reason="terrain_kind_needs_boxes",
             correction=(
-                "Platforms and rock patches are boxes standing on the ground "
-                "(ADR-745): give form='boxes'."
+                "Platforms, rock patches, tile patches and mazes are boxes "
+                "standing on the ground (ADR-745, ADR-853): give form='boxes'."
             ),
             observed={"kinds": boxed},
         )

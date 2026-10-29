@@ -47409,3 +47409,75 @@ only against a re-exported bundle. Heightfield and flat tasks are unchanged.
 by the engine. The trainer reads its `hfield_data` from the compiled model,
 so that is one source already. Its MJX divergence (`winter-bay-5176`) is
 unchanged. So are T1's new kinds, levels and curriculum.
+
+## ADR-853 — Tile patches and mazes: terrain laid out in x and y (2026-10-29, orun21 T1)
+
+**Context.** T1 asks for terrain that is not laid out only along x: walls
+with a corridor or a small maze, and T2 needs a maze section the points
+steer a robot round. Before this, steps and slopes span the whole width,
+and only bumps, platforms and rock patches stand at a point in y. ADR-852
+made the engine the one terrain builder: a pooled course carries its boxes
+placed, so a kind the engine builds reaches the trainer with no trainer
+code.
+
+**Decision.**
+- **Two feature kinds, box courses only** (`TERRAIN_BOX_ONLY_KINDS`), both
+  built as `block` records by `terrain_boxes`:
+  - `tiles` (`x_mm`, `y_mm`, `length_mm`, `width_mm`, `cell_mm`,
+    `height_mm`): a grid of `round(length/cell)` × `round(width/cell)`
+    blocks filling the footprint, each topped at a seeded
+    `uniform(0.1, 1.0) × height_mm` over the ground
+    (`terrain_tile_blocks`). This is Isaac Lab's "random grid". A patch is
+    at most 64 tiles (`TERRAIN_TILES_MAXIMUM`), because each tile is a box
+    slot.
+  - `maze` (`x_mm`, `y_mm`, `cells_x`, `cells_y` from 1 to 6, `cell_mm`,
+    `height_mm`, `thickness_mm`): square cells opened by a seeded
+    depth-first walk into a spanning tree, so one path joins a door in the
+    -x side to a door in the +x side (`terrain_maze_walls`). Collinear
+    walls merge into one block: a 3 × 3 maze is 8 blocks. `cells_y: 1` is a
+    straight corridor with two side walls.
+  - Both are seeded by their own fields, as rock patches are (ADR-745), and
+    both must stand on flat ground (the same `terrain_rock_off_flat`
+    refusal).
+- **Drawn pools** take `tile_mm` (with `tile_size_mm` 800–1600,
+  `tile_cell_mm` 200–400 and `tiles`) and `wall_mm` (with `maze_cell_mm`
+  700–1000, `maze_cells` [1, 3] and `mazes`). They are drawn after rock
+  patches and placed as rock patches are, with 60 mm walls
+  (`TERRAIN_WALL_THICKNESS_MM`), so a pool without them draws the same
+  geometry it did.
+- **No trainer change, and no dashboard change.** The trainer reads the
+  placed blocks (ADR-852). The dashboard and the film draw any box from its
+  centre, rotation and half-extents.
+- `training/test_terrain_pool.py` now draws two pools that between them
+  give every feature kind, including a corridor and a maze at least two
+  cells each way. It holds the trainer's arrays and its height scan to the
+  engine's, scanning across y as well.
+
+**Cost.** Each tile and each merged wall is a box slot. ADR-747 measured
+about 2.5 s per slot per iteration on the cat at 8192 environments, so a
+pool with two tile patches has a cost: the test's pool has 45 slots.
+`terrain["random"]` gains its new defaults and a longer algorithm string.
+Every drawn box course's descriptor therefore changes, and with it its
+task digest. Its courses' geometry does not: on the dashboard test's
+every-kind pool the descriptor without `random` hashes the same before and
+after.
+
+**Evidence.**
+- MuJoCo's own ray onto the compiled course meets `terrain_box_ground_mm`
+  to 7e-13 mm, at 991 points on the listed course of
+  `docs/probes/orun21/t1_shot.py` and at 5,957 points over the six
+  re-placed courses of its drawn pool. Points within 1 mm of a wall face
+  are skipped.
+- The dashboard's `groundAt` on the engine's `terrain_drawing` matches it
+  to 1e-14 mm at about 1,980 points per course.
+- The courses as the dashboard draws them, on the dark floor:
+  `docs/probes/orun21/t1-maze.png` (a 3 × 3 maze, 450 mm walls),
+  `t1-tiles-corridor.png` (a 1.8 × 1.5 m tile patch and a 4 × 1 corridor)
+  and `t1-drawn-course2.png` (course 2 of the drawn pool: two tile patches
+  and a two-cell corridor).
+- `pixi run test-engine`: 158 passed, 3 skipped. After `pixi run build-engine`,
+  `pytest cli/tests`: 53 passed. `training/`: 90 passed.
+
+**Not in this decision.** Heightfields under MJX (`winter-bay-5176`, R1
+T-3), mesh or heightfield courses from a file, levels and a curriculum,
+and turned walls (every wall runs along x or y) are still open.
