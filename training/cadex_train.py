@@ -2878,6 +2878,59 @@ def feet_step(xp: Any, terms: dict[str, Any], memory: Sequence[Any], contact: An
     return pay, (air * (1.0 - down), contact, peak * (1.0 - down))
 
 
+#: ADR-840: the train-split go-to-point sequences one run draws its episodes from.
+GOTO_PLANS = 1024
+#: A goal's unit against the layer's m/s and rad/s.
+GOTO_UNITS = {"mm/s": 1000.0, "m/s": 1.0, "deg/s": math.degrees(1.0), "rad/s": 1.0}
+
+
+def goto_training(task: dict[str, Any], host: Any, options: argparse.Namespace,
+                  seed: int, np: Any) -> dict[str, Any]:
+    """What ``--goto`` trains under (ADR-840): the layer, its plans and where it writes.
+
+    ``cadex_goto`` (ADR-839) is the one sequence source and layer; this reads
+    which goal columns it commands (``--goto-goals``, forward, lateral, yaw
+    rate), their units and ranges, and the base's free joint, and stacks
+    :data:`GOTO_PLANS` ``train``-split sequences seeded from ``seed``. No
+    held-out sequence is ever among them.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import cadex_goto
+
+    entries = list(task.get("goal") or ())
+    if any(entry["kind"] == "waypoint" for entry in entries):
+        raise SystemExit("--goto drives speed goals; this task's waypoint goal is a second target")
+    wanted = str(options.goto_goals).split(",")
+    offsets, cursor = {}, 0
+    for entry in entries:
+        offsets[str(entry["name"])] = (cursor, entry)
+        cursor += len(entry["channels"])
+    if len(wanted) != 3 or any(name not in offsets for name in wanted):
+        raise SystemExit(f"--goto-goals names the forward, lateral and yaw-rate goals; "
+                         f"this task declares {sorted(offsets)}")
+    columns, scales, limits = [], [], {}
+    for axis, name in zip(("vx", "vy", "wz"), wanted):
+        at, entry = offsets[name]
+        if entry["kind"] != "value" or len(entry["channels"]) != 1 or entry.get("unit") not in GOTO_UNITS:
+            raise SystemExit(f"--goto-goals: {name!r} is not a one-channel speed or rate value")
+        scale = GOTO_UNITS[entry["unit"]]
+        columns.append(at)
+        scales.append(scale)
+        limits[axis] = [float(entry["low"]) / scale, float(entry["high"]) / scale]
+    free = [j for j in range(host.njnt) if int(host.jnt_type[j]) == 0]
+    if not free:
+        raise SystemExit("--goto needs a floating base; this model has no free joint")
+    if not 0.0 < float(options.goto_share) <= 1.0:
+        raise SystemExit("--goto-share is the share of episodes on the layer, in (0, 1]")
+    bands = cadex_goto.parse_bands(options.goto)
+    plans = cadex_goto.stack(np, [cadex_goto.sequence(int(seed) * GOTO_PLANS + i, split="train", bands=bands)
+                                  for i in range(GOTO_PLANS)])
+    return {"module": cadex_goto, "plans": plans, "columns": np.asarray(columns, dtype=np.int32),
+            "scales": np.asarray(scales, dtype=np.float32), "limits": limits,
+            "qpos": int(host.jnt_qposadr[free[0]]), "share": float(options.goto_share)}
+
+
 def resolved_reward_floor(options) -> float | None:
     """ADR-700's per-step reward floor, resolved once, or ``None`` for none.
 
@@ -3220,6 +3273,56 @@ def build_environment(
     goal_pool_size = int(goal_tables[0].shape[0]) if goaled else 0
     # ADR-751: a PYTHON bool, so a task with no waypoint traces as before.
     waypointed = any(entry["kind"] == "waypoint" for entry in goal_entries)
+    # ADR-840: route A's go-to-point layer commands a share of the episodes.
+    # A PYTHON bool, so a run without --goto traces as before.
+    going = bool(getattr(options, "goto", None))
+    if going:
+        if not goaled:
+            raise SystemExit("--goto commands a task's speed goals; this task states none")
+        goto = goto_training(task, host, options, seed, np)
+        goto_plans = {key: jnp.asarray(value) for key, value in goto["plans"].items()}
+        goto_columns = jnp.asarray(goto["columns"])
+        goto_scales = jnp.asarray(goto["scales"])
+        goto_dt = float(episode["control_interval_s"])
+
+    def goto_advance(key, state, data, done):
+        """The layer one step on, from the pose ``data`` holds (ADR-840).
+
+        Where ``done``, the episode is fresh: a plan from the pool, turned by
+        a uniform heading about where the base now stands (C-13: the first
+        point is at any bearing), on the layer with chance ``--goto-share``,
+        and the first point lit. ``told`` is the command in the goal's units.
+        """
+
+        layer = goto["module"]
+        count = goto_plans["speeds"].shape[0]
+        k_pick, k_turn, k_on = jax.random.split(key, 3)
+        pick = jnp.where(done, jax.random.randint(k_pick, (envs,), 0, count), state["pick"])
+        turn = jnp.where(done, jax.random.uniform(k_turn, (envs,), minval=-math.pi, maxval=math.pi),
+                         state["turn"])
+        on = jnp.where(done, jax.random.uniform(k_on, (envs,)) < goto["share"], state["on"])
+        base = data.qpos[:, goto["qpos"]:goto["qpos"] + 7]
+        start = jnp.where(done[:, None], base[:, :2], state["start"])
+        fresh = layer.layer_start(jnp, (envs,))
+        moved = {name: jnp.where(done, fresh[name], state[name]) for name in fresh}
+        c, s = jnp.cos(turn)[:, None], jnp.sin(turn)[:, None]
+        points = goto_plans["points"][pick]
+        plan = {"points": jnp.stack([c * points[..., 0] - s * points[..., 1] + start[:, :1],
+                                     s * points[..., 0] + c * points[..., 1] + start[:, 1:]], axis=-1),
+                "speeds": goto_plans["speeds"][pick], "holds": goto_plans["holds"][pick]}
+        w, x, y, z = (base[:, 3 + i] for i in range(4))
+        yaw = jnp.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+        moved, command = layer.layer_step(jnp, plan, moved, base[:, 0], base[:, 1], yaw,
+                                          goto_dt, goto["limits"])
+        told = jnp.stack([command[a] for a in ("vx", "vy", "wz")], axis=-1) * goto_scales
+        return {"pick": pick, "turn": turn, "on": on, "start": start, **moved,
+                "told": told.astype(jnp.float32)}
+
+    def goto_told(told, state):
+        """The episode's drawn goals, with the layer's command where it is on."""
+
+        return told.at[:, goto_columns].set(
+            jnp.where(state["on"][:, None], state["told"], told[:, goto_columns]))
 
     def goals_at(picks, steps):
         """Each environment's goal channels at its own episode step.
@@ -3620,7 +3723,7 @@ def build_environment(
     scale_out = jnp.asarray(output_scale, dtype=jnp.float32)
     bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
 
-    def sensed(key, data, picks, steps, origin, carry, course=None, turned=None):
+    def sensed(key, data, picks, steps, origin, carry, course=None, turned=None, going_state=None):
         """The observation the policy acts on, in the state ``data`` holds.
 
         What the policy acts on carries its sensors' noise; the reward and
@@ -3640,6 +3743,8 @@ def build_environment(
         told = None
         if goaled:
             told = goals_at(picks, steps)
+            if going:
+                told = goto_told(told, going_state)
             if waypointed:
                 # ADR-751: the point read from where the base is.
                 told = waypoint_vector(jnp, task, told, data.xipos, data.xmat)
@@ -3733,7 +3838,16 @@ def build_environment(
             info["feet"] = (jnp.zeros((envs, count), dtype=jnp.float32),
                             jnp.zeros((envs, count), dtype=jnp.bool_),
                             jnp.zeros((envs, count), dtype=jnp.float32))
-        key, vector = sensed(key, data, picks, steps, origin, carry, course, turned)
+        if going:
+            # ADR-840: every environment starts a fresh go-to-point episode.
+            blank = {"pick": jnp.zeros((envs,), jnp.int32), "turn": jnp.zeros((envs,), jnp.float32),
+                     "on": jnp.zeros((envs,), bool), "start": jnp.zeros((envs, 2), jnp.float32),
+                     **goto["module"].layer_start(jnp, (envs,)),
+                     "told": jnp.zeros((envs, 3), jnp.float32)}
+            info["goto"] = goto_advance(jax.random.fold_in(start_key, 840), blank, data,
+                                        jnp.ones((envs,), bool))
+        key, vector = sensed(key, data, picks, steps, origin, carry, course, turned,
+                             info.get("goto"))
         info["key"] = key
         return State(pipeline_state=data, obs=observation(vector),
                      reward=jnp.zeros((envs,), dtype=jnp.float32),
@@ -3765,6 +3879,9 @@ def build_environment(
         carry = info["carry"]
         surface = action * scale_out + bias_out
         told = goals_at(picks, steps) if goaled else None
+        if going:
+            # ADR-840: the command the layer gave from where this step starts.
+            told = goto_told(told, info["goto"])
         goal_args = ((course,) if redrawing else ()) + ((told,) if goaled else ())
         turned = None
         if cadenced:
@@ -3888,7 +4005,11 @@ def build_environment(
             # because unlike the filter's memory these are observed.
             carry = (jnp.where(done[:, None], reset_command[None, :], issued),
                      jnp.where(done[:, None], reset_command[None, :], replaced))
-        key, vector = sensed(key, data, picks, steps, origin, carry, course, turned)
+        if going:
+            # ADR-840: from where the step landed, or the fresh episode's pose.
+            info["goto"] = goto_advance(jax.random.fold_in(reset_key, 840), info["goto"], data, done)
+        key, vector = sensed(key, data, picks, steps, origin, carry, course, turned,
+                             info.get("goto"))
         info.update(key=key, forces=forces, starts=starts, elapsed=elapsed,
                     steps=steps, carry=carry,
                     truncation=truncation.astype(jnp.float32),
@@ -4804,6 +4925,8 @@ def policy_header(
                 # no goal, and leaving it out there keeps such a policy's
                 # header the one it always was (ADR-462).
                 and (key != "goal_pool" or task.get("goal"))
+                # ADR-840: only a run on the go-to-point layer names it.
+                and (not key.startswith("goto") or options.goto)
             },
             "init_from": trained.get("init_from"),
             # The iterations this policy actually saw, which for a
@@ -5026,6 +5149,19 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "from --seed, and every environment is given one of them on "
              "each reset. Ignored by a task that states no goal.",
     )
+    parser.add_argument(
+        "--goto", default=None, metavar="BANDS",
+        help="train a share of the episodes on go-to-point (ADR-840): the "
+             "speed goals come from cadex_goto's layer walking a train-split "
+             "sequence turned to a uniform heading, e.g. "
+             "walk:0.4-0.7,run:1.0-1.5 in m/s. Off by default.")
+    parser.add_argument(
+        "--goto-share", type=float, default=0.2,
+        help="the share of episodes on the layer under --goto; the rest keep "
+             "the bundle's drawn goals. 0.5 lost slow walking on the Go1 (ADR-840)")
+    parser.add_argument(
+        "--goto-goals", default="cx,cy,cw",
+        help="the task's forward, lateral and yaw-rate goals the layer commands")
     parser.add_argument(
         "--action-filter-alpha", type=float, default=1.0,
         help="low-pass the command before it reaches the actuators: "

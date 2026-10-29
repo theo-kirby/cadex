@@ -49,7 +49,9 @@ SPLITS = ("train", "heldout")
 BEARINGS = {"ahead": (-30.0, 30.0), "side": (60.0, 120.0), "behind": (150.0, 210.0)}
 
 #: The sequence's shape when the caller names none.
-SEQUENCE = {"points": 8, "behind": 2, "side": 2, "distance_m": (2.0, 5.0),
+#: ``lead_s`` lengthens each leg by its speed times that many seconds, so a run
+#: leg, like a walk leg, has a straight second at full speed to read (ADR-840).
+SEQUENCE = {"points": 8, "behind": 2, "side": 2, "distance_m": (2.0, 5.0), "lead_s": 2.5,
             "holds": 2, "hold_share": 0.5, "hold_s": (1.0, 3.0)}
 
 #: The layer's gains and radii. ``arrive_m`` is under G2's 0.3 m reach bar; a
@@ -87,7 +89,8 @@ def sequence(seed: int, *, split: str, bands: Sequence[Mapping[str, Any]],
 
     The robot starts at the origin facing +x. Each point is placed against
     the direction of the leg before it: ahead, to a side, or behind
-    (:data:`BEARINGS`), at a distance in ``distance_m``. At least ``behind``
+    (:data:`BEARINGS`), at a distance in ``distance_m`` plus ``lead_s``
+    seconds at its speed. At least ``behind``
     points are behind and ``side`` to a side; the rest are drawn from all
     three. Each point's band is drawn uniformly, its speed uniformly inside the
     band, and at least ``holds`` points carry a hold in ``hold_s`` (each other
@@ -119,9 +122,10 @@ def sequence(seed: int, *, split: str, bands: Sequence[Mapping[str, Any]],
             turn = -turn
         heading = math.atan2(math.sin(heading + turn), math.cos(heading + turn))
         distance = rng.uniform(*options["distance_m"])
-        x, y = x + distance * math.cos(heading), y + distance * math.sin(heading)
         band = bands[rng.randrange(len(bands))]
         speed = rng.uniform(float(band["low"]), float(band["high"]))
+        distance += speed * float(options["lead_s"])
+        x, y = x + distance * math.cos(heading), y + distance * math.sin(heading)
         hold = rng.uniform(*options["hold_s"]) if index in held or rng.random() < options["hold_share"] else 0.0
         points.append({"xy_m": [round(x, 4), round(y, 4)], "speed_mps": round(speed, 3),
                        "hold_s": round(hold, 2), "band": str(band["name"]), "bearing": kind})
@@ -362,7 +366,8 @@ def judge(samples: Mapping[str, Any], plan: Mapping[str, Any], dt: float,
     the base faced the point within ``straight_deg``, the command was the
     point's own speed (not the slow-down), and ``straight_settle_s`` had passed
     since that began. A leg with under ``straight_min_s`` of straight is not
-    read for speed.
+    read for speed. ``leg_s`` is the time from the point lighting to the base
+    reaching it: the layer passing it, or the hold starting.
     """
 
     import numpy as np
@@ -380,6 +385,7 @@ def judge(samples: Mapping[str, Any], plan: Mapping[str, Any], dt: float,
         lit = index == k
         held = lit & arrived
         reached = bool((index > k).any() or held.any())
+        there = held | (index > k)
         straight = lit & ~arrived & (bearing < J["straight_deg"]) \
             & np.isclose(commanded, point["speed_mps"], atol=1e-3)
         run, keep = 0, np.zeros_like(straight)
@@ -391,6 +397,8 @@ def judge(samples: Mapping[str, Any], plan: Mapping[str, Any], dt: float,
                "closest_m": round(float(distance[lit].min()), 4) if lit.any() else None,
                "hold_worst_m": round(float(distance[held].max()), 4) if held.any() else None,
                "arrived_at_s": round(float(np.argmax(held) * dt), 2) if held.any() else None,
+               "leg_s": round(float((np.argmax(there) - np.argmax(lit)) * dt), 2)
+               if reached and lit.any() else None,
                "straight_s": round(float(keep.sum() * dt), 2)}
         if row["straight_s"] >= J["straight_min_s"]:
             row["speed_ratio"] = round(float(forward[keep].mean()) / point["speed_mps"], 4)

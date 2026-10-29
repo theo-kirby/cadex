@@ -290,6 +290,9 @@ _ALLOWED_DEFERRED = _ALLOWED_TOP_LEVEL | {
     # Inside the pinned mujoco-mjx wheel, not a dependency of its own: the
     # one private module ADR-465's derivative rule replaces a function in.
     "mujoco.mjx._src",
+    # ADR-840: the go-to-point source beside it in training/, standard
+    # library at module scope; a sibling file, not a dependency.
+    "cadex_goto",
 }
 
 

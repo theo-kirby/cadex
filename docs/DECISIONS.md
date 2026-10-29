@@ -46644,3 +46644,54 @@ arrival/hold rule. The layer runs under `jax.jit` unchanged.
 - `play` reads sensors, goals and command channels. A policy that observes
   contacts, trackers or scans is refused with the channel's name, and G3
   extends the player where a robot needs it.
+
+## ADR-840 — The go-to-point layer commands a share of training episodes (2026-10-28, orun21 G2)
+
+**Context.** ADR-839 chose route A for G2: a velocity-command policy under
+`cadex_goto`'s scripted layer. It left training with the generator in the loop
+to G2 (C-1, C-13, C-19 of `docs/probes/orun21/RESEARCH.md`). It also found
+that only 17 of 37 held-out run legs were long enough to read for speed.
+
+**Decision.**
+- **`cadex_train.py --goto BANDS`** (off by default; without it the graph and
+  the policy header are unchanged). A share of episodes (`--goto-share`,
+  default 0.2) draws one of 1024 `train`-split sequences from `cadex_goto`,
+  turned to a uniform heading about the base's start. The three speed goals
+  named by `--goto-goals` (default `cx,cy,cw`, each a one-channel `value` in
+  a speed or rate unit) are the layer's command from the base pose at every
+  step, both observed and rewarded. The layer is `cadex_goto.layer_step`
+  itself, under `jax.jit`, so training and the judge share one source. A
+  waypoint goal or a fixed base is refused.
+- **C-13 by the plan's heading.** The Go1's actor reads no world yaw (`q` is
+  privileged), so turning the sequence is the yaw-uniform start it needs.
+  The bundle's reset is unchanged.
+- **C-1** needs no change on the Go1: its bundle has `cy` at ±0.8 m/s.
+- **Legs carry a lead.** `sequence` adds `lead_s` (2.5 s) at the leg's speed
+  to each leg's distance, so every run leg has a straight second to read
+  (37/37, up from 17/37). This changes every sequence: G1's held-out
+  readings are of the old ones.
+- **`goto.json` reads `leg_s`**, the time from a point lighting to reaching
+  it. With arrival by the layer's own radius, reach is close to guaranteed,
+  so time is the reading that shows what training buys.
+
+**Evidence** (`docs/probes/orun21/G2-GOTO.md`). Each run used run1's
+reference command, 206.4 M env steps (Playground: 200 M in 385 s on this
+5090):
+- share 0.5: 334.9 s of training. 3/10 held-out pass, failing on speed
+  (walk legs 0.767 at worst), 916 s over the ten episodes.
+- share 0.2: 332.9 s of training. **10/10 pass**, no fall, reach ≤ 0.255 m,
+  hold ≤ 0.100 m, speed 0.873–0.987. 884 s over the ten episodes.
+- the untouched reference: 10/10, 870 s.
+
+Run legs track better with the layer (0.98 against 0.95). Slow walking is
+lost in proportion to the share (0.470 → 0.458 → 0.443 m/s at a 0.5
+command).
+
+**Consequences.**
+- G2's pass bar is met on the Go1 (g2-goto-s20), but training with the layer
+  does not yet shorten the time to points. The next G2 step changes the
+  slow-speed signal (the layer's slow-down and hold commands, or the
+  tracking kernel's width at low speed), with that hypothesis stated. It does
+  not tune the share.
+- `cadex_goto play` remains the judge. G3 reuses `--goto` with the robot's
+  bands.

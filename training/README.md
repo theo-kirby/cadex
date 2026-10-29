@@ -182,6 +182,7 @@ Go1 benchmark that Brax learns to trot in under six minutes (docs/MUJOCO.md
 | `--value-weight`, `--reward-scaling` | `0.5`, `1.0` | the value loss's coefficient; a factor on every reward before the loss |
 | `--initial-std` | unset | the exploration width a run starts at; see `action_std` below |
 | `--goal-pool` | `4096` | episodes of goals drawn before training (ADR-462, below) |
+| `--goto`, `--goto-share`, `--goto-goals` | off, `0.2`, `cx,cy,cw` | go-to-point episodes: the layer commands the speed goals on that share (ADR-840, below) |
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
 | `--stop-on-collapse` | off | stop once the mean episode has collapsed (ADR-410, below) |
 | `--progress` | beside `--out` | where to rewrite `progress.json` |
@@ -648,7 +649,8 @@ seed and shows the newest seed that has a view, with that seed's policy.
 `cadex_goto.py` is the go-to-point task's one source, for training and the judge
 alike. `sequence(seed, split=, bands=)` draws a seeded sequence of points on the
 floor (8 by default, at least two behind the leg before and two to a side, 2–5 m
-apart), each with a speed from its band (`walk:0.4-0.7,run:1.0-1.5`, robot by
+apart plus 2.5 s at the leg's speed, so a run leg has a straight second to read),
+each with a speed from its band (`walk:0.4-0.7,run:1.0-1.5`, robot by
 robot) and, for at least two, a hold of 1–3 s. The draw is seeded by
 `(split, seed)`, so a `heldout` sequence is never one `train` drew.
 `layer_step(xp, ...)` is route A's scripted layer: from the base's planar pose it
@@ -671,7 +673,16 @@ policy's own forward pass checked against its witness), writes the episode as
 draws the points (docs/DASHBOARD.md), and writes `goto.json`: per point whether it
 was reached, the closest approach, the worst distance while held and the forward
 speed over its straight stretch, against G2's bar (reach 0.3 m, hold 0.15 m, no
-fall, speed within 15%).
+fall, speed within 15%), and `leg_s`, the time from a point lighting to reaching it.
+
+**Training on it (ADR-840).** `cadex_train.py --goto walk:0.4-0.7,run:1.0-1.5`
+puts that share (`--goto-share`, default 0.2; 0.5 cost the Go1 its slow walk) of episodes on the layer: each
+draws one of 1024 `train`-split sequences, turned to a uniform heading about
+where the base starts, and the speed goals named by `--goto-goals` (forward,
+lateral, yaw rate, each a one-channel `value` in mm/s, m/s, deg/s or rad/s) are
+the layer's command from the base's pose at every step, for the observation and
+the tracking reward alike. The other episodes keep the bundle's drawn goals.
+Without `--goto` the graph and the policy header are unchanged.
 
 ## Training before the CAD: the concept model (ADR-834)
 
