@@ -91,9 +91,11 @@ them: (a) one machine with a GPU, (b) CPU only, (c) a separate GPU box, and
 *what the trainer is*; that one is *how to run it*. Duplicating the commands
 here is how the two drift.
 
-**`training/RECIPE.md` is how to write a legged task that trains cold**:
-the reference gait, the start inside it, the speed and stand terms, the
-warm-start rules and the budgets, each with the run that showed it.
+**`training/RECIPE.md` is the route a new robot follows** (ADR-864): spec,
+concept, CAD, cut, relay, confirming retrain and the export's judge; the
+go-to-point task, terrain and its curriculum, the defaults and the budgets;
+then the earlier reference-gait lessons. Each step names the run that
+showed it.
 
 The short form: any machine with a CUDA GPU and Python 3.12+ (the pinned
 `numpy==2.5.1` has no wheels below cp312), a venv built from

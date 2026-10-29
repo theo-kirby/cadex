@@ -1,90 +1,290 @@
-# The cold-start recipe for a legged policy
+# The recipe: from a spec to a judged go-to-point policy
 
-Verified against source: 2026-10-29. Provenance: `[Cadex-new]`. orun8's B1
-draft (`wild-forest-4815`), proven on one quadruped and one biped that are
-not the cat (orun9: `b1-q1` 10/10 by iteration 150, `b1-b1` 10/10 at
-iteration 100; *Where it has been shown*). Section 5 adds what orun19 proved
-on leo v06, a speed task with no reference (`docs/probes/orun19/REPORT.md`);
-section 6 what l3r1 found asking one policy for many speeds.
+Verified against source: 2026-10-29. Provenance: `[Cadex-new]`. Rewritten
+in orun21 (K1, ADR-864) as the route a new robot follows. It was orun8's
+cold-start draft (`wild-forest-4815`). Part I is orun21's: the route
+(§R), the task (§G), terrain (§T), the defaults (§D) and the budgets (§B).
+Part II (§0–§6) is the earlier, gait-tracking evidence from orun8 to l3r1,
+kept under its old numbers because records cite them.
 
-This is the order of work that has made a cold legged policy train quickly
-in Cadex, written from the runs that showed it. Each step names the record
-(`[rec: slug]`, read with `governor snapshot`) or ADR that is its evidence.
-A step with no run behind it says so. It lives in `training/` because most of
-it is how a task is written for this trainer; the task language it uses is
-the engine's (`docs/MUJOCO.md`, `docs/XSCRIPT.md`).
+Each step names the ADR, run or probe that is its evidence. Records are
+`[rec: slug]` (read them with `governor snapshot`), and the probes are
+`docs/probes/orun21/*.md`. A step with no run behind it says so. *Limits*,
+at the end, lists what this recipe is known to miss, and K1 is not ticked
+until the biped has been taken through it by this file alone.
+
+**The route in one screen.**
+
+| step | command | evidence |
+|---|---|---|
+| spec | write `cadex-concept-v1` JSON | ADR-843, ADR-844 |
+| concept | `cadex_concept.py SPEC --out concept.xml` | ADR-842 |
+| task | `cadex_joystick.py TASK.json --out DIR` | ADR-862 |
+| train | `cadex_train.py ... --goto walk:...,run:... --goto-share 0.2` | ADR-840, G2-GOTO.md |
+| judge go-to-point | `docs/probes/orun21/g2_judge.py POLICY TASK OUT` | ADR-839, ADR-858 |
+| freeze, CAD | the project's script, with `assembly.task` | ADR-846, ADR-847 |
+| export | `cadex export --out DIR` (copies the accepted attempt) | ADR-848 |
+| compare | `cadex_cad_vs_concept.py concept.xml EXPORT.xml` | ADR-843 |
+| cut | `cadex_training_model.py cut --project DIR --out cut.xml` | ADR-841 |
+| relay | `cadex_relay.py EXPORT-TASK.json cut.xml --out DIR` | ADR-845, ADR-863 |
+| confirm | the same training on the cut, `--cad-model EXPORT.xml` | ADR-846 |
+| judge | `cadex evaluate --weights ... --task ... --out ...` on the export | ADR-846 |
+| terrain | a leveled `around` pool, `--terrain-curriculum`, then a scan | ADR-856–861 |
+
+The trainer, `cadex_concept.py`, `cadex_relay.py`, `cadex_joystick.py`,
+`cadex_goto.py` and `g2_judge.py` run from `~/cadex-train-venv`
+(`training/SETUP.md`). `cadex export`, `cadex evaluate` and the cut's
+`--project` read the project through the engine.
+
+# Part I: the route (orun21)
 
 ## R. The route: spec to judged policy (ADR-846)
 
-Three models, two things a person or agent writes, one task, one judge. The
-concept is written from a spec; the CAD from its script; the training model
-is cut from the CAD's export and never written by hand; the export judges.
-Every step is one command, generic over robots (ADR-841–846). Each line
-names the run that showed it.
+Two models are written: the concept, from a spec, and the CAD, from its
+script. The training model is cut from the CAD's export and never written
+by hand, and the export is the judge. Once the CAD exists, its export's task
+bundle is the only task, and the concept and the cut train on it re-laid by
+name. Every step is one command, generic over robots (ADR-841–846). Each
+line names the run that showed it.
 
-1. **Spec.** Write a `cadex-concept-v1` spec (`examples/concept/`), naming
+1. **Spec.** Write a `cadex-concept-v1` spec (`examples/concept/`). Name the
    leg roots and driven joints as the CAD will name them, so the later
    comparison matches row by row (ADR-843). Flat feet are capsule `soles`
-   (ADR-844).
-2. **Concept training.** `cadex_concept.py SPEC --out concept.xml` (0.1 s);
-   sweep with `--set`, train each variant briefly. A concept trains faster
-   than any CAD-derived model: leon V's 525 k env steps/s against its cut's
-   303 k and its export's 9.4 k (ADR-842). No CAD exists yet, so the task is
-   written for the concept (leon IV and V used their own bundle scripts;
-   see "What is not proven").
-3. **Frozen numbers.** Freeze the spec that passes; its geometry is what the
-   CAD is built to.
+   (ADR-844). Give the trunk the mass the CAD will have, not the mass of
+   the motors alone: leon V's E2 concept was 7.1% light and its policy
+   failed the export 0/10 on drive ratings (ADR-847). The same concept with
+   its chest raised to the CAD's 33.31 kg passed it 10/10 (ITERATION.md §9,
+   `wise-moon-5991`; that run controlled at 40 Hz through the pre-ADR-863
+   relay).
+2. **Concept training.** `cadex_concept.py SPEC --out concept.xml` takes
+   0.1 s. Sweep with `--set`, then train each variant briefly. A concept
+   trains faster than any CAD-derived model: leon V's concept runs 525 k env
+   steps/s, its cut 303 k and its export 9.4 k (ADR-842). Train it on §G's
+   task. Before any CAD exists, Cadex has no command that writes a concept
+   its first task bundle (see *Limits*).
+3. **Frozen numbers.** Freeze the spec that passes. Its geometry and masses
+   are what the CAD is built to.
 4. **CAD.** Build the robot in its project and declare its task with
    `assembly.task` and a success spec, so the export carries the task bundle
    that every later tier trains on and is judged by. A gait reference the
-   legs cannot reach refuses at accept, naming the leg and the stop (leon V:
-   a 680 mm trot stride, then the 731 mm dynamic-similarity default, both
-   out of the re-legged fore leg's reach; 520 mm accepted, ADR-847).
-   `cadex export --out DIR` then copies the accepted attempt in seconds
-   (leon V 1.2 s, against 1,844 s when it rebuilt; ADR-848): the build is
-   paid once, at accept.
-5. **Compare.** `cadex_cad_vs_concept.py concept.xml EXPORT.xml`: geometry
-   should agree (leon V: hip heights, reach and foot x within 0.7 mm) and the
+   legs cannot reach refuses at accept, naming the leg and the stop. On
+   leon V a 680 mm trot stride and then the 731 mm dynamic-similarity
+   default were both out of the re-legged fore leg's reach, and 520 mm was
+   accepted (ADR-847). `cadex export --out DIR` then copies the accepted
+   attempt in seconds (leon V 1.1–1.2 s, against 1,844 s when it rebuilt,
+   ADR-848), so the build is paid once, at accept. On leon V that accept is
+   the CAD route's cost: 1,421 s for an edit that reaches the frames, 70%
+   of a 34-minute CAD iteration (ITERATION.md §9).
+5. **Compare.** `cadex_cad_vs_concept.py concept.xml EXPORT.xml`. Geometry
+   should agree (leon V: hip heights, reach and foot x within 0.7 mm). The
    flagged rows say what the CAD moved, usually mass (leon V +7.1% against
-   E2; the biped 4 of 45 rows, ADR-843/844).
+   E2; the biped 4 of 45 rows, ADR-843/844). If the mass moved, carry it
+   back into the spec (step 1) before believing a concept policy.
 6. **Cut, passing fidelity.** `cadex_training_model.py cut --project DIR
-   --out cut.xml` (under 1 s): floor-only contacts, fused static bodies, the
-   fastest solver setting that keeps the root's path within 5 mm of the
-   export and stands (ADR-841). If no setting passes, the cut refuses: train
-   on the export instead and say so.
-7. **Relay.** `cadex_relay.py EXPORT-TASK.json cut.xml --out DIR` (and onto
-   the concept, to screen the frozen spec on the CAD's own task): the
-   export's task re-laid by name, so the policy reads the export's channels
-   (ADR-845).
+   --out cut.xml` takes under 1 s. It keeps floor-only contacts and fused
+   static bodies, and picks the fastest solver setting that keeps the
+   root's path within 5 mm of the export and stands (ADR-841). No one
+   setting suits every robot: the fastest passes on leon V and blows up on
+   the biped's stiff servos (`sandy-acorn-7218`), which is why the cut
+   searches. If no setting passes, the cut refuses. Then train on the
+   export instead, and say so.
+7. **Relay.** `cadex_relay.py EXPORT-TASK.json cut.xml --out DIR` re-lays
+   the export's task by name, so the policy reads the export's channels
+   (ADR-845). Relay onto the concept too, to screen the frozen spec on the
+   CAD's own task. **The control interval stays the task's, and the
+   substeps follow the target model's own timestep** (ADR-863): 8 substeps
+   on leon V's 2.5 ms concept for 20 ms control. An interval that is not a
+   whole number of the model's steps refuses. Before ADR-863 every relayed
+   concept controlled at 25 ms (40 Hz) while its task said 20 ms.
 8. **Confirming retrain** on the cut: `cadex_train.py DIR/outputs/TASK.json
-   --cad-model EXPORT.xml`, at the concept's budget. The biped: 100
+   --cad-model EXPORT.xml`, at the concept's budget. The biped took 100
    iterations in 106 s, against ~249 s on the export (ADR-845). leon V's
-   trot: 300 iterations in 316 s (ADR-847). Judge the checkpoints, not only
-   the last: leon V's cut run passed at 200 and at its best (218) and failed
-   at 299, where the run had begun to come apart (episode length 5,285 →
-   92 steps at 267).
+   trot took 300 iterations in 316 s (ADR-847). Judge the checkpoints, not
+   only the last. leon V's cut run passed at 200 and at its best (218) and
+   failed at 299, where the run had begun to come apart (episode length
+   5,285 → 92 steps at 267).
 9. **Judged on the export.** `cadex evaluate --project DIR --task TASK
-   --weights RUN/policy.cxpolicy --out JUDGED`: the engine's success spec on
-   its frozen seeds, as for a declared policy (ADR-846). The biped: cut-trained
-   10/10 (as the export-trained runs), concept-trained 7/10, every failure
-   step clearance 0.019 against 0.020 hip heights. leon V's trot: cut-trained
-   10/10, concept-trained 0/10, every seed over its drives' rating
-   (1.21–1.34×), the concept being 7.1% lighter than the CAD (ADR-847). A pass is then declared
-   with `cadex train --put` and `assembly.policy` as any policy is.
+   --weights RUN/policy.cxpolicy --out JUDGED` runs the engine's success
+   spec on its frozen seeds, as for a declared policy (ADR-846). The biped:
+   cut-trained 10/10 (as the export-trained runs), concept-trained 7/10,
+   every failure step clearance 0.019 against 0.020 hip heights. leon V's
+   trot: cut-trained 10/10, concept-trained 0/10, every seed over its
+   drives' rating (1.21–1.34×), the concept being 7.1% lighter than the CAD
+   (ADR-847). A pass is then declared with `cadex train --put` and
+   `assembly.policy`, as any policy is.
 
 Skip the concept only when the CAD already exists and no geometry is in
-question; never skip the cut for a large robot (leon V's export trains at
-1/32 of its cut's rate), and on a small one the cut still halves the run.
+question. Never skip the cut for a large robot: leon V's export trains at
+1/32 of its cut's rate. On a small one the cut still halves the run.
 
-**Go-to-point on any tier (ADR-862).** `cadex_joystick.py RELAY/outputs/TASK.json
---out DIR` writes G2's task onto the relayed model. Train with the Go1's G2
-command unchanged (`docs/probes/orun21/G2-GOTO.md`: 1260 × 8192 × 20 =
-206.4 M steps, `--goto walk:0.4-0.7,run:1.0-1.5 --goto-share 0.2`) and judge
-with `docs/probes/orun21/g2_judge.py`. leon V's concept at the CAD's mass: 602 s
-on the 5090. Every held-out point was reached and held, with no fall, but the
-slow walk ran at 0.80–0.85 of a 0.5 m/s command, so it passed 4/10 at
-iteration 900 (`docs/probes/orun21/G3-GOTO.md`). A 300-iteration screen
-(226 s) reaches too little to judge.
+**What an iteration costs** (leon V, ITERATION.md §9, 49.2 M-step training):
+a concept iteration, spec change to judged policy, is 327 s without the
+film; a CAD iteration is 2,031 s, of which the accept is 1,421 s. Screen
+design on the concept; go to the CAD when the numbers are frozen.
+
+## G. The task: go-to-point (ADR-839, ADR-840, ADR-862)
+
+One policy, many skills. A point lights on the floor and the robot walks
+or runs to it, turning when the point is behind or to the side, holds there,
+then goes on to the next. A new point appears on arrival or when the hold
+ends, not on a clock. This replaces separate stand, sprint and turn tasks.
+
+1. **A velocity policy under a scripted layer** (ADR-839, from
+   RESEARCH.md §1.2 and §4). The policy is Playground's omnidirectional
+   joystick: forward and lateral speed and yaw rate. `cadex_goto`'s layer
+   turns each point into those commands from the base's pose. A point
+   behind is a turn on the spot, and a hold is a zero command with
+   corrections. The other route, end-to-end position targets (Rudin et al.
+   2022), is the charter's E1 and has no run.
+2. **Write the task onto the robot's model.** `cadex_joystick.py TASK.json
+   --out DIR` writes G2's task onto any `cadex-training-task-v1` bundle: an
+   export's, or a relay's onto a concept or a cut (ADR-862). It reads the
+   root, drives, joint ranges, keyframe, feet and floor from the model, and
+   the substeps from its timestep. It writes Playground's terms (§D) with
+   the Go1's speeds (±1.5, ±0.8 m/s, ±1.2 rad/s; `--speeds` changes them).
+   On the Go1 it writes orun18's bundle back again, up to channel names.
+   The task names nothing robot-specific beyond the model.
+3. **Train with the layer on a fifth of the episodes.** Add `--goto
+   walk:0.4-0.7,run:1.0-1.5 --goto-share 0.2` to the run (ADR-840). Each
+   such episode plays one of 1,024 seeded `train` sequences, turned to a
+   uniform heading about the start. On the Go1 at share 0.2 (`g2-goto-s20`,
+   206.4 M env steps, 332.9 s): **10/10 held-out sequences** (8 points,
+   3–5 behind), every point reached within 0.255 m, every hold within
+   0.100 m, no fall, straight legs at 0.873–0.987 of the command
+   (G2-GOTO.md). Share 0.5 passes 3/10 on slow walk legs (0.767). Share 0
+   passes the Go1 10/10 with the faster walk (0.924) but failed leon V's
+   concept 0/10 against share 0.2's 4/10 (ADR-863). Keep 0.2.
+4. **Judge on held-out sequences, every checkpoint.**
+   `docs/probes/orun21/g2_judge.py POLICY TASK OUT` plays `heldout:0`–`9`
+   through `cadex_goto.py play` and writes `OUT/summary.json` with the bar
+   per seed: every point reached within 0.3 m, every hold within 0.15 m, no
+   fall (base centre of mass under half its start height, or tipped past
+   60°; ADR-862), and straight-leg speed within 15% of the command. The
+   sequence generator is one seeded source for training and judging, and
+   the `heldout` split never trains. Reach and hold are close to guaranteed
+   by the layer's arrival rule, so the speed column and `leg_s` (time per
+   point) are what tell policies apart. leon V's best pass (4/10) was
+   iteration 900, not its best-reward 1113 (2/10) or its last (2/10)
+   (G3-GOTO.md).
+5. **The judge has a picture.** The player writes a `view/` the dashboard
+   plays with the points drawn: the current point lit, the next ones dim,
+   each coloured by its band, and a hold as a filling ring
+   (G1-TARGETS.md, ADR-839).
+6. **Change only the speed bands for a new robot.** G3 put leon V's concept
+   at 33.3 kg through §G with the Go1's bands and command unchanged
+   (206.4 M steps, 602 s): all 80 held-out points reached, every hold kept,
+   0 falls, 4/10 passes at iteration 900. Every miss was a walk leg at
+   0.80–0.85 of a 0.5 m/s command (*Limits*).
+
+## T. Terrain (ADR-852–861)
+
+One engine source: the course is placed by `CadexDynamics` and the trainer
+builds none (ADR-852; `training/test_terrain_pool.py` holds the parity).
+A pool is declared on the model's terrain (`api.mjcf(terrain=...)`, or a
+bundle's `terrain.pool`). Its kinds are steps, slopes, bumps, platforms,
+rock and tile patches, walls and mazes, and heightfields from a grid or a
+mesh (ADR-853–855, `docs/MUJOCO.md` *The floor and terrain*).
+
+1. **Start from G2's command.** The chain in step 6 began cold on a
+   leveled pool with G2's command and the curriculum added, and every later
+   step was a warm start. Judge flat ground at every step (step 8).
+2. **A leveled pool laid round the start.** Set `random.levels` (8 here) so
+   level l draws each height from its band of the range, as Isaac Lab
+   scales a tile by its row (ADR-856). Set `random.around: true` so the
+   points, which lie on every side, meet relief: on the +x-only pool 80% of
+   first points lay off the course, and on the round pool none did, with
+   66% of first legs crossing relief (ADR-857).
+3. **The curriculum on points reached.** `--terrain-curriculum` (with
+   `--goto`) starts every environment at level 0. An episode on the layer
+   that reaches `--terrain-promote` points (default 1) without falling goes
+   up, and one that falls or reaches none goes down. This is legged_gym's
+   game rule with points in place of distance (ADR-856). Levels are not
+   kept in a checkpoint, so every warm start climbs again from level 0.
+   The batch's level is not a skill reading. Judge on held-out courses.
+4. **Collide the course with the feet only** (ADR-739). It costs: the
+   Go1's 29-slot pool trained 4.2× slower than the plane (1,361 s against
+   325 s for 206.4 M steps), and the 41-slot round pool about 1.5× more per
+   iteration again (ADR-856, ADR-857). On a heightfield, only spheres and
+   capsules may touch it; a box or mesh on one is refused (ADR-854).
+5. **Give the actor a height scan by warm start.** A blind actor stops at
+   step faces it cannot see (T2-JUDGE.md). Add a `height_scan` with
+   `role: policy` and warm start across `--init-from-task-change`: the new
+   inputs start at zero weight, so the actor starts as its source (ADR-859).
+   Held-out level 2 went 1/10 → 6/10, and flat stayed 10/10. Iteration 100
+   was no better than blind. The gain showed between 100 and 200.
+6. **The chain that passed** (Go1, T2-SCAN.md, T2-MAZE.md):
+   `go1-levels/run1` (cold, 206.4 M, share 0.5, curriculum, 1,361 s) →
+   `go1-around/run1` (warm, round pool, 65.5 M, 667 s; iteration 200) →
+   `go1-scan/run1` (warm, + scan, 49.2 M, 512 s) → `run2` (warm, 73.7 M,
+   741 s; iteration 300) → `run3` (warm, + the `feet` block, 41.0 M,
+   430 s, ADR-861). `run3` holds G2's bar unwidened on flat ground (10/10),
+   on held-out level 0 (10/10) and through maze levels 0–2 (10/10 each);
+   level 2 passes 9/10 and level 4 1/10. The terrain runs used share 0.5,
+   because the curriculum moves only episodes on the layer; share 0.2 on
+   terrain has not been tried.
+7. **Steer through walls with the route, not the policy.**
+   `cadex_goto.maze_route` places points through a maze's cell centres, and
+   `g2_judge.py --level L --maze` plays them and fails any step with a body
+   in a wall (ADR-860). A policy that never trained on walls passed 29 of
+   30 maze seeds. Holding the robot at each turn's cell centre took wall
+   hits from 4/10 seeds to 0/10.
+8. **Judge by level.** `g2_judge.py POLICY TASK OUT --level L` plays
+   held-out courses from the engine's evaluation stream, which the trainer
+   never draws, and `--flat` plays the empty course (ADR-858). Report flat
+   ground with every terrain row: training on terrain can cost flat speed
+   (`go1-scan/run2`'s final checkpoint fell from 10/10 to 6/10 on flat).
+
+## D. Defaults (from R1, RESEARCH.md §3 and §5)
+
+What `cadex_joystick.py` writes and §G's command sets. Each is
+Playground's Go1 joystick unless the row says otherwise. On it the Go1
+tracks 0.94–0.97 of Playground's own speeds with no falls (GO1-BASELINE.md).
+
+| | default | RESEARCH.md row |
+|---|---|---|
+| actor | root body-frame velocity, gyro, gravity; each driven joint's position and velocity; the last action; the command. No history | C-6, C-8, C-9 |
+| action | home + 0.5·a rad, clipped to the joint's range, on position drives | C-10 |
+| control | 50 Hz; substeps from the model's timestep | ADR-862, ADR-863 |
+| reward | Playground's terms and weights, times the control interval, `--reward-floor 0` | C-11 |
+| termination | upside down only | C-12 |
+| reset | yaw uniform; go-to-point sequences turned to the start's heading | C-13 |
+| randomisation | floor friction 0.4–1.0; joint frictionloss and armature; every body's mass ±10%; ±1 kg on the root; drawn once per environment | C-14, C-15 |
+| commands | ±1.5, ±0.8 m/s, ±1.2 rad/s, held 250 steps; go-to-point layer on 0.2 of episodes | C-1–C-4, ADR-840 |
+| PPO | 8192 envs, unroll 20, 4 epochs × 32 minibatches, 512-256-128, γ 0.97, lr 3e-4, entropy 0.01, clip 0.3, grad norm 1.0 | C-17, C-18 |
+| budget | 1,260 iterations = 206.4 M env steps (Playground's 200 M) | C-19 |
+| terrain | feet-only contact; leveled round pool; curriculum on points; height scan added by warm start | C-21–C-25 |
+
+`cadex_train.py`'s own `--envs` default is still 256, a smoke test. State
+every §D flag on the command line, as `docs/probes/orun21/G2-GOTO.md`'s
+launch does.
+
+## B. Budgets
+
+State budgets in env steps and wall time, not iterations.
+
+1. **A full go-to-point run is Playground's: 206.4 M env steps.** On the
+   5090 that is 333 s on the Go1, against Playground's 385 s for 200 M on
+   the same card. It is 602 s on leon V's concept and 664 s for the same
+   run at share 0 (G3-GOTO.md). A 300-iteration screen (49.2 M, 226 s on
+   leon V) is too short to judge go-to-point: it reached 2 of 10 sequences
+   and stood still at 1.5 m/s.
+2. **A route screen is 49.2 M** (8192 × 300 × 20): enough to compare a
+   concept against its cut on a declared gait (§R step 8, ITERATION.md §9).
+3. **Terrain steps are warm extensions of 40–75 M** (§T.6), each judged on
+   held-out levels before the next.
+4. **Extend by warm start only while the judged numbers climb**, and change
+   the approach, not the steps, when they do not: `go1-scan/run2`'s 73.7 M
+   more at the high levels turned stops into falls and left level 4 at
+   1/10 (T2-SCAN.md).
+5. **Keep the first checkpoint that passes, and judge every one** (§4.4,
+   §R.8, §G.4).
+
+# Part II: reference gaits, speed and many speeds (orun8 to l3r1)
+
+These sections come from runs that tracked a reference gait or a speed
+command on the engine's own tasks, before go-to-point. They hold for a task
+that is judged on a gait (a stride, a footfall order, a stand spec) rather
+than on points, and they are cited by number from earlier records.
 
 ## 0. Before training: can the machine do it?
 
@@ -231,6 +431,9 @@ iteration 900 (`docs/probes/orun21/G3-GOTO.md`). A 300-iteration screen
 
 ## 4. Budgets
 
+For a reference-gait task at 8192 environments. Go-to-point and terrain
+budgets are §B's.
+
 1. **Screen at 100–150 iterations; a full run is 200–300.** orun7's r1-t3
    had 85% of its reward-per-step gain by iteration 200 and 7% more by 475
    [rec: calm-moon-2039]. c1-t4b sat flat from iteration 80 of 150
@@ -330,29 +533,71 @@ feature with its probe in `docs/probes/l3r1/`:
 
 ## Where it has been shown
 
-- **The quadruped.** orun9's `b1-q1` followed steps 0.1–4.1 cold on
+- **The Go1** (Playground's Go1 through Cadex, orun18; the fixed reference).
+  §G: 10/10 held-out go-to-point sequences at 206.4 M env steps in 333 s
+  (G2-GOTO.md). §T: flat, held-out level 0 and maze levels 0–2 each 10/10
+  on one policy, level 2 9/10, level 4 1/10 (T2-SCAN.md, T2-MAZE.md).
+- **leon V's concept** at the CAD's mass (33.3 kg, 14 position drives,
+  sphere paws). §R: concept-trained 10/10 on the export's trot (40 Hz
+  control, pre-ADR-863), cut-trained 10/10 (ADR-847). §G with only the
+  model changed: 4/10, every point reached and held, 0 falls, slow walk
+  legs (G3-GOTO.md).
+- **The quadruped.** orun9's `b1-q1` followed §0.1–§4.1 cold on
   `orun9-quad` (9.27 kg, twelve AK80-9 position servos, a 250 mm/s trot
   generated on its legs): the walk spec passed 10/10 at iterations 150,
   200, 250 and 300, 0/10 at 50 and 100, at 4.5 s an iteration
   (`docs/probes/orun9/b1-quad.md`).
 - **The biped.** orun9's `b1-b1` followed the same steps cold on
   `orun9-biped` (the servo biped, STS3215 position servos, a 160 mm/s
-  two-foot walk from ADR-754's generator, step 1.1 by ADR-756/757): the
-  walk spec passed 10/10 at iteration 100, then failed step clearance from
-  150 on (4.4).
+  two-foot walk from ADR-754's generator, §1.1 by ADR-756/757): the walk
+  spec passed 10/10 at iteration 100, then failed step clearance from 150
+  on (§4.4). Through §R steps 5–9 (ADR-844, ADR-845): cut-trained 10/10,
+  concept-trained 7/10 on the export. The biped has not been through §G.
 
-## What is not proven
+## Limits
 
-These are what no run has shown yet.
+What this recipe is known to miss, and what no run has shown yet.
 
-- **The route from an empty project.** The biped and leon V have each gone
-  concept → CAD task → cut → relay → retrain → `cadex evaluate` (ADR-845,
-  ADR-847), but both CADs existed before their task was declared; no robot
-  has yet been taken through steps 1–9 in order.
-- **A concept's task before any CAD.** Step R.2 trains a concept on a task
-  written for it; Cadex has no command that makes that bundle without a
-  CAD project. Every concept run so far used a robot's own script.
+**Open misses.**
+- **leon V's slow walk.** On §G leon V's concept passes 4/10, and every
+  failure is a walk leg at 0.80–0.85 of a 0.5 m/s command (constant
+  0.5 m/s gives 0.433). Share 0 did not lift it (0/10, ADR-863). The
+  untested hypothesis is the effort scale: Playground's torque and energy
+  weights are in absolute N·m, and leon V weighs 2.6× the Go1, against a
+  tracking kernel that pays 0.96 for a 0.1 m/s miss (`kind-ridge-3238`).
+  A heavier robot than the Go1 may need mass-normalised effort terms;
+  no run has tried them.
+- **The go-to-point layer costs slow walking** on the Go1 too, in
+  proportion to its share: 0.470, 0.458, 0.443 m/s at a 0.5 m/s command for
+  share 0, 0.2, 0.5 (`kind-ridge-3238`). 0.2 is the share that passes.
+- **The Go1's level 4** (70–90 mm faces) passes 1/10. More exposure
+  (73.7 M more steps) moved reach, not passes, and the `feet` block's swing
+  terms did not move it either: 1/10 against a control's 3/10
+  (`cool-valley-2757`, ADR-861). The next lever is unknown; neither
+  exposure nor swing terms are it.
+- **The go-to-point judge is a probe script.** `g2_judge.py` lives in
+  `docs/probes/orun21/`, which no test reads. `cadex_goto.py play` is the
+  tool it drives.
+- **Terrain on a robot other than the Go1.** The Go1's terrain bundles
+  were written by probe scripts (`t1_levels.py`, `t2_around.py`,
+  `t2_scan.py`) onto its joystick bundle. No robot has carried a leveled
+  pool and a policy scan from its own script through `cadex_joystick.py`.
 
+**Not proven.**
+- **The route from an empty project** (`modest-field-9752`). The biped and
+  leon V each went concept → CAD task → cut → relay → retrain →
+  `cadex evaluate` (ADR-845, ADR-847), but both CADs existed before their
+  task was declared. No robot has yet been taken through §R steps 1–9 in
+  order.
+- **A concept's task before any CAD** (`tiny-pine-0692`). `cadex_joystick.py`
+  needs a bundle to write onto, and Cadex has no command that makes a
+  concept's first bundle with no CAD project. Every concept run so far
+  relayed a CAD export's task or used a robot's own script.
+- **§G on a CAD-derived cut, and on the biped.** Neither has been run.
+- **The biped's servo armature.** Its export carries armature 0 on every
+  driven joint (`green-wren-7528`), so the rotor inertia does not reach the
+  cut either.
+- **End-to-end position targets** (E1) against §G's layer: not run.
 - **Inverted knees: shown on one quadruped.** The generator's IK pulls
   toward the home pose, so a leg keeps the knee direction its build pose
   has. orun9's `b3-v1cold` built quad-qdd's legs with all four knees ahead
@@ -362,11 +607,11 @@ These are what no run has shown yet.
   the knees behind. `b3-v7cold` (v7, 180/180 mm, the front knee behind
   and the hind knee ahead) also passed 10/10 at 150 and 200, after standing
   still at 100 (`docs/probes/orun9/b3-family.md`). No biped has tried it.
-- **Uneven legs** (short forelegs). The generator scales the stride from
-  one hip height, the mean of the four legs', and gives every leg the same
-  stride length, so a short leg is asked the long leg's stride; no run has
-  tried legs of different length.
-- **A stand-first stage.** Only stand-and-move in one task (step 1.7) has a
-  run behind it.
+- **Uneven legs** (short forelegs). The gait generator scales the stride
+  from one hip height, the mean of the four legs', and gives every leg the
+  same stride length, so a short leg is asked the long leg's stride; no run
+  has tried legs of different length.
+- **A stand-first stage.** Only stand-and-move in one task (§1.7, and §G's
+  holds) has a run behind it.
 - **Torque drives.** Every run that followed the recipe used position
   drives about the build stance; no torque-drive robot has.

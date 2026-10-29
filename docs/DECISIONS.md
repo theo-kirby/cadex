@@ -48013,3 +48013,43 @@ heavier robot) is untested. Following the owner's live edit, the next unit is K1
 `training/test_cadex_relay.py` and `test_cadex_goto.py`: 4 passed. Before the relay fix,
 `test_cadex_relay.py` fails.
 
+## ADR-864 — RECIPE.md is the route a new robot follows (2026-10-29, orun21 K1)
+
+**Context.** K1 asks that `training/RECIPE.md` be rewritten as the route a new
+robot follows: P1's tiers, G2's task, T1's terrain and R1's defaults, each step
+with the run that proved it. Before this, the file opened with §R (the route,
+ADR-846) and one paragraph on go-to-point (ADR-862), and its body was the
+reference-gait recipe of orun8–l3r1. The task the route ends in, its terrain,
+its defaults and its budgets in env steps were only in the probes
+(`G2-GOTO.md`, `T2-*.md`, `RESEARCH.md`).
+
+**Decision.**
+- **Part I is the route**, from what orun21 measured: §R (spec, concept, frozen
+  numbers, CAD, compare, cut, relay with the substep rule of ADR-863,
+  confirming retrain, the export's judge), §G (go-to-point: `cadex_joystick.py`,
+  `--goto walk:0.4-0.7,run:1.0-1.5 --goto-share 0.2`, `g2_judge.py`), §T (a
+  leveled pool laid round the start, the curriculum on points reached, a height
+  scan by warm start, the `feet` block, maze routes, judged by level), §D (the
+  defaults, each tied to RESEARCH.md's row) and §B (budgets in env steps: 206.4 M
+  for a go-to-point run, 49.2 M for a route screen, 40–75 M terrain extensions).
+  A one-screen table of commands opens the file.
+- **Part II keeps §0–§6 under their numbers**, since records cite them (e.g.
+  §5, `lone-peak-2518`). §4 now says it is for reference-gait tasks.
+- **Limits names the open misses**: leon V's slow walk (4/10, share 0 refuted,
+  effort scale untested), the layer's slow-walk cost (`kind-ridge-3238`), the
+  Go1's level 4 (1/10, `cool-valley-2757`), the judge living in a probe script,
+  terrain never carried by a robot other than the Go1, the route never run from
+  an empty project, no concept bundle before CAD, §G not run on a cut or on the
+  biped, and the biped's missing armature.
+- **The share stays 0.2** (ADR-840, ADR-863). The terrain runs used 0.5; the
+  recipe says so rather than claiming 0.2 on terrain.
+
+**Not changed.** No code. K1 stays unticked: its test is the biped taken from
+its CAD to G3 by following RECIPE.md alone, which has not been run.
+
+**Evidence.** Every number in Part I was read from its probe or ADR
+(`docs/probes/orun21/G2-GOTO.md`, `G3-GOTO.md`, `T2-JUDGE.md`, `T2-SCAN.md`,
+`T2-MAZE.md`, `ITERATION.md` §9, `GO1-BASELINE.md`, `RESEARCH.md` §3 and §5,
+ADR-839–863) and the lab launch scripts (`orun21-lab/go1/runs/g2-goto-s20`,
+`go1-scan/run3`, `g3/leonv-concept/runs/g2`). No suite is affected by a
+documentation change.

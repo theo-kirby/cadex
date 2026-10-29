@@ -71,7 +71,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/PROVENANCE.md`, `docs/FREECAD.md` | Licences and credit; the inherited-tree ledger (kept / disabled / deleted). |
 | `docs/cadex-release-packaging.md` | The engine payload: what ships, how it is gated. |
 | `training/README.md`, `training/SETUP.md` | The offboard trainer, and four ways to run it (ADR-089). |
-| `training/RECIPE.md` | How to write a legged task so a cold policy trains quickly, each step with the run that showed it (draft, orun8 B1). |
+| `training/RECIPE.md` | The route a new robot follows, spec to judged go-to-point policy: tiers, task, terrain, defaults, budgets, and its known limits, each step with its run (orun21 K1, ADR-864). |
 | `analysis/README.md` | The offboard structural analysis and its licence rule. |
 | `docs/PERFORMANCE-AUDIT.md` | Where build and read time goes on a large assembly, measured; what ADR-630, ADR-781 and ADR-782 fixed and what remains, ranked. |
 | `docs/MACHINES.md` | The breadth bench: the machine briefs beyond robots, and what each run is for. |
