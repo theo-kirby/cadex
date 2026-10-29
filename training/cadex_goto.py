@@ -25,6 +25,9 @@ held-out sequence is never one training drew.
     python training/cadex_goto.py play POLICY --task outputs/T-task.json --seed 0 \\
         --split heldout --bands walk:0.4-0.7,run:1.0-1.5 --goals cx,cy,cw
 
+``play --course COURSE.json`` stands a held-out box course in the model's
+terrain slots first (ADR-858), and judges a fall by the height over its ground.
+
 ``play`` writes the episode as a ``view/`` beside the policy (ADR-835),
 with each frame's goto state, so the dashboard plays it with its points drawn.
 It also writes ``goto.json``, the episode's readings against G2's thresholds.
@@ -413,6 +416,64 @@ def judge(samples: Mapping[str, Any], plan: Mapping[str, Any], dt: float,
             "speed_ratios": speeds, "thresholds": dict(J)}
 
 
+def stand_course(mujoco: Any, np: Any, xml: bytes, course: Mapping[str, Any]) -> tuple[Any, Any]:
+    """The bundle's model with a box course stood in its terrain slots, and the course's ground.
+
+    ``course`` is a box course in the bundle's form (boxes, domes,
+    ``lowest_mm``, ``slots``, ``dome_slots``, ``scale``), as
+    ``CadexDynamics.terrain_evaluation_course`` draws it (ADR-718). Each
+    ``environment/terrain/<i>`` slot takes its box or a parked cube, each dome
+    slot its sphere, and the plane the course's lowest point, as the trainer's
+    ``place_course`` writes them; the model is recompiled, so stock MuJoCo's
+    static bounding-volume tree is built round the placed boxes. ``ground(x_mm,
+    y_mm)`` is the highest box top, dome cap or plane on that vertical, read
+    as the trainer's height scan reads boxes (``box_tops``). ADR-858.
+    """
+
+    import cadex_train
+
+    if course.get("kind") != "boxes":
+        raise SystemExit("--course stands a box course; this one is "
+                         f"{course.get('kind')!r}")
+    scale = float(course["scale"])
+    lowest = float(course["lowest_mm"])
+    boxes, domes = list(course["boxes"]), list(course.get("domes") or ())
+    slots, dome_slots = int(course["slots"]), int(course.get("dome_slots") or 0)
+    if len(boxes) > slots or len(domes) > dome_slots:
+        raise SystemExit(f"the course's {len(boxes)} boxes and {len(domes)} domes do not fit "
+                         f"the model's {slots} and {dome_slots} slots")
+    placed = cadex_train.course_geoms(boxes, lowest, slots, scale)
+    spec = mujoco.MjSpec.from_string(xml.decode("utf-8"))
+    spec.geom("environment/terrain").pos[2] = placed["plane_z_m"]
+    for index, (pos, quat, size) in enumerate(zip(placed["pos_m"], placed["quat"], placed["size_m"])):
+        geom = spec.geom(f"environment/terrain/{index}")
+        geom.pos, geom.quat, geom.size = pos, quat, size
+    parked = lowest - cadex_train.TERRAIN_BASE_MM - cadex_train.TERRAIN_PARKED_DEPTH_MM
+    rows = ([[d["x_mm"], d["y_mm"], d["top_mm"] - d["radius_mm"], d["radius_mm"]] for d in domes]
+            + [[0.0, 0.0, parked, 0.0]] * (dome_slots - len(domes)))
+    for index, (x, y, z, radius) in enumerate(rows):
+        geom = spec.geom(f"environment/terrain/dome/{index}")
+        geom.pos = [x * scale, y * scale, z * scale]
+        geom.size = [(radius or cadex_train.TERRAIN_PARKED_HALF_MM) * scale, 0.0, 0.0]
+    model = spec.compile()
+    scan = np.asarray(cadex_train.box_scan_rows(cadex_train.course_geoms(boxes, lowest, len(boxes), 1.0)))
+    caps = np.asarray(rows[:len(domes)], dtype=np.float64).reshape(-1, 4)
+
+    def ground(x_mm: float, y_mm: float) -> float:
+        height = lowest
+        if len(scan):
+            tops = cadex_train.box_tops(np, scan, np.array([[x_mm]]), np.array([[y_mm]]), lowest)
+            height = max(height, float(tops.max()))
+        if len(caps):
+            reach = caps[:, 3] ** 2 - (caps[:, 0] - x_mm) ** 2 - (caps[:, 1] - y_mm) ** 2
+            on = reach > 0
+            if on.any():
+                height = max(height, float((caps[on, 2] + np.sqrt(reach[on])).max()))
+        return height
+
+    return model, ground
+
+
 def play(options: argparse.Namespace) -> int:
     """Play one held-out (or training) sequence with a policy and write its view and readings."""
 
@@ -427,6 +488,11 @@ def play(options: argparse.Namespace) -> int:
     plan = sequence(options.seed, split=options.split, bands=parse_bands(options.bands),
                     points=options.points)
     arrays = stack(np, [plan])
+    course = None
+    ground = lambda x_mm, y_mm: 0.0  # noqa: E731
+    if options.course:
+        course = json.loads(Path(options.course).expanduser().read_text(encoding="utf-8"))
+        player.model, ground = stand_course(mujoco, np, player.model_xml, course)
     model, data = player.model, mujoco.MjData(player.model)
     data.qpos[:] = player.home
     data.ctrl[player.ctrl_index] = player.reset_command * player.ctrl_scale
@@ -477,7 +543,10 @@ def play(options: argparse.Namespace) -> int:
             fell = True
             break
         R = data.xmat[player.base].reshape(3, 3)
-        if R[2, 2] < JUDGE["fall_up_z"] or data.xpos[player.base][2] < JUDGE["fall_height_share"] * home_height:
+        # Height over the ground under the base, so a course's pit or step is not a fall.
+        bx, by, bz = (float(v) for v in data.xpos[player.base])
+        if R[2, 2] < JUDGE["fall_up_z"] or bz - ground(1000.0 * bx, 1000.0 * by) / 1000.0 \
+                < JUDGE["fall_height_share"] * (home_height - ground(0.0, 0.0) / 1000.0):
             fell = True
             poses.append(data.qpos.copy())
             goto_frames.append(dict(goto_frames[-1]))
@@ -486,8 +555,13 @@ def play(options: argparse.Namespace) -> int:
     out = Path(options.view_dir).expanduser() if options.view_dir else policy_path.parent / "view"
     trace = cadex_train.write_view(out, player.model_xml, poses, player.dt * keep,
                                    source=f"cadex_goto play {policy_path.name} {plan['split']}:{plan['seed']}",
-                                   goto={"sequence": plan, "frames": goto_frames})
+                                   goto={"sequence": plan, "frames": goto_frames},
+                                   terrain=(course or {}).get("drawing"))
     result = {"schema": EPISODE_SCHEMA, "policy": str(policy_path), "sequence": plan,
+              "course": None if course is None else {
+                  "course": course.get("course"), "lowest_mm": course["lowest_mm"],
+                  "highest_mm": course["highest_mm"], "boxes": len(course["boxes"]),
+                  "domes": len(course.get("domes") or ())},
               "limits": player.limits, "layer": dict(LAYER), "seconds": round(len(record["index"]) * player.dt, 2),
               "witness_error": player.witness_error, "view": str(trace), **readings}
     (out.parent / "goto.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
@@ -509,6 +583,10 @@ def main(argv: Sequence[str]) -> int:
             verb.add_argument("--view-dir", default=None, help="default: view/ beside the policy")
             verb.add_argument("--seconds", type=float, default=None, help="default: episode_seconds()")
             verb.add_argument("--fps", type=float, default=25.0, help="view frames per second")
+            verb.add_argument("--course", default=None,
+                              help="a box course JSON to stand in the model's terrain slots "
+                                   "(CadexDynamics.terrain_evaluation_course; its 'drawing' goes "
+                                   "on the view); default: the model as it is")
         verb.add_argument("--seed", type=int, default=0)
         verb.add_argument("--split", choices=SPLITS, default="heldout")
         verb.add_argument("--bands", required=True, help="NAME:LOW-HIGH,... in m/s")

@@ -708,6 +708,14 @@ was reached, the closest approach, the worst distance while held and the forward
 speed over its straight stretch, against G2's bar (reach 0.3 m, hold 0.15 m, no
 fall, speed within 15%), and `leg_s`, the time from a point lighting to reaching it.
 
+**On a course (ADR-858).** `play --course COURSE.json` first stands a box course
+(the bundle's terrain form, as `CadexDynamics.terrain_evaluation_course` draws a
+held-out one) in the model's terrain slots, recompiling it so stock MuJoCo
+collides the placed boxes; a fall is then the base's height over the ground
+under it, and the course's `drawing` goes on the view, so the dashboard draws the
+course the episode stood on. `docs/probes/orun21/g2_judge.py --level L` plays ten
+held-out courses at one level; `--flat` an empty one.
+
 **Training on it (ADR-840).** `cadex_train.py --goto walk:0.4-0.7,run:1.0-1.5`
 puts that share (`--goto-share`, default 0.2; 0.5 cost the Go1 its slow walk) of episodes on the layer: each
 draws one of 1024 `train`-split sequences, turned to a uniform heading about

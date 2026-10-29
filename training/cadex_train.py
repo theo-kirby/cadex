@@ -5352,7 +5352,8 @@ def binary_stl(np, triangles) -> bytes:
 
 def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
                *, source: str, goto: dict[str, Any] | None = None,
-               checkpoint: dict[str, Any] | None = None, trace_name: str = "trace.json") -> Path:
+               checkpoint: dict[str, Any] | None = None, trace_name: str = "trace.json",
+               terrain: dict[str, Any] | None = None) -> Path:
     """``view/``: a mesh per body from its geoms and a trace of ``poses`` (ADR-835).
 
     Each body's mesh is in the body's own frame, named as the body is, and each
@@ -5372,6 +5373,10 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
     ``trace_name`` (``<out>.<tag>.rollout-trace.json`` beside the policy, the
     name the dashboard's scrubber and ``cadex_cli.checkpoints`` read); the
     meshes are the closing view's.
+
+    ``terrain`` is the course the episode stood on, as
+    ``CadexDynamics.terrain_drawing`` writes it, so the dashboard draws that
+    course rather than the model's own (ADR-858).
     """
 
     import mujoco
@@ -5418,6 +5423,8 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
         trace["goto"] = goto["sequence"]
     if checkpoint is not None:
         trace["checkpoint"] = checkpoint
+    if terrain is not None:
+        trace["terrain"] = terrain
     path = directory / trace_name
     write_atomically(path, json.dumps(trace, separators=(",", ":")).encode("utf-8"))
     return path

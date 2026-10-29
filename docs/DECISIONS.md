@@ -47765,3 +47765,47 @@ passed.
 
 **Not changed.** Points still do not steer round walls, and the screen's
 pool carries none. A pool without `around` draws exactly as before.
+
+## ADR-858 — Go-to-point judged on held-out courses: `cadex_goto play --course` (2026-10-29, orun21 T2)
+
+**Context.** `cadex_goto play` played a policy on the bundle's model as it
+was. On a pooled bundle that is course 0, a trained course. The judge's fall
+rule also read the base's height above z = 0. A pit or a step therefore read
+as a fall or hid one. ADR-857's screen had not been judged on terrain.
+
+**Decision.**
+- `cadex_goto.py play --course COURSE.json` stands a box course in the bundle's
+  form in the model's `environment/terrain/<i>` and `.../dome/<j>` slots
+  before the episode, using the trainer's pinned `course_geoms` rows. The
+  model is recompiled through `MjSpec`, so stock MuJoCo's static
+  bounding-volume tree is built round the placed boxes, which
+  `place_terrain_course` re-boxes by hand. A fall is the base under half its
+  start height over the ground beneath it (the trainer's `box_tops`, plus the
+  dome caps and the plane). The course's `drawing` goes on the view's trace
+  (`write_view(terrain=)`), where the dashboard already reads it (ADR-734),
+  and `goto.json` names the course. Without `--course` nothing changes.
+- `docs/probes/orun21/g2_judge.py --level L` plays seed s on
+  `CadexDynamics.terrain_evaluation_course(terrain, s, level=L)`, the
+  held-out stream (ADR-718). `--flat` plays an empty course. G2's thresholds
+  are not widened.
+- No new test. The placement was checked once against the bundle's own
+  compiled course 0 (every terrain geom within 5e-5 m) and the ground against
+  `terrain_box_ground_mm` (1e-13 mm at 2,000 points). The trainer's tests still
+  hold the player's contract.
+
+**Measured** (`docs/probes/orun21/T2-JUDGE.md`, 10 held-out sequences per
+row, G2's bar). `go1-around/run1` at iteration 200 passed flat ground 10/10,
+level 0 9/10, level 2 1/10, level 4 0/10 and level 6 0/10. The final
+policy (iteration 399) passed 3, 4, 0, 1 and 0. At level 2 it missed 42 of
+80 points, and on flat ground it stalled on 2 legs, standing still under a
+1.2 m/s command. Every failure on levels 2 and 4 is within 0.5 m of a
+42–92 mm edge, the level's step and platform band. The parent
+`go1-levels/run1` reached every flat point but passed 2/10 on speed.
+
+**Consequence.** T2 has its first number and is not met. The blind actor
+stops at step faces, and the 3.17 mean training level was not a skill
+reading. Flat go-to-point did not regress at iteration 200. It regressed by
+iteration 399.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53 passed.
+`training/`: 91 passed.
