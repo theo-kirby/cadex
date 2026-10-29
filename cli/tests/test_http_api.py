@@ -168,6 +168,13 @@ def biped(tmp_path):
                     "component_placements": {"body": {"position_mm": [t * 500.0, 0.0, 0.0],
                                                       "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}}}
                    for t in (0.0, 1.0)]}))
+    # The trainer rolls each numbered checkpoint out beside it (ADR-851).
+    write_policy(seed / "byhand.000005.cxpolicy")
+    (seed / "byhand.000005.rollout-trace.json").write_text(json.dumps({
+        **json.loads(_trace({"body": [0.0, 0.0, 0.0]})),
+        "frames": [{"nominal_time_s": t, "component_placements": {"body": {
+            "position_mm": [t * 100.0, 0.0, 0.0], "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}}} for t in (0.0, 1.0)],
+        "checkpoint": {"iteration": 4, "reward_per_step": 0.15, "sha256": "b" * 64}}))
     # A staged run whose trainer stopped beating two minutes ago, under
     # runs/<name>/<stage>/<seed>/ (ADR-837).
     stage = root / "runs" / "staged" / "s2" / "seed0"
@@ -252,6 +259,9 @@ def test_every_reply_carries_its_documented_keys_and_nothing_else(biped, tmp_pat
         staged = _json(server.url + "api/run/staged")
         assert staged["status"] == "failed" and "stopped writing s2/seed0/progress.json" in staged["error"]
         assert staged["telemetry"]["driver"] == "ouroboros" and staged["model"]["tier"] == "concept"
+        rolled = _json(server.url + "api/checkpoints/byhand")["items"]
+        assert [(i["stem"], i["state"], i["iteration"]) for i in rolled] == [("byhand.000005", "ready", 4)]
+        assert _json(server.url + rolled[0]["url"])["available"]
         goto = _json(server.url + "api/playback/run/byhand")["goto"]
         assert [p["band"] for p in goto["points"]] == ["walk", "run"]
         assert goto["frames"] == [{"index": 0, "arrived": False, "hold": 0.0}, {"index": 0, "arrived": True, "hold": 0.5}]

@@ -1429,7 +1429,8 @@ def command_export(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_OK
     with _engine_session(args, report) as (engine, client):
         _progress(" · rebuild")
-        reply = client.request("rebuild")
+        # The accepted pin it becomes keeps triangles, as an accept's does (ADR-851).
+        reply = client.request("rebuild", {"display": dict(STANDARD_DISPLAY)})
         apply_modeling_reply(report, reply)
         if reply.get("ok") is not True:
             report.error = str(
@@ -1740,7 +1741,7 @@ def command_link(args: argparse.Namespace, report: RunReport) -> int:
             return EXIT_OK
 
         _progress(" · rebuild")
-        rebuilt = client.request("rebuild")
+        rebuilt = client.request("rebuild", {"display": dict(STANDARD_DISPLAY)})
         apply_modeling_reply(report, rebuilt)
         if rebuilt.get("ok") is not True:
             report.error = str(
@@ -1889,7 +1890,8 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
 
     with _engine_session(args, report) as (engine, client):
         _progress(" · rebuild")
-        reply = client.request("rebuild")
+        # The accepted pin it becomes keeps triangles, as an accept's does (ADR-851).
+        reply = client.request("rebuild", {"display": dict(STANDARD_DISPLAY)})
         apply_modeling_reply(report, reply)
         if reply.get("ok") is not True:
             report.error = str(

@@ -696,12 +696,18 @@ _CHECKPOINT_MEMO_SIZE = 512
 
 
 def _checkpoint_dir(root: Path, run: str) -> Path | None:
-    """``runs/<run>/train`` when it resolves inside the project, else ``None``."""
+    """``runs/<run>/train`` when it resolves inside the project, else the
+    directory of the trainer's newest ``progress.json`` (``seed0/``,
+    ``stage2/seed0/``), where a trainer started by hand leaves its checkpoints
+    (ADR-851); ``None`` when neither does."""
 
-    ref = resolve_reference(root, f"{RUNS_DIRNAME}/{run}/train")
-    if ref["error"] or not ref["exists"] or not (root / ref["path"]).is_dir():
-        return None
-    return root / ref["path"]
+    for relative in ("train", str(Path(trainer_progress(root / RUNS_DIRNAME / run) or ".").parent)):
+        if relative == ".":
+            continue
+        ref = resolve_reference(root, f"{RUNS_DIRNAME}/{run}/{relative}")
+        if not ref["error"] and ref["exists"] and (root / ref["path"]).is_dir():
+            return root / ref["path"]
+    return None
 
 
 def _checkpoint_head(path: Path) -> dict[str, Any]:
@@ -756,7 +762,7 @@ def checkpoint_rollouts(project_root: Path | str, run: str) -> dict[str, Any]:
     train = _checkpoint_dir(root, run)
     if train is None:
         return {"run": run, "items": [], "pending": 0, "listed_of": 0,
-                "reason": "the run has no train directory"}
+                "reason": "the run has no train directory and no trainer telemetry"}
     found: dict[str, dict[str, Any]] = {}
     for path in train.iterdir():
         match = _CHECKPOINT_FILE.fullmatch(path.name)
@@ -782,8 +788,15 @@ def checkpoint_rollouts(project_root: Path | str, run: str) -> dict[str, Any]:
                        if head["state"] == "ready" else None)
         items.append(item)
     items.sort(key=lambda item: (int(item["tag"]), item["stem"]))
+    reason = "" if items or pending else "no checkpoint rolled out yet"
+    if train.name != "train" and pending:
+        # The trainer rolls each checkpoint out as it writes it (ADR-851), so
+        # one with no trace here never gets one: not pending, said once.
+        reason = (f"{pending} checkpoint{'s' if pending > 1 else ''} with no rollout: "
+                  "the trainer wrote none (before ADR-851, or --view-seconds 0)")
+        pending = 0
     return {"run": run, "items": items[-CHECKPOINTS_LISTED:], "pending": pending,
-            "listed_of": len(items), "reason": "" if items or pending else "no checkpoint rolled out yet"}
+            "listed_of": len(items), "reason": reason}
 
 
 def checkpoint_playback(project_root: Path | str, run: str, stem: str) -> dict[str, Any] | None:
@@ -2692,13 +2705,15 @@ def default_run(review: Mapping[str, Any]) -> str:
 
     The newest ``running``/``pending`` record whose telemetry is ``starting``
     or ``training`` comes first; otherwise the newest record, failed or
-    interrupted included; ``accepted`` when there are no runs. ``review`` is
+    interrupted included; ``accepted`` when there are no runs. A directory
+    with no record and no telemetry (``empty``) is not a run to open
+    (ADR-851). ``review`` is
     ``ReviewProject.review()`` (records oldest first, telemetry attached).
     Names play no part: a checker that wants to know what the page will
     select asks this, not the run's suffix.
     """
 
-    runs = list(review.get("runs") or [])
+    runs = [run for run in review.get("runs") or [] if run.get("status") != "empty"]
     active = [run for run in runs if run.get("status") in ("running", "pending")
               and (run.get("telemetry") or {}).get("state") in ("starting", "training")]
     candidates = active or runs
@@ -2769,10 +2784,31 @@ def _evaluate_in_flight(activity: Mapping[str, Any]) -> str | None:
     the design, before any evaluation directory exists to read."""
 
     for entry in activity.get("entries") or []:
-        if entry.get("tool") == "evaluate":
+        # The agent's tool, or the same command from a shell (ADR-836, ADR-851).
+        if entry.get("tool") in ("evaluate", "cadex evaluate"):
             if entry.get("outcome") != "running":
                 return None
             return str(entry.get("t") or "") or None
+    return None
+
+
+#: Calls whose recent use is not design work: the training and evaluating
+#: stages show them while they last (ADR-851).
+_NOT_DESIGNING = frozenset({"train", "walk", "evaluate"})
+
+
+def _agent_worked_at(activity: Mapping[str, Any]) -> tuple[float, str] | None:
+    """When the newest agent or ``cadex`` call was logged, and its tool (ADR-836,
+    ADR-851); ``None`` when that call trained or evaluated, which the training
+    and evaluating stages show while they last and which is not designing after."""
+
+    for entry in activity.get("entries") or []:
+        stamp, tool = _stamp(entry.get("t")), str(entry.get("tool") or "")
+        if stamp is None:
+            continue
+        if tool.removeprefix("cadex ") in _NOT_DESIGNING:
+            return None
+        return stamp, tool or "a"
     return None
 
 
@@ -2835,7 +2871,8 @@ def project_stage(root: Path, review: Mapping[str, Any], *, checkpoints: bool = 
     telemetry has gone quiet -- ``stale``), ``stopped`` (the newest run was
     stopped on request, ``reason`` the request's, ADR-559), ``failed`` (the
     newest run failed and no revision was accepted after it), ``designing`` (a revision was
-    accepted inside :data:`DESIGNING_WINDOW_S`), else ``idle``. ``since`` is
+    accepted, or the newest call in the activity log made, inside
+    :data:`DESIGNING_WINDOW_S`, ADR-851), else ``idle``. ``since`` is
     when that state's evidence was written. ``run`` is the newest run
     training, a quiet one included, else the one :func:`default_run`
     picks, and ``training`` its telemetry with the
@@ -2864,6 +2901,7 @@ def project_stage(root: Path, review: Mapping[str, Any], *, checkpoints: bool = 
     stage: dict[str, Any] = {"state": "idle", "reason": "", "since": _iso(accepted_at) if accepted_at else None}
     evaluating = _evaluation_running(root, now)
     calling = _evaluate_in_flight(review.get("activity") or {})
+    worked_at = _agent_worked_at(review.get("activity") or {})
     recorded_at = _stamp(record.get("recorded_at")) if record else None
     # The agent's call names what the owner can act on and started first, so
     # it wins; a directory's name is an internal id and never shown (ADR-555).
@@ -2886,6 +2924,10 @@ def project_stage(root: Path, review: Mapping[str, Any], *, checkpoints: bool = 
                      since=_iso(recorded_at) if recorded_at else None)
     elif accepted_at is not None and now - accepted_at <= DESIGNING_WINDOW_S:
         stage.update(state="designing", reason=f"revision {trail[0].get('ordinal')} accepted")
+    elif worked_at is not None and now - worked_at[0] <= DESIGNING_WINDOW_S:
+        # The agent at work with nothing accepted yet: a look, a refused
+        # script, a measurement (ADR-851).
+        stage.update(state="designing", reason=f"the agent's {worked_at[1]} call", since=_iso(worked_at[0]))
     # The read run's checkpoint rollouts, for the 3D viewport's scrubber (ADR-545).
     if not checkpoints:
         return {**stage, "run": None if record is None else name, "runs": len(runs), "training": training}
@@ -3664,8 +3706,28 @@ _CARD_INPUTS = (PROJECT_SCRIPT_FILENAME, str(ACTIVITY_PATH), f"{HISTORY_DIR}/{HI
                 RUNS_DIRNAME, "evaluations", PRESENTATION_DIR, f"{PRESENTATION_DIR}/summary.json")
 
 
+def _run_written(run_dir: Path) -> int | None:
+    """When a run's record, else its trainer's telemetry, was last written; ``None`` for neither."""
+
+    for name in (RUN_RECORD_FILENAME, "review.json"):
+        try:
+            return (run_dir / name).stat().st_mtime_ns
+        except OSError:
+            pass
+    progress = trainer_progress(run_dir)
+    try:
+        return (run_dir / progress).stat().st_mtime_ns if progress else None
+    except OSError:
+        return None
+
+
 def _newest_run_dir(root: Path) -> tuple[Path | None, int]:
-    """The run directory whose record was written last, by stat alone, and how many there are."""
+    """The run whose record or trainer telemetry was written last, by stat, and how many there are.
+
+    A directory with neither is not a run the page would open (a judge's
+    output dropped under ``runs/``), so it is never the card's run; a bare
+    trainer's run is stamped by its ``progress.json``, wherever it sits
+    (ADR-851)."""
 
     runs = root / RUNS_DIRNAME
     if not runs.is_dir() or runs.is_symlink():
@@ -3675,10 +3737,9 @@ def _newest_run_dir(root: Path) -> tuple[Path | None, int]:
         if not child.is_dir():
             continue
         count += 1
-        try:
-            written = (child / RUN_RECORD_FILENAME).stat().st_mtime_ns
-        except OSError:
-            written = child.stat().st_mtime_ns
+        written = _run_written(child)
+        if written is None:
+            continue
         if written > stamp or (written == stamp and newest is not None and child.name > newest.name):
             newest, stamp = child, written
     return newest, count
@@ -3688,7 +3749,7 @@ def _card_fingerprint(root: Path, newest: Path | None) -> tuple[Any, ...]:
     stamps: list[Any] = []
     paths = [root / relative for relative in _CARD_INPUTS]
     if newest is not None:
-        paths += [newest / RUN_RECORD_FILENAME, newest / "train" / "progress.json"]
+        paths += [newest / RUN_RECORD_FILENAME, newest / (trainer_progress(newest) or "train/progress.json")]
     for path in paths:
         try:
             stat = path.stat()

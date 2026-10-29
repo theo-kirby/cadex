@@ -4514,10 +4514,12 @@ def train(
             functools.partial(sgd_step, data=data, normaliser=normaliser, train_actor=train_actor),
             (optimizer_state, params, sgd_key), (), length=epochs)
         endings = jnp.sum(1.0 - data.discount)
-        # Steps taken in this batch over episodes that ended in it; with
-        # nothing ending it reads the whole batch, which cannot be an episode
-        # length and is meant to be read as "nothing is resetting" (ADR-101).
-        episode_steps = jnp.float32(unroll * envs) / jnp.maximum(endings, 1.0)
+        # Steps taken in this batch over episodes that ended in it, at most
+        # the horizon: a time-out is not an ending, so with nothing ending the
+        # ratio reads the whole batch (81,920 on leon V), where the episodes
+        # in fact ran to the horizon (ADR-101, ADR-851).
+        episode_steps = jnp.minimum(jnp.float32(unroll * envs) / jnp.maximum(endings, 1.0),
+                                    jnp.float32(env.horizon))
         report = {
             "reward_per_step": jnp.mean(data.reward),
             "loss": jnp.mean(metrics["total_loss"][-1]),
@@ -4736,8 +4738,11 @@ def train(
                         normaliser=normaliser)
         due = every and (iteration + 1) % every == 0
         if due and iteration + 1 < total_iterations:
-            emit(f"{iteration + 1:06d}", iteration, entry["reward_per_step"],
-                 snapshot(params, normaliser, curve, elapsed_wall))
+            numbered = snapshot(params, normaliser, curve, elapsed_wall)
+            # Its rollout is the witness's, already run: the dashboard plays
+            # it on the checkpoint scrubber, whoever started the run (ADR-851).
+            numbered["view_qpos"] = view_poses(params, normaliser)
+            emit(f"{iteration + 1:06d}", iteration, entry["reward_per_step"], numbered)
             if best["written"] != best["iteration"]:
                 emit("best", best["iteration"], best["reward_per_step"],
                      snapshot(best["params"], best["normaliser"],
@@ -5435,7 +5440,8 @@ def binary_stl(np, triangles) -> bytes:
 
 
 def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
-               *, source: str, goto: dict[str, Any] | None = None) -> Path:
+               *, source: str, goto: dict[str, Any] | None = None,
+               checkpoint: dict[str, Any] | None = None, trace_name: str = "trace.json") -> Path:
     """``view/``: a mesh per body from its geoms and a trace of ``poses`` (ADR-835).
 
     Each body's mesh is in the body's own frame, named as the body is, and each
@@ -5449,6 +5455,12 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
     ``goto`` is a go-to-point episode (``cadex_goto.py``): its ``sequence``
     goes on the trace and each of its ``frames`` (one per pose: the lit
     point's index, whether it is held, the hold's filled share) on its frame.
+
+    ``checkpoint`` (``iteration``, ``reward_per_step``, ``sha256``) makes it a
+    numbered checkpoint's rollout instead (ADR-851): only the trace, named
+    ``trace_name`` (``<out>.<tag>.rollout-trace.json`` beside the policy, the
+    name the dashboard's scrubber and ``cadex_cli.checkpoints`` read); the
+    meshes are the closing view's.
     """
 
     import mujoco
@@ -5462,14 +5474,15 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
                and float(model.geom_rgba[g][3]) > 0.0]
     drawn = [g for g in visible if int(model.geom_group[g]) < 3] or visible
     for body in range(1, model.nbody):
-        parts = [geom_triangles(mujoco, np, model, g) for g in drawn if int(model.geom_bodyid[g]) == body]
+        mine = [g for g in drawn if int(model.geom_bodyid[g]) == body]
+        parts = [geom_triangles(mujoco, np, model, g) for g in mine] if checkpoint is None else []
         parts = [p for p in parts if p is not None and len(p)]
         name = model.body(body).name or f"body{body}"
         # A body with nothing to draw is still placed: the CAD it carries
         # rides on it (ADR-838).
         if parts:
             write_atomically(directory / f"{name}.stl", binary_stl(np, np.concatenate(parts)))
-        elif not model.body(body).name:
+        elif not model.body(body).name and not (checkpoint is not None and mine):
             continue
         bodies.append((body, name))
     frames = []
@@ -5492,7 +5505,9 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
              "actuator_channels": actuators, "frames": frames}
     if goto:
         trace["goto"] = goto["sequence"]
-    path = directory / "trace.json"
+    if checkpoint is not None:
+        trace["checkpoint"] = checkpoint
+    path = directory / trace_name
     write_atomically(path, json.dumps(trace, separators=(",", ":")).encode("utf-8"))
     return path
 
@@ -5593,6 +5608,17 @@ def main(argv: Sequence[str]) -> int:
         if not options.quiet:
             print(f"checkpoint {path.name}  ({written[-1]['sha256'][:12]})",
                   file=sys.stderr)
+        if trained.get("view_qpos") is not None:
+            try:
+                write_view(path.parent, bundle["model_xml"], trained["view_qpos"],
+                           float(bundle["task"]["episode"]["control_interval_s"]),
+                           source=f"cadex_train's witness batch, {path.name}",
+                           checkpoint={key: written[-1][key]
+                                       for key in ("iteration", "reward_per_step", "sha256")},
+                           trace_name=path.name.removesuffix(".cxpolicy") + ".rollout-trace.json")
+            except Exception as error:  # noqa: BLE001 -- the view never fails a run
+                print(f"view: {path.name} not rolled out ({type(error).__name__}: {error})",
+                      file=sys.stderr)
 
     last_report: dict[str, Any] = {}
 

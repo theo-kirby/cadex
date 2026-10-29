@@ -85,7 +85,7 @@ Flags, valid on either side of the subcommand:
 | `--assembly OUTPUT` | `inventory` and `clearance`: the assembly output. A project publishes at most one, so this is a check. |
 | `--seconds S`, `--mode hold\|zero`, `--penetration-mm N`, `--rest-speed-mm-s N`, `--max-tilt-degrees N`, `--fps N`, `--timeout S`, `--model NAME`, `--task NAME` | `smoke` ("Smoke" below). |
 | `--policy NAME`, `--task NAME`, `--weights FILE`, `--timeout S`, `--film SEEDS`, `--no-video`, `--detail-start S`, `--detail-step S`, `--film-only` | `evaluate` ("Evaluate" below). |
-| `--rebuild` | `export` only: restore and rebuild the accepted script on this engine before writing, re-proving its digest (ADR-848). |
+| `--rebuild` | `export` only: restore and rebuild the accepted script on this engine before writing, re-proving its digest (ADR-848). The rebuild asks for standard display, as `export`'s, `train`'s and `link`'s rebuilds all do, so the attempt it pins keeps triangles for `look`, renders and films (ADR-851). |
 | `--blueprints` | `export` only: also copy the stored blueprint sheets into `--out`, store filenames kept (ADR-150, ADR-157). |
 | `--engine ROOT` | A staged engine payload. Default: `$CADEX_ENGINE_ROOT`, then the dev tree (§6). |
 | `--engine-timeout S`, `--engine-memory MB` | The engine budgets for this call only (ADR-517), over the stored ones; `walk` hands them to every leg. Every engine run's envelope carries `budgets`: `in_force`, `stored`, and each one's `source` (`override`, `project` or `engine`). |

@@ -1,6 +1,6 @@
 """orun21 D1: a dashboard screenshot of one run, served on 127.0.0.1 only.
 
-    pixi run python docs/probes/orun21/d1_shot.py PROJECT RUN OUT.png [--gpu]
+    pixi run python docs/probes/orun21/d1_shot.py PROJECT RUN OUT.png [--seek S] [--timeline]
 
 Serves PROJECT read-only on a loopback port, opens the page in headless
 Chromium, picks RUN in the viewport, waits for its model, and writes the
@@ -22,6 +22,11 @@ from cadex_cli.browser import HeadlessBrowser, find_browser  # noqa: E402
 from cadex_cli.review_server import serve  # noqa: E402
 
 LAYOUT = {"dir": "row", "sizes": [0.6, 0.4], "children": [{"editor": "view3d"}, {"editor": "training"}]}
+#: With ``--timeline``: the version editor under the viewport, where a run's
+#: checkpoint picker and playback bar sit (D2, ADR-851).
+TIMELINE = {"dir": "row", "sizes": [0.6, 0.4], "children": [
+    {"dir": "col", "sizes": [0.84, 0.16], "children": [{"editor": "view3d"}, {"editor": "version"}]},
+    {"editor": "training"}]}
 
 
 def main() -> int:
@@ -33,6 +38,8 @@ def main() -> int:
     parser.add_argument("--settle", type=float, default=4.0, help="seconds to let playback run")
     parser.add_argument("--seek", type=float, default=None, metavar="S",
                         help="show the run's rollout at S seconds, if it has one")
+    parser.add_argument("--timeline", action="store_true",
+                        help="show the checkpoint picker and playback bar under the viewport")
     options = parser.parse_args()
     width, height = (int(v) for v in options.size.split("x"))
     server, _thread = serve(Path(options.project).expanduser(), "127.0.0.1", 0)
@@ -44,7 +51,7 @@ def main() -> int:
             page.send("Page.enable")
             page.send("Page.addScriptToEvaluateOnNewDocument", {
                 "source": "try { localStorage.setItem('cadex.layout.v7', %s); } catch (e) {}"
-                          % json.dumps(json.dumps(LAYOUT))})
+                          % json.dumps(json.dumps(TIMELINE if options.timeline else LAYOUT))})
             page.send("Page.navigate", {"url": server.url})
             page.wait_for("document.readyState === 'complete' && !!window.cadexReview", timeout=120)
             page.evaluate("window.cadexReview.ready", await_promise=True, timeout=300)

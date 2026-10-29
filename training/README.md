@@ -287,7 +287,12 @@ a stand is judged on the speeds and the feet, never on a ratio.
 not a weight dump: pull it off the box mid-run, paste its digest into
 `assembly.policy`, rebuild, and watch it. Cost is about one iteration each —
 a rollout for the witness observations plus 32 forward passes — so every
-hundredth of two thousand is 1 %. The first checkpoint also pays one compile
+hundredth of two thousand is 1 %. With `--view-seconds` on, each numbered
+checkpoint also gets `<out>.<tag>.rollout-trace.json` beside it: that same
+witness rollout's farthest episode as a view trace with a `checkpoint` block
+(iteration, reward per step, sha256), which the dashboard's checkpoint picker
+plays on the run's `view/` meshes whoever started the run (ADR-851). A
+`cadex train` watcher finds the trace there and rolls out only what it lacks. The first checkpoint also pays one compile
 of that rollout; later ones reuse it (ADR-576).
 
 The witness is checked on checkpoints too. That error is *relative* and grows
@@ -338,7 +343,9 @@ below; it is what the dashboard's 2D viewport plots and its Training editor char
 under the project's `runs/<run>/train/`.
 
 `episode_steps` is the row to actually watch (ADR-101): mean episode length,
-steps in the batch over episodes that ended in it. **A reward that climbs
+steps in the batch over episodes that ended in it, at most the horizon (a
+time-out is not an ending, so a batch in which nothing ended used to read the
+whole batch, 81,920 on leon V; ADR-851). **A reward that climbs
 while this falls is a policy failing sooner and being paid more for it** —
 which is what two runs did, unnoticed, before there was a number for it. It
 is additive under the same schema, so a `progress.json` from before ADR-101

@@ -47287,3 +47287,66 @@ or published-shape change.
 (M0: 1,093.6 s); after 21.0 s + 195.5 s = 226.3 s, and 230.1 s again. All
 three give digest `78850ab3…` and 102 byte-identical files. `pixi run
 test-engine`: 158 passed, 3 skipped; `pytest cli/tests`: 53 passed.
+
+## ADR-851 — D2's cheap fixes: bare-run checkpoints play, rebuild pins keep triangles, the card reads the page's run (2026-10-29, orun21 D2)
+
+**Context.** D2 asks for a ranked list of every case where the dashboard shows
+an empty, stale or wrong state, with the cheap ones fixed.
+`docs/probes/orun21/DASHBOARD.md` is that list: 14 cases. Six are fixed here
+and eight are listed with their one-line fixes. The fixed ones:
+
+**Decision.**
+- **The trainer rolls out its own checkpoints.** With `--view-seconds` on,
+  each numbered checkpoint gets `<out>.<tag>.rollout-trace.json` beside it.
+  This is the witness rollout the checkpoint's snapshot already ran, its
+  farthest episode as a view trace with a `checkpoint` block (iteration,
+  reward per step, sha256), written without meshes (the run's `view/` has
+  them). `_checkpoint_dir` falls back from `runs/<run>/train/` to the
+  trainer's progress directory (`seed0/`, `stage2/seed0/`). A checkpoint
+  there with no trace is never "pending"; `reason` counts it.
+- **Every CLI rebuild asks for display.** `export --rebuild`, `link`'s
+  refresh and `train` send `rebuild` with `STANDARD_DISPLAY`, as an accept
+  does. Each of them becomes the accepted pin, and a pin with no triangles
+  broke `look`, films and the CAD overlay (`autumn-hawk-8597`).
+- **The card reads the run the page would.** `_newest_run_dir` stamps a run
+  by `run.json`, then `review.json`, then its trainer's `progress.json`, and
+  skips a directory with none of them. `default_run` never opens an `empty`
+  directory. The card's cache key stats the progress file it read.
+- **Agent work is designing.** The stage is `designing` when the newest
+  logged call (ADR-836) is under 10 min old, unless that call was `train`,
+  `walk` or `evaluate`. An in-flight `cadex evaluate`, not only the MCP
+  `evaluate`, makes it `evaluating`.
+- **Episode length is capped at the horizon.** It was `unroll × envs / max(endings, 1)`;
+  a time-out is not an ending, so a batch with no endings read the whole
+  batch (81,920 on leon V). `episode_collapse` already capped it.
+
+**Evidence** (`DASHBOARD.md`).
+- A bare 40-iteration leon V concept run (`runs/d2-ckpt`, 103 s) left three
+  ready checkpoint rollouts. Each plays 301 frames over 6 s, and the page lists
+  them (`d2-checkpoints.png`).
+- `cadex export --rebuild` on a copy of the lab biped pinned an attempt with
+  display (55 tessellations, 55 of 55 parts drawn).
+- Card and page agreed on 380 of 386 projects under `~/cadex-projects`
+  before and 382 of 386 after. Both projects whose card hid a failed run are
+  fixed.
+- `d2-ckpt`'s episode curve peaks at 1000, against 2,155.8 before on the same task.
+- `test_http_api.py`'s hand-started fixture gains a checkpoint trace, and
+  `/api/checkpoints/byhand` must list it ready and playable. With the fallback
+  removed, the pin fails.
+- `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
+  passed. `training/`: 89 passed.
+
+**Consequences.**
+- Under `cadex train`, the watcher (ADR-544) finds the trainer's trace beside
+  each numbered checkpoint and rolls out only what lacks one: the final
+  copy (ADR-790), or every checkpoint of a run with `--view-seconds 0`. Those
+  checkpoint traces are now MJX's on the trained model, not the engine's. They
+  carry placements but no joint or effort channels, so the Activations editor
+  has less to show for them (DASHBOARD.md row 13). The engine stays the judge
+  through `cadex evaluate`.
+- A rebuild through the CLI now tessellates, which costs what an accept's does.
+- The 4 projects where card and page still differ are overlapping runs:
+  the card orders by last write and the page by launch (row 7).
+- Before this, a stage that read `idle` during agent work, or a card that read
+  a judge's output directory, was the dashboard being wrong rather than the
+  project being quiet.
