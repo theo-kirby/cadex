@@ -46689,9 +46689,67 @@ command).
 
 **Consequences.**
 - G2's pass bar is met on the Go1 (g2-goto-s20), but training with the layer
-  does not yet shorten the time to points. The next G2 step changes the
-  slow-speed signal (the layer's slow-down and hold commands, or the
-  tracking kernel's width at low speed), with that hypothesis stated. It does
-  not tune the share.
+  does not yet shorten the time to points. **Parked** (orun21 iteration 10,
+  G2 closed on this evidence): the slow-walk loss is a refinement, not a
+  gap. Its hypothesis, for whoever takes it up: slow layer commands are
+  under-penalised by the `exp(-err²/0.25)` tracking kernel, so the fix
+  changes the slow-speed signal (the layer's slow-down and hold commands, or
+  the kernel's width at low speed), not the share.
 - `cadex_goto play` remains the judge. G3 reuses `--goto` with the robot's
   bands.
+
+## ADR-841 — The training model is cut in Cadex, generic over robots, and checks itself (2026-10-28, orun21 P1)
+
+**Context.** The training-model tier (a fast MJCF cut from the CAD export)
+lived only in leon V's `tools/training_model.py` and `training_fidelity.py`,
+with leon V's foot and fall-geom names and its export's file name written in,
+and a fixed solver chosen on leon V. P1 asks for the route in Cadex, one
+command, generic over robots.
+
+**Decision.** `training/cadex_training_model.py`, standard library at module
+scope (ADR-084), `mujoco` and `numpy` inside functions:
+- **`cut --project DIR --out MODEL.xml`** reads the accepted attempt's export
+  and writes leon V's cut (floor pairs only, static bodies fused, a cheap
+  solver, the same refusals), with nothing named per robot:
+  - **feet** are the colliding geoms on each body holding a `touch` sensor's
+    site, which every Cadex export writes per foot;
+  - **fall geoms** are the colliding geoms on the root, or on a body
+    carrying more than one foot once static bodies are fused (trunk, spine,
+    a head welded to the trunk); legs' geoms are switched off;
+  - the model is marked `cadex:tier = training`, so `cadex_train.py` and the
+    dashboard read its tier without being told.
+- **The cut checks itself.** It runs the fidelity and standing check on what
+  it cut and keeps the first setting of a ladder that passes, fastest first:
+  2 ms Euler (eulerdamp off) 2 / 3, then implicitfast at 2 ms 2 / 3. Naming
+  a solver option tries that one setting. `fidelity` judges any models
+  against an export.
+- `--feet` and `--fall-geoms` override the defaults.
+
+**Evidence** (`~/cadex-projects/orun21-lab/*/runs/p1-cut/cut.json`):
+- **leon V** (export `41a4e7e0`): the defaults find leon V's own four paws
+  and four fall geoms. The cut is byte-identical to leon V's `b09ec284`
+  except the tier mark (now `f6ed66de`). 102 → 25 bodies, 20 → 8 colliding
+  geoms. Euler 2 / 3 passes: 9 of 12 signals gated, worst 1.883 mm, stands
+  at 1.16° tilt. Implicitfast fails there (8.5 mm), so the order matters.
+- **The biped** (`orun9-biped`, export at revision `605e9bc8`): feet
+  `c_foot_l/r` (two capsules each), fall geom `c_pelvis/collision0`, 56 → 11
+  bodies. Euler 2 / 3 blows up: tilt 136° in the stand, and eulerdamp on
+  does not save it (293 mm). Its stiff servos on light links are unstable
+  under explicit damping. Implicitfast 2 / 3 passes: worst 1.115 mm, tilt
+  0.39°.
+- Each cut, check included, takes under 1 s on the CPU. CPU physics steps/s
+  at rest, one thread: leon V 63.9 k → 105.6 k, the biped 120.0 k → 156.7 k.
+  The MJX throughput bench is the next step of P1.
+
+**Consequences.**
+- leon V's `tools/training_model.py` and `tools/training_fidelity.py` are
+  superseded for the Cadex route. leon V is read-only to this run, so its
+  copies stay in its repository.
+- On the biped only 1 of 12 signals is gated: its export does not agree
+  with itself at half the step on the larger signals. The biped's fidelity
+  pass therefore rests on one signal and the stand. A gentler signal grid
+  for small robots would gate more; that is not done here.
+- `training/test_cadex_training_model.py` pins the cut's contract on a toy
+  export: dynamics kept, floor-only pairs at the stated condims, discovery,
+  the tier mark and the refusals.
+

@@ -718,13 +718,45 @@ spec, build the CAD to meet them, then train the detailed model again and
 compare. Like `cadex_train.py` it imports only the standard library at
 module scope.
 
+## From the CAD: the training model (ADR-841)
+
+`cadex_training_model.py` cuts a fast training MJCF from a project's MJCF
+export and checks it moves like the export, which stays the judge:
+
+```bash
+~/cadex-train-venv/bin/python training/cadex_training_model.py cut \
+    --project ~/cadex-projects/leon-v --out runs/cut/train-model.xml --json runs/cut/cut.json
+~/cadex-train-venv/bin/python training/cadex_training_model.py fidelity MODEL.xml [...] --project DIR
+```
+
+- **The cut** keeps the floor touching only the feet (the collision geoms on
+  each `touch` sensor's body) and the fall geoms (those on the root, or on a
+  body carrying more than one foot, once static bodies are merged), turns off
+  self-collision, fuses every joint-free body nothing names into its parent
+  by the parallel-axis sum, and sets a cheap solver. It refuses to write
+  unless mass, nq/nv/nu/neq, the actuator order, the sensors and the mass
+  matrix at qpos0 match the export, and marks the model
+  `cadex:tier = training`.
+- **The check** drives the export and the cut with the same open-loop
+  sinusoids and holds the root's path within 5 mm on every signal where the
+  export agrees with itself at half its step, then stands the cut 10 s at a
+  zero action on its feet alone.
+- **The solver is chosen by the check.** `cut` tries 2 ms Euler 2 / 3 first
+  (leon V: worst 1.88 mm; implicitfast there is 8.5 mm) and falls back to
+  implicitfast at the same step (the biped's stiff servos blow up under
+  explicit Euler damping). The report lists each setting tried.
+
+Pass the export as `--cad-model` to `cadex_train.py` and the dashboard draws
+the CAD on the cut's bodies (ADR-838).
+
 ## What the suites do, and do not, prove
 
 No suite trains (ADR-725). The engine and CLI suites hold the boundary
 above and nothing of the learner. The training venv's own tests,
-`training/test_cadex_proxy.py`, `training/test_curriculum_warm_start.py`,
+`training/test_cadex_proxy.py`, `training/test_cadex_training_model.py`,
+`training/test_curriculum_warm_start.py`,
 `training/test_canonical_body.py`, `training/test_terrain_pool.py` and
-`training/test_distill.py`, cover the proxy, the warm-start rules, the base
+`training/test_distill.py`, cover the proxy, the training model's cut, the warm-start rules, the base
 remap, the course pool's height scan (ADR-747) and distillation's routing
 and refusals. A change to the trainer is
 verified by running it: a few iterations on CPU (`SETUP.md` §b), then the
