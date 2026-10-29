@@ -125,6 +125,9 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
     0 is the one the model carries; `terrain.pool` holds all `courses`
     (default 32, at most 64), the model has a box slot per box of the
     fullest, and the trainer gives each episode a pooled course.
+    `"levels": L` (ADR-856) makes the pool L difficulty levels of
+    `courses / L` courses each, every height range banded by level, for
+    the trainer's `--terrain-curriculum`.
   - `"collides_with": [group, ...]` makes the boxes touch only those
     collision groups, normally the feet's, which spares MJX the costly
     box–box and capsule–box pairs.

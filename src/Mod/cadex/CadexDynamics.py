@@ -4404,7 +4404,24 @@ TERRAIN_RANDOM_DEFAULTS: dict[str, Any] = {
     "maze_cell_mm": [700.0, 1000.0],
     "maze_cells": [1, 3],
     "mazes": 1,
+    "levels": None,
 }
+
+#: The magnitude ranges a level bands (ADR-856): with ``levels`` L, level l
+#: draws each from ``[lo + (hi - lo)·l/L, lo + (hi - lo)·(l + 1)/L]``. Sizes,
+#: counts and runs are every level's.
+TERRAIN_LEVEL_KEYS = ("step_mm", "grade_deg", "bump_mm", "platform_mm", "rock_mm",
+                      "tile_mm", "wall_mm")
+
+#: Appended to :data:`TERRAIN_RANDOM_ALGORITHM` in a pool that declares
+#: ``levels``, so a pool without them keeps its bytes (ADR-856).
+TERRAIN_LEVELS_ALGORITHM = (
+    "; with levels L (ADR-856), course k is level k*L // courses, and each "
+    "magnitude range [lo, hi] of step_mm, grade_deg, bump_mm, platform_mm, "
+    "rock_mm, tile_mm and wall_mm is drawn from its level's band "
+    "[lo + (hi - lo)*l/L, lo + (hi - lo)*(l + 1)/L]; sizes, counts and runs "
+    "are every level's"
+)
 
 #: How many places :func:`terrain_random_features` tries for one platform or
 #: rock patch before it leaves it out (ADR-745): a place must keep clear of
@@ -4545,6 +4562,19 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
             observed={"maze_cells": repr(cells)},
         )
     record["maze_cells"] = [int(v) for v in cells]
+    if merged["levels"] is not None:
+        # ADR-856: recorded only when given, so a pool without levels keeps its bytes.
+        levels = merged["levels"]
+        if (isinstance(levels, bool) or not isinstance(levels, int)
+                or not 2 <= levels <= record["courses"] or record["courses"] % levels):
+            raise DynamicsError(
+                f"{where} gives 'levels' as {levels!r} for {record['courses']} courses.",
+                reason="malformed_terrain",
+                correction=("'levels' is a whole number from 2 that divides courses, "
+                            "so every level holds as many courses."),
+                observed={"levels": repr(levels), "courses": record["courses"]},
+            )
+        record["levels"] = levels
     if record["maze_cell_mm"][0] <= TERRAIN_WALL_THICKNESS_MM:
         raise DynamicsError(
             f"{where} gives maze_cell_mm from {record['maze_cell_mm'][0]:g} mm.",
@@ -4628,8 +4658,12 @@ def terrain_random_features(
     x_range_mm: Sequence[float],
     y_range_mm: Sequence[float],
     course: int | str,
+    level: int | None = None,
 ) -> list[dict[str, Any]]:
     """Course ``course`` of a validated random spec, as features (ADR-717).
+
+    With ``levels`` (ADR-856) a pooled course draws at its own level,
+    :func:`terrain_course_level`; a held-out one at ``level``.
 
     Pure and seeded by :data:`TERRAIN_RANDOM_ALGORITHM`: steps and slopes
     along x, past ``clear_mm``, with a flat run before each; then bumps. Each
@@ -4642,6 +4676,21 @@ def terrain_random_features(
     # An int is a pooled course; a string is a held-out stream (ADR-718).
     key = str(int(course)) if isinstance(course, int) else str(course)
     rng = random.Random(f"cadex-terrain:{int(spec['seed'])}:{key}")
+    if spec.get("levels"):
+        levels = int(spec["levels"])
+        if level is None:
+            level = terrain_course_level(spec, int(course))
+        if not 0 <= int(level) < levels:
+            raise DynamicsError(
+                f"level {level!r} is not one of the pool's {levels}.",
+                reason="malformed_terrain",
+                correction=f"A level is 0 to {levels - 1}.",
+                observed={"level": repr(level), "levels": levels},
+            )
+        spec = {**spec, **{
+            name: [lo + (hi - lo) * int(level) / levels, lo + (hi - lo) * (int(level) + 1) / levels]
+            for name in TERRAIN_LEVEL_KEYS if spec.get(name) is not None
+            for lo, hi in (spec[name],)}}
     (x0, x1), (y0, y1) = ([float(v) for v in x_range_mm], [float(v) for v in y_range_mm])
     kinds = [kind for kind, key in (("step", "step_mm"), ("slope", "grade_deg"))
              if spec[key] is not None]
@@ -4760,6 +4809,14 @@ def terrain_random_features(
     return features
 
 
+def terrain_course_level(spec: Mapping[str, Any], course: int) -> int:
+    """Pooled course ``course``'s level (ADR-856): ``course * levels // courses``,
+    0 in a pool without levels. Levels are contiguous blocks of the pool."""
+
+    levels = int(spec.get("levels") or 1)
+    return int(course) * levels // int(spec["courses"])
+
+
 def terrain_box_geoms(
     boxes: Sequence[Mapping[str, Any]], lowest_mm: float, slots: int | None = None
 ) -> dict[str, Any]:
@@ -4829,7 +4886,8 @@ TERRAIN_EVALUATION_ALGORITHM = (
 
 
 def terrain_evaluation_course(terrain: Mapping[str, Any], seed: int, *,
-                              context: str = "the terrain") -> dict[str, Any]:
+                              context: str = "the terrain",
+                              level: int | None = None) -> dict[str, Any]:
     """The course evaluation seed ``seed`` is played on (ADR-718), pure.
 
     A listed course, or a heightfield, is the same on every seed: it is
@@ -4841,11 +4899,16 @@ def terrain_evaluation_course(terrain: Mapping[str, Any], seed: int, *,
     ``slots`` is kept. The result is a descriptor like the model's (features,
     boxes, lowest and highest point, slots and scale) without the pool, with
     ``course`` saying which draw it is; :func:`place_terrain_course` stands
-    it in a compiled model."""
+    it in a compiled model.
+
+    A pool with levels (ADR-856) draws seed ``s`` at ``level``, or at level
+    ``s % levels`` when none is given, so ten seeds span every level."""
 
     if terrain.get("kind") != "boxes" or terrain.get("random") is None:
         return dict(terrain)
     spec = terrain["random"]
+    if spec.get("levels") and level is None:
+        level = int(seed) % int(spec["levels"])
     x_range = [float(v) for v in terrain["x_range_mm"]]
     y_range = [float(v) for v in terrain["y_range_mm"]]
     slots = int(terrain["slots"])
@@ -4853,7 +4916,7 @@ def terrain_evaluation_course(terrain: Mapping[str, Any], seed: int, *,
         key = f"eval:{int(seed)}:{draw}"
         where = f"{context}'s evaluation course for seed {int(seed)}"
         features = [_terrain_feature(entry, number, where) for number, entry in
-                    enumerate(terrain_random_features(spec, x_range, y_range, key))]
+                    enumerate(terrain_random_features(spec, x_range, y_range, key, level))]
         if not features:
             continue
         built = terrain_boxes(features, x_range, y_range, context=where)
@@ -4866,7 +4929,8 @@ def terrain_evaluation_course(terrain: Mapping[str, Any], seed: int, *,
         course.update(features=features, boxes=built["boxes"], domes=built["domes"],
                       lowest_mm=built["lowest_mm"], highest_mm=built["highest_mm"],
                       course={"seed": int(seed), "draw": draw, "key": key,
-                              "algorithm": TERRAIN_EVALUATION_ALGORITHM})
+                              "algorithm": TERRAIN_EVALUATION_ALGORITHM,
+                              **({"level": int(level)} if spec.get("levels") else {})})
         return course
     raise DynamicsError(
         f"{context} drew no course for evaluation seed {int(seed)} that fits the "
@@ -5166,7 +5230,8 @@ def _terrain_box_course(
     )
     if random_spec is not None:
         slots = max(len(entry["boxes"]) for _, entry in courses)
-        descriptor["random"] = {**random_spec, "algorithm": TERRAIN_RANDOM_ALGORITHM}
+        descriptor["random"] = {**random_spec, "algorithm": TERRAIN_RANDOM_ALGORITHM + (
+            TERRAIN_LEVELS_ALGORITHM if random_spec.get("levels") else "")}
         descriptor["slots"] = slots
         descriptor["dome_slots"] = max(len(entry["domes"]) for _, entry in courses)
         # The model's metres per course millimetre, which a trainer placing
@@ -5177,8 +5242,11 @@ def _terrain_box_course(
         descriptor["pool"] = [
             {"features": drawn, "lowest_mm": entry["lowest_mm"],
              "highest_mm": entry["highest_mm"], "boxes": entry["boxes"],
-             "domes": entry["domes"]}
-            for drawn, entry in courses
+             "domes": entry["domes"],
+             # ADR-856: a leveled pool says each course's level.
+             **({"level": terrain_course_level(random_spec, index)}
+                if random_spec.get("levels") else {})}
+            for index, (drawn, entry) in enumerate(courses)
         ]
     if terrain.get("collides_with") is not None:
         descriptor["collides_with"] = sorted({int(group) for group in terrain["collides_with"]})

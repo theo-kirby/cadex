@@ -168,7 +168,9 @@ def decimated_curve(curve, cap=CURVE_POINTS_CAP, key="reward_per_step"):
     """
 
     points = [
-        [int(entry["iteration"]), float(entry[key])]
+        [int(entry["iteration"]),
+         # ADR-856: a per-level count is a list, kept whole.
+         [float(v) for v in entry[key]] if isinstance(entry[key], list) else float(entry[key])]
         for entry in curve if entry.get(key) is not None
     ]
     if cap < 2 or len(points) <= cap:
@@ -3048,6 +3050,42 @@ def build_environment(
                 f"{len(dome_geoms)} environment/terrain/dome/<j>")
         pool_device = {key: jnp.asarray(value, dtype=jnp.float32)
                        for key, value in pool.items()}
+    # ADR-856: the game-inspired curriculum on points reached. A PYTHON bool,
+    # so a run without --terrain-curriculum draws its courses as before.
+    leveled = bool(getattr(options, "terrain_curriculum", False))
+    levels = 0
+    if leveled:
+        levels = int(((task.get("terrain") or {}).get("random") or {}).get("levels") or 0)
+        if not redrawing or not levels:
+            raise SystemExit("--terrain-curriculum moves episodes between a pool's levels; "
+                             "this bundle's terrain declares no random.levels (ADR-856)")
+        if not getattr(options, "goto", None):
+            raise SystemExit("--terrain-curriculum promotes on points reached; give --goto")
+        per_level = pool_size // levels
+        promote_at = int(getattr(options, "terrain_promote", 1))
+        if promote_at < 1:
+            raise SystemExit("--terrain-promote is the points an episode reaches to go up, from 1")
+
+    def draw_course(key, level):
+        """Each environment's course: any pooled one, or one of its level's (ADR-856)."""
+
+        if leveled:
+            return level * per_level + jax.random.randint(key, (envs,), 0, per_level)
+        return jax.random.randint(key, (envs,), 0, pool_size)
+
+    def moved_level(key, level, goto_state, done, fell):
+        """legged_gym's game rule on points reached (ADR-856): an episode on the
+        layer that ended with ``promote_at`` points reached and no fall goes up
+        a level, past the top to a random one; one that fell or reached none
+        goes down, never under 0. Every other episode keeps its level."""
+
+        reached = goto_state["index"]
+        counted = done & goto_state["on"]
+        up = counted & ~fell & (reached >= promote_at)
+        down = counted & (fell | (reached < 1))
+        higher = level + 1
+        higher = jnp.where(higher >= levels, jax.random.randint(key, (envs,), 0, levels), higher)
+        return jnp.where(up, higher, jnp.where(down, jnp.maximum(level - 1, 0), level))
 
     def placed(m, course):
         return place_course(m, pool_device, slot_geoms, plane_geom, course, dome_geoms)
@@ -3641,8 +3679,9 @@ def build_environment(
         pick_key, forces, starts = drawn_pushes(start_key)
         # ADR-717: folded from the start key, like ADR-709's origin, so a
         # task on one course draws the stream it always did.
-        course = (jax.random.randint(jax.random.fold_in(start_key, 717), (envs,),
-                                     0, pool_size) if redrawing else None)
+        level = jnp.zeros((envs,), dtype=jnp.int32) if leveled else None
+        course = (draw_course(jax.random.fold_in(start_key, 717), level)
+                  if redrawing else None)
         course_args = (course,) if redrawing else ()
         data = batched_forward(model, make.replace(qpos=qpos, qvel=qvel), *course_args)
         steps = jnp.zeros((envs,), dtype=jnp.int32)
@@ -3661,6 +3700,8 @@ def build_environment(
             info["origin"] = origin
         if redrawing:
             info["course"] = course
+        if leveled:
+            info["level"] = level
         turned = jnp.zeros((envs,), dtype=jnp.float32) if cadenced else None
         if cadenced:
             info["turned"] = turned
@@ -3793,8 +3834,12 @@ def build_environment(
         _unused, fresh_forces, fresh_starts = drawn_pushes(push_key)
         if redrawing:
             # ADR-717: an episode that ended starts its next on a fresh course.
-            course = jnp.where(done, jax.random.randint(
-                jax.random.fold_in(reset_key, 717), (envs,), 0, pool_size), course)
+            if leveled:
+                info = {**info, "level": moved_level(
+                    jax.random.fold_in(reset_key, 856), info["level"], info["goto"],
+                    done, terminated)}
+            course = jnp.where(done, draw_course(
+                jax.random.fold_in(reset_key, 717), info.get("level")), course)
         course_args = (course,) if redrawing else ()
 
         def where_done(new, old):
@@ -3880,6 +3925,7 @@ def build_environment(
             self.output_scale = output_scale
             self.output_bias = output_bias
             self.horizon = horizon
+            self.levels = levels
             self.action_size = len(actions)
             self.observation_size = {"state": (len(actor_names),),
                                      "privileged_state": (len(names),)}
@@ -4371,6 +4417,9 @@ def train(
         if teachers:
             report["distill_loss"] = jnp.mean(metrics["distill_loss"][-1])
             report["taught"] = jnp.mean(metrics["taught"][-1])
+        if env.levels:
+            # ADR-856: how many environments stand on each level now.
+            report["levels"] = jnp.bincount(env_state.info["level"], length=env.levels)
         return optimizer_state, params, normaliser, env_state, key, report
 
     view_steps = 0
@@ -4531,7 +4580,9 @@ def train(
         (optimizer_state, params, normaliser, env_state, key,
          report) = iterate(optimizer_state, params, normaliser, env_state, key, train_actor)
         entry = {"iteration": iteration,
-                 **{name: float(value) for name, value in report.items()}}
+                 **{name: (float(value) if jnp.ndim(value) == 0
+                           else [int(count) for count in np.asarray(value)])
+                    for name, value in report.items()}}
         curve.append(entry)
         if not collapsed:
             collapsed = episode_collapse(curve, env.horizon)
@@ -4550,7 +4601,8 @@ def train(
                 f"  episode {entry['episode_steps']:.1f}"
                 f"  sigma {entry['action_std']:.4f}"
                 + (f"  distill {entry['distill_loss']:.4g} on {entry['taught']:.2f}"
-                   if teachers else ""),
+                   if teachers else "")
+                + (f"  levels {entry['levels']}" if "levels" in entry else ""),
                 file=sys.stderr,
             )
         # Stop at the first non-finite number: diverged parameters do not
@@ -4863,6 +4915,14 @@ def policy_header(
                         "bundle_algorithm": str(
                             (task["terrain"].get("random") or {}).get("algorithm") or ""),
                         "courses": len(task["terrain"]["pool"]),
+                        # ADR-856: the curriculum the courses were dealt by.
+                        **({"curriculum": {
+                            "rule": "game rule on points reached: up a level at "
+                                    "--terrain-promote points without a fall, past the "
+                                    "top to a random level; down at a fall or no point",
+                            "levels": int(task["terrain"]["random"]["levels"]),
+                            "promote": int(options.terrain_promote)}}
+                           if getattr(options, "terrain_curriculum", False) else {}),
                     }
                 }
                 if (task.get("terrain") or {}).get("pool") else {}
@@ -5033,6 +5093,16 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         "--goto-share", type=float, default=0.2,
         help="the share of episodes on the layer under --goto; the rest keep "
              "the bundle's drawn goals. 0.5 lost slow walking on the Go1 (ADR-840)")
+    parser.add_argument(
+        "--terrain-curriculum", action="store_true",
+        help="move each environment between its pool's terrain levels "
+             "(random.levels) by legged_gym's game rule on points reached "
+             "(ADR-856); needs --goto, and only episodes on the layer move")
+    parser.add_argument(
+        "--terrain-promote", type=int, default=1,
+        help="points an episode on the layer reaches, without falling, to go up "
+             "a level under --terrain-curriculum; one that falls or reaches none "
+             "goes down")
     parser.add_argument(
         "--goto-goals", default="cx,cy,cw",
         help="the task's forward, lateral and yaw-rate goals the layer commands")
@@ -5541,6 +5611,11 @@ def main(argv: Sequence[str]) -> int:
             # history, so the dashboard's Status charts it beside reward,
             # loss and episode length rather than only its last value.
             "action_std_curve": decimated_curve(curve, key="action_std"),
+            # Additive (ADR-856): under --terrain-curriculum, how many
+            # environments stand on each terrain level, now and per iteration.
+            **({"terrain_levels": list(curve[-1]["levels"]),
+                "terrain_levels_curve": decimated_curve(curve, key="levels")}
+               if curve and "levels" in curve[-1] else {}),
             "best_reward_per_step": (
                 None if not best or best.get("iteration", -1) < 0
                 else float(best["reward_per_step"])

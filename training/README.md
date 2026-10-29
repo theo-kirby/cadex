@@ -183,6 +183,7 @@ Go1 benchmark that Brax learns to trot in under six minutes (docs/MUJOCO.md
 | `--initial-std` | unset | the exploration width a run starts at; see `action_std` below |
 | `--goal-pool` | `4096` | episodes of goals drawn before training (ADR-462, below) |
 | `--goto`, `--goto-share`, `--goto-goals` | off, `0.2`, `cx,cy,cw` | go-to-point episodes: the layer commands the speed goals on that share (ADR-840, below) |
+| `--terrain-curriculum`, `--terrain-promote` | off, `1` | deal a leveled pool by level and move each environment by points reached (ADR-856, below) |
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
 | `--stop-on-collapse` | off | stop once the mean episode has collapsed (ADR-410, below) |
 | `--progress` | beside `--out` | where to rewrite `progress.json` |
@@ -415,9 +416,17 @@ to the engine's `terrain_box_geoms` on a pool of every box kind. At
 every reset gives each environment a course by `jax.random.randint` folded
 from the reset key. `place_course` writes that course's geoms into the MJX
 model inside the vmapped step, and the height scan (ADR-715) reads the
-same course. The policy header records `training.terrain`. Train on a box
-course, not a heightfield: MJX's heightfield collider is unstable under
-driven motion (ADR-715, ADR-716), and a heightfield is never re-drawn.
+same course. The policy header records `training.terrain`. A heightfield
+trains only where spheres and capsules touch it (ADR-854) and is never
+re-drawn.
+
+With `--terrain-curriculum` (and `--goto`), a pool that declares
+`random.levels` (ADR-856) is dealt by level: each environment starts at
+level 0 and draws one of its level's courses; an episode on the layer that
+reaches `--terrain-promote` points (default 1) without a fall goes up, past
+the top to a random level, and one that falls or reaches none goes down
+(legged_gym's game rule, on points rather than distance). `progress.json`
+carries `terrain_levels` and `terrain_levels_curve`.
 
 ## Goals, and the one draw this trainer takes from the bundle (ADR-462)
 

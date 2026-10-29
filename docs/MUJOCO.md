@@ -325,6 +325,27 @@ comparing geoms. A build's rollout stands on course 0; evaluation seeds
 stand on held-out courses (ADR-718), and every trace carries the course it
 stood on (ADR-734).
 
+**Levels and the curriculum (ADR-856).** `random.levels` *L* (from 2, a
+divisor of `courses`) splits the pool into *L* contiguous blocks: course *k*
+is level `k*L // courses` (`terrain_course_level`, written on each pooled
+course as `level`), and level *l* draws every height range (`step_mm`,
+`grade_deg`, `bump_mm`, `platform_mm`, `rock_mm`, `tile_mm`, `wall_mm`) from
+its band `[lo + (hi-lo)*l/L, lo + (hi-lo)*(l+1)/L]`, as Isaac Lab's terrain
+generator scales a sub-terrain by its row's difficulty; sizes, counts and
+runs are every level's. The descriptor's `random.algorithm` gains
+`TERRAIN_LEVELS_ALGORITHM`; a pool without `levels` keeps its bytes.
+Evaluation seed *s* plays a held-out course at level `s % L`
+(`terrain_evaluation_course(..., level=)` names another), so ten seeds span
+every level, and the course says its `level`. `cadex_train.py
+--terrain-curriculum` (with `--goto`) deals each environment a course of its
+own level, starting at 0, and moves it by legged_gym's game rule on points
+reached: an episode on the go-to-point layer that reaches `--terrain-promote`
+points (default 1) without falling goes up a level, past the top to a random
+one; one that falls or reaches none goes down. Episodes off the layer keep
+their level. `progress.json` carries `terrain_levels` and
+`terrain_levels_curve` (environments per level, per iteration), and the
+policy header's `training.terrain.curriculum` names the rule.
+
 ### Commands and success predicates
 
 **Turning commands and command tracking (ADR-721, 2026-10-16).** A goal

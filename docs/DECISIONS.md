@@ -47622,3 +47622,83 @@ matches the engine's to 0.0007 mm at all 3,381 interior vertices and to
 **Not changed.** No stored suffix, op or tool changes; every existing
 model, bundle and digest is unchanged (a declaration without `mesh` takes
 the old path). Levels and the curriculum remain T1's open items.
+
+## ADR-856 — Terrain levels, and the game-inspired curriculum on points reached (2026-10-29, orun21 T1)
+
+**Context.** T1's last open item: levels and a curriculum "the way R1 found
+practice does it". R1 (`docs/probes/orun21/RESEARCH.md` §2.1–2.2, C-21,
+C-22): legged_gym and Isaac Lab lay rows of difficulty, scale each terrain
+kind's magnitude by its row's difficulty `d`, and move a robot a row up
+when it went far and down when it covered under half its command, to a
+random row past the top. Cadex's random box pool (ADR-717) drew every course
+from the whole range and dealt courses uniformly.
+
+**Decision.**
+- **Levels come from the one engine source.** `terrain.random.levels` *L*
+  (2 ≤ L, a divisor of `courses`) makes the pool L contiguous blocks:
+  course k is level `k*L // courses` (`CadexDynamics.terrain_course_level`,
+  written on each pooled course as `level`). Level l draws each height range
+  (`TERRAIN_LEVEL_KEYS`: step, grade, bump, platform, rock, tile, wall) from
+  its band `[lo + (hi-lo)·l/L, lo + (hi-lo)·(l+1)/L]`, which is Isaac Lab's
+  `d = (row + U(0,1))/rows` per kind. Sizes, counts and runs stay every
+  level's. The descriptor's algorithm gains `TERRAIN_LEVELS_ALGORITHM`;
+  without `levels` the record, the algorithm string and every pool keep
+  their bytes (checked: both `test_terrain_pool.py` pools are byte-identical
+  before and after).
+- **Held-out courses carry a level.** `terrain_evaluation_course(...,
+  level=)` draws the held-out stream at that level; with none given, seed s
+  plays level `s % L`, so ten seeds span every level. The course says its
+  `level`.
+- **The curriculum is in the trainer.** `cadex_train.py --terrain-curriculum`
+  (needs `--goto` and a leveled pool) starts every environment at level 0 and
+  deals one of its level's courses at each reset. At an episode's end on the
+  go-to-point layer: up a level if it reached `--terrain-promote` points
+  (default 1) without a fall, past the top to a random level; down if it fell
+  or reached none; never under 0. Episodes off the layer keep their level.
+  This is legged_gym's rule with points reached in place of distance, as R1
+  proposed. `progress.json` gains `terrain_levels` and `terrain_levels_curve`
+  (environments per level, every iteration), the log line prints the counts,
+  and the policy header's `training.terrain.curriculum` names the rule.
+- **Contract.** `training/test_terrain_pool.py` holds the engine's levels to
+  the contiguous blocks the trainer deals from, and holds a leveled pool's
+  placement to the engine as before.
+- **Deviations from practice, stated.** Every environment starts at level 0
+  (legged_gym starts on rows 0–5); a course mixes kinds rather than one kind
+  per column; walls are left out of the screen's pool because points do not
+  yet steer round them (T2).
+
+**Measured** (`~/cadex-projects/orun21-lab/go1-levels`, bundle by
+`docs/probes/orun21/t1_levels.py bundle`). The orun18 Go1 on a 64-course,
+8-level pool of steps (10–130 mm), slopes (2–20°), bumps (10–90 mm),
+platforms (10–150 mm), rock patches (10–60 mm) and tile patches (10–80 mm),
+29 box and 4 dome slots, feet-only contact. Course relief rises with level:
+61–91 mm at level 0 to 338–621 mm at level 7. Run1's reference settings
+(1260 × 8192 × 20 = 206.4 M env steps, seed 1, cold) with `--goto
+walk:0.4-0.7,run:1.0-1.5 --goto-share 0.5 --terrain-curriculum`:
+1,361 s wall, against 325 s for the same settings on the plane. The box pool
+costs 4.2× (the slots, not the curriculum). Environments per level, from
+`run1/progress.json`'s `terrain_levels_curve`:
+
+| iteration | mean | L0 | L1 | L2 | L3 | L4 | L5 | L6 | L7 |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | 0.00 | 8192 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 158 | 0.16 | 6914 | 1225 | 53 | 0 | 0 | 0 | 0 | 0 |
+| 315 | 1.25 | 1604 | 3555 | 2446 | 536 | 48 | 3 | 0 | 0 |
+| 631 | 3.46 | 114 | 552 | 1485 | 2086 | 2057 | 1224 | 528 | 146 |
+| 946 | 4.34 | 88 | 288 | 683 | 1361 | 1939 | 1713 | 1373 | 747 |
+| 1259 | 4.53 | 132 | 310 | 611 | 1087 | 1648 | 1775 | 1552 | 1077 |
+
+The batch climbs while the policy learns to reach points, then spreads.
+Demotion holds it there: episodes fall on the harder courses (mean
+episode 975 of 1000 steps at the end, against 1000 through iteration 500),
+so the top does not fill. Best reward/step 0.0270 at iteration 297.
+No policy from this run has yet been judged on held-out leveled courses;
+that is T2's.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. After
+`pixi run build-engine`, `pytest cli/tests`: 53 passed; `training/`
+tests: 91 passed (`test_terrain_pool.py` 3).
+
+**Not changed.** No op, stored suffix or tool changes; a pool without
+`levels` and a run without `--terrain-curriculum` draw and train exactly as
+before.

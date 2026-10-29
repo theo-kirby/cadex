@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""The trainer places a pooled course where the engine does (ADR-852), and a
+"""The trainer places a pooled course where the engine does (ADR-852), deals a
+leveled pool by the engine's levels (ADR-856), and a
 pool of moguls alone keeps its slot axis (ADR-747).
 
 ADR-852 made the engine the one terrain builder: each pooled course carries
@@ -110,3 +111,15 @@ def test_a_course_of_moguls_alone_keeps_its_slot_axis_and_scans_its_dome():
     scan = height_scan_vector(np, task, xpos, xmat, course=course)
     # Over the dome's peak, then a metre off it on the plane.
     assert np.allclose(scan[0], [500.0 - BUMP["top_mm"], 500.0], atol=1e-6)
+
+
+def test_a_leveled_pool_is_contiguous_blocks_of_its_levels():
+    """ADR-856: the trainer deals level l's courses as ``l * courses // levels``
+    onward, ``courses // levels`` of them; the engine must have drawn them so."""
+
+    declared = {**DECLARED[0], "random": {**DECLARED[0]["random"], "courses": 8, "levels": 4}}
+    terrain = CadexDynamics.terrain_grid(declared)["descriptor"]
+    per_level = terrain["random"]["courses"] // terrain["random"]["levels"]
+    assert [course["level"] for course in terrain["pool"]] == [
+        index // per_level for index in range(len(terrain["pool"]))]
+    _hold_pool_to_the_engine(terrain)
