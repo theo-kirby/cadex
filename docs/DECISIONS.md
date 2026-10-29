@@ -47689,9 +47689,10 @@ costs 4.2× (the slots, not the curriculum). Environments per level, from
 | 1259 | 4.53 | 132 | 310 | 611 | 1087 | 1648 | 1775 | 1552 | 1077 |
 
 The batch climbs while the policy learns to reach points, then spreads.
-Demotion holds it there: episodes fall on the harder courses (mean
-episode 975 of 1000 steps at the end, against 1000 through iteration 500),
-so the top does not fill. Best reward/step 0.0270 at iteration 297.
+Demotion holds it there: episodes fall on the harder courses (the
+iterations in which some episode ended, rather than all timing out, rise
+from 34 of iterations 100–199 to 93 of 900–999 as the batch climbs), so the
+top does not fill. Best reward/step 0.0270 at iteration 297.
 No policy from this run has yet been judged on held-out leveled courses;
 that is T2's.
 
