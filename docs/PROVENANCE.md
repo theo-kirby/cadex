@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-10-27
+Verified against source: 2026-10-29
 
 Cadex is not written from scratch. It is a **derivative work of a large
 free-software project, FreeCAD**, carrying the design lessons of two more
@@ -652,7 +652,8 @@ drawing is redistributed. A STEP model was only measured, never copied in.
 
 `lib.qdd("cubemars-ak10-9-v3")`, `lib.qdd("cubemars-ak70-10")`,
 `lib.qdd("cubemars-ak80-9-v3")`, `lib.qdd("cubemars-ak60-6-v3")`,
-`lib.qdd("cubemars-ak45-10-v3")` and `lib.qdd("robstride-rs04")` are
+`lib.qdd("cubemars-ak45-10-v3")`, `lib.qdd("robstride-rs04")`,
+`lib.qdd("robstride-rs00")` and `lib.qdd("robstride-rs05")` are
 independently authored from their manufacturers' product pages, CubeMars's
 accessed 2026-10-04:
 
@@ -698,6 +699,29 @@ The 120 N·m tier (ADR-826), from RobStride's product page, accessed
   product photograph, the rear face carries no holes, and the catalog's
   2045 g·cm² rotor inertia (the AK10-9's scaled as diameter⁴ × length) and
   0.8 N·m back drive are estimates, flagged in its `approximate` list.
+
+The small RobStride tiers (ADR-867), from RobStride's product pages and the
+user manuals and STEP models in its
+[Product_Information](https://github.com/RobStride/Product_Information/tree/384cc561e1ff079c22f68b19908526094430febd/Product%20Literature/CAN2.0) repository (commit
+`384cc561`), accessed 2026-10-29. The STEP models were measured in a scratch
+directory and are not in the tree:
+
+- [RobStride 05](https://www.robstride.com/products/robStride05): 7.75:1,
+  48 V (15–60 V), rated 1.6 N·m at 100 rpm and 2.4 Apk on a 70 × 70 mm heat
+  sink, peak 5.5 N·m at 11 Apk, no-load 480 rpm, torque constant
+  0.94 N·m/Arms (output side), 191 ± 10 g, 46 × 46 × 44 mm. Manual drawing:
+  8-M3×7 front on Ø41.5, 4-M3×10 rear on Ø38.5, 6-M4×3.5 output on Ø24,
+  3 × Ø4 output dowels on Ø19; clocking measured on the STEP model.
+- [RobStride 00](https://www.robstride.com/products/robStride00): 10:1,
+  48 V (24–60 V), rated 5 N·m at 100 rpm and 4.7 Apk on a 90 × 85 mm heat
+  sink, peak 14 N·m at 15.5 Apk, no-load 315 rpm, torque constant
+  1.48 N·m/Arms (output side), 310 ± 10 g, Ø57 × 51 mm with a Ø35 output
+  hub. Manual drawing: 6-M3 front on Ø50, 4-M3×4 rear on Ø38, 6-M3×5 output
+  on Ø27; front depth and clocking measured on the STEP model.
+
+  Neither manual publishes rotor inertia, back drive or backlash: the
+  catalog's inertias (the AK45-10's scaled as diameter⁴ × length) and back
+  drives are estimates, flagged in each row's `approximate` list.
 
 The light tier (ADR-608), from the same manufacturer's pages and 2D
 drawings, accessed 2026-10-09:
