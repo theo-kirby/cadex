@@ -46570,3 +46570,77 @@ same overlay drew 87 parts.
   where that frame is not the rest pose the CAD would sit offset from the
   outlines.
 - A run cut from an older revision draws primitives only, with the reason.
+
+## ADR-839 — Go-to-point is a velocity policy under a scripted layer, from one seeded source (2026-10-28, orun21 G1)
+
+**Context.** G2 asks for go-to-point on the Go1 by "the easier route that
+gives the better result". R1 (`docs/probes/orun21/RESEARCH.md`) compared two
+routes. Route A is an omnidirectional velocity-command policy under a scripted
+go-to-point layer. Route B is end-to-end position targets (Rudin et al. 2022).
+It recommended A: the trainer already matches Playground on the Go1 joystick,
+and the layer is a few lines. The engine's waypoint goal (ADR-751) draws its
+points on a clock, with no arrival trigger, no hold, no per-point speed and no
+marker (C-2), and nothing draws it. G1 asks that the owner see the target.
+
+**Decision.**
+- **Route A for G2.** Go-to-point is a velocity-command policy (forward,
+  lateral, yaw rate) driven by a scripted layer. Route B is E1's, judged the
+  same way. G2 still adds C-1 (a lateral speed goal where the bundle lacks
+  one), C-13 (a yaw-uniform start) and C-19 (a budget in env steps against
+  Playground's) when it trains.
+- **One source, `training/cadex_goto.py`**, for training and the judge,
+  standard library at module scope (ADR-084):
+  - `sequence(seed, split=, bands=)`: seeded by `(split, seed)`, so `train`
+    and `heldout` never share a sequence. 8 points by default, at least two
+    behind the leg before and two to a side, 2–5 m apart. Each has a speed
+    from its band (robot by robot), and at least two have a 1–3 s hold.
+  - `layer_step(xp, ...)`: the layer, written once with `xp.where` so numpy
+    and jitted JAX run the same code. The next point lights on arrival
+    (0.25 m, or 0.1 m when it has a hold) or when the hold ends, never on a
+    clock. The robot turns in place when the point is more than 60° off,
+    slows as it closes, and holds by small corrections.
+  - `play`: a `.cxpolicy` through the layer on stock MuJoCo, on the CPU, with
+    its forward pass checked against its witness. It writes `view/` with each
+    frame's lit point and hold share, and `goto.json` with G2's readings:
+    reach ≤ 0.3 m, hold ≤ 0.15 m, no fall, straight-leg speed within 15%.
+- **The trace carries it.** `write_view(..., goto=)` puts the sequence on the
+  trace and the state on each frame. `api/playback/run/<run>` passes it on
+  as an optional `goto` block (`points`, `frames`). A checkpoint's rollout is
+  an engine trace and never carries one. `docs/CLI.md` lists the block,
+  and `test_http_api.py` pins it on the hand-started run's view.
+- **The dashboard draws it.** During playback each point is drawn on the
+  ground and coloured by its speed. The lit point is bright with a beacon
+  over it, the next points are dim and finished ones faint. The disc is the
+  0.15 m hold zone and the outer line the 0.3 m reach. A hold is a ring that
+  fills clockwise. `#play-goto` names the lit point beside the clock
+  (`docs/DASHBOARD.md`).
+- **`view/` draws a robot that has only group-3 geoms.** If no robot geom is
+  below group 3 (Playground's Go1 keeps all 38 there), every visible geom is
+  drawn. Otherwise nothing changes. This closes `rustic-cloud-5989`.
+
+**Evidence.** The orun21 reference Go1 policy (`go1/run1/go1.cxpolicy`,
+`9ec81e8a…`, 206.4 M steps, untouched) was played through the layer on ten
+held-out sequences (`heldout:0`–`9`, bands walk 0.4–0.7 and run 1.0–1.5
+m/s, 3–5 points behind each). All ten pass every reading: 8/8 points
+reached, closest ≤ 0.255 m, worst hold 0.100 m, no fall, straight-leg speed
+0.920–0.958 of the command, 49–81 s an episode, under a second of CPU each.
+The dashboard shots and the film are in `docs/probes/orun21/G1-TARGETS.md`.
+`training/test_cadex_goto.py` holds the seeding, the shape and the
+arrival/hold rule. The layer runs under `jax.jit` unchanged.
+
+**Consequences.**
+- The joystick policy already does route A's job on flat ground. G2's work is
+  to train with this generator in the loop (yaw-uniform starts, lateral goal,
+  stated budget) and to judge with `play`, not to invent a controller.
+- Only 17 of the 37 run legs in those ten sequences had a straight second to
+  read for speed (all 43 walk legs did). G2 has to lengthen run legs or
+  shorten the read window before the speed bar covers the run band.
+- The judge reads reach through the layer's own trigger: a point the robot
+  never reaches shows as an episode that ran out of time on it. `episode_seconds`
+  bounds an episode generously (each leg at its speed, a half turn, its hold,
+  plus 10 s).
+- ADR-751's waypoint goal is unchanged and still drawn by nothing. G2 decides
+  whether it goes.
+- `play` reads sensors, goals and command channels. A policy that observes
+  contacts, trackers or scans is refused with the channel's name, and G3
+  extends the player where a robot needs it.

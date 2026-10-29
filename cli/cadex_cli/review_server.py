@@ -178,7 +178,8 @@ API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     # A run with no rollout yet at the accepted revision borrows its model.
     # A trainer's run says its model's tier and whether the CAD is on its bodies (ADR-838).
     "model/run/<run>": (_MODEL_KEYS, frozenset({"playback", "meshes", "tier"})),
-    "playback/run/<run>": (frozenset({"available", "run", "source"}), _PLAYBACK_KEYS),
+    # A go-to-point episode (ADR-839) is a trainer view, read only as a run's playback.
+    "playback/run/<run>": (frozenset({"available", "run", "source"}), _PLAYBACK_KEYS | {"goto"}),
     "playback/checkpoint/<run>/<stem>": (frozenset({"available", "run", "stem", "checkpoint", "source"}),
                                          _PLAYBACK_KEYS),
     "playback/reference/<task>": (frozenset({"available", "task", "source"}),
@@ -454,6 +455,7 @@ def trace_playback(trace: Mapping[str, Any] | None) -> dict[str, Any]:
     # What the motors did (ADR-727): each frame's joint positions, velocities and efforts, in
     # the trace's channel order, for the Activations editor.
     measured: dict[str, list[list[float] | None]] = {"joints": [], "velocities": [], "efforts": []}
+    goto: list[dict[str, Any] | None] = []
     previous: dict[str, list[float]] = {}
     for time_s, frame in timed:
         poses: dict[str, dict[str, list[float]]] = {}
@@ -470,6 +472,7 @@ def trace_playback(trace: Mapping[str, Any] | None) -> dict[str, Any]:
             continue
         times.append(time_s)
         frames.append(poses)
+        goto.append(_goto_state(frame.get("goto")))
         raw = frame.get("actuator_commands")
         commands.append([float(x) for x in raw] if isinstance(raw, list) else None)
         for key, field in (("joints", "joint_positions"), ("velocities", "joint_velocities"),
@@ -491,7 +494,41 @@ def trace_playback(trace: Mapping[str, Any] | None) -> dict[str, Any]:
     terrain = terrain_block(trace.get("terrain"))
     if terrain is not None:
         playback["terrain"] = terrain
+    points = _goto_points(trace.get("goto"))
+    if points and any(state is not None for state in goto):
+        playback["goto"] = {"points": points, "frames": goto}
     return playback
+
+
+def _goto_points(sequence: Any) -> list[dict[str, Any]]:
+    """A go-to-point episode's points (``training/cadex_goto.py``, ADR-839), or none."""
+
+    if not isinstance(sequence, Mapping) or not isinstance(sequence.get("points"), list):
+        return []
+    points = []
+    for point in sequence["points"]:
+        try:
+            x, y = (float(v) for v in point["xy_m"])
+            row = {"xy_m": [x, y], "speed_mps": float(point["speed_mps"]),
+                   "hold_s": float(point.get("hold_s") or 0.0), "band": str(point.get("band") or "")}
+        except (KeyError, TypeError, ValueError):
+            return []
+        if not all(math.isfinite(v) for v in (x, y, row["speed_mps"], row["hold_s"])):
+            return []
+        points.append(row)
+    return points
+
+
+def _goto_state(state: Any) -> dict[str, Any] | None:
+    """One frame's go-to-point state: the lit point, whether it is held, the hold's filled share."""
+
+    if not isinstance(state, Mapping):
+        return None
+    try:
+        return {"index": int(state["index"]), "arrived": bool(state.get("arrived")),
+                "hold": max(0.0, min(1.0, float(state.get("hold") or 0.0)))}
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 #: A trace channel's keys beyond the command range, passed through when the trace has them: which

@@ -5271,14 +5271,20 @@ def binary_stl(np, triangles) -> bytes:
 
 
 def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
-               *, source: str) -> Path:
+               *, source: str, goto: dict[str, Any] | None = None) -> Path:
     """``view/``: a mesh per body from its geoms and a trace of ``poses`` (ADR-835).
 
     Each body's mesh is in the body's own frame, named as the body is, and each
     trace frame places every named body (meshless ones too, ADR-838) as the
     model's kinematics put it, so the
     dashboard plays the run on the very model it trained on, primitives and all.
-    Geoms in group 3 and above (point masses, helpers) and invisible ones are left out.
+    Geoms in group 3 and above (point masses, helpers) and invisible ones are left out,
+    unless the robot has no other geometry (Playground's Go1 keeps every geom
+    in group 3): then every visible geom is drawn (ADR-839).
+
+    ``goto`` is a go-to-point episode (``cadex_goto.py``): its ``sequence``
+    goes on the trace and each of its ``frames`` (one per pose: the lit
+    point's index, whether it is held, the hold's filled share) on its frame.
     """
 
     import mujoco
@@ -5288,10 +5294,11 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
     data = mujoco.MjData(model)
     directory.mkdir(parents=True, exist_ok=True)
     bodies = []
+    visible = [g for g in range(model.ngeom) if int(model.geom_bodyid[g]) > 0
+               and float(model.geom_rgba[g][3]) > 0.0]
+    drawn = [g for g in visible if int(model.geom_group[g]) < 3] or visible
     for body in range(1, model.nbody):
-        parts = [geom_triangles(mujoco, np, model, g) for g in range(model.ngeom)
-                 if int(model.geom_bodyid[g]) == body and int(model.geom_group[g]) < 3
-                 and float(model.geom_rgba[g][3]) > 0.0]
+        parts = [geom_triangles(mujoco, np, model, g) for g in drawn if int(model.geom_bodyid[g]) == body]
         parts = [p for p in parts if p is not None and len(p)]
         name = model.body(body).name or f"body{body}"
         # A body with nothing to draw is still placed: the CAD it carries
@@ -5302,6 +5309,7 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
             continue
         bodies.append((body, name))
     frames = []
+    states = (goto or {}).get("frames") or []
     for step, qpos in enumerate(np.asarray(poses, dtype=np.float64)):
         data.qpos[:] = qpos
         mujoco.mj_kinematics(model, data)
@@ -5310,12 +5318,16 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
                    "rotation_xyzw": [round(float(v), 6)
                                      for v in (*data.xquat[i][1:], data.xquat[i][0])]}
             for i, name in bodies}})
+        if step < len(states):
+            frames[-1]["goto"] = states[step]
     actuators = [{"actuator": model.actuator(a).name, "unit": "rad",
                   "low": float(model.actuator_ctrlrange[a][0]),
                   "high": float(model.actuator_ctrlrange[a][1])} for a in range(model.nu)]
     trace = {"schema": VIEW_TRACE_SCHEMA, "source": source,
              "parameters": {"frames_per_second": round(1.0 / interval_s, 2)},
              "actuator_channels": actuators, "frames": frames}
+    if goto:
+        trace["goto"] = goto["sequence"]
     path = directory / "trace.json"
     write_atomically(path, json.dumps(trace, separators=(",", ":")).encode("utf-8"))
     return path

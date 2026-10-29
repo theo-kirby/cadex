@@ -621,7 +621,8 @@ At the end of a run the trainer plays the final policy for `--view-seconds`
 (default 10; 0 disables) on its witness batch, takes the episode that travelled
 farthest forward (along the heading it started with), and writes **`view/`** beside `progress.json`: one binary STL per body,
 tessellated from that body's own geoms (boxes, capsules, spheres, cylinders,
-meshes; group 3 and above left out) in its own frame, in millimetres, and
+meshes; group 3 and above left out, unless the robot has nothing else to draw, as
+Playground's Go1 has not: then every visible geom, ADR-839) in its own frame, in millimetres, and
 `trace.json`, a `cadex-assembly-simulation-trace-v1` placing every named body at every
 control step, those with nothing to draw too, since CAD may ride on them (ADR-838). It is the model the policy trained on, so a concept model shows as
 its boxes and capsules and an export's fast training model as its collision
@@ -641,6 +642,36 @@ digest) is the accepted attempt's MJCF export, the dashboard draws the accepted
 CAD parts on each body from `model.bodies`, with the primitives the policy
 trained on as outlines; a concept run says it is one (ADR-838). A run training a further seed beside a finished one charts the live
 seed and shows the newest seed that has a view, with that seed's policy.
+
+## Go-to-point: one source of point sequences (ADR-839)
+
+`cadex_goto.py` is the go-to-point task's one source, for training and the judge
+alike. `sequence(seed, split=, bands=)` draws a seeded sequence of points on the
+floor (8 by default, at least two behind the leg before and two to a side, 2–5 m
+apart), each with a speed from its band (`walk:0.4-0.7,run:1.0-1.5`, robot by
+robot) and, for at least two, a hold of 1–3 s. The draw is seeded by
+`(split, seed)`, so a `heldout` sequence is never one `train` drew.
+`layer_step(xp, ...)` is route A's scripted layer: from the base's planar pose it
+turns the lit point into a forward, lateral and yaw-rate command (turn in place
+past 60° off, slow down as it closes, hold by small corrections), lights the next
+point on arrival (within 0.25 m, or 0.1 m when the point has a hold) or when the
+hold ends, never on a clock. It is written once with `xp.where`, so it runs in
+numpy and in jitted JAX.
+
+```bash
+python training/cadex_goto.py sequence --seed 0 --split heldout --bands walk:0.4-0.7,run:1.0-1.5
+~/cadex-train-venv/bin/python training/cadex_goto.py play runs/R/seed0/go1.cxpolicy \
+    --task outputs/go1_joystick-task.json --seed 0 --split heldout \
+    --bands walk:0.4-0.7,run:1.0-1.5 --goals cx,cy,cw
+```
+
+`play` runs a velocity-command policy through the layer on stock MuJoCo (CPU, the
+policy's own forward pass checked against its witness), writes the episode as
+`view/` beside the policy with each frame's lit point and hold, so the dashboard
+draws the points (docs/DASHBOARD.md), and writes `goto.json`: per point whether it
+was reached, the closest approach, the worst distance while held and the forward
+speed over its straight stretch, against G2's bar (reach 0.3 m, hold 0.15 m, no
+fall, speed within 15%).
 
 ## Training before the CAD: the concept model (ADR-834)
 

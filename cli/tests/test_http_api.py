@@ -159,7 +159,15 @@ def biped(tmp_path):
                   "cad_sha256": hashlib.sha256((staging / "outputs" / "rig-model.xml").read_bytes()).hexdigest(),
                   "path": "outputs/m.xml", "bodies": {"body": ["body", "shin"]}}}))
     (seed / "view" / "body.stl").write_text(_cube_stl(20.0))
-    (seed / "view" / "trace.json").write_text(_trace({"body": [0.0, 0.0, 0.0]}))
+    # Its closing view is a go-to-point episode: two points, the first held (ADR-839).
+    (seed / "view" / "trace.json").write_text(json.dumps({
+        **json.loads(_trace({"body": [0.0, 0.0, 0.0]})),
+        "goto": {"points": [{"xy_m": [1.0, 0.0], "speed_mps": 0.5, "hold_s": 2.0, "band": "walk"},
+                            {"xy_m": [1.0, 2.0], "speed_mps": 1.5, "hold_s": 0.0, "band": "run"}]},
+        "frames": [{"nominal_time_s": t, "goto": {"index": 0, "arrived": t > 0, "hold": t / 2.0},
+                    "component_placements": {"body": {"position_mm": [t * 500.0, 0.0, 0.0],
+                                                      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}}}
+                   for t in (0.0, 1.0)]}))
     # A staged run whose trainer stopped beating two minutes ago, under
     # runs/<name>/<stage>/<seed>/ (ADR-837).
     stage = root / "runs" / "staged" / "s2" / "seed0"
@@ -188,7 +196,7 @@ PROBES = {
     "model/run/<run>": (["api/model/run/first", "api/model/run/broken", f"api/model/run/{RUN}",
                          "api/model/run/borrowing", "api/model/run/byhand"],
                         ["api/model/run/nope"]),
-    "playback/run/<run>": (["api/playback/run/second", "api/playback/run/broken"], ["api/playback/run/nope"]),
+    "playback/run/<run>": (["api/playback/run/second", "api/playback/run/broken", "api/playback/run/byhand"], ["api/playback/run/nope"]),
     "playback/checkpoint/<run>/<stem>": (
         [f"api/playback/checkpoint/{RUN}/walk.000040", f"api/playback/checkpoint/{RUN}/walk.000060"],
         [f"api/playback/checkpoint/{RUN}/walk.000080", "api/playback/checkpoint/nope/walk.000040"]),
@@ -244,6 +252,9 @@ def test_every_reply_carries_its_documented_keys_and_nothing_else(biped, tmp_pat
         staged = _json(server.url + "api/run/staged")
         assert staged["status"] == "failed" and "stopped writing s2/seed0/progress.json" in staged["error"]
         assert staged["telemetry"]["driver"] == "ouroboros" and staged["model"]["tier"] == "concept"
+        goto = _json(server.url + "api/playback/run/byhand")["goto"]
+        assert [p["band"] for p in goto["points"]] == ["walk", "run"]
+        assert goto["frames"] == [{"index": 0, "arrived": False, "hold": 0.0}, {"index": 0, "arrived": True, "hold": 0.5}]
         drawn = _json(server.url + "api/model/run/byhand")
         assert drawn["available"] and [c["mesh_status"] for c in drawn["components"]] == ["retained"]
         # The accepted part on the body it was cut into, its primitive outlined (ADR-838).
