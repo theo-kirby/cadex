@@ -798,7 +798,12 @@ reward, termination or foot term reads refuses.
 ```bash
 ~/cadex-train-venv/bin/python training/cadex_relay.py PROJECT/.../outputs/walk-task.json MODEL.xml --out DIR
 ~/cadex-train-venv/bin/python training/cadex_train.py DIR/outputs/walk-task.json --tier concept ...
+./cadex evaluate --project PROJECT --task walk --weights RUN/policy.cxpolicy --out JUDGED
 ```
+
+The last line judges the policy on the export with the engine's success
+spec (ADR-846). The whole route, spec to judged policy, is
+`training/RECIPE.md` §R.
 
 ## What the suites do, and do not, prove
 

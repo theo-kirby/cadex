@@ -1,6 +1,6 @@
 # The cold-start recipe for a legged policy
 
-Verified against source: 2026-10-27. Provenance: `[Cadex-new]`. orun8's B1
+Verified against source: 2026-10-29. Provenance: `[Cadex-new]`. orun8's B1
 draft (`wild-forest-4815`), proven on one quadruped and one biped that are
 not the cat (orun9: `b1-q1` 10/10 by iteration 150, `b1-b1` 10/10 at
 iteration 100; *Where it has been shown*). Section 5 adds what orun19 proved
@@ -13,6 +13,56 @@ in Cadex, written from the runs that showed it. Each step names the record
 A step with no run behind it says so. It lives in `training/` because most of
 it is how a task is written for this trainer; the task language it uses is
 the engine's (`docs/MUJOCO.md`, `docs/XSCRIPT.md`).
+
+## R. The route: spec to judged policy (ADR-846)
+
+Three models, two things a person or agent writes, one task, one judge. The
+concept is written from a spec; the CAD from its script; the training model
+is cut from the CAD's export and never written by hand; the export judges.
+Every step is one command, generic over robots (ADR-841–846). Each line
+names the run that showed it.
+
+1. **Spec.** Write a `cadex-concept-v1` spec (`examples/concept/`), naming
+   leg roots and driven joints as the CAD will name them, so the later
+   comparison matches row by row (ADR-843). Flat feet are capsule `soles`
+   (ADR-844).
+2. **Concept training.** `cadex_concept.py SPEC --out concept.xml` (0.1 s);
+   sweep with `--set`, train each variant briefly. A concept trains faster
+   than any CAD-derived model: leon V's 525 k env steps/s against its cut's
+   303 k and its export's 9.4 k (ADR-842). No CAD exists yet, so the task is
+   written for the concept (leon IV and V used their own bundle scripts;
+   see "What is not proven").
+3. **Frozen numbers.** Freeze the spec that passes; its geometry is what the
+   CAD is built to.
+4. **CAD.** Build the robot in its project and declare its task with
+   `assembly.task` and a success spec, so the export carries the task bundle
+   that every later tier trains on and is judged by.
+5. **Compare.** `cadex_cad_vs_concept.py concept.xml EXPORT.xml`: geometry
+   should agree (leon V: hip heights, reach and foot x within 0.7 mm) and the
+   flagged rows say what the CAD moved, usually mass (leon V +7.1% against
+   E2; the biped 4 of 45 rows, ADR-843/844).
+6. **Cut, passing fidelity.** `cadex_training_model.py cut --project DIR
+   --out cut.xml` (under 1 s): floor-only contacts, fused static bodies, the
+   fastest solver setting that keeps the root's path within 5 mm of the
+   export and stands (ADR-841). If no setting passes, the cut refuses: train
+   on the export instead and say so.
+7. **Relay.** `cadex_relay.py EXPORT-TASK.json cut.xml --out DIR` (and onto
+   the concept, to screen the frozen spec on the CAD's own task): the
+   export's task re-laid by name, so the policy reads the export's channels
+   (ADR-845).
+8. **Confirming retrain** on the cut: `cadex_train.py DIR/outputs/TASK.json
+   --cad-model EXPORT.xml`, at the concept's budget. The biped: 100
+   iterations in 106 s, against ~249 s on the export (ADR-845).
+9. **Judged on the export.** `cadex evaluate --project DIR --task TASK
+   --weights RUN/policy.cxpolicy --out JUDGED`: the engine's success spec on
+   its frozen seeds, as for a declared policy (ADR-846). The biped: cut-trained
+   10/10 (as the export-trained runs), concept-trained 7/10, every failure
+   step clearance 0.019 against 0.020 hip heights. A pass is then declared
+   with `cadex train --put` and `assembly.policy` as any policy is.
+
+Skip the concept only when the CAD already exists and no geometry is in
+question; never skip the cut for a large robot (leon V's export trains at
+1/32 of its cut's rate), and on a small one the cut still halves the run.
 
 ## 0. Before training: can the machine do it?
 
@@ -272,6 +322,15 @@ feature with its probe in `docs/probes/l3r1/`:
 ## What is not proven
 
 These are what no run has shown yet.
+
+- **The route end to end on a creature.** Only the biped has gone spec →
+  concept → cut → relay → retrain → `cadex evaluate`, and its CAD came
+  first. leon V has a concept, a cut and a comparison, but its tasks come
+  from its own `t1_bundle.py`, not from an engine export, so nothing of its
+  route has been relayed or judged by `cadex evaluate` (ADR-846).
+- **A concept's task before any CAD.** Step R.2 trains a concept on a task
+  written for it; Cadex has no command that makes that bundle without a
+  CAD project. Every concept run so far used a robot's own script.
 
 - **Inverted knees: shown on one quadruped.** The generator's IK pulls
   toward the home pose, so a leg keeps the knee direction its build pose

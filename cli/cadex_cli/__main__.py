@@ -633,6 +633,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pick the policy declared against this task output.",
     )
     evaluate_parser.add_argument(
+        "--weights", default="", metavar="FILE",
+        help="Hold this .cxpolicy file, which no script declares, to --task's "
+        "success spec on the accepted model instead (a policy trained on a "
+        "concept or a cut, ADR-846). Needs --task and --out.",
+    )
+    evaluate_parser.add_argument(
         "--timeout", type=float, default=EVALUATE_TIMEOUT_S, metavar="SECONDS",
         help="Kill the evaluation after this much wall time and fail; at most "
         f"{EVALUATE_MAXIMUM_TIMEOUT_S:g} (default %(default)g).",
@@ -2138,10 +2144,16 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
         if value is not None and not (math.isfinite(value) and (value > 0 or value == least)):
             report.error = f"{flag} must be a {'time' if least == 0.0 else 'positive step'} in seconds."
             return EXIT_USAGE
+    if args.weights and (not args.task_name or not args.out or args.policy_name):
+        # A candidate is no declared policy: it names its task, and lands
+        # outside evaluations/, which lists declared policies only.
+        report.error = "--weights needs --task and --out, and takes no --policy."
+        return EXIT_USAGE
     with _engine_session(args, report, restore=False) as (engine, _client):
         root = Path(report.project_root)
         try:
-            inputs = retained_inputs(root, task_name=args.task_name, policy_name=args.policy_name)
+            inputs = retained_inputs(root, task_name=args.task_name, policy_name=args.policy_name,
+                                     weights_file=Path(args.weights) if args.weights else None)
         except EvaluateRefused as exc:
             report.error = str(exc)
             return EXIT_REJECTED
@@ -2151,7 +2163,8 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
         report.out_dir = str(out)
         _progress(
             " · evaluate  {:s} on {:s}  {:d} seed(s)".format(
-                inputs["policy_output"], inputs["task_output"], len(inputs["seeds"]))
+                inputs["policy_output"] or Path(inputs["weights"]).name, inputs["task_output"],
+                len(inputs["seeds"]))
         )
         try:
             measured = (read_report(out, inputs) if args.film_only else
@@ -3265,7 +3278,7 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
         )
     if command == "evaluate":
         return "evaluate {:s} on {:s} → {:s} ({:s})".format(
-            str(report.evaluation.get("policy_output") or "?"),
+            str(report.evaluation.get("policy_output") or "a candidate"),
             str(report.evaluation.get("task_output") or "?"),
             str(report.evaluation.get("verdict") or "?"),
             str(Path(str(report.out_dir)).name),

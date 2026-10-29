@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-28. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-29. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one (ADR-498):
 no display, no `bpy`, no shell code. It is how an agent, a person at a
@@ -84,7 +84,7 @@ Flags, valid on either side of the subcommand:
 | `--max-common-volume-mm3 N` | `clearance` and `smoke`: flag volumes strictly above N (default 0.000001 mm³). Thresholds must be finite and nonnegative; changing them does not rebuild. |
 | `--assembly OUTPUT` | `inventory` and `clearance`: the assembly output. A project publishes at most one, so this is a check. |
 | `--seconds S`, `--mode hold\|zero`, `--penetration-mm N`, `--rest-speed-mm-s N`, `--max-tilt-degrees N`, `--fps N`, `--timeout S`, `--model NAME`, `--task NAME` | `smoke` ("Smoke" below). |
-| `--policy NAME`, `--task NAME`, `--timeout S`, `--film SEEDS`, `--no-video`, `--detail-start S`, `--detail-step S`, `--film-only` | `evaluate` ("Evaluate" below). |
+| `--policy NAME`, `--task NAME`, `--weights FILE`, `--timeout S`, `--film SEEDS`, `--no-video`, `--detail-start S`, `--detail-step S`, `--film-only` | `evaluate` ("Evaluate" below). |
 | `--blueprints` | `export` only: also copy the stored blueprint sheets into `--out`, store filenames kept (ADR-150, ADR-157). |
 | `--engine ROOT` | A staged engine payload. Default: `$CADEX_ENGINE_ROOT`, then the dev tree (§6). |
 | `--engine-timeout S`, `--engine-memory MB` | The engine budgets for this call only (ADR-517), over the stored ones; `walk` hands them to every leg. Every engine run's envelope carries `budgets`: `in_force`, `stored`, and each one's `source` (`override`, `project` or `engine`). |
@@ -646,6 +646,14 @@ the project lock. The policy is the one `assembly.policy` declared and the
 engine verified; every file is checked against the store's digest, and the
 weights against the receipt. `--policy NAME` or `--task NAME` picks among
 several. No declared policy, or no success spec, is exit 3.
+
+**A candidate** (ADR-846): `--weights FILE --task NAME --out DIR` holds a
+`.cxpolicy` that no script declares -- one trained on a concept or a
+training model, on the export's task re-laid by `training/cadex_relay.py` --
+to that task's success spec on the accepted model, by the same runner. Its
+report's `policy_output` is empty and `weights` is the file's path; it needs
+`--out` (the dashboard lists declared policies only) and takes no
+`--policy`. Nothing verified it, so it judges a policy and declares none.
 
 **What it runs.** `cli/cadex_cli/evaluate_runner.py` under the engine's
 interpreter, calling `CadexDynamics.evaluate_success`: per seed, one

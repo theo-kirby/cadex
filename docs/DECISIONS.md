@@ -47003,3 +47003,79 @@ iterations, seed 0, the trainer's defaults, as b1-b1 and d1w-biped):
 - Not shown here: leon V. Its tasks are built by its own `t1_bundle.py`,
   not exported by the engine, so there is no leon V CAD bundle to re-lay
   yet.
+
+## ADR-846 — The tiers: two written models, a derived cut, one task and one judge (2026-10-29, orun21 P1)
+
+**Context.** P1 asks whether the three tiers (concept, training model,
+engine MJCF) stay separate, merge or change, decided from measurements.
+ADR-841–845 measured each tier and each step between them on leon V and the
+biped. The owner's view to test: production CAD need not mix with training
+until late, provided the stand-in models are faithful and train fast. The
+last step was judged by a lab script, `judge.sh`, that wrote a plan for
+`evaluate_runner.py` by hand, because `cadex evaluate` judged only a policy
+the accepted script declares.
+
+**Evidence** (the numbers are ADR-841–845's and M0's,
+`docs/probes/orun21/ITERATION.md`):
+
+| | concept | training model (cut) | engine MJCF |
+|---|---|---|---|
+| written by | a person or agent (spec) | nobody: `cut` from the export | the CAD script |
+| cost to make | 0.1 s | < 1 s, fidelity check included | leon V: ≥ 1,094 s warm (M0 sinks 1, 3) |
+| MJX env steps/s, 8192 envs | leon V 525 k | leon V 303 k; biped 651 k | leon V 9.4 k; biped 181 k |
+| faithful to the export | geometry yes (leon V reach, hip height, foot x ≤ 0.7 mm); mass no (+7.1% E2, +15.7% D1; 25–31 of 95 rows flagged) | yes: 0 of 95 / 45 rows, path ≤ 1.9 mm | itself |
+| biped b1_walk, 100 it, judged on the export | 7/10 (W7 clearance 0.019 vs 0.020, ×3), 101 s | **10/10**, 106 s | 10/10, ~249 s |
+
+- **The cut and the export are one model for training.** The cut-trained
+  biped gets the export's verdict (10/10) at 2.3× its training speed, and
+  costs nothing to make. Nothing argues for keeping it as a tier anyone
+  writes, versions or maintains.
+- **The concept is not the cut.** It is the only model that exists before
+  the CAD, and the only one cheap enough to sweep geometry on (a leon V CAD
+  variant costs ~18 min of build before any training). But it is not
+  faithful where the CAD moves mass, and on the biped, where it matches the
+  cut on 41 of 45 rows, its policy still misses one margin on the export. It
+  screens design; it does not stand in for the confirming retrain.
+- **The export trains only when it must.** On leon V it is 32× slower than
+  its cut (200 M steps: over 6 h of physics); on the biped 3.6×. Its role
+  is the judge and the source of the task.
+
+**Decision.** The tiers **change**, from three tiers to two written
+models, a derived cut, one task and one judge:
+- **Two written models**: the concept (spec) and the CAD (script). They
+  stay separate because they answer different questions at different costs.
+- **The training model is no longer a tier**: it is the export's cut,
+  regenerated from each accepted export by one command that refuses unless
+  it passes fidelity. Training goes on the cut, not the export, wherever the
+  cut passes.
+- **One task**: once the CAD exists, the export's task bundle is the only
+  task. Concept and cut train on it re-laid by name (`cadex_relay.py`).
+- **One judge**: `cadex evaluate` on the accepted export. It gains
+  `--weights FILE --task NAME --out DIR` to hold a candidate policy, one no
+  script declares, to that task's success spec by the same runner. On the
+  biped's concept and cut policies it reproduces `judge.sh`'s 7/10 and
+  10/10 seed for seed, every predicate value equal, in 23 s each
+  (`~/cadex-projects/orun21-lab/p1-relay/evaluate/`). `judge.sh` is retired.
+- **The owner's view holds, with one condition.** Training need not touch
+  the CAD until the confirming retrain, and that retrain runs on the cut,
+  not the CAD. The concept alone does not suffice: its mass placement must
+  be confirmed on the cut before a policy is believed.
+- `training/RECIPE.md` §R states the route, step by step, with these runs.
+
+**Consequences.**
+- `cli/cadex_cli/evaluate.py` `retained_inputs` takes `weights_file`; the
+  candidate's report has an empty `policy_output` and the file's path as
+  `weights`. `--weights` needs `--task` and `--out`, so `evaluations/`, which
+  the dashboard lists, keeps holding declared policies only. No test is
+  added (ADR-725): the CLI flag is not a pinned contract and the runner it
+  calls is unchanged.
+- `docs/CLI.md` (Evaluate), `training/README.md` and `training/RECIPE.md`
+  carry the route.
+- **Gap: leon V.** Its tasks come from its own `t1_bundle.py`, not from an
+  engine export, so there is no leon V bundle to relay or to judge with
+  `cadex evaluate`. It closes when leon V's script declares its walk with
+  `assembly.task` and a success spec, so the export carries the bundle (in a
+  lab copy, since leon V is read-only to this run).
+- **Gap: a concept's task before any CAD.** Cadex has no command that
+  makes a task bundle for a concept with no CAD project; leon IV and V used
+  their own scripts. RECIPE.md lists it under "What is not proven".
