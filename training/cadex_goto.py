@@ -27,6 +27,9 @@ held-out sequence is never one training drew.
 
 ``play --course COURSE.json`` stands a held-out box course in the model's
 terrain slots first (ADR-858), and judges a fall by the height over its ground.
+``play --sequence SEQ.json`` plays a given sequence in place of a seeded draw,
+such as :func:`maze_route`'s way through a maze; a course whose ``walls`` name
+its wall slots is judged on whether any body of the robot entered one (ADR-860).
 
 ``play`` writes the episode as a ``view/`` beside the policy (ADR-835),
 with each frame's goto state, so the dashboard plays it with its points drawn.
@@ -136,6 +139,129 @@ def sequence(seed: int, *, split: str, bands: Sequence[Mapping[str, Any]],
             "bands": [dict(band) for band in bands],
             "shape": {key: list(value) if isinstance(value, tuple) else value
                       for key, value in options.items()},
+            "points": points}
+
+
+#: A maze route's shape (ADR-860): the lead point stands ``lead_cells`` cells
+#: out from a door, so the robot lines up before it enters; a cell where the
+#: way turns carries ``corner_hold_s``, so the layer arrives within its
+#: ``hold_arrive_m`` and the robot turns at the cell's centre; ``clear_m`` is how
+#: far an approach leg keeps from every wall.
+MAZE = {"lead_cells": 2.0, "corner_hold_s": 0.3, "clear_m": 0.4}
+
+
+def _covered(walls: Sequence[Any], x: float, y: float) -> bool:
+    return any(xs[0] <= x <= xs[1] and ys[0] <= y <= ys[1] for xs, ys, _top in walls)
+
+
+def _leg_clear(walls: Sequence[Any], a: Sequence[float], b: Sequence[float], clear_mm: float) -> bool:
+    steps = max(2, int(math.hypot(b[0] - a[0], b[1] - a[1]) / 50.0))
+    for k in range(steps + 1):
+        x, y = a[0] + (b[0] - a[0]) * k / steps, a[1] + (b[1] - a[1]) * k / steps
+        if any(xs[0] - clear_mm <= x <= xs[1] + clear_mm and ys[0] - clear_mm <= y <= ys[1] + clear_mm
+               for xs, ys, _top in walls):
+            return False
+    return True
+
+
+def maze_route(maze: Mapping[str, Any], walls: Sequence[Any], seed: int, *, split: str,
+               bands: Sequence[Mapping[str, Any]], **shape: Any) -> dict[str, Any]:
+    """A go-to-point sequence through a maze and back (ADR-860), seeded by ``(split, seed)``.
+
+    ``maze`` is the engine's maze feature (``x_mm``, ``y_mm``, ``cells_x``,
+    ``cells_y``, ``cell_mm``) and ``walls`` its blocks as
+    ``CadexDynamics.terrain_maze_walls`` returns them: ``(x range, y range,
+    top)`` in mm. The doors are the outer cells whose -x or +x edge no wall
+    covers, the way the shortest path over cell edges no wall covers. From the
+    origin the robot goes to a lead point ``lead_cells`` out from the nearer
+    door, by a corner if the straight leg passes within ``clear_m`` of a wall;
+    then each cell's centre to the far door, a lead point outside it held, and
+    the same way back to the first lead point, held. Inside the maze every
+    point is at the slowest band's speed; the leads take any band.
+    """
+
+    if split not in SPLITS:
+        raise SystemExit(f"split {split!r} is not one of {SPLITS}")
+    if not bands:
+        raise SystemExit("a sequence needs at least one speed band")
+    options = {**MAZE, **{k: v for k, v in SEQUENCE.items() if k == "hold_s"}, **shape}
+    rng = random.Random(f"cadex-goto-maze:{split}:{int(seed)}")
+    cell = float(maze["cell_mm"])
+    nx, ny = int(maze["cells_x"]), int(maze["cells_y"])
+    x0, y0 = float(maze["x_mm"]) - nx * cell / 2.0, float(maze["y_mm"]) - ny * cell / 2.0
+
+    def centre(i: float, j: float) -> tuple[float, float]:
+        return x0 + (i + 0.5) * cell, y0 + (j + 0.5) * cell
+
+    doors = {side: [j for j in range(ny) if not _covered(walls, x0 + edge * cell, centre(0, j)[1])]
+             for side, edge in (("-x", 0), ("+x", nx))}
+    if len(doors["-x"]) != 1 or len(doors["+x"]) != 1:
+        raise SystemExit(f"the maze at {maze['x_mm']:g}, {maze['y_mm']:g} mm has doors {doors}, "
+                         "not one each side")
+    ends = {"-x": (0, doors["-x"][0]), "+x": (nx - 1, doors["+x"][0])}
+    near = min(ends, key=lambda side: math.hypot(*centre(*ends[side])))
+    far = "+x" if near == "-x" else "-x"
+    start, goal = ends[near], ends[far]
+    before = {start: start}
+    queue = [start]
+    while queue:
+        i, j = queue.pop(0)
+        for di, dj in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            k = (i + di, j + dj)
+            if not (0 <= k[0] < nx and 0 <= k[1] < ny) or k in before:
+                continue
+            (cx, cy), (kx, ky) = centre(i, j), centre(*k)
+            if not _covered(walls, (cx + kx) / 2.0, (cy + ky) / 2.0):
+                before[k] = (i, j)
+                queue.append(k)
+    if goal not in before:
+        raise SystemExit("the maze has no way between its doors")
+    way = [goal]
+    while way[-1] != start:
+        way.append(before[way[-1]])
+    way.reverse()
+    out = float(options["lead_cells"])
+    lead_near = centre(start[0] - out if near == "-x" else start[0] + out, start[1])
+    lead_far = centre(goal[0] + out if far == "+x" else goal[0] - out, goal[1])
+    clear = 1000.0 * float(options["clear_m"])
+    route: list[tuple[tuple[float, float], str]] = []
+    if not _leg_clear(walls, (0.0, 0.0), lead_near, clear):
+        corners = [c for c in ((lead_near[0], 0.0), (0.0, lead_near[1]))
+                   if _leg_clear(walls, (0.0, 0.0), c, clear) and _leg_clear(walls, c, lead_near, clear)]
+        if not corners:
+            raise SystemExit("no straight or one-corner approach to the maze clears its walls")
+        route.append((corners[0], "lead"))
+    route.append((lead_near, "lead"))
+    # The way's ends run on through the doors to the lead points, so a door
+    # cell the way turns in is a corner too.
+    ends_out = [(start[0] - 1 if near == "-x" else start[0] + 1, start[1]), *way,
+                (goal[0] + 1 if far == "+x" else goal[0] - 1, goal[1])]
+    turns = {ends_out[k] for k in range(1, len(ends_out) - 1)
+             if (ends_out[k][0] - ends_out[k - 1][0], ends_out[k][1] - ends_out[k - 1][1])
+             != (ends_out[k + 1][0] - ends_out[k][0], ends_out[k + 1][1] - ends_out[k][1])}
+    inside = [(centre(*c), "corner" if c in turns else "cell") for c in way]
+    route += inside + [(lead_far, "held")] + inside[::-1] + [(lead_near, "held")]
+    slow = min(bands, key=lambda band: float(band["low"]))
+    points, x, y, heading = [], 0.0, 0.0, 0.0
+    for (px, py), role in route:
+        px, py = px / 1000.0, py / 1000.0
+        leg = math.atan2(py - y, px - x)
+        turn = abs(math.degrees(math.atan2(math.sin(leg - heading), math.cos(leg - heading))))
+        bearing = "ahead" if turn < 45.0 else "side" if turn < 135.0 else "behind"
+        band = bands[rng.randrange(len(bands))] if role in ("lead", "held") else slow
+        speed = rng.uniform(float(band["low"]), float(band["high"]))
+        hold = (rng.uniform(*options["hold_s"]) if role == "held"
+                else float(options["corner_hold_s"]) if role == "corner" else 0.0)
+        points.append({"xy_m": [round(px, 4), round(py, 4)], "speed_mps": round(speed, 3),
+                       "hold_s": round(hold, 2), "band": str(band["name"]), "bearing": bearing,
+                       "role": role})
+        x, y, heading = px, py, leg
+    return {"schema": GOTO_SCHEMA, "split": split, "seed": int(seed), "route": "maze",
+            "bands": [dict(band) for band in bands],
+            "shape": {key: list(value) if isinstance(value, tuple) else value
+                      for key, value in options.items()},
+            "maze": {key: maze[key] for key in ("x_mm", "y_mm", "cells_x", "cells_y", "cell_mm", "height_mm")
+                     if key in maze},
             "points": points}
 
 
@@ -383,7 +509,7 @@ def episode_seconds(plan: Mapping[str, Any], limits: Mapping[str, Sequence[float
 
 
 def judge(samples: Mapping[str, Any], plan: Mapping[str, Any], dt: float,
-          fell: bool) -> dict[str, Any]:
+          fell: bool, walls: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """An episode's readings against G2's bar (:data:`JUDGE`).
 
     Per point: whether it was reached (the layer moved past it or arrived on
@@ -393,7 +519,9 @@ def judge(samples: Mapping[str, Any], plan: Mapping[str, Any], dt: float,
     point's own speed (not the slow-down), and ``straight_settle_s`` had passed
     since that began. A leg with under ``straight_min_s`` of straight is not
     read for speed. ``leg_s`` is the time from the point lighting to the base
-    reaching it: the layer passing it, or the hold starting.
+    reaching it: the layer passing it, or the hold starting. ``walls``, when the
+    course has any, is :func:`play`'s count of steps a body of the robot was
+    inside a wall; any such step fails ``clear_walls`` (ADR-860).
     """
 
     import numpy as np
@@ -433,10 +561,12 @@ def judge(samples: Mapping[str, Any], plan: Mapping[str, Any], dt: float,
     hold = all(r["hold_worst_m"] is None or r["hold_worst_m"] <= J["hold_m"] for r in rows if r["hold_s"] > 0)
     speeds = [r["speed_ratio"] for r in rows if "speed_ratio" in r]
     track = all(abs(s - 1.0) <= J["speed_tolerance"] for s in speeds)
+    clear = not (walls or {}).get("steps")
     return {"points": rows, "fell": fell, "reached": sum(r["reached"] for r in rows),
             "pass": {"reach": reach, "hold": hold, "speed": track, "no_fall": not fell,
-                     "all": reach and hold and track and not fell},
-            "speed_ratios": speeds, "thresholds": dict(J)}
+                     "clear_walls": clear, "all": reach and hold and track and not fell and clear},
+            "speed_ratios": speeds, "thresholds": dict(J),
+            **({"walls": dict(walls)} if walls is not None else {})}
 
 
 def stand_course(mujoco: Any, np: Any, xml: bytes, course: Mapping[str, Any]) -> tuple[Any, Any]:
@@ -518,8 +648,13 @@ def play(options: argparse.Namespace) -> int:
 
     policy_path = Path(options.policy).expanduser()
     player = Player(policy_path, Path(options.task).expanduser(), options.goals.split(","))
-    plan = sequence(options.seed, split=options.split, bands=parse_bands(options.bands),
-                    points=options.points)
+    if options.sequence:
+        plan = json.loads(Path(options.sequence).expanduser().read_text(encoding="utf-8"))
+        if plan.get("schema") != GOTO_SCHEMA:
+            raise SystemExit(f"--sequence: {options.sequence} is not a {GOTO_SCHEMA}")
+    else:
+        plan = sequence(options.seed, split=options.split, bands=parse_bands(options.bands),
+                        points=options.points)
     arrays = stack(np, [plan])
     course = None
     ground = lambda x_mm, y_mm: 0.0  # noqa: E731
@@ -528,6 +663,13 @@ def play(options: argparse.Namespace) -> int:
         player.model, ground = stand_course(mujoco, np, player.model_xml, course)
         player.ground = ground
     model, data = player.model, mujoco.MjData(player.model)
+    # ADR-860: a course's walls stop only what the model lets touch the ground
+    # (often the feet), so a body inside one is read here, by MuJoCo's own
+    # geom distance, each control step.
+    wall_geoms = [model.geom(f"environment/terrain/{int(i)}").id for i in (course or {}).get("walls") or ()]
+    robot_geoms = [g for g in range(model.ngeom) if int(model.geom_bodyid[g]) != 0]
+    walls = None if not wall_geoms else {"slots": len(wall_geoms), "steps": 0, "first_s": None, "bodies": []}
+    fromto = np.zeros(6)
     data.qpos[:] = player.home
     data.ctrl[player.ctrl_index] = player.reset_command * player.ctrl_scale
     mujoco.mj_forward(model, data)
@@ -569,6 +711,20 @@ def play(options: argparse.Namespace) -> int:
         if index >= count and (step == 0 or record["index"][-2] < count):
             # One second past the last hold, so the end is seen standing.
             steps = min(steps, step + int(round(1.0 / player.dt)))
+        if walls is not None:
+            mujoco.mj_kinematics(model, data)
+            hit = set()
+            for g in robot_geoms:
+                for w in wall_geoms:
+                    gap = np.linalg.norm(data.geom_xpos[g] - data.geom_xpos[w])
+                    if gap > model.geom_rbound[g] + model.geom_rbound[w]:
+                        continue
+                    if mujoco.mj_geomDistance(model, data, g, w, 0.0, fromto) < 0.0:
+                        hit.add(model.body(int(model.geom_bodyid[g])).name)
+            if hit:
+                walls["steps"] += 1
+                walls["first_s"] = walls["first_s"] if walls["first_s"] is not None else round(step * player.dt, 2)
+                walls["bodies"] = sorted(set(walls["bodies"]) | hit)
         step += 1
         data.ctrl[:] = player.control(data, [command["vx"][0], command["vy"][0], command["wz"][0]])
         for _ in range(player.substeps):
@@ -585,7 +741,7 @@ def play(options: argparse.Namespace) -> int:
             poses.append(data.qpos.copy())
             goto_frames.append(dict(goto_frames[-1]))
             break
-    readings = judge(record, plan, player.dt, fell)
+    readings = judge(record, plan, player.dt, fell, walls)
     out = Path(options.view_dir).expanduser() if options.view_dir else policy_path.parent / "view"
     trace = cadex_train.write_view(out, player.model_xml, poses, player.dt * keep,
                                    source=f"cadex_goto play {policy_path.name} {plan['split']}:{plan['seed']}",
@@ -621,6 +777,9 @@ def main(argv: Sequence[str]) -> int:
                               help="a box course JSON to stand in the model's terrain slots "
                                    "(CadexDynamics.terrain_evaluation_course; its 'drawing' goes "
                                    "on the view); default: the model as it is")
+            verb.add_argument("--sequence", default=None,
+                              help="a sequence JSON to play (e.g. maze_route's), in place of "
+                                   "--seed/--split/--bands/--points' draw")
         verb.add_argument("--seed", type=int, default=0)
         verb.add_argument("--split", choices=SPLITS, default="heldout")
         verb.add_argument("--bands", required=True, help="NAME:LOW-HIGH,... in m/s")

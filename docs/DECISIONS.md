@@ -47852,3 +47852,44 @@ policy without retraining it.
 
 **Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
 passed. `training/`: 92 passed.
+
+## ADR-860 — Go-to-point through a maze: `cadex_goto.maze_route`, `play --sequence`, and a body-against-wall reading (2026-10-29, orun21 T2)
+
+**Context.** T2 asks that a held-out sequence pass a wall or maze section with the
+points steering the robot round. The seeded `sequence` draw places points with no
+regard for walls, so no judge could route through a corridor. A course's terrain
+geoms collide only with what the model lets touch the ground (on the Go1, the
+feet), so a wall would stop a foot while a hip passed through it unread.
+
+**Decision.**
+- `cadex_goto.maze_route(maze, walls, seed, split=, bands=)`, pure and standard
+  library. It takes the engine's maze feature and its blocks, as
+  `CadexDynamics.terrain_maze_walls` returns them. It finds the doors and the shortest
+  way over uncovered cell edges. Its points are a lead point outside the nearer door,
+  the cells' centres at the slowest band, a held lead point outside the far door, and
+  the same way back. A turning cell, door cells included, holds 0.3 s (`MAZE`), so the
+  layer arrives within its 0.1 m hold radius and the turn is at the centre. It is
+  seeded by `(split, seed)`. It refuses a maze without one door per side, and an
+  approach that clears no wall by 0.4 m straight or with one corner.
+- `play --sequence SEQ.json` plays a given sequence in place of the seeded draw.
+- A course may list `walls`, its wall slots. `play` then reads every robot geom
+  against each of them at every control step with `mj_geomDistance`. `judge` takes
+  that reading, and any step with a body in a wall fails a new `clear_walls` part of
+  `pass`. A course without `walls` always passes it.
+- `g2_judge.py --level L --maze` turns the pool's walls on (400–500 mm, 2–3 cells) and
+  plays the first ten held-out seeds whose engine-drawn course holds a maze.
+
+**Measured** (`docs/probes/orun21/T2-MAZE.md`). `go1-scan/run2` iteration 300, which
+never trained on walls, passed G2's bar plus `clear_walls` on 10, 9 and 10 of 10 maze
+seeds at levels 0, 1 and 2. Level 1's failure is a fall on a step edge outside the
+maze. A first route without door-cell corners let the hind legs sweep a wall on 4/10
+seeds at every level. One test in `test_cadex_goto.py` holds the door-cell corner. A
+route forced through the walls reads 579 steps with a body inside.
+
+**Consequence.** T2's maze clause is met at levels 0–2. The training layer is
+unchanged: mazes are judged, not trained. The trainer's terrain still lets bodies
+through walls, so a policy trained among walls would learn nothing from touching
+them. That is open if mazes are ever trained.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
+passed. `training/`: 93 passed.

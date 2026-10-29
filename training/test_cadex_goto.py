@@ -12,7 +12,7 @@ import math
 
 import numpy as np
 
-from cadex_goto import layer_start, layer_step, sequence, stack
+from cadex_goto import layer_start, layer_step, maze_route, sequence, stack
 
 BANDS = [{"name": "walk", "low": 0.4, "high": 0.7}, {"name": "run", "low": 1.0, "high": 1.5}]
 LIMITS = {"vx": [-1.5, 1.5], "vy": [-0.8, 0.8], "wz": [-1.2, 1.2]}
@@ -53,3 +53,22 @@ def test_the_next_point_lights_on_arrival_and_after_the_hold_not_on_a_clock() ->
     # A point with no hold is passed on arrival; past the last one the command is zero.
     state, command = one(1.0, 2.9, math.pi / 2)
     assert int(state["index"][0]) == 2 and all(float(v[0]) == 0.0 for v in command.values())
+
+
+def test_a_maze_route_turns_at_a_door_cell_and_comes_back_the_same_way() -> None:
+    # ADR-860's regression: a way that turns in its door cell left the robot
+    # turning 0.25 m short of the centre, and its hind legs swept a wall.
+    # 2 x 2 cells of 1 m centred at (5, 0) m: in by the -x door in row 0, up,
+    # then out by the +x door in row 1.
+    maze = {"x_mm": 5000.0, "y_mm": 0.0, "cells_x": 2, "cells_y": 2, "cell_mm": 1000.0, "height_mm": 400.0}
+    walls = [((3970.0, 4030.0), (-30.0, 1030.0), 400.0), ((5970.0, 6030.0), (-1030.0, 30.0), 400.0),
+             ((4970.0, 5030.0), (-1030.0, 30.0), 400.0),
+             ((3970.0, 6030.0), (-1030.0, -970.0), 400.0), ((3970.0, 6030.0), (970.0, 1030.0), 400.0)]
+    route = maze_route(maze, walls, 0, split="heldout", bands=BANDS)
+    assert route == maze_route(maze, walls, 0, split="heldout", bands=BANDS)
+    got = [(tuple(p["xy_m"]), p["role"]) for p in route["points"]]
+    there = [((2.5, -0.5), "lead"), ((4.5, -0.5), "corner"), ((4.5, 0.5), "corner"),
+             ((5.5, 0.5), "cell"), ((7.5, 0.5), "held")]
+    assert got == there + there[-2::-1][:-1] + [((2.5, -0.5), "held")]
+    assert [p["bearing"] for p in route["points"]][5] == "behind"
+    assert all(p["band"] == "walk" for p in route["points"] if p["role"] in ("cell", "corner"))

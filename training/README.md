@@ -718,6 +718,19 @@ held-out courses at one level; `--flat` an empty one.
 A policy that reads a height scan (`role: policy`) reads it over the course
 stood, or the bundle's own box course without `--course` (ADR-859).
 
+**Through a maze (ADR-860).** `play --sequence SEQ.json` plays a given sequence
+in place of a seeded draw. `cadex_goto.maze_route(maze, walls, seed, split=,
+bands=)` is one: from the engine's maze feature and its walls
+(`CadexDynamics.terrain_maze_walls`), a lead point outside the nearer door, each
+cell's centre on the way to the far door at the slowest band, a held lead point
+outside, and the same way back. A cell where the way turns (the door cells
+included) holds 0.3 s, so the layer arrives within 0.1 m and the robot turns at
+its centre. A course whose `walls` lists its wall slots is read every control
+step for any body of the robot inside one (MuJoCo's `mj_geomDistance`), since a
+course's walls stop only what the model lets touch the ground; any such step
+fails `clear_walls`. `g2_judge.py --level L --maze` plays the first ten held-out
+seeds whose course holds a maze, with the pool's walls turned on.
+
 **Training on it (ADR-840).** `cadex_train.py --goto walk:0.4-0.7,run:1.0-1.5`
 puts that share (`--goto-share`, default 0.2; 0.5 cost the Go1 its slow walk) of episodes on the layer: each
 draws one of 1024 `train`-split sequences, turned to a uniform heading about
