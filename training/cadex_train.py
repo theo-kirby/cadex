@@ -1171,7 +1171,17 @@ def check_policy_fits(
         refuse("the model digest", bundle["model_sha256"], model.get("sha256"))
     # ADR-759: a family run's actor reads its morph constants after them.
     wanted_channels = actor_channels(bundle["task"]) + family_morph_names(bundle)
-    if list(header.get("observations") or []) != wanted_channels:
+    read = list(header.get("observations") or [])
+    # ADR-859: a curriculum step that hands the actor a height scan appends
+    # the scan's channels after every input the source read (ADR-748 puts a
+    # policy scan last), and the warm start gives them zero weights.
+    gained = wanted_channels[len(read):]
+    if (curriculum is not None and "scans" in curriculum and gained
+            and wanted_channels[:len(read)] == read and not family_morph_names(bundle)
+            and set(gained) <= set(scan_channels(bundle["task"], policy_only=True))):
+        curriculum = curriculum + ["scans.actor"]
+        wanted_channels = read
+    if read != wanted_channels:
         refuse(
             "the observation channels, in order",
             wanted_channels,
@@ -4223,7 +4233,25 @@ def train(
                 f"{trained_with!r} activation and this run trains "
                 f"{activation_name!r}. Weights do not carry across an "
                 f"activation; pass --activation {trained_with} to continue it.")
-        restored = unflatten_parameters(np, decoded["weights"], shapes)
+        gained = (len(env.actor_names) - len(source_header.get("observations") or ())
+                  if "scans.actor" in (curriculum_keys or ()) else 0)
+        restored = unflatten_parameters(
+            np, decoded["weights"], [(shapes[0][0] - gained, shapes[0][1])] + list(shapes[1:]))
+        if gained:
+            # ADR-859: the scan's inputs join with zero weights, so the warmed
+            # actor plays the source's policy until training moves them, and
+            # their statistics start fresh (mean 0, std 1, one sample).
+            first, bias = restored[0]
+            restored[0] = (np.concatenate([np.asarray(first), np.zeros(
+                (gained, first.shape[1]), dtype=np.float32)]), bias)
+            stats = source_header.get("normaliser") or {}
+            source_header = {**source_header, "normaliser": {
+                **stats, "mean": list(stats["mean"]) + [0.0] * gained,
+                "std": list(stats["std"]) + [1.0] * gained}}
+            actor_carried = [True] * (shapes[0][0] - gained) + [False] * gained
+            if not options.quiet:
+                print(f"init-from  the actor gains {gained} height-scan inputs at zero weight",
+                      flush=True)
         layers = dict(params.policy["params"])
         for index, (weight, bias) in enumerate(restored):
             name = f"hidden_{index}"

@@ -225,7 +225,11 @@ class Player:
     ``scale``, the goal channels from the layer, and the previous two issued
     commands (and their rate). Then ``(x - mean) / std``, the MLP,
     ``tanh * output_scale + output_bias``, the bundle's clamp and scale into
-    ctrl. A channel with no source here (contacts, trackers, scans) is refused.
+    ctrl. A height scan the actor reads (ADR-748) is the base's height over
+    :attr:`ground` at each of its points, turned by its heading, as
+    ``CadexDynamics.height_scan_values`` reads it (ADR-859); ``ground`` is the
+    bundle's box course, or the plane, until ``play --course`` stands another.
+    A channel with no source here (contacts, trackers) is refused.
     """
 
     def __init__(self, policy_path: Path, task_path: Path, goals: Sequence[str]) -> None:
@@ -301,8 +305,15 @@ class Player:
         self.mean = np.array(header["normaliser"]["mean"])
         self.std = np.array(header["normaliser"]["std"])
         self.channels = list(header["observations"])
+        self.scans = [row for row in task.get("scans") or ()
+                      if set(row["channels"]) & set(self.channels)]
+        scanned = {channel for row in self.scans for channel in row["channels"]}
+        terrain = task.get("terrain") or {}
+        self.ground = (course_ground(np, terrain) if terrain.get("kind") == "boxes"
+                       else (lambda x_mm, y_mm: 0.0))
         for channel in self.channels:
             if not (channel in self.sensor or channel in self.goals or channel in self.command_names
+                    or channel in scanned
                     or (channel.endswith("_rate") and channel[:-5] in self.command_names)):
                 raise SystemExit(f"channel {channel!r}: no source in this player")
         witness = header["evaluation"]
@@ -328,8 +339,20 @@ class Player:
     def control(self, data: Any, command: Sequence[float]) -> Any:
         goal = {name: float(value) * scale for name, value, scale in zip(self.goals, command, self.goal_scale)}
         values = []
+        heights = {}
+        for row in self.scans:
+            body = int(row["body_id"])
+            x, y, z = (float(v) * float(row["scale"]) for v in data.xpos[body])
+            R = data.xmat[body]
+            norm = math.hypot(R[0], R[3])
+            cos, sin = (R[0] / norm, R[3] / norm) if norm > 1e-9 else (1.0, 0.0)
+            for (ahead, left), channel in zip(row["offsets_mm"], row["channels"]):
+                heights[channel] = z - self.ground(x + cos * ahead - sin * left,
+                                                   y + sin * ahead + cos * left)
         for channel in self.channels:
-            if channel in self.sensor:
+            if channel in heights:
+                values.append(heights[channel])
+            elif channel in self.sensor:
                 adr, scale = self.sensor[channel]
                 values.append(data.sensordata[adr] * scale)
             elif channel in goal:
@@ -455,9 +478,19 @@ def stand_course(mujoco: Any, np: Any, xml: bytes, course: Mapping[str, Any]) ->
         geom = spec.geom(f"environment/terrain/dome/{index}")
         geom.pos = [x * scale, y * scale, z * scale]
         geom.size = [(radius or cadex_train.TERRAIN_PARKED_HALF_MM) * scale, 0.0, 0.0]
-    model = spec.compile()
+    return spec.compile(), course_ground(np, course)
+
+
+def course_ground(np: Any, course: Mapping[str, Any]) -> Any:
+    """``ground(x_mm, y_mm)`` on a box course: the highest box top, dome cap or plane there."""
+
+    import cadex_train
+
+    lowest = float(course["lowest_mm"])
+    boxes, domes = list(course["boxes"]), list(course.get("domes") or ())
     scan = np.asarray(cadex_train.box_scan_rows(cadex_train.course_geoms(boxes, lowest, len(boxes), 1.0)))
-    caps = np.asarray(rows[:len(domes)], dtype=np.float64).reshape(-1, 4)
+    caps = np.asarray([[d["x_mm"], d["y_mm"], d["top_mm"] - d["radius_mm"], d["radius_mm"]]
+                       for d in domes], dtype=np.float64).reshape(-1, 4)
 
     def ground(x_mm: float, y_mm: float) -> float:
         height = lowest
@@ -471,7 +504,7 @@ def stand_course(mujoco: Any, np: Any, xml: bytes, course: Mapping[str, Any]) ->
                 height = max(height, float((caps[on, 2] + np.sqrt(reach[on])).max()))
         return height
 
-    return model, ground
+    return ground
 
 
 def play(options: argparse.Namespace) -> int:
@@ -493,6 +526,7 @@ def play(options: argparse.Namespace) -> int:
     if options.course:
         course = json.loads(Path(options.course).expanduser().read_text(encoding="utf-8"))
         player.model, ground = stand_course(mujoco, np, player.model_xml, course)
+        player.ground = ground
     model, data = player.model, mujoco.MjData(player.model)
     data.qpos[:] = player.home
     data.ctrl[player.ctrl_index] = player.reset_command * player.ctrl_scale

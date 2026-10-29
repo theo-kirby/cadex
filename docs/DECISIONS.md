@@ -47809,3 +47809,46 @@ iteration 399.
 
 **Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53 passed.
 `training/`: 91 passed.
+
+## ADR-859 — A warm start may hand the actor a height scan at zero weight; the go-to-point player reads it (2026-10-29, orun21 T2)
+
+**Context.** ADR-858 found the blind Go1 go-to-point actor stopping at 42–92 mm
+step faces, and named the missing height scan as the hypothesis. ADR-748 refused a
+warm start across a scan that becomes the actor's, because the actor's inputs
+move. That left only a cold run to test the hypothesis, which would also lose the
+flat skill the iteration-200 checkpoint has. `cadex_goto.Player` refused scan
+channels, so no scan policy could be judged.
+
+**Decision.**
+- `check_policy_fits`: on a curriculum step that moves `scans`, the actor may gain
+  channels when they are policy scan channels appended after every input the source
+  read, in its order (ADR-748 puts a policy scan last). The step's keys then name
+  `scans.actor`. Anything else that moves the actor's inputs is refused as before. So
+  is a family run.
+- The warm start unpacks the source at its own input width. It then appends zero rows
+  to the first layer for the new inputs, so the warmed actor computes the source's
+  policy exactly. Their normaliser statistics start fresh: mean 0, std 1 and a
+  count of one, through ADR-760's `actor_carried`.
+- `cadex_goto.Player` reads a policy scan as `CadexDynamics.height_scan_values`
+  does: the body's height over the ground at each grid point, turned by heading. The
+  ground is the course `play --course` stood, or else the bundle's own box course
+  (or the plane). `stand_course`'s ground is now `course_ground`.
+- One test in `test_curriculum_warm_start.py` holds the admission and the refusal
+  that remains.
+- ADR-748's refusal is narrowed to this.
+
+**Measured** (`docs/probes/orun21/T2-SCAN.md`). `go1-scan/run1` was warm from
+`go1-around/run1` iteration 200 with a trunk scan: 49.2 M steps in 512 s. Judged at
+G2's bar on ten held-out sequences, it passed level 2 on 6/10 at iteration 200 and
+5/10 at the end, against the blind policy's 1/10. Flat ground and level 0 passed
+10/10 at both checkpoints. Level 4 passed 0 and then 1 of 10, with fewer falls
+(1 against 6) and more stops. The player's scan matched the engine's within 6e-14 mm
+over 300 poses.
+
+**Consequence.** The blind actor was binding at level 2. Level 4 is still open, and
+the curriculum had put only 5% of environments at level 5 or higher when the screen
+ended, still climbing. A task that adds a policy scan can now continue a blind
+policy without retraining it.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
+passed. `training/`: 92 passed.
