@@ -31,6 +31,8 @@ def main() -> int:
     parser.add_argument("out")
     parser.add_argument("--size", default="1440x810")
     parser.add_argument("--settle", type=float, default=4.0, help="seconds to let playback run")
+    parser.add_argument("--seek", type=float, default=None, metavar="S",
+                        help="show the run's rollout at S seconds, if it has one")
     options = parser.parse_args()
     width, height = (int(v) for v in options.size.split("x"))
     server, _thread = serve(Path(options.project).expanduser(), "127.0.0.1", 0)
@@ -50,13 +52,23 @@ def main() -> int:
             page.wait_for("['loaded','missing','error'].includes("
                           "document.getElementById('model-status').dataset.state)", timeout=300)
             page.evaluate("window.cadexReview.viewer().fit()")
+            if options.seek is not None:
+                # The rollout loads after the model: wait for it, then show the time asked, the
+                # follow camera keeping a design that walked off its rest bounds in view.
+                page.wait_for("(function(p){return !!p && p.times_s.length > 2})(window.cadexReview.playback())",
+                              timeout=120)
+                page.evaluate("window.cadexReview.setFollow(true)")
+                page.evaluate(f"window.cadexReview.seek({options.seek})")
             time.sleep(options.settle)
             shot = page.send("Page.captureScreenshot", {"format": "png"}, timeout=120)
             Path(options.out).write_bytes(base64.b64decode(shot["data"]))
             status = page.evaluate("(function(s){return {state:s.dataset.state, tier:s.dataset.tier||'',"
                                    " text:s.textContent}})(document.getElementById('model-status'))")
             stats = page.evaluate("JSON.stringify(window.cadexReview.viewer().stats())")
-            print(json.dumps({"status": status, "stats": json.loads(stats)}, indent=1)[:1500])
+            playback = page.evaluate("JSON.stringify((function(p){return p && {t:p.t, frames:p.times_s.length,"
+                                     " playing:p.playing}})(window.cadexReview.playback()))")
+            stats = {k: v for k, v in json.loads(stats).items() if k not in ("bounds", "stage", "poses", "colours", "finishes")}
+            print(json.dumps({"status": status, "playback": json.loads(playback), "stats": stats}, indent=1))
     finally:
         server.shutdown()
         server.server_close()
