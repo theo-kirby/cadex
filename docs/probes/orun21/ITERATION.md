@@ -314,3 +314,31 @@ the learning rate is a constant in the compiled update and the seed reaches the
 rollout through the drawn pools, so a hyperparameter screen still compiles its
 update. The 19.5 s left before iteration 0 on a full hit is imports, the
 environment's build and loading the cached programs; not split.
+
+**Rank 3, the warm rebuild: the part cache was wiped by every other pass
+(ADR-850).** The restore attempt and the build attempt of one export each
+spent 260–270 CPU-s on `chest_frame` and 180–190 on `skull_frame`
+(`progress.json` in each attempt): every part missed, twice. ADR-782's
+fingerprint hashed the request's `document_objects`, which the restore pass
+sends empty and a build sends full (317 objects on leon V), so each pass
+deleted the other's folder. Now the fingerprint leaves them out.
+`m0-build/s1/rebuild_time.sh` runs `cadex export --format brep --rebuild` on
+`m0-build/leonv` (leon V `4d67e21`, revision `67b2a28c`) and keeps both
+attempts' ledgers (`ledgers-<label>.txt`, `times.txt`):
+
+| export --rebuild of leon V, warm | restore attempt | build attempt | total |
+|---|---|---|---|
+| M0 warm (`a612af90`) | 432.3 s | 661.3 s | **1,093.6 s** |
+| before (`82498a40`) | 435.8 s | 607.2 s | **1,055.7 s** |
+| after | 21.0 s | 195.5 s | **226.3 s** |
+| after, again | 21.8 s | 198.5 s | **230.1 s** |
+
+The before run's build attempt started after the fix was in the dev tree the
+CLI runs, so it missed for a changed engine rather than for the restore's
+folder; it is the cold-once that any engine edit costs, and it wrote the folder
+(`61aabbfe…`) both later passes hit. All three runs give digest `78850ab3…`
+and the same 102 files byte for byte, so leon V's rebuild is reproducible
+again once its parts are kept (the before run itself re-accepted under a new
+digest, as ADR-848's did). What the warm build still spends: ~157 CPU-s before
+the swept fit, led by panel checks (`c_pnl_shin_r` 9.7 s, `c_pnl_withers`
+8.1 s) and the script (5.9 s), then the swept fit; not split further.

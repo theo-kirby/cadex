@@ -991,11 +991,16 @@ class _PartCache:
             import Part
             library = Path(getattr(Part, "__file__", "") or "")
             stat = library.stat() if library.is_file() else None
+            # Not the document's object list (ADR-850): only the script reads
+            # it, through ``doc``, so it reaches a part only through the
+            # payload the key already hashes. The restore pass sends none and
+            # a build sends the document's, so keying it made each pass delete
+            # the other's folder and every rebuild of a restored project cold.
             digest.update(json.dumps([
                 [str(part) for part in App.Version()[:4]],
                 str(getattr(Part, "OCC_VERSION", "")),
                 [stat.st_size, stat.st_mtime_ns] if stat else None,
-                request.get("inputs"), request.get("document_objects"),
+                request.get("inputs"),
             ], sort_keys=True, default=str).encode("utf-8"))
             assets = root / "assets"
             for path in sorted(assets.rglob("*")) if assets.is_dir() else ():

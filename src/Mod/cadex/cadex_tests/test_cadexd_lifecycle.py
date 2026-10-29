@@ -2373,6 +2373,48 @@ def test_an_offset_project_reopens_although_its_bytes_never_repeat(tmp_path):
 
 
 @pytest.mark.skipif(FREECADCMD is None, reason="No FreeCADCmd binary available.")
+def test_a_reopen_reads_the_part_cache_the_accepting_build_wrote(tmp_path):
+    """The restore pass and a build share one part cache (ADR-850).
+
+    A build sends the document's objects and the restore pass none; both
+    were in the cache's fingerprint, so after any second accept each pass
+    deleted the other's folder and leon V rebuilt every part twice per
+    export. A kept offset replays its bytes, so the reopen matches the
+    accepted digest byte for byte rather than through the drift path.
+    """
+
+    root = tmp_path / "cached.cadex"
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(root)})["ok"]
+        for source in (
+            'pin = part.cylinder(4.0, 10.0)\nresult = {"pin": pin}\n',
+            "pin = part.cylinder(4.0, 10.0)\n"
+            'result = {"pin": pin, "sleeve": part.offset(pin, 0.15, output_type="solid")}\n',
+        ):
+            state = json.loads((root / "script.json").read_text()) if (root / "script.json").exists() else {}
+            written = client.request("write_script", {
+                "source": source, "expected_revision": state.get("accepted_revision", ""),
+            })
+            assert written["ok"], written
+        state = json.loads((root / "script.json").read_text())
+        cache = root / "script_artifacts" / "part-cache"
+        kept = sorted(path.name for path in cache.iterdir())
+        assert len(kept) == 1, kept
+        _stop(client)
+        client = _spawn_cadexd()
+        reopened = client.request("open_project", {"project_root": str(root)})
+        assert reopened["ok"], reopened
+        restore = reopened["restore"]
+        assert restore["digest"] == state["accepted_digest"], restore
+        assert "matched_by" not in restore, restore
+        assert sorted(path.name for path in cache.iterdir()) == kept
+    finally:
+        _stop(client)
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="No FreeCADCmd binary available.")
 def test_the_accepted_recipe_reopens_when_the_kernel_rebuilds_it_differently(tmp_path):
     """Same source, same settings, a different kernel answer (ADR-476).
 

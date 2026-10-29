@@ -47242,3 +47242,48 @@ launch):
   snapshot used to.
 - The cache grows on disk (15 MB after the Go1 runs above); deleting the
   directory is always safe.
+
+## ADR-850 — The part cache is not keyed by the document's object list (2026-10-29, orun21 S1)
+
+**Context.** M0 ranked third a warm rebuild the caches do not make cheap:
+an unchanged leon V rebuilt in 661 s warm against 1,433 s cold, and its
+restore pass took 432 s warm against 447 s cold (`docs/probes/orun21/
+ITERATION.md` §3, §7). The two attempts of one export show why
+(`m0-build/leonv`, the export before ADR-848): the restore attempt's CPU
+ledger spends 261 CPU-s on `chest_frame` and 189 on `skull_frame`, and the
+build attempt after it 265 and 190 — every part built from nothing, both
+times. ADR-782's fingerprint hashed the request's `document_objects`. The
+restore pass sends `[]` (it builds into an empty document) while a build
+sends the document's objects (317 on leon V), so the two passes got two
+fingerprints, and each, opening its folder, deleted the other's as "another
+engine's parts". A project accepted once on a fresh document kept its cache
+(ADR-782's evidence); from the second accept on, every engine-opening
+command alternated restore and build and every part missed. A part rebuilt
+from nothing also re-serializes where it never repeats (`part.offset`,
+approximated skins), so the fit cache's BREP-keyed pairs missed too and
+leon V's rebuild re-accepted the same revision under a new digest
+(`70542856` → `78a948c6`, ADR-848).
+
+**Decision.** The fingerprint no longer hashes `document_objects`. The
+document view (names, labels and type ids) is read only by the script,
+through `doc`; whatever it changes in a part reaches the part through the
+payload, which the part key (`_memo_key`) already hashes. Everything else
+in the fingerprint stays.
+
+**Consequences.** The restore pass and a build share one folder, so a
+reopen replays the accepting build's bytes, and the build after it hits
+every part the restore built. One engine edit (this one included) still
+makes the next build cold once. A part whose payload differs between the
+passes (a script that reads `doc`) misses, as before, never a wrong hit.
+New contract test, for the regression that happened:
+`test_a_reopen_reads_the_part_cache_the_accepting_build_wrote` (two
+accepts, then a reopen keeps the cache's folder and matches an offset's
+digest byte for byte; it fails on the old fingerprint). No protocol, tool
+or published-shape change.
+
+**Evidence** (`~/cadex-projects/orun21-lab/m0-build/s1/rebuild_time.sh`,
+`cadex export --format brep --rebuild` of unchanged leon V `4d67e21`, warm,
+`ITERATION.md` §8): before 435.8 s restore + 607.2 s build = 1,055.7 s
+(M0: 1,093.6 s); after 21.0 s + 195.5 s = 226.3 s, and 230.1 s again. All
+three give digest `78850ab3…` and 102 byte-identical files. `pixi run
+test-engine`: 158 passed, 3 skipped; `pytest cli/tests`: 53 passed.
