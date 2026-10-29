@@ -48106,3 +48106,63 @@ untested.
 **Evidence.** `training/` tests: 94 passed (`test_cadex_goto.py` 4). `pixi run test-engine`: 158 passed,
 3 skipped. `pytest cli/tests`: 53 passed. The runs, judges and launch scripts are in
 `orun21-lab/g3/biped/`.
+
+## ADR-867 — The RobStride RS05 and RS00 join the drive catalog as small tiers (2026-10-29)
+
+**Context.** The catalog's lightest drives were the AK45-10 (262 g, 7 N·m
+peak, 24 V) and the AK60-6 (380 g, 9 N·m), and its only RobStride was the
+RS04 (ADR-826). The owner asked for the RobStride 05 and 00: a 48 V family
+that matches the RS04's bus, with a drive lighter than any in the catalog for
+a neck, jaw, tail or toe, and a 14 N·m drive between the AK60-6 and the
+AK70-10.
+
+**Decision.** `lib.qdd("robstride-rs05")` and `lib.qdd("robstride-rs00")`
+are catalogued, from sources better than the RS04's.
+
+- **Ratings,** from RobStride's product pages and its user manuals
+  (`RobStride/Product_Information` on GitHub, commit `384cc561`):
+  - RS05: 7.75:1, 48 V, rated 1.6 N·m at 100 rpm, peak 5.5 N·m, no-load
+    480 rpm, 191 g.
+  - RS00: 10:1, 48 V, rated 5 N·m at 100 rpm, peak 14 N·m, no-load 315 rpm,
+    310 g.
+
+  As on the RS04, the manuals' currents are phase peaks and their torque
+  constants output-side. The rows keep the catalog's units: Arms (RS05
+  1.70 / 7.78, RS00 3.32 / 10.96) and the motor-side Kt.
+- **Envelopes and holes** come from the manuals' dimensioned drawings, with
+  each hole circle, depth and clocking measured on RobStride's STEP models
+  (read with FreeCADCmd in a scratch directory; not in the tree). The drawings
+  leave some of these out: the RS05's rear clocking (37°) and the RS00's
+  front depth (5.5 mm).
+  - **RS05:** one Ø46 × 44 mm cylinder; 8-M3×7 front on Ø41.5;
+    4-M3×10 rear on Ø38.5; 6-M4×3.5 output on Ø24.
+  - **RS00:** a Ø57 case with a Ø35 output hub 0.4 mm proud, 51.4 mm
+    overall; 6-M3 front on Ø50; 4-M3×4 rear on Ø38; 6-M3×5 output on Ø27.
+
+  Both have rear holes, so both seat front or rear, unlike the RS04.
+- **Not published, so flagged** in `approximate`, as on the RS04:
+  - rotor inertia, the AK45-10's 157.33 g·cm² scaled as diameter⁴ × length
+    (RS05 86.9, RS00 239.3 g·cm², good to about a factor of 2);
+  - back drive, RS05 0.08 and RS00 0.15 N·m;
+  - backlash, `None`.
+
+  The dowels, pilots and connectors are omitted.
+- The catalog listing's note, `docs/XSCRIPT.md`'s table, `docs/PROVENANCE.md`
+  §8i and the creature style's drive list name them.
+
+**Consequences.**
+- The catalog has eight QDDs. The RS05 is the lightest and its lowest torque
+  (5.5 N·m peak); the RS00 sits between the AK60-6 and the AK70-10.
+- Every earlier row is unchanged. No protocol, tool-surface, CLI or
+  `pixi.toml` change; no suite test is added (ADR-725).
+- Verified by `docs/probes/robstride/small_catalog.py`. It stages the library
+  on the production part API and checks, for each drive:
+  - the published figures;
+  - Kt × current against the rated and peak torques;
+  - the hole counts and their fit inside the case and the flange;
+  - the effective density against the mass;
+  - the reflected inertia and the speed-line damping;
+  - front, rear and output mountings, and front and rear housings.
+
+  It also checks that every other QDD's rear circle is unchanged. Plus a
+  kernel build of both drives, `pixi run test-engine` and `pytest cli/tests`.
