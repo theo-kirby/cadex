@@ -2525,3 +2525,48 @@ def test_a_changed_script_is_still_refused_at_the_restore_pass(tmp_path):
             assert (retained / "result.json").read_bytes() == original_result
     finally:
         _stop(client)
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="FreeCADCmd unavailable")
+def test_static_fit_processes_preserve_measurements_and_cache(tmp_path):
+    """Parallel cold fits keep exact results, cache hits and explicit failures."""
+    program = '''
+import sys, json, time
+sys.path.insert(0, MODULE_DIR)
+import FreeCAD as App, Part
+from types import SimpleNamespace
+import cadex_assembly_worker as worker
+components = {}
+for name, x in [('a', 0), ('b', 5), ('c', 10), ('d', 100)]:
+    shape = Part.makeBox(10, 10, 10)
+    shape.translate(App.Vector(x, 0, 0))
+    components[name] = SimpleNamespace(Shape=shape)
+serial = worker._measure_clearance(components, parallel=False)
+cache = worker._FitCache(None, {})
+parallel = worker._measure_clearance(components, cache=cache)
+assert serial == parallel, (serial, parallel)
+# A declared floor wider than the default cull still requires an exact
+# measurement. The child must not recull it and poison the exact cache.
+floors = {frozenset(('a', 'd')): 200}
+serial_floor = worker._measure_clearance(components, parallel=False, floors=floors)
+parallel_floor = worker._measure_clearance(components, floors=floors)
+assert serial_floor == parallel_floor, (serial_floor, parallel_floor)
+assert not next(r for r in parallel_floor if r['first'] == 'a' and r['second'] == 'd').get('culled')
+assert cache.added
+
+def unexpected(*args):
+    raise AssertionError('cached pair spawned a child')
+worker._bounded_static_pair_saved = worker._bounded_static_pair
+worker._bounded_static_pair = unexpected
+assert worker._measure_clearance(components, cache=cache) == serial
+worker._bounded_static_pair = worker._bounded_static_pair_saved
+expired = worker._bounded_static_pair({}, time.monotonic() - 1)
+assert expired.get('error') and expired['distance_mm'] is None
+failed = worker._bounded_static_pair({'bad': 'invalid brep'}, time.monotonic() + 10)
+assert failed.get('error') and failed['common_volume_mm3'] is None
+print('STATIC_FIT_PARITY_OK')
+'''.replace('MODULE_DIR', repr(str(CADEX_ROOT)))
+    run = subprocess.run([str(FREECADCMD), '-c', program], cwd=tmp_path,
+                         capture_output=True, text=True, timeout=60)
+    assert run.returncode == 0, run.stderr
+    assert 'STATIC_FIT_PARITY_OK' in run.stdout, run.stdout + run.stderr

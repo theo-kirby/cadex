@@ -1364,7 +1364,7 @@ def command_params(args: argparse.Namespace, report: RunReport) -> int:
     """Change declared parameter values. No model is spawned at all."""
 
     values = _parse_assignments(args.assignments)
-    with _engine_session(args, report) as (engine, client):
+    with _engine_session(args, report, restore=False) as (engine, client):
         revision = read_working_revision(client)
         _progress(f" · set_params  {', '.join(sorted(values))}")
         # Retain triangles in this accepted attempt so a following walk can
@@ -1454,9 +1454,22 @@ def _export_blueprints(args: argparse.Namespace, client: CadexdClient, report: R
     )
 
 
+def _retained_review_snapshot(client, root):
+    """Draw the accepted attempt; rebuild only when no usable display was retained."""
+    try:
+        fit = read_fit(client)
+    except Exception:
+        fit = None
+    try:
+        return retained_snapshot(root, fit)
+    except (InventoryError, OSError, ValueError, KeyError, TypeError):
+        return acquire_snapshot(client)
+
+
 def command_render(args: argparse.Namespace, report: RunReport) -> int:
-    with _engine_session(args, report) as (_engine, client):
-        path, value = write_render(client, report.project_root)
+    with _engine_session(args, report, restore=False) as (_engine, client):
+        snapshot = _retained_review_snapshot(client, report.project_root)
+        path, value = write_render(client, report.project_root, accepted_snapshot=snapshot)
         report.revision = report.accepted_revision = value["revision"]
         report.digest = value["digest"] or ""
         report.notes.append(f"render: {value['triangles']} triangles, four views and a hero; {path}.")
@@ -1480,7 +1493,7 @@ def command_hero(args: argparse.Namespace, report: RunReport) -> int:
     def draw_sheet(project_root: Path) -> dict[str, Any]:
         # As `cadex render` draws it, from the retained accepted attempt: no rebuild.
         _progress(" · sheet: opening the engine for the design's fit and inventory")
-        with _engine_session(args, report) as (_engine, client):
+        with _engine_session(args, report, restore=False) as (_engine, client):
             try:
                 fit = read_fit(client)
             except Exception:  # noqa: BLE001 - as cadex render: an unreadable fit leaves every part drawn
@@ -1528,8 +1541,10 @@ def command_section(args: argparse.Namespace, report: RunReport) -> int:
     section is a claim about what was *not* on the page as much as what was.
     """
 
-    with _engine_session(args, report) as (_engine, client):
-        path, value = write_section(client, report.project_root, plane=args.plane, offset=args.offset_mm)
+    with _engine_session(args, report, restore=False) as (_engine, client):
+        snapshot = _retained_review_snapshot(client, report.project_root)
+        path, value = write_section(client, report.project_root, plane=args.plane, offset=args.offset_mm,
+                                    accepted_snapshot=snapshot)
         report.revision = report.accepted_revision = value["revision"]
         report.digest = value["digest"] or ""
         report.notes.append(
@@ -1566,7 +1581,7 @@ def command_inventory(args: argparse.Namespace, report: RunReport) -> int:
     project, where the next visit's agent will read it.
     """
 
-    with _engine_session(args, report) as (_engine, client):
+    with _engine_session(args, report, restore=False) as (_engine, client):
         _progress(" · inspect scope=inventory")
         path, value = write_inventory(
             client, report.project_root, target=str(args.assembly or "")
@@ -1700,7 +1715,7 @@ def command_link(args: argparse.Namespace, report: RunReport) -> int:
     if args.asset_name:
         request["name"] = args.asset_name
 
-    with _engine_session(args, report) as (engine, client):
+    with _engine_session(args, report, restore=False) as (engine, client):
         _progress(f" · link_part  {args.output or '?'}")
         reply = client.request("link_part", request)
         if reply.get("ok") is not True:
@@ -1788,7 +1803,7 @@ def command_asset(args: argparse.Namespace, report: RunReport) -> int:
             return EXIT_USAGE
         paths.append(path.resolve())
 
-    with _engine_session(args, report) as (_engine, client):
+    with _engine_session(args, report, restore=False) as (_engine, client):
         if not paths:
             report.assets = read_project_assets(client)
             if not report.assets:
@@ -1888,7 +1903,7 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
         report.error = f"{SLOT_BUSY}; wait for it to end."
         return EXIT_REJECTED
 
-    with _engine_session(args, report) as (engine, client):
+    with _engine_session(args, report, restore=False) as (engine, client):
         _progress(" · rebuild")
         # The accepted pin it becomes keeps triangles, as an accept's does (ADR-851).
         reply = client.request("rebuild", {"display": dict(STANDARD_DISPLAY)})
@@ -2057,7 +2072,7 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
         report.ok = True
         return EXIT_OK
 
-    with _engine_session(args, report) as (_engine, client):
+    with _engine_session(args, report, restore=False) as (_engine, client):
         _progress(f" · put_asset  {policy_path.name}")
         reply = client.request("put_asset", {"source_path": str(policy_path)})
         if reply.get("ok") is not True:

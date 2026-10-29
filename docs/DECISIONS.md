@@ -48230,3 +48230,36 @@ releases include `cadex_goto.py`. The process supervisor supplies a default
 This enables cache reuse across stops on the same Pod without changing the
 trainer or the existing budget/lease guards. Replacement disks remain cold.
 The 13 Runpod regression tests pass; live cache hits remain to be measured.
+
+
+## ADR-875 — Skip redundant CLI restore and isolate cold static pairs (2026-10-29)
+
+**Context.** leon V edits paid for a restore before the actual build, while
+store-only commands replayed geometry. Static fit measured cold near pairs
+serially, including individual pairs costing 50–90 CPU-seconds.
+
+**Decision.** CLI params, render, section, inventory, link, asset, train and
+the hero sheet open unrestored. Each write still performs its own lifecycle
+build. Render and section prefer retained accepted tessellation and rebuild
+once if it cannot be read. Explicit export rebuild and live-document reads
+keep the restore proof.
+
+After existing box culling and cache lookup, static fit dispatches only cold
+solid pairs to fresh FreeCAD processes, with at most four concurrent children
+and no more than the worker's CPU affinity. Geometry is serialized on the
+parent thread, results merged in original order, and successful measurements
+returned to the parent cache. Deadlines reserve time for publication; child
+failure is an explicit unmeasured row. The measuring-code fingerprint includes
+the child. No protocol, tool surface or fit gate changes; fit remains part
+of acceptance. The sweep cap stays four because workers are pinned to four
+CPUs (ADR-418); raising that cap alone would oversubscribe them.
+
+**Validation.** Native regression checks serial/parallel equality, warm-cache
+reuse, timeout and child failure. Full suites and leon V timing evidence are
+recorded in the performance audit.
+
+The cold leon V command measured 2,033.45 → 1,404.27 s, with unchanged static
+fit failures and complete sweep coverage. One jaw panel has an equivalent
+solid but a different BREP representation and last-digit facts, so overall
+digests differ; this is recorded as an open reproducibility finding in the
+audit, not hidden by rounding or a weakened digest check.

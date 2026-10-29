@@ -6410,7 +6410,7 @@ def _relative_key(placements) -> str:
 _FIT_CACHE_ROOTS = (
     "_FitCache", "_relative_key", "_fit_cache_version", "_measuring_source",
     "_measure_clearance", "_measure_samples", "_sweep_payload_components",
-    "_sweep_child", "_measure_joint_sweeps",
+    "_sweep_child", "_static_pair_child", "_measure_joint_sweeps",
 )
 
 
@@ -6507,6 +6507,7 @@ def _measure_clearance(
     components: Mapping[str, Any], *, solved: bool = True,
     floors: Mapping[frozenset, float] | None = None,
     cache: _FitCache | None = None,
+    parallel: bool = True,
 ) -> list[dict[str, Any]]:
     """All pairs at the initial solved pose; failures remain unmeasured.
 
@@ -6563,6 +6564,7 @@ def _measure_clearance(
         return f"pair:{own_a}:{own_b}:{_relative_key(placed)}"
 
     rows = []
+    pending = []
     for index, first in enumerate(names):
         for second in names[index + 1:]:
             row = {"first": first, "second": second,
@@ -6592,6 +6594,10 @@ def _measure_clearance(
                     row.update(distance_mm=known[0], common_volume_mm3=known[1])
                     rows.append(row)
                     continue
+                if parallel and _sweep_parallel() > 1 and a.Solids and b.Solids:
+                    pending.append((row, key, first, second))
+                    rows.append(row)
+                    continue
                 # Each exactly measured pair is its own ledger stage, so a CPU
                 # refusal names the pairs that spent it (ADR-436).
                 _cpu_stage(f"static fit {first} / {second}")
@@ -6616,7 +6622,67 @@ def _measure_clearance(
             except Exception as exc:
                 row["error"] = str(exc)
             rows.append(row)
+    if pending:
+        _cpu_stage("static fit isolated pairs")
+        # Serialize native shapes on the parent thread. Only the isolated
+        # FreeCAD processes touch geometry concurrently; cached and culled
+        # pairs never pay for a child.
+        from concurrent.futures import ThreadPoolExecutor
+        serialised = {name: world(name).exportBrepToString()
+                      for name in dict.fromkeys(n for _, _, a, b in pending for n in (a, b))}
+        left = _run_seconds_left()
+        import time
+        deadline = None if left is None else time.monotonic() + left - _SWEEP_RESERVE_SECONDS
+        with ThreadPoolExecutor(max_workers=_sweep_parallel()) as pool:
+            futures = [(row, key, pool.submit(_bounded_static_pair,
+                        {a: serialised[a], b: serialised[b]}, deadline))
+                       for row, key, a, b in pending]
+            for row, key, future in futures:
+                row.update(future.result())
+                if key is not None and not row.get("error"):
+                    cache.put(key, [row["distance_mm"], row["common_volume_mm3"]])
     return rows
+
+
+def _bounded_static_pair(shapes, deadline):
+    """Measure one cold near pair in a fresh process within the run budget."""
+    import FreeCAD as App
+    import subprocess
+    import tempfile
+    import time
+    try:
+        seconds = None if deadline is None else deadline - time.monotonic()
+        if seconds is not None and seconds <= 0:
+            raise TimeoutError("static fit runtime budget exceeded")
+        with tempfile.TemporaryDirectory(prefix="cadex-fit-static-") as directory:
+            source, target = Path(directory) / "input.json", Path(directory) / "output.json"
+            source.write_text(json.dumps(shapes), encoding="utf-8")
+            code = ("import sys; sys.path.insert(0, " + repr(str(Path(__file__).parent)) + "); "
+                    "from cadex_assembly_worker import _static_pair_child; _static_pair_child("
+                    + repr(str(source)) + ", " + repr(str(target)) + ")")
+            subprocess.run([str(Path(App.getHomePath()) / "bin" / "FreeCADCmd"), "-c", code],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           check=True, timeout=seconds)
+            return json.loads(target.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"distance_mm": None, "common_volume_mm3": None, "error": str(exc)}
+
+
+def _static_pair_child(source, target):
+    import os
+    os.environ.pop("CADEX_XSCRIPT_DOMAIN_PROGRESS", None)
+    import Part
+    from types import SimpleNamespace
+    components = {}
+    for name, brep in json.loads(Path(source).read_text(encoding="utf-8")).items():
+        shape = Part.Shape()
+        shape.importBrepFromString(brep)
+        components[name] = SimpleNamespace(Shape=shape)
+    # The parent already culled against the declared floor. A second cull
+    # at the default margin could cache a box bound as an exact distance.
+    row = _measure_clearance(components, parallel=False,
+                             floors={frozenset(components): math.inf})[0]
+    Path(target).write_text(json.dumps(row), encoding="utf-8")
 
 
 #: A pair measured further apart than this is disjoint, and shares no volume.

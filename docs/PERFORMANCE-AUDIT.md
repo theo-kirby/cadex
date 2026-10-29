@@ -1,6 +1,6 @@
 # PERFORMANCE-AUDIT.md — Build cost on large creature assemblies
 
-Verified against source: 2026-10-27
+Verified against source: 2026-10-29
 
 What this is: a measured audit of where the time goes when an agent builds
 and reads a large catalog assembly through `cadex mcp`, done after the
@@ -162,17 +162,17 @@ this branch; it should land together with R1.
 
 ## 5. What remains, ranked by impact
 
-| # | status (2026-10-27) |
+| # | status (2026-10-29) |
 |---|---|
 | R1 | landed, ADR-692 |
 | R2 | landed, ADR-690 |
 | R3 | landed, ADR-781 (cache keyed on the measuring code) |
 | R4 | in part, ADR-686 |
 | R5 | landed, ADR-781 (one solve after joint creation) |
-| R6 | open; warm builds served by the fit cache and, since ADR-782, the part cache |
+| R6 | in part, ADR-875 parallelizes cold static pairs; warm builds use the fit and part caches |
 | R7 | open |
 | R8 | open (`client.py` still blocks in `readline()`) |
-| R9 | in part, ADR-689 |
+| R9 | landed for the ordinary MCP and affected CLI reads/writes, ADR-689 and ADR-875; explicit restart proofs remain |
 | R10 | open; ADR-685 bears on it |
 
 **Since this audit (2026-10-13):** R1 landed as ADR-692 (a sweep publishes
@@ -254,3 +254,101 @@ gap statistics (`CadexPanels._closest_on_triangles`, all samples against all
 near triangles, ~30 s); and the 24,600 per-operation `isValid` checks in
 `_build_part_shape_checked` (~30 s, on a cold part only now).
 
+
+
+## 8. CLI restore and cold static fit (2026-10-29, ADR-875)
+
+The old leon V frontier quoted a 432–447 s restore before ADR-850. That
+cache-key fix already reduced a warm restore to about 21 s; the old number
+was not a current warm-open measurement. Cold opens still rebuild parts
+when the engine fingerprint changes.
+
+`params`, `render`, `section`, `inventory`, `link`, `asset`, `train` and the
+hero sheet now open unrestored. Writes run their own build. Render and
+section read the retained accepted tessellation and rebuild only if that
+snapshot is unavailable. Explicit export rebuild still restores to prove
+restart determinism. On a scratch copy of leon V, inventory completed in
+2.99 s with no build attempt.
+
+Static fit already had a conservative bounding-box cull, so none was added.
+The remaining cold near solid pairs now run in separate FreeCAD processes,
+up to the worker's CPU-affinity count capped at four. Cached pairs and box
+culls spawn nothing. Rows retain their ordering and exact measurement path;
+child errors and deadlines yield unmeasured error rows. Sweeps remain at
+four children: workers are pinned to four CPUs, so raising the sweep cap
+alone would oversubscribe them. Static fit and sweeps still finish inside
+the build; acceptance and fit semantics are unchanged.
+
+The native regression compares serial and parallel measurements, checks
+warm-cache reuse, and exercises child failure and expiry. The CLI regression
+runs real inventory/render/section/asset commands and asserts zero new
+attempts, then a parameter edit and exactly one attempt.
+
+
+A focused cold measurement on five accepted leon V components (chest frame,
+neck collar, skull frame, left knee drive and upper thigh panel), ten pairs
+of which five survive box culling, ran with four-CPU affinity:
+
+| static pair measurement | wall |
+|---|---|
+| serial | 87.47 s |
+| parallel | 72.07 s |
+
+Every row, status and numeric measurement agrees within 1e-7; no errors.
+This is a focused sample, not a full-edit speedup. The machine was shared
+with the full-build measurements and validation suites. Frame construction
+remains serial and cache misses after an engine fingerprint change still
+rebuild unchanged geometry.
+
+
+Final CLI reads on the edited, accepted leon V scratch project created no
+new build attempts:
+
+| command | wall |
+|---|---|
+| inventory | 2.99 s |
+| section (XY, derived offset) | 12.36 s |
+| render | 31.14 s |
+
+The cold `params --set panel_gap=3.5` command accepted in 1,404.27 s,
+including BREP export. Its report has 5,050 static rows with no measurement
+errors and complete sweep coverage (14 complete joints, six passive).
+This is the first build after an engine fingerprint change, not a warm
+edit: unchanged parts also rebuild. The final custom-floor child guard was
+subsequently verified by native regression and the source/payload suites;
+this robot's static pass uses the default cull margin.
+
+Validation: `pixi run build-engine`, engine suite **159 passed, 3 skipped**,
+CLI suite **54 passed**, `pixi run stage-engine`, packaged lifecycle gate
+**26 passed**. The CLI fallback for missing retained triangles also passed.
+
+
+The frozen pre-change CLI/engine snapshot accepted the same parameter edit
+in **2,033.45 s (33.9 min)**, including its cold restore and BREP export.
+The updated path took **1,404.27 s (23.4 min)**: **30.94% less wall time**,
+629 s saved in this paired run. Scratch copies started from the same accepted
+project; old fit-cache files were set aside on the baseline and the changed
+measuring-code fingerprint made the new fit cache cold. This is one shared-
+machine comparison, not a guarantee for a warm edit. Source snapshots kept
+the baseline fixed while the implementation was being edited.
+
+Both runs accepted revision `c777ec03`, all definitions and solved placements
+match, and both retain complete sweep coverage. Across 5,050 static rows,
+common volumes match exactly; the maximum distance difference is
+1.14e-13 mm. Intent, cull status, errors and fit failures all match.
+
+**Digest caveat:** the overall digests differ. Every artifact except
+`pnl_jaw` is byte-identical. Its BREP representation and last-digit facts
+vary (volume difference about 2e-11 mm³; centre differences below 1e-12 mm),
+although both native solids are valid and both directional boolean
+subtractions have zero volume. Facts and part artifacts are generated
+before assembly fit; no part-construction code changed in ADR-875.
+Representation/digest sensitivity across these build routes remains an open
+finding, not an assertion of byte-for-byte model equivalence. Digest checks
+were not weakened.
+
+An isolated diagnostic then rebuilt the identical jaw definition twice using
+only the frozen **old** part-building code, resetting its shape memo between
+builds. It also produced two different BREP hashes, with volumes differing
+by about 2e-11 mm³. The representation instability therefore predates this
+patch; its underlying kernel/build-context cause remains unresolved.

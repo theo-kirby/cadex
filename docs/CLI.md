@@ -54,7 +54,7 @@ brings.
 | `cadex script --set FILE` | Replace the script from a file and rebuild. An accepted build carries `verdicts`, the brief an MCP build reply carries (ADR-689, §4). |
 | `cadex export` | Write the accepted revision's outputs (§3), copied from the attempt the store retained under the accepted pin, digest-checked; no script runs and no engine opens (ADR-848). With `--rebuild`, or when the store has no valid retained attempt (or the working script is not the accepted one), it opens the engine with the restore pass, rebuilds and writes, as before. |
 | `cadex section --plane XY [--offset-mm 8]` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240, "Section and render" below). Omit `--offset-mm` and the offset is derived from the accepted bounds (ADR-273, ADR-275). |
-| `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews, a 1024 px studio `hero.png` (ADR-412), the concept sheet `sheet.png` (ADR-430) and `review/render/summary.json`, bearing the accepted revision (ADR-239). CPU only. |
+| `cadex render` | Read retained accepted display (rebuild only when unavailable) and write front/top/right/iso SVG previews, a 1024 px studio `hero.png` (ADR-412), the concept sheet `sheet.png` (ADR-430) and `review/render/summary.json`, bearing the accepted revision (ADR-239). CPU only. |
 | `cadex hero [--only ITEMS] [--run NAME] [--software] [--no-engine] [--focus REGEX]` | Write the project's presentation folder, `hero/` (ADR-677, `docs/DASHBOARD.md` §26): five stills in different looks, a dashboard screenshot, the concept sheet, the chosen rollout as `rollout.mp4`, and `hero-landscape.mp4` and `hero-square.mp4` (a turn that wipes clay → aluminium → wireframe → the design's materials, then the rollout and the training curves, plus a faster wireframe turn). The rollout is the longest episode any run's policy lasted, the newest among equals, or `--run`'s. Needs headless Chromium (GPU when there is one; `--software` forces software WebGL) and FFmpeg; opens the engine only to draw a missing concept sheet (`--no-engine`: never). `hero/hero.json` names what was made and why anything was not; exit 0 only when everything asked for was made. `--only` takes a comma-separated subset of `stills`, `dashboard`, `sheet`, `rollout`, `video` and `views`; a bare run makes all but `views`, which writes `view-{hero,side,front,rear,top,head}.png` from fixed cameras measured from the design's front towards the parts `--focus` names (default a creature's head) (ADR-792). The folder keeps itself out of the project's git. |
 | `cadex hero-grid PROJECT... --out FILE [--still NAME] [--columns N] [--tile-width PX]` | Tile one still (default `wireframe`) or view from each project's `hero/` folder into one labelled image, two to a row by default (ADR-677, ADR-792). FFmpeg; no engine, no row, no commit. |
 | `cadex clearance` | Write `docs/clearance.md`: every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict, at the initial solved pose, from published measurements with no rebuild (ADR-237). Exit 0 means the report was written, not that all pairs are clear. `--sweep` writes the published joint sweeps to `docs/clearance-sweep.md` (ADR-350). The same rows reach the agent as `inspect scope=clearance` and, summarised, as the `fit` block on every build reply (§4). |
@@ -137,6 +137,13 @@ attempt or runs the script afresh. Only an `inspect` of `scope=document` or
 `scope=object`, which read cadexd's live document, opens with the restore.
 So the agent's own `cadex render`, `export`, `section`, `train` or `walk`
 on the same project runs between bursts of tool calls, with `--wait`.
+
+The CLI's `params`, `render`, `hero` sheet, `section`, `inventory`, `link`,
+`asset` and `train` sessions also open with `restore: false` (ADR-875).
+Store reads need no live document; edits and training run their own build.
+`render` and `section` use retained accepted tessellation, with one explicit
+rebuild if it cannot be read. An explicit `export --rebuild` still proves
+restart determinism.
 
 The transport is JSON-RPC 2.0, one object per line. `initialize` echoes
 the client's `protocolVersion` when it is one of

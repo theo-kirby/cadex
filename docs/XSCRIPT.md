@@ -2651,6 +2651,7 @@ is a coincidence of shape, not the same concept.
 
 ## Part II — Direction
 
+
 - **Incremental re-execution: partly answered (ADR-622, ADR-782).** Every
   mutation still runs the whole script in one worker attempt, but a part
   output whose content identity and engine fingerprint are unchanged is read
@@ -2923,6 +2924,13 @@ swept pair is kept in `script_artifacts/fit-cache/`, keyed by the SHA-256 of
 both world solids' BREPs (placement included), the pair's motion at every
 sample, and the engine's measuring code and kernel version. Either cache is
 a cache: unreadable, it is a miss.
+
+Cold near static pairs run in isolated FreeCAD processes, at most one per
+CPU available to the worker (currently four), bounded by the remaining run
+wall budget (ADR-875). Cached pairs and bounding-box culls stay in the parent.
+Rows keep their original order and measurement semantics; a failed or timed
+out child leaves an explicit unmeasured error, never a passing measurement.
+The static pass finishes before sweeps and acceptance.
 
 The checker uses copied solids, never changes live placements, never
 rebuilds historical scripts, and needs no dynamics declaration or MuJoCo

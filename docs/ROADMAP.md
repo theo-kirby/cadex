@@ -49,6 +49,9 @@ banded goals).
 
 ### Must
 
+- [x] Remove redundant CLI restores, reuse accepted render/section display,
+  and parallelize cold static fit pairs within worker budgets (ADR-875).
+
 **Truth and cleanup**
 - [x] **The identity docs agree** (ADR-833): README, VISION (broadened North
       Star and benchmark set), this roadmap, AGENTS.
