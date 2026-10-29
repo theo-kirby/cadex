@@ -61,10 +61,11 @@ yaw. The screen's policy stood still at 1.5 m/s.
   height was 0 and a 1 mm dip read as a fall. The first judging of the screen gave 7
   "falls", 3 of them inside 1.4 s. It now reads the base's centre of mass. On the Go1,
   `g2-goto-s20` re-judges 10/10, 884.14 s, ratios 0.873–0.987, as G2-GOTO.md had it.
-- **A relay defect, found and not fixed.** `cadex_relay.py` keeps the export's episode
-  (`solver_step_s` 0.002 × 10) on a concept whose model steps at 0.0025 s. The trainer
-  never sets the timestep, so every relayed concept run so far took 25 ms control steps
-  (40 Hz) while the task says 20 ms. `cadex_joystick.py` sets the substeps from the model.
+- **A relay defect, found, then fixed (ADR-863).** `cadex_relay.py` kept the export's
+  episode (`solver_step_s` 0.002 × 10) on a concept whose model steps at 0.0025 s. The
+  trainer never sets the timestep, so every relayed concept run before ADR-863 took 25 ms
+  control steps (40 Hz) while the task said 20 ms. The relay now sets the substeps from the
+  model's step (8 here). `cadex_joystick.py` already did, so the G3 runs above were at 50 Hz.
 - **What binds: the slow walk.** This is the Go1's `kind-ridge-3238` signature, stronger:
   the Go1's walk min was 0.873, leon V's is 0.80. A hypothesis for the next unit: the torque
   and energy terms are in absolute N·m, and leon V weighs 2.6× the Go1 (33.3 against
@@ -72,3 +73,25 @@ yaw. The screen's policy stood still at 1.5 m/s.
   (`exp(-err²/0.25)`) that pays 0.96 for a 0.1 m/s miss. Mass-normalised effort terms, or
   `--goto-share 0` (the Go1's run1 walk min was 0.924), should lift the walk legs. Nothing
   here tests that yet.
+
+## The share-0 hypothesis, refuted (ADR-863)
+
+The hypothesis: the go-to-point layer's share is what costs the slow walk (the Go1's walk
+minimum was 0.924 at share 0 and 0.873 at share 0.2, `kind-ridge-3238`), so training with no
+layer should lift leon V's walk legs above 0.85. `runs/s0` is `runs/g2`'s command without
+`--goto`: 1260 iterations, 206.4 M steps, `wall_time_s` 663.9, best reward/step 0.0254 at
+iteration 1154. It was judged by the same `g2_judge.py` on the same held-out seeds 0–9.
+
+| policy | pass | reach | hold | speed | falls | ratio min / max | worst seed min | total s |
+|---|---|---|---|---|---|---|---|---|
+| s0 it 900 | 0/10 | 10 | 10 | 0 | 0 | 0.799 / 0.937 | 0.799 | 950.9 |
+| s0 best (1154) | 0/10 | 10 | 10 | 0 | 0 | 0.744 / 0.943 | 0.744 | 966.7 |
+| s0 final (1259) | 0/10 | 10 | 10 | 0 | 0 | 0.792 / 0.936 | 0.792 | 948.1 |
+
+Every seed has a leg at 0.79–0.84, and the best leg is 0.94, below the 0.96–0.98 run legs
+of share 0.2. Removing the layer made leon V's tracking worse overall, not better. The share
+is not what binds on this robot. What is left of the hypotheses in this file is the effort
+scale: Playground's torque and energy weights in absolute N·m on a robot 2.6× the Go1's
+mass, against a tracking kernel that pays 0.96 for a 0.1 m/s miss. That test is not run.
+Per the owner's live edit (2026-10-29), G3 on leon V stops here at 4/10 (`runs/g2` it 900),
+and the next unit is K1's rewrite of RECIPE.md.

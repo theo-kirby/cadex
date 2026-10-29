@@ -69,7 +69,7 @@ EXPORT = _model(_leg("l", 0.1) + _leg("r", -0.1), True,
 CUT = _model(_leg("r", -0.1) + _leg("l", 0.1), False,
              '<jointpos joint="j_hip_l" name="obs/0"/>'
              '<touch site="obs/4/contact" name="obs/1"/>').replace(
-    'mass="3"', 'mass="3.4"')
+    'mass="3"', 'mass="3.4"').replace('<worldbody>', '<option timestep="0.0025"/>\n  <worldbody>')
 
 
 def _observation(name: str, sensor: str, adr: int, dim: int, channels: list[str]) -> dict:
@@ -95,6 +95,7 @@ def _bundle(tmp_path) -> tuple:
                     for i, (s, j) in enumerate((s, j) for s in "lr" for j in ("hip", "knee"))],
         "reward": [{"expression": "knee_r + cl", "label": "r", "weight": 1.0}],
         "termination": [],
+        "episode": {"control_interval_s": 0.02, "solver_step_s": 0.002, "solver_steps_per_action": 10},
         "randomisation": [
             {"label": "mass", "subject": "c_trunk", "low": 0.9, "high": 1.1,
              "fields": [{"field": "body_mass", "index": 1},
@@ -155,6 +156,9 @@ def test_relay_maps_by_name_and_drops_what_the_model_lacks(tmp_path):
     trunk, knee_r = relaid["randomisation"]
     assert [f["index"] for f in trunk["fields"]] == [1, 4]
     assert knee_r["fields"][0]["index"] == int(cut.jnt_dofadr[joint(cut, "j_knee_r")])
+    # The control interval stays 20 ms on the cut's own 2.5 ms step (ADR-863).
+    assert relaid["episode"]["solver_steps_per_action"] == 8
+    assert relaid["episode"]["solver_step_s"] == pytest.approx(cut.opt.timestep)
     # A dropped channel a reward reads refuses rather than trains wrong.
     task["reward"][0]["expression"] = "pz"
     (tmp_path / "outputs" / "walk-task.json").write_text(json.dumps(task))

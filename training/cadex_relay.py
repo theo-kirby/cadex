@@ -329,6 +329,19 @@ def relay_task(task: dict[str, Any], source_xml: bytes, target_xml: bytes,
     report["joints_only_in_target"] = sorted(names["tgt"] - names["src"])
     task["model"] = {**task["model"], "path": model_path, "bytes": len(target_xml),
                      "sha256": hashlib.sha256(target_xml).hexdigest()}
+
+    # The control interval stays the export's; the substeps follow the model's own step,
+    # which the trainer never overrides (ADR-863).
+    episode = task.get("episode")
+    if isinstance(episode, dict) and "solver_steps_per_action" in episode:
+        step = float(tgt.opt.timestep)
+        interval = float(episode.get("control_interval_s")
+                          or float(episode["solver_step_s"]) * int(episode["solver_steps_per_action"]))
+        per = interval / step
+        if abs(per - round(per)) > 1e-6:
+            raise Refused(f"the control interval {interval} s is not a whole number of the model's {step} s steps")
+        report["solver_steps"] = [int(episode["solver_steps_per_action"]), int(round(per))]
+        episode.update(solver_step_s=step, solver_steps_per_action=int(round(per)))
     return task, report
 
 

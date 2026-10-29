@@ -869,7 +869,10 @@ judges a concept- or cut-trained policy on the export's own bundle. Drives,
 body entries (reset variation, shoves, scans), randomised rows and
 qpos/qvel rows map by name; what the model lacks (a battery fused into the
 pelvis) is dropped and listed in `relay.json`, and a dropped channel that a
-reward, termination or foot term reads refuses.
+reward, termination or foot term reads refuses. The control interval stays
+the export's and the substeps follow the model's own timestep (a 2.5 ms
+concept takes 8 per 20 ms action, not the export's 10); an interval that is
+not a whole number of the model's steps refuses (ADR-863).
 
 ```bash
 ~/cadex-train-venv/bin/python training/cadex_relay.py PROJECT/.../outputs/walk-task.json MODEL.xml --out DIR

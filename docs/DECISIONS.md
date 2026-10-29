@@ -47979,3 +47979,37 @@ task said 20 ms.
 
 **Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53 passed.
 `training/test_cadex_goto.py`: 3 passed.
+
+## ADR-863 — The relay keeps the control interval on the model's own step; share 0 does not lift leon V's slow walk (2026-10-29, orun21 G3)
+
+**Context.** ADR-862 left two things open. First, a defect: `cadex_relay.py` copied the
+export's episode (`solver_step_s` 0.002 × 10 substeps) onto a model that steps at its own
+timestep, and the trainer never overrides it. On leon V's 2.5 ms concept that made every
+relayed run control at 25 ms (40 Hz), while its task said 20 ms. Second, a hypothesis for
+G3's slow walk legs: the go-to-point layer's share costs them, as `kind-ridge-3238` measured
+on the Go1.
+
+**Decision.**
+- **`relay_task` sets `solver_step_s` to the model's timestep and `solver_steps_per_action`
+  to the control interval over it** (8 on a 2.5 ms concept). An interval that is not a whole
+  number of the model's steps refuses. `relay.json` records `solver_steps` [export, model].
+  `training/test_cadex_relay.py`'s cut now steps at 2.5 ms and asserts 8 substeps. This is a
+  regression test for a defect that happened: without the fix it fails.
+- **The share hypothesis is refuted on leon V.** A cold run with no go-to-point layer (share
+  0, otherwise G2's command and budget) passes 0/10 at iterations 900, best and final, against
+  share 0.2's 4/10. The recipe keeps `--goto-share 0.2`.
+
+**Measured** (`docs/probes/orun21/G3-GOTO.md`). `runs/s0`: 206.4 M steps, 663.9 s. Judged by
+`g2_judge.py` on held-out seeds 0–9: all 80 points reached and every hold kept, 0 falls. The
+speed ratio ranges over 0.799–0.937 at iteration 900, 0.744–0.943 at best and 0.792–0.936 at
+final, and every seed has a leg below 0.85.
+
+**Consequence.** Runs relayed before this ADR (`wise-moon-5991`'s 10/10, ADR-847's concept
+0/10) were judged at 40 Hz control. They are not re-run here. G3 on leon V's concept stays
+at 4/10. The effort-scale hypothesis (absolute-N·m torque and energy terms on a 2.6×
+heavier robot) is untested. Following the owner's live edit, the next unit is K1's rewrite.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53 passed.
+`training/test_cadex_relay.py` and `test_cadex_goto.py`: 4 passed. Before the relay fix,
+`test_cadex_relay.py` fails.
+
