@@ -12,6 +12,7 @@ fixture biped that reaches every route in each of its shapes, the way
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 from pathlib import Path
@@ -153,10 +154,12 @@ def biped(tmp_path):
         "curve": [[0, 0.1], [9, 0.2]], "loss_curve": [], "episode_steps_curve": [], "error": "",
         # The trainer's own run record and model identity (ADR-837).
         "run": {"driver": "shell", "argv": [], "pid": 1, "heartbeat_s": 10.0, "ended_at": 1.7e9},
-        "model": {"tier": "training", "sha256": "a" * 64, "cad_sha256": "b" * 64,
-                  "path": "outputs/m.xml", "bodies": {"torso": ["torso", "battery"]}}}))
-    (seed / "view" / "torso.stl").write_text(_cube_stl(20.0))
-    (seed / "view" / "trace.json").write_text(_trace({"torso": [0.0, 0.0, 0.0]}))
+        # Cut from the accepted export: the CAD goes on its body (ADR-838).
+        "model": {"tier": "training", "sha256": "a" * 64,
+                  "cad_sha256": hashlib.sha256((staging / "outputs" / "rig-model.xml").read_bytes()).hexdigest(),
+                  "path": "outputs/m.xml", "bodies": {"body": ["body", "shin"]}}}))
+    (seed / "view" / "body.stl").write_text(_cube_stl(20.0))
+    (seed / "view" / "trace.json").write_text(_trace({"body": [0.0, 0.0, 0.0]}))
     # A staged run whose trainer stopped beating two minutes ago, under
     # runs/<name>/<stage>/<seed>/ (ADR-837).
     stage = root / "runs" / "staged" / "s2" / "seed0"
@@ -237,12 +240,16 @@ def test_every_reply_carries_its_documented_keys_and_nothing_else(biped, tmp_pat
         byhand = _json(server.url + "api/run/byhand")
         assert byhand["status"] == "ok" and byhand["telemetry"]["state"] == "done"
         assert byhand["telemetry"]["driver"] == "shell" and byhand["model"]["tier"] == "training"
-        assert byhand["telemetry"]["model"]["bodies"] == {"torso": ["torso", "battery"]}
+        assert byhand["telemetry"]["model"]["bodies"] == {"body": ["body", "shin"]}
         staged = _json(server.url + "api/run/staged")
         assert staged["status"] == "failed" and "stopped writing s2/seed0/progress.json" in staged["error"]
         assert staged["telemetry"]["driver"] == "ouroboros" and staged["model"]["tier"] == "concept"
         drawn = _json(server.url + "api/model/run/byhand")
         assert drawn["available"] and [c["mesh_status"] for c in drawn["components"]] == ["retained"]
+        # The accepted part on the body it was cut into, its primitive outlined (ADR-838).
+        assert drawn["tier"]["cad"] and drawn["tier"]["revision"] == REVISION_B
+        assert [p["mesh"] for p in drawn["components"][0]["cad"]] == ["mesh/accepted/torso.stl"]
+        assert drawn["components"][0]["outline"] is True
     finally:
         server.shutdown()
         server.server_close()

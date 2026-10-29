@@ -90,6 +90,8 @@ def test_a_view_is_a_mesh_per_body_and_a_trace_of_them(tmp_path):
     meshes = {path.stem for path in tmp_path.glob("*.stl")}
     assert "c_chest_frame" in meshes and "c_paw_hl" in meshes
     assert [frame["nominal_time_s"] for frame in trace["frames"]] == [0.0, 0.02, 0.04]
-    assert set(trace["frames"][0]["component_placements"]) == meshes
+    # Every named body is placed, meshless ones too, for the CAD they carry (ADR-838).
+    names = {model.body(b).name for b in range(1, model.nbody)}
+    assert set(trace["frames"][0]["component_placements"]) == names and meshes < names
     chest = (tmp_path / "c_chest_frame.stl").read_bytes()
     assert len(chest) == 84 + 50 * int.from_bytes(chest[80:84], "little") == 84 + 50 * 24

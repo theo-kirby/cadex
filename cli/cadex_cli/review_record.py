@@ -819,14 +819,18 @@ def _trainer_record(directory: Path, progress_path: str) -> dict[str, Any] | Non
         recorded_at = None
     receipt = {key: progress[key] for key in ("reward_per_step", "wall_time_s", "device",
                                               "task_sha256", "state") if key in progress}
+    stated = progress.get("model") if isinstance(progress.get("model"), Mapping) else {}
     return {"schema": RUN_RECORD_SCHEMA, "run": directory.name, "recorded_at": recorded_at,
             "status": status, "error": error, "mode": "train", "walk_seconds": None,
             "model": {"accepted_revision": None, "digest": None,
                       "identity_source": "trainer telemetry only: no run.json (ADR-835)",
-                      # ADR-837: the trainer's own word on its model.
-                      "tier": (progress.get("model") or {}).get("tier")
-                      if isinstance(progress.get("model"), Mapping) else None,
-                      "mjcf_sha256": progress.get("model_sha256")},
+                      # ADR-837: the trainer's own word on its model; ADR-838
+                      # draws the CAD on its bodies from the last two.
+                      "tier": stated.get("tier"),
+                      "mjcf_sha256": progress.get("model_sha256"),
+                      "cad_sha256": stated.get("cad_sha256"),
+                      "bodies": stated.get("bodies")
+                      if isinstance(stated.get("bodies"), Mapping) else None},
             "params": {"values": {}, "specs": None, "specs_source": "unavailable"},
             "project_docs": {"dir": None, "files": {}, "skipped": [], "note": "not snapshotted"},
             "task": {"bundle": None, "sha256": progress.get("task_sha256"), "model_xml": None},

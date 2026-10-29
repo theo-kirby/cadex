@@ -46517,3 +46517,56 @@ and compiles in MuJoCo with the mark.
 - Found while testing: the Go1 reference bundle puts every geom in group 3,
   so its `view/` has a trace and no meshes (ADR-835's view leaves group 3
   out). This is recorded for D2.
+
+## ADR-838 — The dashboard draws the CAD on a training model's bodies (2026-10-28, orun21 D1)
+
+**Context.** Since ADR-837 a trainer's `progress.json` says its model's tier,
+the CAD export it was cut from (`cad_sha256`) and which CAD bodies each of its
+bodies carries (`bodies`), but the dashboard still drew only the primitives a
+run trained on: leon V's fast training model played as boxes and capsules,
+and a CAD body was watched only through leon IV's `leon-iv-run-records`
+backfill, which copied accepted meshes into a rollout. The trainer's `view/`
+also traced only the bodies with geometry, so CAD on a geom-less body (leon V's
+hip and shoulder drives, its spine yaw drive, the saddle panel: 14 of 101
+parts) had nothing to ride on.
+
+**Decision.**
+- **The match.** For a trainer's run, `api/model/run/<run>` matches
+  `model.cad_sha256` (for a `cad` run, also its own digest) against the
+  sha256 of each `mjcf` output in the accepted attempt's `result.json`. Only
+  the accepted revision counts; any other is reported, not drawn.
+- **The parts.** On a match, each body's component gains `cad`: the accepted
+  components named by its `bodies` entry (a Cadex export names each body
+  after its component), each with its mesh, colour, finish and its accepted
+  placement re-expressed in the body's rest frame (the export's `pos`/`quat`
+  chain; a body oriented any other way refuses the overlay with the reason),
+  and `outline: true`.
+- **The page** draws those parts solid, each in its own colour, posed by the
+  body's trace placement, and the body's own primitive mesh as `#35c4ff`
+  outlines through them. `#model-status` stays `loaded` and shows the tier's
+  label (`data-tier`): a concept says `concept: its primitives are the design`.
+- **The reply** gains an optional top-level `tier` (`name`, `cad`, `revision`,
+  `parts`, `label`, `reason`) on `model/run/<run>`; `docs/CLI.md`'s table and
+  `test_http_api.py` hold it, the fixture's hand-started run now cut from the
+  staged export and asserting the part it carries.
+- **`view/` traces every named body**, meshes only where there is geometry;
+  the dashboard lists a geom-less body as `no geometry`, not a missing mesh.
+
+**Evidence.** leon V (lab copy, accepted revision `67b2a28c`, export
+`41a4e7e0…`): `t1_bundle.py` on `runs/t0/train-model.xml` (cut from that
+export by leon V's `training_model.py`), then a bare `cadex_train.py --cad-model
+<export>` run, `runs/d1cad2`, 60 iterations × 4096 envs, served on 127.0.0.1:
+all 101 accepted parts drawn on the 24 training bodies, 16 primitive outlines,
+`docs/probes/orun21/d1-cad-on-bodies-iter60.png` and `-done.png`
+(`docs/probes/orun21/d1_shot.py` takes them). Before the `view/` change the
+same overlay drew 87 parts.
+
+**Consequences.**
+- The `leon-iv-run-records` backfill is not needed to watch the CAD on a
+  run's bodies either; with ADR-837 nothing it wrote is needed.
+- Assumes a model cut from the CAD keeps its bodies' frames (leon V's tool
+  does); the outlines show it when one does not. The accepted placements come
+  from the accepted attempt's own first simulation frame when it has one;
+  where that frame is not the rest pose the CAD would sit offset from the
+  outlines.
+- A run cut from an older revision draws primitives only, with the reason.

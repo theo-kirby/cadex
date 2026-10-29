@@ -312,8 +312,10 @@
       }).then(function () {
         if (ticket !== modelLoad) return;
         modelFailures = 0;
+        // A trainer's run says what its model is (ADR-838): a concept, or CAD on its bodies.
         status.dataset.state = 'loaded';
-        status.textContent = '';
+        status.textContent = manifest.tier && manifest.tier.label ? manifest.tier.label : '';
+        status.dataset.tier = manifest.tier ? manifest.tier.name : '';
         // A run with checkpoint rollouts plays them, its own rollout last.
         if (checkpointItems().items.length) { renderCheckpoints(); return null; }
         // A reference loops from the start, as soon as it is in.

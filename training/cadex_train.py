@@ -5275,7 +5275,8 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
     """``view/``: a mesh per body from its geoms and a trace of ``poses`` (ADR-835).
 
     Each body's mesh is in the body's own frame, named as the body is, and each
-    trace frame places every body as the model's kinematics put it, so the
+    trace frame places every named body (meshless ones too, ADR-838) as the
+    model's kinematics put it, so the
     dashboard plays the run on the very model it trained on, primitives and all.
     Geoms in group 3 and above (point masses, helpers) and invisible ones are left out.
     """
@@ -5292,10 +5293,13 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
                  if int(model.geom_bodyid[g]) == body and int(model.geom_group[g]) < 3
                  and float(model.geom_rgba[g][3]) > 0.0]
         parts = [p for p in parts if p is not None and len(p)]
-        if not parts:
-            continue
         name = model.body(body).name or f"body{body}"
-        write_atomically(directory / f"{name}.stl", binary_stl(np, np.concatenate(parts)))
+        # A body with nothing to draw is still placed: the CAD it carries
+        # rides on it (ADR-838).
+        if parts:
+            write_atomically(directory / f"{name}.stl", binary_stl(np, np.concatenate(parts)))
+        elif not model.body(body).name:
+            continue
         bodies.append((body, name))
     frames = []
     for step, qpos in enumerate(np.asarray(poses, dtype=np.float64)):

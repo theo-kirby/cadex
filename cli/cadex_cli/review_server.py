@@ -176,7 +176,8 @@ API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         "view", "ordinal", "revision", "digest", "available", "reason", "components", "previous",
         "changed", "source"}), frozenset({"compare"})),
     # A run with no rollout yet at the accepted revision borrows its model.
-    "model/run/<run>": (_MODEL_KEYS, frozenset({"playback", "meshes"})),
+    # A trainer's run says its model's tier and whether the CAD is on its bodies (ADR-838).
+    "model/run/<run>": (_MODEL_KEYS, frozenset({"playback", "meshes", "tier"})),
     "playback/run/<run>": (frozenset({"available", "run", "source"}), _PLAYBACK_KEYS),
     "playback/checkpoint/<run>/<stem>": (frozenset({"available", "run", "stem", "checkpoint", "source"}),
                                          _PLAYBACK_KEYS),
@@ -1535,6 +1536,8 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
             "mesh": f"mesh/run/{run_name}/{output}.stl", "mesh_status": "retained",
             "placement": None, "placement_source": "no component placement recorded: identity",
         })
+    if model_block.get("tier"):
+        model["tier"] = _cad_on_bodies(root, model_block, entries)
     model.update({
         "available": True,
         "source": f"runs/{run_name}/{mesh_dir.relative_to(run_dir).as_posix()}/*.stl "
@@ -1554,6 +1557,127 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
                           "url": f"api/playback/run/{run_name}"}
                          if playback["available"] else {"available": False, "reason": playback["reason"]})
     return model
+
+
+def _quat_mul(a: Sequence[float], b: Sequence[float]) -> list[float]:
+    """Hamilton product of two (x, y, z, w) quaternions."""
+
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return [aw * bx + ax * bw + ay * bz - az * by, aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw, aw * bw - ax * bx - ay * by - az * bz]
+
+
+def _quat_rotate(q: Sequence[float], v: Sequence[float]) -> list[float]:
+    return _quat_mul(_quat_mul(q, [*v, 0.0]), [-q[0], -q[1], -q[2], q[3]])[:3]
+
+
+def _rest_frames(xml: bytes) -> tuple[dict[str, tuple[list[float], list[float]]] | None, str]:
+    """Each named body's frame at rest in an MJCF, (position mm, rotation xyzw),
+    composed from ``pos``/``quat``; None and why for a body that orients
+    itself any other way."""
+
+    try:
+        world = ElementTree.fromstring(xml).find("worldbody")
+    except ElementTree.ParseError as error:
+        return None, f"the CAD export does not parse: {error}"
+    frames: dict[str, tuple[list[float], list[float]]] = {}
+
+    def walk(element: ElementTree.Element, origin: list[float], turn: list[float]) -> str:
+        for body in element.findall("body"):
+            odd = [key for key in ("euler", "axisangle", "xyaxes", "zaxis") if body.get(key)]
+            if odd:
+                return f"body {body.get('name')} is oriented by {odd[0]}, which is not read here"
+            pos = [float(v) * 1000.0 for v in (body.get("pos") or "0 0 0").split()]
+            w, x, y, z = (float(v) for v in (body.get("quat") or "1 0 0 0").split())
+            norm = math.sqrt(w * w + x * x + y * y + z * z) or 1.0
+            here = [a + b for a, b in zip(origin, _quat_rotate(turn, pos))]
+            rotation = _quat_mul(turn, [x / norm, y / norm, z / norm, w / norm])
+            if body.get("name"):
+                frames[str(body.get("name"))] = (here, rotation)
+            why = walk(body, here, rotation)
+            if why:
+                return why
+        return ""
+
+    why = walk(world, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]) if world is not None else "the CAD export has no worldbody"
+    return (None, why) if why else (frames, "")
+
+
+def _cad_on_bodies(root: Path, block: Mapping[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """The CAD a trainer's run carries on its bodies (ADR-838), and what its tier says.
+
+    A concept is its primitives and says so. A training model cut from the CAD
+    (its ``cad_sha256``) or the CAD export itself (its own digest) is matched
+    against the accepted attempt's MJCF exports; on a match, each body's entry
+    gains ``cad``: the accepted parts its CAD bodies carry (ADR-837's
+    ``bodies``), placed in that body's frame at rest, and ``outline``, so the
+    page draws the parts solid and the trained primitives as outlines. A
+    Cadex export keeps every body frame at the assembly origin; a model cut
+    from it keeps its bodies' frames, and the outlines show it if it did not.
+    """
+
+    tier = str(block.get("tier") or "unstated")
+    # The trainer places every body; one with no geometry is not a missing mesh.
+    for entry in entries:
+        if entry.get("mesh") is None:
+            entry["mesh_status"] = "no geometry"
+    out: dict[str, Any] = {"name": tier, "cad": False, "revision": None, "parts": 0, "reason": ""}
+    if tier == "concept":
+        out.update(label="concept: its primitives are the design",
+                   reason="a concept model carries no CAD")
+        return out
+    digest = block.get("cad_sha256") if tier == "training" else block.get("cad_sha256") or block.get("mjcf_sha256")
+    bodies = block.get("bodies")
+    label = {"training": "training model", "cad": "CAD export"}.get(tier, "model of unstated tier")
+    out["label"] = label + ": primitives only"
+    if not isinstance(digest, str) or not isinstance(bodies, Mapping):
+        out["reason"] = "the trainer named no CAD export or body map"
+        return out
+    staging, manifest, why = _accepted_staging(root)
+    if staging is None:
+        out["reason"] = f"no accepted CAD to match: {why}"
+        return out
+    export = None
+    for output in (_load_json(staging / "result.json") or {}).get("outputs") or []:
+        relative = output.get("artifact_path") if output.get("type") == "mjcf" else None
+        item = resolve_reference(staging, relative) if relative else None
+        if item and not item["error"] and item["exists"] and _sha256(staging / item["path"]) == digest:
+            export = staging / item["path"]
+            break
+    if export is None:
+        out["reason"] = "its CAD export is not the accepted revision's"
+        return out
+    frames, why = _rest_frames(export.read_bytes())
+    if frames is None:
+        out["reason"] = why
+        return out
+    parts = {c.get("name"): c for c in accepted_model(root).get("components") or [] if c.get("mesh")}
+    drawn = 0
+    for entry in entries:
+        frame = frames.get(entry["name"])
+        if frame is None:
+            continue
+        origin, turn = frame
+        back = [-turn[0], -turn[1], -turn[2], turn[3]]
+        carried = []
+        for name in bodies.get(entry["name"]) or []:
+            part = parts.get(name)
+            if part is None:
+                continue
+            placed = part.get("placement") or {"position_mm": [0.0, 0.0, 0.0], "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}
+            offset = [a - b for a, b in zip(placed["position_mm"], origin)]
+            carried.append({
+                **{key: part.get(key) for key in ("name", "output", "mesh", "color", "role", "finish", "supplier")},
+                "placement": {"position_mm": _quat_rotate(back, offset),
+                              "rotation_xyzw": _quat_mul(back, placed["rotation_xyzw"])}})
+        if carried:
+            entry.update(cad=carried, outline=True)
+            drawn += len(carried)
+    out.update(cad=drawn > 0, revision=(manifest or {}).get("accepted_revision"), parts=drawn,
+               label=f"{label}: CAD on its bodies, primitives outlined" if drawn else out["label"],
+               reason="" if drawn else "no accepted part matched a body")
+    return out
 
 
 def _model_before_rollout(root: Path, model: dict[str, Any]) -> dict[str, Any]:

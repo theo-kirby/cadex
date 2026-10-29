@@ -622,8 +622,8 @@ At the end of a run the trainer plays the final policy for `--view-seconds`
 farthest forward (along the heading it started with), and writes **`view/`** beside `progress.json`: one binary STL per body,
 tessellated from that body's own geoms (boxes, capsules, spheres, cylinders,
 meshes; group 3 and above left out) in its own frame, in millimetres, and
-`trace.json`, a `cadex-assembly-simulation-trace-v1` placing every body at every
-control step. It is the model the policy trained on, so a concept model shows as
+`trace.json`, a `cadex-assembly-simulation-trace-v1` placing every named body at every
+control step, those with nothing to draw too, since CAD may ride on them (ADR-838). It is the model the policy trained on, so a concept model shows as
 its boxes and capsules and an export's fast training model as its collision
 shapes. Until then, from the run's start, `view/` holds the model standing at
 its keyframe, so the run shows its robot from the first iteration. The view never fails a run: anything that goes wrong is one line on stderr.
@@ -636,7 +636,10 @@ a `run.json` **or** only what a trainer wrote: `train/progress.json`, or the
 newest `progress.json` one or two levels down (`seed0/`, `stage2/seed0/`,
 ADR-837). Its curves, its policy and
 its `view/` come from there (ADR-835), so a run started by hand appears beside
-the walks. A run training a further seed beside a finished one charts the live
+the walks. When the run's `model.cad_sha256` (or, for a `cad` run, its own
+digest) is the accepted attempt's MJCF export, the dashboard draws the accepted
+CAD parts on each body from `model.bodies`, with the primitives the policy
+trained on as outlines; a concept run says it is one (ADR-838). A run training a further seed beside a finished one charts the live
 seed and shows the newest seed that has a view, with that seed's policy.
 
 ## Training before the CAD: the concept model (ADR-834)

@@ -25,6 +25,8 @@ export const FOLLOW = {fraction:.22, subject_y:-.06, max_drift:.26, smooth_frame
 // the page's `--warn` through the solids, and only while the labelled toggle is on. Never in a
 // recording, never by default: what the viewer shows is the tessellated solid.
 const PROXY = {color:0xffe08a, opacity:.9};
+// A training body's primitives over the CAD it carries (ADR-838): a colour no part is drawn in.
+const PRIMITIVE = {color:0x35c4ff, opacity:.8};
 // Section and explode (DASHBOARD.md §24). A section clips the solids at the plane and offset of
 // the `cadex section` cut it shows, keeping the side below the offset; the leader lines are the
 // engine's exploded-view segments, in the page's `--muted`.
@@ -736,7 +738,7 @@ export function create(canvas, {labels=true}={}) {
   function clear() {
     disposeProxies(); proxyGeoms=[]; setLines([]); trailCourse=null; disposeTrail();
     meshes.forEach(m=> {
-      model.remove(m); m.geometry.dispose(); Object.values(m.userData.materials).forEach(mat=>mat.dispose()); m.userData.meshLines?.geometry.dispose();
+      model.remove(m); m.geometry.dispose(); Object.values(m.userData.materials).forEach(mat=>mat.dispose()); m.userData.meshLines?.geometry.dispose(); m.userData.outline?.geometry.dispose(); m.userData.outline?.material.dispose();
     });
     meshes.clear(); clearGhost(); bounds=null;triangleCount=0;picked=null;draw();
   }
@@ -763,6 +765,10 @@ export function create(canvas, {labels=true}={}) {
       g.setAttribute('color',new THREE.Float32BufferAttribute(board.colours,3));
       m.vertexColors=true; m.color.set(0xffffff);
       board={chip:board.chip, pad:board.pad};
+    } else if (entry.colours) {
+      // A training body carrying CAD (ADR-838): each part in its own colour.
+      g.setAttribute('color',new THREE.Float32BufferAttribute(entry.colours,3));
+      m.vertexColors=true; m.color.set(0xffffff);
     }
     return {m, finish, colour, board};
   }
@@ -778,13 +784,19 @@ export function create(canvas, {labels=true}={}) {
       g.computeBoundingBox();
       const {m:mat, finish, colour, board}=material(entry,i,g);
       // Its matcap twin (ADR-676) shares the page's one baked sphere; a look swaps between them.
-      const twin=new THREE.MeshMatcapMaterial({color:0xffffff, side:THREE.DoubleSide});
+      const twin=new THREE.MeshMatcapMaterial({color:0xffffff, side:THREE.DoubleSide, vertexColors:!!entry.colours});
       const m=new THREE.Mesh(g,mat);
       m.userData.materials={parts:mat, matcap:twin};
       m.userData.mmBounds=new THREE.Box3().setFromArray(entry.positions);
-      m.userData.world=entry.world===true; m.userData.finish=finish; m.userData.env=FINISHES[finish].env; m.userData.colour=colour; m.userData.board=board;
+      m.userData.world=entry.world===true; m.userData.finish=finish; m.userData.env=FINISHES[finish].env; m.userData.colour=colour; m.userData.board=board; m.userData.tinted=!!entry.colours;
       m.visible=!hidden&&!(entry.world!==true&&hiddenNames.has(entry.name));
       m.castShadow=true;m.receiveShadow=true;pose(m,entry.placement);
+      if (entry.outline?.length) {
+        // The primitive the body trained as, outlined over its CAD (ADR-838); it moves with it.
+        const pg=new THREE.BufferGeometry(); pg.setAttribute('position',new THREE.Float32BufferAttribute(entry.outline.map(v=>v*.001),3));
+        const line=new THREE.LineSegments(new THREE.EdgesGeometry(pg,20),new THREE.LineBasicMaterial({color:PRIMITIVE.color,transparent:true,opacity:PRIMITIVE.opacity,depthTest:false,toneMapped:false}));
+        pg.dispose(); line.renderOrder=1; m.add(line); m.userData.outline=line;
+      }
       meshes.set(entry.name,m);model.add(m);triangleCount+=entry.positions.length/9;
     });
     selectedNames=selectedNames.filter(n=>meshes.has(n)&&!meshes.get(n).userData.world);
@@ -792,10 +804,24 @@ export function create(canvas, {labels=true}={}) {
     updateBounds();if(bounds)frameBounds(bounds);applySection();fit();
     return entries.map((e,i)=>({name:e.name,triangles:e.positions.length/9,color:[16,8,0].map(shift=>(colourOf(e,i)>>shift)&255)}));
   }
+  async function stlOf(url,fetchImpl) {const r=await fetchImpl(url);if(!r.ok)throw new Error('mesh HTTP '+r.status);return parseStl(await r.arrayBuffer());}
+  // A body that carries CAD (ADR-838): its accepted parts, each placed in the body's frame and
+  // in its own colour, are the solid; the primitive it trained as is kept as its outline.
+  async function carried(e,primitive,fetchImpl) {
+    const parts=await Promise.all(e.cad.map(async p=>({p, mm:await stlOf(p.mesh,fetchImpl)})));
+    const positions=[], colours=[], v=new THREE.Vector3(), q=new THREE.Quaternion(), t=new THREE.Vector3(), c=new THREE.Color();
+    parts.forEach(({p,mm},i)=> {
+      q.fromArray(p.placement.rotation_xyzw); t.fromArray(p.placement.position_mm); c.setHex(colourOf(p,i));
+      for (let k=0;k<mm.length;k+=3) {v.set(mm[k],mm[k+1],mm[k+2]).applyQuaternion(q).add(t); positions.push(v.x,v.y,v.z); colours.push(c.r,c.g,c.b);}
+    });
+    const first=e.cad[0]||{};
+    return {...e, finish:first.finish, supplier:first.supplier, color:first.color, positions, colours, outline:primitive};
+  }
   async function load(manifest,fetchImpl=window.fetch.bind(window)) {
-    const entries=await Promise.all((manifest?.components||[]).filter(e=>e.mesh).map(async e=> {
-      const r=await fetchImpl(e.mesh);if(!r.ok)throw new Error('mesh HTTP '+r.status);
-      return {...e, positions:parseStl(await r.arrayBuffer())};
+    // A body with no primitive of its own may still carry CAD.
+    const entries=await Promise.all((manifest?.components||[]).filter(e=>e.mesh||e.cad?.length).map(async e=> {
+      const positions=e.mesh?await stlOf(e.mesh,fetchImpl):null;
+      return e.outline&&e.cad?.length ? carried(e,positions,fetchImpl) : {...e, positions};
     }));
     return install(entries);
   }
@@ -1185,7 +1211,7 @@ export function create(canvas, {labels=true}={}) {
     meshes.forEach((m,n)=> {
       if (m.userData.world) return;
       const {parts:p, matcap:t}=m.userData.materials, h=heat&&heat[n];
-      if (!heat) { p.color.copy(m.userData.board?c.setHex(0xffffff):m.userData.colour); p.vertexColors=!!m.userData.board; return; }
+      if (!heat) { p.color.copy(m.userData.board||m.userData.tinted?c.setHex(0xffffff):m.userData.colour); p.vertexColors=!!(m.userData.board||m.userData.tinted); return; }
       p.color.setHex(h==null?HEAT.rest:h); p.vertexColors=false; t.color.setHex(h==null?HEAT.rest:h);
       if (h!=null&&!on.has(n)) p.emissive.setHex(h).multiplyScalar(HEAT.glow);
     });
@@ -1293,7 +1319,7 @@ export function create(canvas, {labels=true}={}) {
     setLook,look:()=>look,setFov,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
     setHidden,hidden:()=>[...hiddenNames],select,setHeat,heat:()=>heat&&{...heat},selected:()=>selectedNames.slice(),parts,boundsOf,fitTo,
     pick,screenPoint,screenBox,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
-    camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,
+    camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,outlined:[...meshes.values()].filter(m=>m.userData.outline).length,
       world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,render_style:style,stage,showing:showing(),
       proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length}, ghost:ghost.children.map(m=>m.name),
       colours:Object.fromEntries([...meshes].map(([n,m])=>[n,'#'+m.userData.colour.getHexString()])),
