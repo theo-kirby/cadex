@@ -254,6 +254,8 @@ def test_the_curriculum_sets_say_what_they_mean():
     # ADR-871: ADR-824's weighted bands are a draw range too; ADR-900: so is a bound.
     assert CURRICULUM_GOAL_KEYS == {"low", "high", "nominal", "sequence", "bands", "bound"}
     assert "success" in CURRICULUM_TASK_KEYS
+    # ADR-861: ADR-870's foot terms are training reward, like ``reward``.
+    assert "feet" in CURRICULUM_TASK_KEYS
     assert CURRICULUM_EPISODE_KEYS == {"episode_seconds", "max_steps"}
 
 

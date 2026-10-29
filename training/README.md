@@ -232,8 +232,9 @@ against the actuator rather than deriving it — ADR-162 carries the numbers.
 
 The keys that may differ are `CURRICULUM_TASK_KEYS`: `disturbance`,
 `episode` (`episode_seconds` and `max_steps` only, never the control rate),
-`label`, `randomisation`, `reset_variation`, `reward`, `success` (ADR-597)
-and `termination`. None changes what the network reads or emits. Every
+`label`, `randomisation`, `reset_variation`, `reward`, `feet` (ADR-870's
+foot terms, which are reward too: ADR-861), `success` (ADR-597) and
+`termination`. None changes what the network reads or emits. Every
 other key is refused: `observations`, `actions`, `goal`, `reference` and
 the rest. A goal's draw range is the one part of `goal` that may move
 (ADR-791): when its entries differ only in `CURRICULUM_GOAL_KEYS` (`low`,

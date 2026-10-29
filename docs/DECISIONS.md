@@ -47893,3 +47893,51 @@ them. That is open if mazes are ever trained.
 
 **Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
 passed. `training/`: 93 passed.
+
+## ADR-861 — A warm start may add a task's `feet` block; T2 closes at level 0 and the maze through level 2 (2026-10-29, orun21 T2)
+
+**Context.** The Go1 go-to-point policy on T1's courses had three attempts at T2's general
+courses: held-out judging (ADR-858), a height scan for the actor (ADR-859) and a warm
+extension. Level 2 passed 6/10 and level 4 1/10. The failing seeds were read from their
+traces (`docs/probes/orun21/T2-SCAN.md`, "What binds"). Five of 13 stop on a walk leg in
+front of a 42–93 mm up-face, and no run leg stalls first. Three level-4 falls are at
+72–92 mm edges, and three falls have no edge near them. The Go1 bundle pays only
+Playground's stateless `feet_clearance` for the swing. It lacks the two stateful terms
+ADR-870 can pay, `feet_air_time` and `feet_height`. Adding them to a warmed policy was
+refused, because `feet` was not among the keys `--init-from-task-change` may move.
+
+**Decision.**
+- **`feet` joins `CURRICULUM_TASK_KEYS`.** ADR-870's block is reward that an expression
+  cannot say, and the trainer alone reads it. It changes the gradient and not what the
+  network reads or emits, so it may move across a warm start, as `reward` may. One line in
+  `test_curriculum_warm_start.py` holds it.
+- **T2 closes at the levels it passes, with G2's bar unwidened.** Those are flat ground,
+  held-out courses at level 0, and the maze at levels 0, 1 and 2, all on one policy
+  (`orun21-lab/go1-scan/run3`). Level 2's general courses (9/10) and level 4 (1/10) are
+  recorded as not passed. They are not counted towards T2.
+
+**Measured** (`T2-SCAN.md`, "Screen"). Two arms were warmed from `go1-scan/run2`
+iteration 300, each for 41.0 M env steps in about 430 s, seed 5. One added the feet
+block, with air time 0.002 per step over a 0.1 s threshold and swing height −0.004 per
+step against 0.12 m, as Playground weights them. The other ran the unchanged task.
+
+| row | control | feet block |
+|---|---|---|
+| flat | 10/10 | 10/10 |
+| level 0 | 10/10 | 10/10 |
+| level 2 | 8/10, 8 points unreached | 9/10, 1 unreached |
+| level 4 | 3/10, 32 unreached | 1/10, 31 unreached |
+| maze, levels 0/1/2 | 9/9/9 (clear_walls) | 10/10/10 |
+
+Level 4 did not move. The block's level-2 gain is one seed, within noise. Both arms beat
+their start at level 2, so more training explains most of that gain.
+
+**Consequence.** T2's general-terrain clause is met at level 0 only. Its maze clause is
+met at levels 0–2. Level 4's 70–90 mm faces stop the Go1 at walk speeds, and neither
+exposure (ADR-859's extension) nor Playground's swing terms move that. A next attempt
+would change the approach rather than a weight: for example, train mazes and faces with
+the bodies colliding, or set a level-gated speed floor. That is parked, and the run goes
+on to G3.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
+passed. `training/`: 93 passed.

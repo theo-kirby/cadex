@@ -395,6 +395,8 @@ def unflatten_parameters(np: Any, weights: Sequence[float], shapes):
 #:   observations -- a shove reaches the policy only through the state it
 #:   produces, which is the same 39 numbers either way.
 #: * ``reward`` does not. It changes the gradient, which is the point.
+#:   Nor does ``feet`` (ADR-861): ADR-870's stateful foot terms are reward
+#:   that an expression cannot say, read by the trainer only.
 #: * ``episode`` does not, for the horizon, and the engine says so in its own
 #:   words (ADR-136): "the policy cannot see it, because an observation is
 #:   sensor channels and carries no clock."
@@ -416,6 +418,7 @@ CURRICULUM_TASK_KEYS = frozenset({
     "randomisation",
     "reset_variation",
     "reward",
+    "feet",
     "success",
     "termination",
     # ADR-755: the canonical body names what the network reads and drives;
