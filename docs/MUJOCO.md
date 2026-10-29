@@ -213,14 +213,18 @@ grid, lowest and highest, the validated features) in place of
 `environment.floor`, and `task_records` copies it into the bundle as
 `terrain`, a semantic field: another course is another task.
 
-**Train on the box course.** Under driven motion MJX is not stable on the
-heightfield: on ADR-714's block-and-arm rig under random ±0.8 N·m torques,
-3 of 32 MJX environments went non-finite on the heightfield and 0 of 32 on
-boxes, and on the cat's rig (27 actuators, random targets, 24 starts on
-features at up to 3 m/s) the heightfield peaked at 179 rad/s joint speed
-against 39–48 on the plane and the boxes. The box course is also cheaper in
-MJX (134 s against 338 s for one cat run; 82 s on the plane). MJX has no
-hfield contact for a cylinder or an ellipsoid (hazard 20).
+**What trains on which form (ADR-854).** MJX trains on the heightfield
+when only spheres and capsules can touch it, which is Playground's
+arrangement. orun18's Go1, with four sphere feet, trained on a 30 × 30 m
+course of 30–60 mm bumps and dips to its flat result: 0/10 falls, tracking
+within 1% of flat at every command. It ran at 0.61× the plane's env
+steps/s. A box or a mesh on a heightfield goes through MJX's convex-prism
+collider, which is unstable. On ADR-714's block rig it sent 20 of 32
+environments non-finite on the CPU, and on the GPU threw one to 1.43 m at
+252 rad/s. A task whose box or mesh can touch a heightfield is therefore
+refused (below). Train such a robot, or a course with sheer steps,
+platforms, rocks, tiles or mazes, on the box course. MJX has no hfield
+contact for a cylinder or an ellipsoid at all (hazard 20).
 
 **Box course (ADR-716, 2026-10-16).** `terrain={"form": "boxes", ...}` builds
 the same features from placed boxes: the plane, lowered to the course's
@@ -694,7 +698,9 @@ keeps the numbering, and the full record is in the history file.
     ran. Stock MuJoCo simulates that contact; the limit is the JAX
     backend's. The six are **box/cylinder, cylinder/mesh, box/ellipsoid,
     ellipsoid/mesh**, and on a heightfield course **cylinder/hfield and
-    ellipsoid/hfield** (ADR-714). `assembly.task` now refuses them by name
+    ellipsoid/hfield** (ADR-714). Two pairs MJX builds but does not step
+    stably join them: **box/hfield and mesh/hfield** (ADR-854). `assembly.task`
+    refuses all eight by name
     (`mjx_unsupported_collision_pair`), because a task is only ever read by
     the trainer and the author is still there when it is declared; nothing
     else is refused, and a cylinder stays legal on a model nobody trains.
@@ -1346,9 +1352,9 @@ The trainer's flags are `training/README.md`'s; this is what each is for.
 
 - **Train on boxes.** Declare the course `terrain={"form": "boxes",
   "random": {...}}`: a pool of seeded courses the trainer re-draws per
-  episode (ADR-717). A heightfield is the default form and builds, but MJX
-  is unstable on it under driven motion (§2, ADR-714), so it is for smooth
-  hills on a model nobody trains.
+  episode (ADR-717). A heightfield is the default form and trains when
+  only sphere or capsule feet can touch it (§2, ADR-854). A box or mesh
+  that can touch it is refused, so such a robot trains on boxes.
 - **Let the critic see the ground.** A privileged `height_scan` on the
   trunk (ADR-715). The actor never reads it.
 - **Command the turn.** A `speed` goal and a `yaw_rate` goal, resampled in

@@ -47481,3 +47481,85 @@ after.
 **Not in this decision.** Heightfields under MJX (`winter-bay-5176`, R1
 T-3), mesh or heightfield courses from a file, levels and a curriculum,
 and turned walls (every wall runs along x or y) are still open.
+
+## ADR-854 — Heightfields train when only spheres and capsules touch them; a box or mesh on one is refused (2026-10-29, orun21 T1)
+
+**Context.** ADR-715 found MJX non-finite on ADR-714's heightfield course
+under driven motion, ADR-716 trained on placed boxes instead, and the
+heightfield has stayed the default form that no one could train
+(`winter-bay-5176`). R1 (RESEARCH.md §2.3, rows T-3 and C-23) noted that
+Playground's rough Go1 lets only four sphere feet touch its heightfield,
+and that MJX routes a sphere or capsule on a heightfield through its own
+collider (`hfield_sphere`, `hfield_capsule`) but a box or mesh through the
+convex-prism SAT path (`hfield_convex`, `mjx/_src/collision_driver.py:93-96`),
+which is where ADR-715's overflow warning came from. The sphere pair had
+never been tried in Cadex.
+
+**Measured** (`docs/probes/orun21/t1_hfield.py`, MJX 3.10.0; results
+`t1-hfield-cpu.json` with 32 MJX envs and `t1-hfield-gpu.json` with 256,
+each against 8 stock-MuJoCo envs on the same draws). Each rig on the plane,
+the engine's heightfield and the engine's box course:
+- **ADR-714's own rig**, rebuilt by the engine from its deleted test
+  (`git 2594ca4c^`): a box block, a 300 mm arm with no collision, ±0.8 N·m
+  held 10 solver steps, 300 controls. On the heightfield MJX sends
+  **20 of 32 non-finite on the CPU** (from control 65, the base at 7e12 m).
+  On the GPU none go non-finite, but one is **thrown to 1.43 m** and the
+  joint peaks at **252 rad/s**, against 0.01 m and 17.7 rad/s on the plane
+  and on boxes. Stock MuJoCo holds all 8 at 10 mm on all three grounds. The
+  defect is reproduced on this checkout.
+- **The same rig, a sphere colliding** in place of the box: MJX on the
+  heightfield matches the plane and the boxes on both devices (0
+  non-finite; peak 73 / 71 rad/s on CPU, 88 / 86 on GPU).
+- **The Go1** (orun18's feet-only model: four 23 mm sphere feet), started
+  at up to 3 m/s across bumps, 80 mm steps and 15° ramps, with position
+  targets home ±0.6 rad. The heightfield matches the plane: 0 non-finite,
+  peak 64.5 against 61.7 rad/s on the GPU. **With its capsule calves
+  colliding too:** 0 non-finite, peak 57.6 rad/s, so the capsule pair is
+  stable as well.
+- **Training.** run1's exact Go1 command (1,260 iterations × 8,192 envs,
+  206 M steps, seed 1) on a 30 × 30 m heightfield at 100 mm cells with 64
+  bumps and dips of 30–60 mm (118 mm of relief, built by
+  `CadexDynamics.terrain_grid`; `orun21-lab/go1-hfield/`) trained without a
+  diverged iteration. Best reward/step 0.0295 at iteration 1240, against
+  0.0303 flat; the curve is the same (0.0183 / 0.0272 / 0.0285 at
+  iterations 121 / 367 / 737, flat 0.0182 / 0.0278 / 0.0291). orun18's
+  judge on the heightfield gives 0/10 falls at 0.5, 1.0 and 1.5 m/s,
+  tracking 0.481 / 0.953 / 1.431 m/s over the last 2 s, where flat gives
+  0.470 / 0.958 / 1.431.
+- **Cost.** `cadex_train_bench.py`, 8,192 envs: 1.49 M env steps/s on the
+  plane, 0.91 M on the heightfield (0.61×). MJX gives each sphere four
+  heightfield contacts (`mjx_ncon` 16 against 4). The training run took
+  465 s against 325 s, but it shared the CPU with `build-engine` and the
+  CLI suite for part of that time, so the bench is the clean number.
+
+**Decision.**
+- **Heightfields are trainable**, and stay the default form, when only
+  spheres and capsules can touch them. That is Playground's arrangement,
+  and the Go1 shows it trains to the flat result.
+- **A box or mesh that can touch a heightfield is refused when the task is
+  declared.** The pairs `box/hfield` and `hfield/mesh` join the refusal of
+  ADR-281 as `_MJX_UNSTABLE_PAIRS`, with the same reason
+  (`mjx_unsupported_collision_pair`). The message says MJX "is unstable on"
+  the pair, and the correction says a foot on a heightfield is a sphere or
+  a capsule, or the course trains as `form: "boxes"`. Checked on ADR-714's
+  rig: box on heightfield refused; sphere on heightfield, and box or sphere
+  on boxes, accepted. MuJoCo still simulates the pair, so the model still
+  exports and rolls out; only the task is refused.
+- **Boxes stay** for what a heightfield cannot be: sheer steps, platforms,
+  rocks, tile patches and mazes (ADR-745, ADR-853), and any robot whose
+  boxes touch the ground.
+- **Courses from a file are heightfields.** MJX collides a mesh only by its
+  convex hull, so a terrain mesh cannot be a mesh geom in training. A mesh
+  or image course is therefore sampled into the engine's heightfield grid,
+  and so it trains under this decision's rule. Building that kind is
+  T1's next step, not this decision.
+
+**Not changed.** MuJoCo Warp, which Playground runs, is not needed for
+this and stays out of the training venv. Every existing model, bundle and
+digest is unchanged. A task on a heightfield whose box or mesh can touch
+the course was already untrainable; it is now refused when it is declared.
+
+**Evidence.** The probe and its two JSON files are above. Training:
+`orun21-lab/go1-hfield/run1/progress.json` and `run1/judge.json`; bench
+`go1` and `go1-hfield`. `pixi run test-engine`: 158 passed, 3 skipped. After
+`pixi run build-engine`, `pytest cli/tests`: 53 passed.

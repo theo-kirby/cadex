@@ -1055,6 +1055,20 @@ _MJX_UNSUPPORTED_PAIRS: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
+#: The pairs MJX implements but does not step stably: a box or a mesh on a
+#: heightfield goes through MJX's convex-prism collider, which on ADR-714's
+#: own rig sends 20 of 32 environments non-finite on CPU and throws one to
+#: 1.43 m at 252 rad/s on the GPU, where the plane and boxes hold it at
+#: 10 mm. A sphere or capsule on the same heightfield steps as the plane
+#: does (ADR-854, ``docs/probes/orun21/t1_hfield.py``). Refused with the six
+#: above, because a task is only ever read by the trainer.
+_MJX_UNSTABLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("box", "hfield"),
+        ("hfield", "mesh"),
+    }
+)
+
 #: The kinds a script may swap an unsupported one for, in the order a
 #: refusal offers them: the two MJX collides with everything.
 _MJX_SAFE_KINDS = ("box", "capsule", "sphere")
@@ -8257,7 +8271,7 @@ def mjx_unsupported_collision_pairs(mujoco: Any, model: Any) -> list[dict[str, A
             _geom_kind_name(mujoco, model.geom_type[first]),
             _geom_kind_name(mujoco, model.geom_type[second]),
         )
-        if tuple(sorted(kinds)) not in _MJX_UNSUPPORTED_PAIRS:
+        if tuple(sorted(kinds)) not in _MJX_UNSUPPORTED_PAIRS | _MJX_UNSTABLE_PAIRS:
             continue
         rows.append(
             {
@@ -13596,18 +13610,22 @@ def task_records(
     if unsupported:
         first = unsupported[0]
         raise DynamicsError(
-            f"{context} would train a model MJX cannot build: "
+            f"{context} would train a model MJX cannot train: "
             f"{first['geoms'][0]} on {first['bodies'][0]} and "
             f"{first['geoms'][1]} on {first['bodies'][1]} can touch, and MJX "
-            f"has no {first['kinds'][0]}/{first['kinds'][1]} contact.",
+            + (f"is unstable on {first['kinds'][0]}/{first['kinds'][1]} contact."
+               if tuple(sorted(first["kinds"])) in _MJX_UNSTABLE_PAIRS
+               else f"has no {first['kinds'][0]}/{first['kinds'][1]} contact."),
             reason="mjx_unsupported_collision_pair",
             correction=(
                 "MuJoCo simulates this pair and the rollout will look right; "
-                "the trainer will not build it. Give one of the two shapes a "
-                "kind MJX collides with everything ("
+                "the trainer will not build it or will diverge on it. Give "
+                "one of the two shapes a kind MJX collides with everything ("
                 + ", ".join(_MJX_SAFE_KINDS)
                 + ") -- a capsule is the usual stand-in for a shaft or a "
-                "rail. Or separate the two with collision groups: put one in "
+                "rail; on a heightfield only a sphere or a capsule steps "
+                "stably, so a foot is a sphere or a capsule there. Or train "
+                "on terrain form 'boxes'. Or separate the two with collision groups: put one in "
                 "its own contact_group and give the *other* a collides_with "
                 "that omits that group, because MuJoCo's mask test is "
                 "symmetric and one side declaring nothing is not enough. "

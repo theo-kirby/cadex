@@ -90,10 +90,11 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
     `y_range_mm`. The ground at the origin stays at z = 0. The course is in
     the file and in every task bundle built on it as `terrain`.
   - **Form.** The default is a heightfield at `cell_mm` (default 20; a step
-    is a one-cell ramp; a task refuses a cylinder or ellipsoid that can
-    touch it). `"form": "boxes"` builds the same features from placed boxes
-    and is **the form to train on**: MJX steps it as stably as the plane,
-    where the heightfield throws a driven rig to non-finite. On boxes a bump
+    is a one-cell ramp). It trains when only spheres and capsules can touch
+    it; a task refuses a cylinder, ellipsoid, box or mesh that can touch it
+    (ADR-854). `"form": "boxes"` builds the same features from placed boxes,
+    which MJX steps as stably as the plane under box, sphere and capsule
+    feet. On boxes a bump
     is a buried sphere no taller than its radius, there are no dips and no
     `cell_mm`, a step down off a slope's high end is refused
     (`terrain_step_off_slope`), and two kinds exist that a heightfield
