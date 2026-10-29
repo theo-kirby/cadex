@@ -47941,3 +47941,41 @@ on to G3.
 
 **Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
 passed. `training/`: 93 passed.
+
+## ADR-862 — G2's task written onto any robot; a fall read from the base's centre of mass (2026-10-29, orun21 G3)
+
+**Context.** G3 asks for G2's task, recipe and judge on leon V and the biped, changing only
+speed bands and drive data. The only G2 task in the tree was orun18's Go1 bundle, written by
+a probe script (`docs/probes/orun18/a2_bundle.py`) around the Go1's own joint names. leon V's
+CAD task is a fixed 1.5 m/s straight trot with a gait reference, not a velocity command.
+
+**Decision.**
+- **`training/cadex_joystick.py TASK.json --out DIR`** writes G2's task onto the model of
+  any `cadex-training-task-v1` bundle: a concept's, a cut's or an export's. That task is
+  Playground's joystick: `cx`/`cy`/`cw` goals, the body-frame actor, home + 0.5 rad actions,
+  Playground's rewards and randomisation, and upside-down termination. The robot's own parts
+  are read from the model: root, drives, ranges, keyframe, feet and floor. The substeps come
+  from the model's own timestep, and a timestep that does not divide 20 ms is refused.
+  `--speeds` bounds the goals. On the Go1 it writes the a2 bundle's reward expressions,
+  randomisation, reset and termination unchanged, channel names apart. It imports only the
+  standard library at module scope (ADR-084). No test was added: no contract changed.
+- **`cadex_goto play` reads a fall from the base's centre of mass** (`xipos`), not its frame.
+  leon V's concept chest frame sits at the floor, so a home height of 0 made any 1 mm dip a
+  fall. The Go1's G2 judgement does not move (`g2-goto-s20` 10/10, 884.14 s).
+
+**Measured** (`docs/probes/orun21/G3-GOTO.md`). leon V's concept at the CAD's mass, on the
+Go1's G2 command (206.4 M steps, 602 s against the Go1's 333 s), judged by `g2_judge.py`
+on held-out seeds 0–9. At iteration 900 it reached all 80 points within 0.253 m, held every
+hold within 0.100 m, and did not fall. It passed 4/10. All the failures are speed on walk
+legs, at 0.80–0.85 of the command. Run legs track at 0.96 or better. A 300-iteration screen
+(226 s) stalls on most legs.
+
+**Consequence.** G3 on leon V's concept is not met. The binding miss is the slow walk, as in
+`kind-ridge-3238`. Next come a hypothesis test (mass-normalised effort terms, or
+`--goto-share 0`), then the cut and the biped through the same writer. A defect found on the
+way stays open: `cadex_relay.py` keeps the export's episode (0.002 s × 10) on a concept that
+steps at 0.0025 s. Every relayed concept run therefore took 25 ms control steps while its
+task said 20 ms.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53 passed.
+`training/test_cadex_goto.py`: 3 passed.

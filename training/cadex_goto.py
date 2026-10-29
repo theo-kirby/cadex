@@ -673,7 +673,9 @@ def play(options: argparse.Namespace) -> int:
     data.qpos[:] = player.home
     data.ctrl[player.ctrl_index] = player.reset_command * player.ctrl_scale
     mujoco.mj_forward(model, data)
-    home_height = float(data.xpos[player.base][2])
+    # The base's centre of mass, not its frame: a frame may sit at the floor
+    # (leon V's concept chest), where any dip would read as a fall (orun21 G3).
+    home_height = float(data.xipos[player.base][2])
     player.reset()
     state = layer_start(np, [1])
     seconds = options.seconds or episode_seconds(plan, player.limits)
@@ -734,7 +736,7 @@ def play(options: argparse.Namespace) -> int:
             break
         R = data.xmat[player.base].reshape(3, 3)
         # Height over the ground under the base, so a course's pit or step is not a fall.
-        bx, by, bz = (float(v) for v in data.xpos[player.base])
+        bx, by, bz = (float(v) for v in data.xipos[player.base])
         if R[2, 2] < JUDGE["fall_up_z"] or bz - ground(1000.0 * bx, 1000.0 * by) / 1000.0 \
                 < JUDGE["fall_height_share"] * (home_height - ground(0.0, 0.0) / 1000.0):
             fell = True

@@ -741,6 +741,25 @@ the layer's command from the base's pose at every step, for the observation and
 the tracking reward alike. The other episodes keep the bundle's drawn goals.
 Without `--goto` the graph and the policy header are unchanged.
 
+**On any robot (ADR-862).** `cadex_joystick.py TASK.json --out DIR` writes the
+task the Go1 passed G2 on (Playground's joystick: `cx`/`cy`/`cw` goals, body-frame
+velocity, gyro, gravity, joint positions and velocities and the last command for
+the actor, home + 0.5 rad actions, Playground's reward terms and randomisation,
+upside-down termination) onto the model of any bundle, a concept's, a cut's or
+an export's. The root, the driven joints, their ranges and keyframe pose, the
+feet (bodies with colliding geoms and none below them) and the floor are read
+from the model; substeps come from the model's own timestep. On the Go1 it
+writes every reward expression, randomisation entry, reset and termination of
+`docs/probes/orun18/a2_bundle.py`'s bundle, channel names apart. `--speeds
+VX,VY,WZ` bounds the goals (the Go1's 1.5, 0.8, 1.2).
+
+```bash
+~/cadex-train-venv/bin/python training/cadex_joystick.py RELAY/outputs/trot-task.json --out DIR
+```
+
+`play` reads a fall from the base's centre of mass, not its frame, so a root
+frame at the floor (leon V's concept chest) does not read as a fall.
+
 ## Training before the CAD: the concept model (ADR-834)
 
 `cadex_concept.py` writes a robot spec (`cadex-concept-v1` JSON) as a

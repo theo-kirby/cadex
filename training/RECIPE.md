@@ -76,6 +76,16 @@ Skip the concept only when the CAD already exists and no geometry is in
 question; never skip the cut for a large robot (leon V's export trains at
 1/32 of its cut's rate), and on a small one the cut still halves the run.
 
+**Go-to-point on any tier (ADR-862).** `cadex_joystick.py RELAY/outputs/TASK.json
+--out DIR` writes G2's task onto the relayed model. Train with the Go1's G2
+command unchanged (`docs/probes/orun21/G2-GOTO.md`: 1260 × 8192 × 20 =
+206.4 M steps, `--goto walk:0.4-0.7,run:1.0-1.5 --goto-share 0.2`) and judge
+with `docs/probes/orun21/g2_judge.py`. leon V's concept at the CAD's mass: 602 s
+on the 5090. Every held-out point was reached and held, with no fall, but the
+slow walk ran at 0.80–0.85 of a 0.5 m/s command, so it passed 4/10 at
+iteration 900 (`docs/probes/orun21/G3-GOTO.md`). A 300-iteration screen
+(226 s) reaches too little to judge.
+
 ## 0. Before training: can the machine do it?
 
 1. **Measure the drives against the gait before writing a reward.** The
