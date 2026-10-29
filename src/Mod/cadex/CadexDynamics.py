@@ -4405,6 +4405,7 @@ TERRAIN_RANDOM_DEFAULTS: dict[str, Any] = {
     "maze_cells": [1, 3],
     "mazes": 1,
     "levels": None,
+    "around": False,
 }
 
 #: The magnitude ranges a level bands (ADR-856): with ``levels`` L, level l
@@ -4421,6 +4422,20 @@ TERRAIN_LEVELS_ALGORITHM = (
     "rock_mm, tile_mm and wall_mm is drawn from its level's band "
     "[lo + (hi - lo)*l/L, lo + (hi - lo)*(l + 1)/L]; sizes, counts and runs "
     "are every level's"
+)
+
+#: Appended to the algorithm in a pool that declares ``around`` (ADR-857), so
+#: a pool without it keeps its bytes.
+TERRAIN_AROUND_ALGORITHM = (
+    "; with around (ADR-857), after the steps and slopes towards +x a second "
+    "run from x = -clear_mm towards -x: x -= uniform(run_mm), each step or "
+    "slope signed by the course's height outward from the origin and written "
+    "as the feature that makes it (a step of -d at x, a slope of -g from x - "
+    "length to x), stopping while a run of run_mm's high end and a step still "
+    "fit inside x0, then a step back to z = 0 a run further out; every bump, "
+    "platform, rock patch, tile patch and maze centre is drawn over the whole "
+    "extent, uniform(x0 + half, x1 - half), and kept only outside the square "
+    "|x|, |y| < clear_mm + half about the origin (a bump in up to 8 tries)"
 )
 
 #: How many places :func:`terrain_random_features` tries for one platform or
@@ -4575,6 +4590,16 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
                 observed={"levels": repr(levels), "courses": record["courses"]},
             )
         record["levels"] = levels
+    if merged["around"] is not False:
+        # ADR-857: recorded only when set, so a pool laid along +x keeps its bytes.
+        if merged["around"] is not True:
+            raise DynamicsError(
+                f"{where} gives 'around' as {merged['around']!r}.",
+                reason="malformed_terrain",
+                correction="'around' is true (features round the start) or false (along +x).",
+                observed={"around": repr(merged["around"])},
+            )
+        record["around"] = True
     if record["maze_cell_mm"][0] <= TERRAIN_WALL_THICKNESS_MM:
         raise DynamicsError(
             f"{where} gives maze_cell_mm from {record['maze_cell_mm'][0]:g} mm.",
@@ -4668,7 +4693,10 @@ def terrain_random_features(
     Pure and seeded by :data:`TERRAIN_RANDOM_ALGORITHM`: steps and slopes
     along x, past ``clear_mm``, with a flat run before each; then bumps. Each
     step or slope is signed back towards z = 0, so a long course climbs and
-    descends rather than drifting off in one direction.
+    descends rather than drifting off in one direction. With ``around``
+    (ADR-857) the march runs towards -x as well and every placed feature may
+    stand anywhere in the extent outside the clear square about the origin,
+    so a point drawn in any direction from the start meets terrain.
     """
 
     import random
@@ -4727,12 +4755,54 @@ def terrain_random_features(
                              "grade_deg": grade})
             level += length * math.tan(math.radians(grade))
             x += length
+    around, clear = bool(spec.get("around")), float(spec["clear_mm"])
+    if around:
+        # ADR-857: the same march towards -x. ``level`` is the height outward
+        # from the origin, so each feature is written as the one that makes
+        # it, and a last step brings the far end back to z = 0, which keeps
+        # the origin there.
+        level, x, reserve = 0.0, -clear, float(spec["run_mm"][1])
+        while kinds and len(features) < limit - 1:
+            at = x - rng.uniform(*spec["run_mm"])
+            kind = rng.choice(kinds)
+            if kind == "step":
+                height = signed(rng.uniform(*spec["step_mm"]))
+                if at - reserve <= x0:
+                    break
+                features.append({"kind": "step", "x_mm": at, "height_mm": -height})
+                level += height
+                x = at
+            else:
+                grade = signed(rng.uniform(*spec["grade_deg"]))
+                length = rng.uniform(*spec["slope_mm"])
+                if at - length - reserve <= x0:
+                    break
+                features.append({"kind": "slope", "from_x_mm": at - length, "to_x_mm": at,
+                                 "grade_deg": -grade})
+                level += length * math.tan(math.radians(grade))
+                x = at - length
+        if abs(level) > 1e-9:
+            features.append({"kind": "step", "x_mm": x - rng.uniform(*spec["run_mm"]),
+                             "height_mm": level})
+
+    def outside(cx: float, cy: float, half_x: float, half_y: float) -> bool:
+        return abs(cx) >= clear + half_x or abs(cy) >= clear + half_y
+
     if spec["bump_mm"] is not None:
         for _ in range(rng.randint(1, int(spec["bumps"]))):
             height = rng.uniform(*spec["bump_mm"])
             radius = rng.uniform(*spec["bump_radius_mm"])
             half = radius / 2.0
-            low_x = float(spec["clear_mm"]) + half
+            if around:
+                for _try in range(TERRAIN_RANDOM_PLACE_TRIES):
+                    cx = rng.uniform(x0 + half, max(x0 + half, x1 - half))
+                    cy = rng.uniform(y0 + half, max(y0 + half, y1 - half))
+                    if outside(cx, cy, radius, radius):
+                        features.append({"kind": "bump", "x_mm": cx, "y_mm": cy,
+                                         "radius_mm": radius, "height_mm": height})
+                        break
+                continue
+            low_x = clear + half
             features.append({
                 "kind": "bump",
                 "x_mm": rng.uniform(low_x, max(low_x, x1 - half)),
@@ -4747,10 +4817,12 @@ def terrain_random_features(
             for edge in ((f["x_mm"],) if f["kind"] == "step" else (f["from_x_mm"], f["to_x_mm"]))]
 
     def place(half_x: float, half_y: float, flat: bool) -> tuple[float, float] | None:
-        low_x = float(spec["clear_mm"]) + half_x
+        low_x = (x0 if around else clear) + half_x
         for _ in range(TERRAIN_RANDOM_PLACE_TRIES):
             cx = rng.uniform(low_x, max(low_x, x1 - half_x))
             cy = rng.uniform(y0 + half_y, max(y0 + half_y, y1 - half_y))
+            if around and not outside(cx, cy, half_x, half_y):
+                continue
             if any(abs(cx - ox) < half_x + hx + TERRAIN_RANDOM_GAP_MM
                    and abs(cy - oy) < half_y + hy + TERRAIN_RANDOM_GAP_MM
                    for ox, oy, hx, hy in taken):
@@ -5231,7 +5303,8 @@ def _terrain_box_course(
     if random_spec is not None:
         slots = max(len(entry["boxes"]) for _, entry in courses)
         descriptor["random"] = {**random_spec, "algorithm": TERRAIN_RANDOM_ALGORITHM + (
-            TERRAIN_LEVELS_ALGORITHM if random_spec.get("levels") else "")}
+            TERRAIN_LEVELS_ALGORITHM if random_spec.get("levels") else "") + (
+            TERRAIN_AROUND_ALGORITHM if random_spec.get("around") else "")}
         descriptor["slots"] = slots
         descriptor["dome_slots"] = max(len(entry["domes"]) for _, entry in courses)
         # The model's metres per course millimetre, which a trainer placing

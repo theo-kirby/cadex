@@ -346,6 +346,20 @@ their level. `progress.json` carries `terrain_levels` and
 `terrain_levels_curve` (environments per level, per iteration), and the
 policy header's `training.terrain.curriculum` names the rule.
 
+**Terrain round the start (ADR-857).** `random.around: true` lays a drawn
+pool round the origin rather than ahead of it, for go-to-point, whose points
+lie ahead, to a side and behind. The step-and-slope march also runs from
+`-clear_mm` towards -x, each feature written as the one that makes the
+course's height outward from the origin, with a last step back to z = 0
+beyond it so the origin stays on z = 0. Every bump, platform, rock, tile
+patch and maze centre is drawn over the whole extent and kept outside the
+square `|x|, |y| < clear_mm + half`. The descriptor's algorithm gains
+`TERRAIN_AROUND_ALGORITHM`, and a pool without `around` keeps its bytes.
+On ADR-856's pool, 80% of first go-to-point points lay off the extent and
+23% of first legs crossed any relief. On the 24 m square round pool of
+`docs/probes/orun21/t2_around.py` (41 slots), no first point lies off the
+extent and 66% of first legs cross relief.
+
 ### Commands and success predicates
 
 **Turning commands and command tracking (ADR-721, 2026-10-16).** A goal

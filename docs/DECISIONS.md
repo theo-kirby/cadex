@@ -47703,3 +47703,65 @@ tests: 91 passed (`test_terrain_pool.py` 3).
 **Not changed.** No op, stored suffix or tool changes; a pool without
 `levels` and a run without `--terrain-curriculum` draw and train exactly as
 before.
+
+## ADR-857 — Terrain laid round the start, so go-to-point points meet it (2026-10-29, orun21 T2)
+
+**Context.** ADR-856's curriculum promotes an environment that reaches a
+go-to-point point without falling. A drawn pool laid its features only past
+`clear_mm` along +x, but `cadex_goto.sequence` puts points ahead, to a side
+and behind. Over 640 train sequences on ADR-856's own pool
+(`docs/probes/orun21/t2_around.py legs`), **80% of first points lay off
+the extent**, and only 23% of first legs (34% of second legs) crossed any
+relief over 10 mm. Most promotions were earned on flat ground, so the level
+signal was mostly not a terrain signal.
+
+**Decision.**
+- `terrain.random.around: true` lays a drawn pool round the origin. The
+  step-and-slope march also runs from `-clear_mm` towards -x. `level` there
+  is the height outward from the origin, and each step or slope is written
+  as the feature that makes it (a step of -d at x, a slope of -g from
+  x - length to x). It stops while one run of `run_mm`'s high end and a
+  step still fit inside x0, and a last step returns the far end to z = 0,
+  so the origin stays on z = 0 as `terrain_moves_start` requires. Every
+  bump, platform, rock patch, tile patch and maze centre is drawn over the
+  whole extent and kept only outside the square
+  `|x|, |y| < clear_mm + half` (a bump gets up to 8 tries, as placed
+  patches do).
+- Recorded only when true. The descriptor's algorithm gains
+  `TERRAIN_AROUND_ALGORITHM`. A pool without it keeps its bytes: ADR-856's
+  pool and both `test_terrain_pool.py` pools hash identically before and
+  after.
+- No trainer or dashboard change. Both read the placed boxes (ADR-852).
+- No new test. The pool's placement contract is held by
+  `test_terrain_pool.py` as before, and the origin rule is an engine refusal.
+
+**Measured.** The pool is `t2_around.py`'s `POOL`: ADR-856's kinds and
+level bands on a 24 m square (it holds the third point of 90% of train
+sequences), runs 1.5–3.0 m, 12 bumps, 2 platforms, 1 rock patch and 1 tile
+patch. It needs 41 box slots and 12 dome slots, against 29 and 4. Course
+relief rises with level, from 48–94 mm at level 0 to 380–677 mm at level 7.
+
+| pool | first point off extent | leg 1 meets relief | leg 2 | leg 3 | leg 4 |
+|---|---|---|---|---|---|
+| ADR-856 (+x only) | 0.798 | 0.234 | 0.342 | 0.411 | 0.427 |
+| ADR-857 (around) | 0.000 | 0.655 | 0.739 | 0.714 | 0.711 |
+
+The draw was stressed with 40 seeds × 5 variants (short runs, steps to
+400 mm and grades to 30°, mazes, a short extent): 200 pools, no refusal,
+and every course's ground at the origin is 0.
+A screen warm from `go1-levels/run1` (`~/cadex-projects/orun21-lab/
+go1-around/run1`, 400 × 8192 × 20 = 65.5 M env steps, the same flags,
+seed 2, `--init-from-task-change`) climbed from level 0 to a mean level of
+0.96 at iteration 100, 1.82 at 200, 2.56 at 300 and 3.17 at 399 (the last
+row is 79/604/1712/2637/2056/861/219/24 environments per level). Reward per
+step fell from 0.030 to 0.027 as the batch climbed. The wall was 667 s,
+1.67 s per iteration against run1's 1.08: the extra slots cost about 1.5×,
+and part of the screen shared the machine with a build and the CLI suite.
+No policy from it has been judged on held-out courses yet.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. After
+`pixi run build-engine`, `pytest cli/tests`: 53 passed. `training/`: 91
+passed.
+
+**Not changed.** Points still do not steer round walls, and the screen's
+pool carries none. A pool without `around` draws exactly as before.
