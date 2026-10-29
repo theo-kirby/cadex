@@ -46752,4 +46752,64 @@ scope (ADR-084), `mujoco` and `numpy` inside functions:
 - `training/test_cadex_training_model.py` pins the cut's contract on a toy
   export: dynamics kept, floor-only pairs at the stated condims, discovery,
   the tier mark and the refusals.
+- The ladder's order (Euler first) is measured in MJX in ADR-842: Euler is
+  7% faster on leon V's cut, so the ladder stays as it is.
 
+## ADR-842 — One throughput bench for any MJCF, and the cut's ladder measured in MJX (2026-10-28, orun21 P1)
+
+**Context.** P1 asks for leon V's `tools/train_bench.py` as one Cadex
+command, generic over robots. ADR-841's ladder tries 2 ms Euler before
+implicitfast on the grounds that Euler is faster, but that was a guess,
+timed only on the CPU. M0's copy of the bench started every model from
+`qpos0` with zero controls, so the Go1 fell during its bench.
+
+**Decision.** `training/cadex_train_bench.py MODEL.xml` reports env steps/s
+in MJX for any MJCF (standard library at module scope, ADR-084):
+- every env starts from keyframe 0 with that keyframe's controls (the stand
+  a Cadex export solves, Playground's `home`), or from `qpos0` at zero
+  controls when the model has no keyframe;
+- it judges the stand on the free root's subtree centre of mass, because a
+  Cadex export puts every body frame at the origin;
+- `--integrator`, `--timestep`, `--iterations` and `--ls-iterations`
+  override the model's options. `Euler` switches Euler damping off, as the
+  cut writes it. One cut can then be timed under each ladder setting;
+- it reports the `cadex:tier` mark, and exits non-zero if any env goes
+  non-finite.
+
+**Evidence** (`~/cadex-projects/orun21-lab/p1-bench/*.json`, the 5090 on
+its own, 100 control steps; a first pass, kept in `first-pass/`, agrees
+within 0.5%). Env steps/s at 8192 envs:
+
+| model | sha256 | setting | MJX contacts / rows | env steps/s | stands |
+|---|---|---|---|---|---|
+| Go1 (Playground) | `1d03aaeb` | 4 ms Euler 1 / 5 | 4 / 40 | 1,497,518 | yes |
+| leon V concept D1 | `0959b4a3` | 2.5 ms Euler 1 / 5 | 18 / 102 | 525,379 | yes |
+| leon V cut, as written | `f6ed66de` | 2 ms Euler 2 / 3 | 18 / 68 | 302,874 | yes |
+| leon V cut, `--integrator implicitfast` | `f6ed66de` | 2 ms implicitfast 2 / 3 | 18 / 68 | 280,937 | yes |
+| leon V engine MJCF | `41a4e7e0` | 2 ms implicitfast 100 / 50 | 218 / 910 | 9,394 | yes |
+| biped cut, as written | `b1e12e2d` | 2 ms implicitfast 2 / 3 | 12 / 42 | 651,355 | yes |
+| biped cut, `--integrator Euler` | `b1e12e2d` | 2 ms Euler 2 / 3 | 12 / 42 | (679,161) | **non-finite** |
+| biped engine MJCF | `2b9c8268` | 2 ms implicitfast 100 / 50 | 12 / 54 | 181,295 | yes |
+
+- **The ladder stays as it is.** On the same cut, implicitfast is 7.2%
+  slower than Euler on leon V and 4.1% slower on the biped. Euler first
+  therefore buys 7% where it passes. On leon V implicitfast also fails
+  fidelity (8.5 mm, ADR-841), so the ladder would still be needed even if
+  speed were equal. The biped's Euler blow-up in MJX matches what the CPU
+  showed (136° tilt).
+- **The cut is worth having on both robots.** Against the engine MJCF it
+  is 32× faster on leon V and 3.6× on the biped. Against the Go1 it runs at
+  0.20× on leon V and 0.43× on the biped. leon V's concept, at 0.35×, is
+  still 1.7× faster than its cut. That gap is the concept's case in the
+  tier decision.
+- With a keyframe start, the Go1 now stands through its bench (centre of
+  mass 0.257 → 0.241 m) at the rate M0 recorded.
+
+**Consequences.**
+- leon V's `tools/train_bench.py` is superseded for the Cadex route. Its
+  copy stays in leon V's repository, which is read-only to this run.
+- `training/test_cadex_training_model.py` gains one test, a contract
+  between the two tools: for each `LADDER` setting, the bench's override
+  gives the same compiled options as the model `cut` writes.
+- The biped's fidelity pass still gates only 1 of 12 signals (ADR-841).
+  This unit does not change that; it remains an open claim.

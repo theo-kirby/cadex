@@ -749,6 +749,19 @@ export and checks it moves like the export, which stays the judge:
 Pass the export as `--cad-model` to `cadex_train.py` and the dashboard draws
 the CAD on the cut's bodies (ADR-838).
 
+`cadex_train_bench.py` times any MJCF in MJX: env steps/s at a zero action
+from keyframe 0 (20 ms control steps, batched envs, compile timed apart),
+and whether every env stayed finite and upright. `--integrator`,
+`--timestep`, `--iterations` and `--ls-iterations` override the model's own
+options, so one cut can be timed under each setting the cut may pick
+(ADR-842):
+
+```bash
+systemd-run --user --scope -p MemoryMax=30G \
+  ~/cadex-train-venv/bin/python training/cadex_train_bench.py MODEL.xml \
+    [--envs 2048,8192] [--integrator implicitfast] [--json OUT]
+```
+
 ## What the suites do, and do not, prove
 
 No suite trains (ADR-725). The engine and CLI suites hold the boundary
@@ -756,7 +769,7 @@ above and nothing of the learner. The training venv's own tests,
 `training/test_cadex_proxy.py`, `training/test_cadex_training_model.py`,
 `training/test_curriculum_warm_start.py`,
 `training/test_canonical_body.py`, `training/test_terrain_pool.py` and
-`training/test_distill.py`, cover the proxy, the training model's cut, the warm-start rules, the base
+`training/test_distill.py`, cover the proxy, the training model's cut and the bench's solver override, the warm-start rules, the base
 remap, the course pool's height scan (ADR-747) and distillation's routing
 and refusals. A change to the trainer is
 verified by running it: a few iterations on CPU (`SETUP.md` §b), then the

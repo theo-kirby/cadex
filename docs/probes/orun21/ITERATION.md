@@ -186,6 +186,13 @@ its stand (the bench does not use the Menagerie keyframe), so it falls during
 the bench; its number is the physics rate, not a standing rate. The leon V
 training model matches leon V's own record (302.6 k, `docs/training-model.md`).
 
+P1 re-ran every row with the port, `training/cadex_train_bench.py`, which
+starts from keyframe 0 with its controls (ADR-842,
+`orun21-lab/p1-bench/`): each rate within 0.5% of the table, and every model
+now stands through the bench, the Go1 included. Added there: the biped's
+training model (`b1e12e2d`, implicitfast 2 / 3), **651 k** at 8192 envs,
+3.6× its engine MJCF.
+
 What the trainer reaches with PPO on top (`progress.json` `wall_time_s`,
 including compile and the run's end; 8192 envs × 20 steps an iteration):
 

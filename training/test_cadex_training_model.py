@@ -101,3 +101,18 @@ def test_a_moved_inertia_or_a_framed_static_body_is_refused():
     assert T.compare(T.compiled(EXPORT), T.compiled(moved))[0].startswith("mass matrix")
     with pytest.raises(ValueError, match="own frame"):
         T.derive(EXPORT.replace('<body name="c_panel">', '<body name="c_panel" pos="0 0 0.1">'), **T.DEFAULTS)
+
+
+def test_the_bench_times_the_setting_the_cut_writes():
+    """``cadex_train_bench`` overrides a model's options to each ``LADDER`` setting exactly as ``cut`` writes it."""
+
+    import cadex_train_bench as B
+
+    for setting in T.LADDER:
+        xml, _ = T.derive(EXPORT, **setting)
+        written = mujoco.MjModel.from_xml_string(xml).opt
+        overridden = mujoco.MjModel.from_xml_string(EXPORT)
+        B.apply_options(overridden, **setting)
+        for name in ("timestep", "iterations", "ls_iterations", "integrator", "disableflags"):
+            assert getattr(overridden.opt, name) == getattr(written, name), (setting, name)
+        assert B.tier(xml) == "training" and B.tier(EXPORT) is None
