@@ -173,3 +173,77 @@ effort-scale hypothesis above cannot be the whole of it. The final checkpoint ha
 **Not done.** The biped's concept (`examples/concept/orun9-biped.json`) has not trained on §G.
 The writer's 0.1 m swing height and the sequences' 2–5 m spacing are still the Go1's. On the biped
 a leg takes 30–60 s.
+
+## Step back on the slow walk (`kind-ridge-3238`)
+
+Three attempts (share 0, the 30° exit, the biped) left the slow walk where it was, so this
+section reads it step by step before any lever is chosen (`g3_slowwalk.py`; it plays
+`cadex_goto play` unchanged and logs, each control step, what the judge reads beside the
+layer's vx, vy, wz and the base's measured body-frame velocity).
+
+**The denominator is the command.** The biped's seed 4 on the export (iteration 1200), every
+straight walk leg the judge read:
+
+| point | band speed | layer vx | layer vy | measured forward | ratio | deficit m/s |
+|---|---|---|---|---|---|---|
+| 1 | 0.068 | 0.0680 | −0.0022 | 0.0560 | 0.823 | 0.0120 |
+| 2 | 0.099 | 0.0990 | −0.0014 | 0.0875 | 0.884 | 0.0115 |
+| 3 | 0.111 | 0.1109 | −0.0025 | 0.0997 | 0.898 | 0.0114 |
+| 4 | 0.101 | 0.1010 | −0.0018 | 0.0893 | 0.884 | 0.0117 |
+| 5 | 0.068 | 0.0680 | −0.0020 | 0.0558 | 0.821 | 0.0122 |
+| 6 | 0.065 | 0.0650 | −0.0021 | 0.0526 | 0.810 | 0.0124 |
+| 7 | 0.081 | 0.0810 | −0.0023 | 0.0689 | 0.850 | 0.0121 |
+
+The layer commands the band speed itself: `pace = min(speed, max(distance, approach_min))`
+and `approach_min` (0.25 m/s) is above every biped speed, so there is no approach slow-down,
+and the judge keeps only steps whose commanded speed equals the point's. The mean bearing
+is −0.8° to −1.9°, so `cos(bearing)` costs under 0.1%. The critic's suspicion (the ratio
+divides by the band while the layer commands less) is ruled out. The miss is a near-constant
+0.0114–0.0124 m/s at every command from 0.065 to 0.111, which only becomes a failing ratio
+at the bottom of the band.
+
+**The layer is not in it.** Without the layer, holding `(vx, 0, 0)` for 40 s and reading the
+mean after 10 s:
+
+| robot (policy) | command → measured forward (ratio) |
+|---|---|
+| biped (`runs/g2` 1200, export) | 0 → −0.0064 · 0.065 → 0.0527 (0.81) · 0.10 → 0.0886 (0.89) · 0.16 → 0.1460 (0.91) · 0.24 → 0.2175 (0.91) |
+| Go1 (`g2-goto-s20`) | 0 → −0.0128 · 0.40 → 0.348 (0.87) · 0.55 → 0.511 (0.93) · 0.70 → 0.669 (0.96) · 1.0 → 0.977 (0.98) · 1.5 → 1.466 (0.98) |
+| leon V concept (`runs/g2` 900) | 0 → 0.0001 · 0.40 → 0.318 (0.79) · 0.55 → 0.499 (0.91) · 0.70 → 0.663 (0.95) · 1.0 → 0.979 (0.98) · 1.5 → 1.446 (0.96) |
+
+The bare policy misses as it does under the layer (biped 0.81 at 0.065, as on point 6).
+On every judged leg (`judge-face`, `judge-face.000900`, `judge-export.001200`), each leg under
+0.85 is in the bottom sixth of its walk band: leon V's ten all at 0.402–0.452 of 0.4–0.7,
+the biped's fifteen all at 0.064–0.079 of 0.064–0.112. The Go1 has none, but its slowest
+third still has the lowest ratios (mean 0.909, min 0.870 at 0.40). Its fastest third reaches
+0.978 and leon V's 0.971.
+
+**What binds: the tracking kernel is flat where the judge is strict.** The writer's
+`tracking_lin_vel` is `exp(-|c - v|² / σ)` with σ = 0.25 (m/s)² on the Go1 and leon V and
+0.25 · 0.16² = 0.0064 on the biped (ADR-865 scales it). That is an absolute width of 0.5 m/s
+(biped 0.08), while the judge's tolerance is relative: 15% of a 0.4 m/s floor is 0.06 m/s
+(biped 0.0098). At the edge of that tolerance the kernel pays 0.986, and on the biped 0.985.
+A policy that walks the floor at 0.80 instead of 1.00 therefore loses about 2.5% of a
+0.02-weight term, against the walk's effort, clearance and pose terms. The deficit the
+policies settle at is roughly absolute (Go1 0.023–0.052 m/s, leon V 0.021–0.082, biped 0.011–0.023),
+so it is a failing ratio only at the floor. leon V's 0.433 at 0.5 m/s (constant command,
+ADR-862) and the Go1's 0.470 at share 0 are the same miss. The effort-scale hypothesis is not
+needed: the 0.65 kg biped shows it at the same relative place. Nothing in this trace shows
+whether effort terms or gait quantisation set the 0.01–0.08 m/s itself. What the trace does
+show is that the reward does not resist it at the floor.
+
+**The lever, for the next unit.** Make the tracking reward resolve the judge's tolerance at
+the band floor. Leave the band, which is the robot's, and the bar alone. The smallest test is
+`tracking_lin_vel`'s σ cut to a quarter (an absolute width of 0.25 m/s on leon V, so a 0.06
+miss pays 0.94), on leon V's concept, at the G3 budget, judged by `g2_judge.py` at the same
+seeds. The expectation: the slowest third's mean deficit falls from 0.062 to at most 0.03
+m/s, and every walk leg reaches ≥ 0.85, with run legs still ≥ 0.95. If the deficit does not
+move, the binding term is not the kernel but what opposes it (effort, clearance), and the
+next test is those weights at the walk band.
+
+**A second finding: 32 of the biped's 37 run legs are never read.** Seed 4's point 0 (run,
+side, 0.225 m/s) has 0% of its 4,094 steps within 10° of the point and 4% within 30°. The
+biped's yaw limit (0.192 rad/s, the Go1's 1.2 × 0.16) means the layer leaves a turn in place
+at 30°, walks diagonally with vy clamped at −0.128, drifts back to 60° and turns again. It
+reaches the point, but never on a straight. The 30° exit (ADR-865) closed the loop the layer
+was stuck in, but at that yaw rate it still never lines up.

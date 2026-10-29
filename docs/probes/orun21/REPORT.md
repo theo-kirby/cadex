@@ -160,9 +160,11 @@ watch ran on the export. For G3 it followed RECIPE.md alone from its CAD
 In order, smallest first:
 1. **The slow walk after the Go1**, now on two robots of 0.65 and 33 kg
    (biped 2/10 on its export, leon V 4/10), where every point is reached and
-   only straight legs at 0.80–0.86 fail. Read a walk leg's command and speed
-   trace step by step before choosing a lever. Mass-normalised effort terms
-   alone cannot explain the light biped.
+   only straight legs at 0.80–0.86 fail. Read step by step (G3-GOTO.md,
+   "Step back"): the policy misses by a near-absolute 0.01–0.08 m/s with or
+   without the layer, which fails only at the band floor, where the tracking
+   kernel (√σ = 0.5 m/s, biped 0.08) pays 0.985 at the judge's tolerance.
+   Test a narrower σ on leon V's concept first.
 2. **leon V's go-to-point on its cut** (G3's second half, X1), judged on the
    export with `g2_judge.py --other-model`.
 3. **The CAD accept**: profile the fits a whole-robot edit re-runs

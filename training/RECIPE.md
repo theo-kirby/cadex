@@ -600,7 +600,14 @@ What this recipe is known to miss, and what no run has shown yet.
   its cut and 2/10 on its export, with every point reached and every hold
   kept; each seed fails on one leg at 0.80–0.86 of its command (G3-GOTO.md).
   The biped weighs 0.65 kg, a twentieth of the Go1, so the effort scale
-  below cannot be all of it.
+  below cannot be all of it. Read step by step (G3-GOTO.md, "Step back"),
+  the miss is the policy's, not the layer's or the judge's: a bare
+  constant command misses the same way, the deficit is nearly absolute
+  (biped 0.011–0.023 m/s, leon V 0.021–0.082, Go1 0.023–0.052), and every leg
+  under 0.85 is in the bottom sixth of its walk band. The tracking kernel's
+  absolute width (√σ = 0.5 m/s, biped 0.08) pays 0.985 at the judge's 15%
+  tolerance at the band floor, so the reward hardly resists the miss there.
+  The next test is a narrower σ; no run has tried it.
 - **leon V's slow walk.** On §G leon V's concept passes 4/10 (3/10 under
   the 30° turn exit of ADR-865), and every
   failure is a walk leg at 0.80–0.85 of a 0.5 m/s command (constant
