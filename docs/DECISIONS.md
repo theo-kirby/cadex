@@ -46933,3 +46933,73 @@ that cannot stand still: a different robot, not a crude copy of this one.
   randomisation from the export, which the concept does not have; running a
   CAD task on a concept (or on a cut) needs a re-laying step, the next P1
   unit. The tier decision waits on it.
+
+## ADR-845 — A CAD task bundle re-laid by name onto a concept or a cut (2026-10-29, orun21 P1)
+
+**Context.** ADR-844 left the biped's concept untrained: its CAD task bundle
+(`b1_walk`) speaks in the export's numbers — sensor addresses in the task's
+order, body and actuator ids, qpos rows, and per-body mass randomisation as
+flat indices — and the concept numbers its bodies and sensors differently
+and has no `c_battery` body; a cut fuses that body into the pelvis. P1's
+route needs the CAD's task to train the concept and the cut unchanged, and
+the judge to stay the engine MJCF.
+
+**Decision.** `training/cadex_relay.py TASK.json MODEL.xml --out DIR` writes
+the bundle and the model re-laid by name:
+- the model's own `<sensor>` block and the sites only it used give way to
+  the export's sensors, in the export's order, and the sites they name; a
+  site keeps its pose on the nearest of its export ancestors the model has.
+  Every observation keeps its channels, so **a policy trained on any tier
+  reads the same inputs and plays on the export's own bundle**: the engine's
+  success spec (`cadex evaluate`, `evaluate_runner.py`) judges it unchanged;
+- drives by actuator name (a missing drive refuses); any entry with `body`
+  and `body_id` (reset variation, shoves, scans) by body name, its
+  `qpos_adr`/`qvel_adr` by its joint or the body's own; randomised rows by
+  the name of the body, joint, dof, geom, site or actuator they index;
+  `qpos`/`reset_qpos`/`qvel`/`reset_qvel` rows joint by joint;
+- what the model lacks is dropped and listed in `DIR/relay.json` (a sensor
+  with its observation, a body entry, a randomisation entry); a dropped
+  channel that a reward, termination or foot term reads refuses, as do keys
+  it cannot map by name (`frame_id`, `resting_contacts`, `driver_qpos_adr`).
+Standard library at module scope (ADR-084); `mujoco` inside.
+
+**Evidence** (`~/cadex-projects/orun21-lab/p1-relay/`; export `2b9c8268`,
+bundle from attempt `1793234378369-90c8bf32f897`; each run 8192 envs × 100
+iterations, seed 0, the trainer's defaults, as b1-b1 and d1w-biped):
+- Both re-lays keep all 28 sensors and observations and drop one entry, the
+  battery's mass randomisation (`mass on c_battery`). At the clip's first
+  pose the cut reads the export's observations exactly except the touch
+  channels (unsettled contact); the concept differs by up to 5.1 mm on the
+  feet's CoM and 3.3 mm on the body's, its mass placement (ADR-844).
+- Judged on the **export** with the engine's success spec (10 frozen seeds,
+  8 predicates), at iteration 100:
+
+  | trained on | train s (100 it) | reward/step @99 | on the export | fails |
+  |---|---|---|---|---|
+  | export, b1-b1 (orun9) | — | 11.20 | **10/10** | — |
+  | export, d1w-biped (ADR-837) | ≈249 (373 s / 150 it) | 11.18 | **10/10** | — |
+  | cut, re-laid | 106 | 10.95 | **10/10** | — |
+  | concept, re-laid | 101 | 10.63 | **7/10** | W7 step clearance 0.019 vs 0.020 hip heights, ×3 |
+
+  The concept's policy on the concept itself: 6/10, the same predicate. Its
+  forward speed on the export is 129–136 mm/s (the cut's 172–181, the
+  export's own 151–161; spec 80–240).
+- End to end (launch to exit, compile and closing view included): concept
+  151.5 s, cut 158.5 s, against d1w-biped's 444.6 s for 150 iterations on
+  the export.
+
+**Consequences.**
+- On the biped a CAD task trains on the cut to the export's verdict at
+  2.3× the export's training speed, and on the concept to all but one
+  margin. The tier decision P1 asks for now rests on these runs and leon
+  V's (ADR-841–843); it is the next unit.
+- A concept trained on its re-laid CAD task is judged on the export with no
+  bespoke judge; the concept's own failures (here a 1 mm clearance shortfall)
+  are visible before any CAD-tier training is spent.
+- `training/test_cadex_relay.py` pins the contract on a toy: addresses by
+  sensor name, drives, bodies, dof and body rows by name, the fused
+  battery's sensor, shove and randomisation dropped and listed, and a
+  dropped channel read by a reward refused.
+- Not shown here: leon V. Its tasks are built by its own `t1_bundle.py`,
+  not exported by the engine, so there is no leon V CAD bundle to re-lay
+  yet.

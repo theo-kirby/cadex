@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-28. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-29. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -784,6 +784,22 @@ concept, an export or a cut; a cut reads as its export to 1e-8.
 ~/cadex-train-venv/bin/python training/cadex_cad_vs_concept.py CONCEPT.xml CAD.xml [--json OUT]
 ```
 
+`cadex_relay.py` re-lays a CAD task bundle onto a concept or a cut by name
+(ADR-845), so the task the CAD was trained on trains the other tiers
+unchanged. The model's sensors become the export's, in the export's order
+(a site moves to the nearest kept ancestor of its body), so a policy reads
+the same channels on all three tiers and `cadex evaluate`'s success spec
+judges a concept- or cut-trained policy on the export's own bundle. Drives,
+body entries (reset variation, shoves, scans), randomised rows and
+qpos/qvel rows map by name; what the model lacks (a battery fused into the
+pelvis) is dropped and listed in `relay.json`, and a dropped channel that a
+reward, termination or foot term reads refuses.
+
+```bash
+~/cadex-train-venv/bin/python training/cadex_relay.py PROJECT/.../outputs/walk-task.json MODEL.xml --out DIR
+~/cadex-train-venv/bin/python training/cadex_train.py DIR/outputs/walk-task.json --tier concept ...
+```
+
 ## What the suites do, and do not, prove
 
 No suite trains (ADR-725). The engine and CLI suites hold the boundary
@@ -791,7 +807,7 @@ above and nothing of the learner. The training venv's own tests,
 `training/test_cadex_proxy.py`, `training/test_cadex_training_model.py`,
 `training/test_curriculum_warm_start.py`,
 `training/test_canonical_body.py`, `training/test_terrain_pool.py` and
-`training/test_distill.py`, and `training/test_cadex_concept.py`, cover the proxy, the concept's layout and flat feet, the training model's cut, the bench's solver override and the comparison's leg discovery, the warm-start rules, the base
+`training/test_distill.py`, `training/test_cadex_concept.py` and `training/test_cadex_relay.py`, cover the proxy, the concept's layout and flat feet, the re-laying of a task by name, the training model's cut, the bench's solver override and the comparison's leg discovery, the warm-start rules, the base
 remap, the course pool's height scan (ADR-747) and distillation's routing
 and refusals. A change to the trainer is
 verified by running it: a few iterations on CPU (`SETUP.md` §b), then the
