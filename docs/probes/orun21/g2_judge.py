@@ -47,6 +47,8 @@ def main() -> int:
     ground.add_argument("--level", type=int, default=None)
     ground.add_argument("--flat", action="store_true")
     parser.add_argument("--maze", action="store_true")
+    parser.add_argument("--other-model", action="store_true",
+                        help="judge on a model the policy did not train on (a cut's policy on its export)")
     options = parser.parse_args()
     if options.maze and options.level is None:
         parser.error("--maze needs --level")
@@ -103,7 +105,8 @@ def main() -> int:
             extra = ["--course", str(here / "course.json")]
         subprocess.run([sys.executable, str(GOTO), "play", options.policy, "--task", options.task,
                         "--seed", str(seed), "--split", "heldout", "--bands", options.bands,
-                        "--view-dir", str(here / "view"), *extra], check=True, stdout=subprocess.DEVNULL)
+                        "--view-dir", str(here / "view"), *extra,
+                        *(["--other-model"] if options.other_model else [])], check=True, stdout=subprocess.DEVNULL)
         result = json.loads((here / "goto.json").read_text())
         rows = result["points"]
         holds = [r["hold_worst_m"] for r in rows if r["hold_worst_m"] is not None]

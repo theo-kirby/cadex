@@ -48053,3 +48053,56 @@ its CAD to G3 by following RECIPE.md alone, which has not been run.
 ADR-839–863) and the lab launch scripts (`orun21-lab/go1/runs/g2-goto-s20`,
 `go1-scan/run3`, `g3/leonv-concept/runs/g2`). No suite is affected by a
 documentation change.
+
+## ADR-865 — The biped through RECIPE.md alone: speeds scale the writer, a turn in place exits at 30°, the judge plays on the export (2026-10-29, orun21 G3/K1)
+
+**Context.** K1's test is the orun9 biped taken from its CAD to G3 by following
+`training/RECIPE.md` alone, fixing the recipe wherever it is wrong or silent. The biped is
+0.646 kg, top speed 240 mm/s (`W3-speed`), with roll, pitch and knee servos and no hip yaw.
+Its CAD existed, so per §R the route began at the export: cut, relay, `cadex_joystick.py`,
+G2's command on the cut, `g2_judge.py` (`docs/probes/orun21/G3-GOTO.md` §The biped).
+
+**Decision.** Each change writes the Go1's and leon V's tasks, and plays their finished
+sequences, as before.
+- **`cadex_joystick.py`**: (a) a source bundle with no goal is accepted, and a stated
+  `goal_algorithm` is written for it; (b) the ±1 kg trunk payload is capped at ±20% of the
+  trunk's mass, because on the biped's 0.26 kg pelvis it drew a negative mass; (c) Playground's
+  tracking widths (0.25) scale with the square of `--speeds` over the Go1's, and the 0.5 m/s,
+  0.5 rad/s reset kick scales with the ratio. At 0.25 the biped's 0.2 m/s command paid 0.85 for
+  standing, and its 300-iteration screen stood still at every command. The kick tipped it over,
+  and episodes averaged 334 of 1000 steps.
+- **`cadex_goto` layer**: a turn on the spot starts past 60° off (`turn_deg`) and goes on until
+  the point is within 30° (`face_deg`, a new `turning` state). With one edge the biped
+  chattered at 60°: each step-off into the diagonal walk yawed it back out, and it took 226 s
+  to reach its first point. `test_cadex_goto.py` gains a regression test, which fails without
+  the fix.
+- **`cadex_goto play`**: the episode bound is each leg and a half turn at half their speed,
+  plus holds and 10 s. The old bound (full speed plus 10 s) cut off every biped sequence. Play
+  stops a second after the last point, so a finished sequence is judged the same either way.
+  `--other-model` (and `g2_judge.py --other-model`) plays a policy on a model it did not train
+  on, matching channels by name, and `goto.json` records `model_sha256` and `trained_on`. This
+  is how a cut's go-to-point policy is judged on its export.
+- **RECIPE.md** §G.1, §G.2, §G.4 and a new §G.7 (scale the Go1's speeds and bands by the robot's
+  top speed over 1.5 m/s) say all of this, and *Limits* gains the biped's slow walk, the
+  absolute swing height and spacing, and the skipped concept.
+- **Tried and removed**: capping the layer's 0.25 m/s pace floor at a sixth of the forward
+  limit, on the hypothesis that the biped circled points. It moved nothing (5/10 seeds reached
+  every point, against 6/10 without it).
+
+**Measured.** `runs/g2` on the biped's cut: 206.4 M steps, 478.6 s. A 300-iteration screen walked
+but did not turn in place. The full budget turned at ±0.18 rad/s. At iteration 1200 on held-out
+seeds 0–9: cut 0/10 and export (`--other-model`) **2/10**, every point reached (80/80) within
+0.255 m, every hold within 0.100 m, 0 falls. Each seed's slowest straight leg ran at
+0.80–0.86 of its command. Re-judged under the 30° exit, the Go1's `g2-goto-s20` passes 10/10
+(913.2 s, ratios 0.870–0.986), and leon V's iteration 900 passes 3/10 against 4/10, on speed
+alone.
+
+**Consequence.** The biped has been taken through the recipe and does not pass G3: the same slow
+walk as leon V, on a robot a twentieth of the Go1's mass, so absolute effort terms cannot be the
+only cause. K1's walk-through is done and its fixes have landed. Whether K1 is met, given a G3
+miss, is the owner's call. The swing height (0.1 m) and point spacing (2–5 m) stay the Go1's,
+untested.
+
+**Evidence.** `training/` tests: 94 passed (`test_cadex_goto.py` 4). `pixi run test-engine`: 158 passed,
+3 skipped. `pytest cli/tests`: 53 passed. The runs, judges and launch scripts are in
+`orun21-lab/g3/biped/`.

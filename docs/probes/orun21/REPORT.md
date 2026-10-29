@@ -1,6 +1,6 @@
 # orun21: closing report
 
-Verified against source: 2026-10-29 (`4eedc567` plus this file). Frozen run
+Verified against source: 2026-10-29 (`95f28bc2` plus ADR-865). Frozen run
 evidence; read it, never cite it as current. Written from what is measured so
 far, per the owner's live edit; it is kept current until the run stops. C1's
 checkbox belongs to the owner.
@@ -26,8 +26,8 @@ those files say.
 | G2 go-to-point on the Go1 | **met**, 10/10 held-out | `G2-GOTO.md`, ADR-840 |
 | T1 one terrain system | met: one engine source, every kind, levels, MJX heightfields | ADR-852–856 |
 | T2 go-to-point on terrain | met at flat, level 0 and the maze through level 2; level 4 fails | `T2-JUDGE.md`, `T2-SCAN.md`, `T2-MAZE.md`, ADR-857–861 |
-| G3 the other two | leon V concept 4/10; leon V's cut and the biped **not run** | `G3-GOTO.md`, ADR-862, ADR-863 |
-| K1 the recipe | rewritten; **unticked** until the biped follows it alone | `training/RECIPE.md`, ADR-864 |
+| G3 the other two | **not met**: leon V concept 4/10 (3/10 under ADR-865's turn exit); biped cut 0/10, export 2/10, every point reached and held, no falls, slow legs at 0.80–0.86; leon V's cut not run | `G3-GOTO.md`, ADR-862, ADR-863, ADR-865 |
+| K1 the recipe | rewritten; the biped followed it alone from its CAD, and the places it was wrong or silent (six defects and the unstated speed rule, ADR-865) are fixed in it; G3 not passed, so the tick is the owner's | `training/RECIPE.md`, ADR-864, ADR-865 |
 | E1, J1, X1 (beyond) | not started | — |
 
 ## 2. M0 before and after: one iteration's time
@@ -118,8 +118,18 @@ exposure nor swing terms moved level 4 (`cool-valley-2757`, ADR-861).
 
 **The biped.** It went through P1's route (concept from its CAD, cut, relay,
 `cadex evaluate`: cut 10/10, concept 7/10 on b1_walk, ADR-844/846). Its D1
-watch ran on the export. Go-to-point (G3) and terrain have not been run; its
-export carries no servo armature (`green-wren-7528`).
+watch ran on the export. For G3 it followed RECIPE.md alone from its CAD
+(export, cut, relay, `cadex_joystick.py`, G2's command with the Go1's speeds
+× 0.16), and six recipe defects were fixed on the way, plus the unstated speed rule (ADR-865,
+`G3-GOTO.md` §The biped). Its export carries no servo armature
+(`green-wren-7528`); terrain has not been run.
+
+| model | task | pass /10 | source |
+|---|---|---|---|
+| cut, screen 300 it, before the writer's speed scaling | G2's task and judge, biped bands | 0 (stood still at every command) | `G3-GOTO.md` |
+| cut, 300 it (49.2 M, 185.5 s) | the same | 0 (walks, no turn in place; 0–1 of 8 points) | `G3-GOTO.md` |
+| cut, 1260 it (206.4 M, 478.6 s), it 1200, judged on the cut | the same | **0** (80/80 points, holds ≤ 0.100 m, 0 falls; slowest leg per seed 0.80–0.85) | `G3-GOTO.md` |
+| the same policy, judged on the export (`--other-model`) | the same | **2** (80/80, holds ≤ 0.100 m, 0 falls; 0.80–0.86) | `G3-GOTO.md` |
 
 ## 5. What is still slow, or still wrong
 
@@ -134,9 +144,11 @@ export carries no servo armature (`green-wren-7528`).
   seed change recompiles (`ITERATION.md` §8).
 - **The engine suite**: 130 s against the documented 34 s, untraced (§7 rank 5).
 - **Slow walking under go-to-point**: the Go1 0.470 → 0.458 m/s at share 0.2
-  (`kind-ridge-3238`); leon V's walk legs 0.80–0.85; the effort-scale
-  hypothesis (absolute N·m torque and energy terms on a robot 2.6× the Go1's
-  mass) is untested.
+  (`kind-ridge-3238`); leon V's walk legs 0.80–0.85; the biped's slowest legs
+  0.80–0.86 at 0.65 kg, so the effort-scale hypothesis (absolute N·m torque
+  and energy terms on a robot 2.6× the Go1's mass) cannot be the whole cause.
+- **The writer's length terms are the Go1's**: 0.1 m swing height and 2–5 m
+  point spacing, absolute; on the biped a leg takes 30–60 s (ADR-865).
 - **No single cut solver setting is generic** (`sandy-acorn-7218`): the cut
   searches a ladder.
 - **The go-to-point judge is a probe script** (`g2_judge.py`).
@@ -146,12 +158,13 @@ export carries no servo armature (`green-wren-7528`).
 ## 6. Recommended next run
 
 In order, smallest first:
-1. **K1's test, unfinished here**: take the biped from its CAD to G3 by
-   `training/RECIPE.md` alone, fixing the recipe wherever it is wrong or silent;
-   then leon V's go-to-point on its cut (G3's second half, X1).
-2. **The heavy robot's slow walk**: one screen with mass-normalised effort
-   terms on leon V's concept against the share-0.2 control, the hypothesis
-   `G3-GOTO.md` leaves untested.
+1. **The slow walk after the Go1**, now on two robots of 0.65 and 33 kg
+   (biped 2/10 on its export, leon V 4/10), where every point is reached and
+   only straight legs at 0.80–0.86 fail. Read a walk leg's command and speed
+   trace step by step before choosing a lever. Mass-normalised effort terms
+   alone cannot explain the light biped.
+2. **leon V's go-to-point on its cut** (G3's second half, X1), judged on the
+   export with `g2_judge.py --other-model`.
 3. **The CAD accept**: profile the fits a whole-robot edit re-runs
    (`rapid-leaf-3340`) and take the restore off the remaining commands
    (`sunny-vale-9004`).

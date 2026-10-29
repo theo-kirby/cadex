@@ -691,7 +691,8 @@ robot) and, for at least two, a hold of 1–3 s. The draw is seeded by
 `(split, seed)`, so a `heldout` sequence is never one `train` drew.
 `layer_step(xp, ...)` is route A's scripted layer: from the base's planar pose it
 turns the lit point into a forward, lateral and yaw-rate command (turn in place
-past 60° off, slow down as it closes, hold by small corrections), lights the next
+past 60° off and on until within 30°, ADR-865; slow down as it closes; hold by small
+corrections), lights the next
 point on arrival (within 0.25 m, or 0.1 m when the point has a hold) or when the
 hold ends, never on a clock. It is written once with `xp.where`, so it runs in
 numpy and in jitted JAX.
@@ -710,6 +711,11 @@ draws the points (docs/DASHBOARD.md), and writes `goto.json`: per point whether 
 was reached, the closest approach, the worst distance while held and the forward
 speed over its straight stretch, against G2's bar (reach 0.3 m, hold 0.15 m, no
 fall, speed within 15%), and `leg_s`, the time from a point lighting to reaching it.
+`play --other-model` (and `g2_judge.py --other-model`) plays a policy on a model it
+did not train on, its channels matched by name, as a cut's policy is judged on its
+export; `goto.json` then records both digests (`model_sha256`, `trained_on`;
+ADR-865). The play runs to every point or to a bound of each leg and a half turn
+at half their speed, so a slow robot is not cut off.
 
 **On a course (ADR-858).** `play --course COURSE.json` first stands a box course
 (the bundle's terrain form, as `CadexDynamics.terrain_evaluation_course` draws a
@@ -753,7 +759,11 @@ feet (bodies with colliding geoms and none below them) and the floor are read
 from the model; substeps come from the model's own timestep. On the Go1 it
 writes every reward expression, randomisation entry, reset and termination of
 `docs/probes/orun18/a2_bundle.py`'s bundle, channel names apart. `--speeds
-VX,VY,WZ` bounds the goals (the Go1's 1.5, 0.8, 1.2).
+VX,VY,WZ` bounds the goals (the Go1's 1.5, 0.8, 1.2). Slower speeds scale
+Playground's tracking widths (by the square of the speed ratio) and the reset kick
+with them, the ±1 kg trunk payload is capped at ±20% of the trunk's mass, and a
+source bundle with no goal (a fixed-speed engine task) is accepted (ADR-865). At
+the Go1's speeds every one of these writes what it wrote before.
 
 ```bash
 ~/cadex-train-venv/bin/python training/cadex_joystick.py RELAY/outputs/trot-task.json --out DIR

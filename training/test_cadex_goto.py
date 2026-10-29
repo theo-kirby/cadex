@@ -72,3 +72,20 @@ def test_a_maze_route_turns_at_a_door_cell_and_comes_back_the_same_way() -> None
     assert got == there + there[-2::-1][:-1] + [((2.5, -0.5), "held")]
     assert [p["bearing"] for p in route["points"]][5] == "behind"
     assert all(p["band"] == "walk" for p in route["points"] if p["role"] in ("cell", "corner"))
+
+
+def test_a_turn_in_place_goes_on_until_the_point_is_well_inside_the_cone() -> None:
+    # ADR-865's regression: with one 60 deg threshold the orun9 biped chattered
+    # at the cone's edge, each step-off yawing it back out, and turned for 200 s.
+    plan = stack(np, [{"points": [{"xy_m": [0.0, -4.0], "speed_mps": 1.0, "hold_s": 0.0}]}])
+    state = layer_start(np, [1])
+    one = lambda yaw: layer_step(np, plan, state, np.array([0.0]), np.array([0.0]),  # noqa: E731
+                                 np.array([math.radians(yaw)]), 0.02, LIMITS)
+    state, command = one(0.0)  # the point 90 deg to the right: turn in place
+    assert bool(state["turning"][0]) and command["vx"][0] == 0.0 and command["wz"][0] < 0.0
+    state, command = one(-40.0)  # 50 deg off, inside 60 but not 30: still turning
+    assert bool(state["turning"][0]) and command["vx"][0] == 0.0
+    state, command = one(-65.0)  # 25 deg off: walk, still turning toward it
+    assert not bool(state["turning"][0]) and command["vx"][0] > 0.0
+    state, command = one(-40.0)  # back out to 50 deg while walking: keeps walking
+    assert not bool(state["turning"][0]) and command["vx"][0] > 0.0

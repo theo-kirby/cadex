@@ -63,8 +63,12 @@ SEQUENCE = {"points": 8, "behind": 2, "side": 2, "distance_m": (2.0, 5.0), "lead
 #: The layer's gains and radii. ``arrive_m`` is under G2's 0.3 m reach bar; a
 #: point with a hold is arrived on only within ``hold_arrive_m``, so the hold
 #: starts inside its 0.15 m bar; ``settle_m`` is the hold's dead band.
-LAYER = {"arrive_m": 0.25, "hold_arrive_m": 0.1, "turn_deg": 60.0, "yaw_gain": 2.0, "approach_gain": 1.0,
-         "approach_min": 0.25, "hold_gain": 1.5, "hold_max": 0.3, "settle_m": 0.05}
+#: A point more than ``turn_deg`` off the heading is turned to in place, and a
+#: turn in place goes on until the point is within ``face_deg``: with one
+#: threshold the orun9 biped chattered at 60 deg, its step-off yawing it back
+#: out of the cone each time, and stood turning for 200 s (ADR-865).
+LAYER = {"arrive_m": 0.25, "hold_arrive_m": 0.1, "turn_deg": 60.0, "face_deg": 30.0, "yaw_gain": 2.0,
+         "approach_gain": 1.0, "approach_min": 0.25, "hold_gain": 1.5, "hold_max": 0.3, "settle_m": 0.05}
 
 #: G2's pass bar (the charter): reach, hold, and speed tracking on straight legs.
 JUDGE = {"reach_m": 0.3, "hold_m": 0.15, "speed_tolerance": 0.15,
@@ -281,7 +285,8 @@ def layer_start(xp: Any, batch: Sequence[int]) -> dict[str, Any]:
 
     return {"index": xp.zeros(tuple(batch), dtype=xp.int32),
             "held_s": xp.zeros(tuple(batch), dtype=xp.float32),
-            "arrived": xp.zeros(tuple(batch), dtype=bool)}
+            "arrived": xp.zeros(tuple(batch), dtype=bool),
+            "turning": xp.zeros(tuple(batch), dtype=bool)}
 
 
 def _current(xp: Any, plan: Mapping[str, Any], index: Any) -> tuple[Any, Any, Any]:
@@ -328,7 +333,11 @@ def layer_step(xp: Any, plan: Mapping[str, Any], state: Mapping[str, Any], x: An
     distance = xp.hypot(ex, ey)
     bearing = xp.arctan2(ey, ex)
     pace = xp.minimum(speed, xp.maximum(g["approach_gain"] * distance, g["approach_min"]))
-    facing = xp.abs(bearing) < math.radians(g["turn_deg"])
+    off = xp.abs(bearing)
+    turning = xp.where(state["turning"], off > math.radians(g["face_deg"]), off >= math.radians(g["turn_deg"]))
+    turning = turning & ~arrived & ~(index >= count)
+    new["turning"] = turning
+    facing = ~turning
     travel_vx = xp.where(facing, pace * xp.cos(bearing), 0.0)
     travel_vy = xp.where(facing, pace * xp.sin(bearing), 0.0)
     travel_wz = g["yaw_gain"] * bearing
@@ -358,7 +367,8 @@ class Player:
     A channel with no source here (contacts, trackers) is refused.
     """
 
-    def __init__(self, policy_path: Path, task_path: Path, goals: Sequence[str]) -> None:
+    def __init__(self, policy_path: Path, task_path: Path, goals: Sequence[str],
+                 other_model: bool = False) -> None:
         import hashlib
 
         import mujoco
@@ -374,8 +384,11 @@ class Player:
         xml = cadex_train._bundle_model_bytes(task_path.resolve(), task)
         if xml is None:
             raise SystemExit(f"the model {task['model']['path']!r} is not beside {task_path}")
-        if hashlib.sha256(xml).hexdigest() != header["model"]["sha256"]:
-            raise SystemExit("the policy was not trained on this bundle's model")
+        # ``other_model`` plays a policy on a model it did not train on, by
+        # channel name: a cut's policy on its export (RECIPE.md §R.9, ADR-865).
+        self.trained_on = str(header["model"]["sha256"])
+        if hashlib.sha256(xml).hexdigest() != self.trained_on and not other_model:
+            raise SystemExit("the policy was not trained on this bundle's model (--other-model plays it by name)")
         training = header.get("training") or {}
         if float(training.get("action_filter_alpha", 1.0)) != 1.0 or float(training.get("command_slew_deg", 0.0)):
             raise SystemExit("this player plays no action filter or command slew")
@@ -496,14 +509,21 @@ class Player:
 
 
 def episode_seconds(plan: Mapping[str, Any], limits: Mapping[str, Sequence[float]]) -> float:
-    """A generous bound on an episode: each leg at its speed, a half turn, its hold, and 10 s."""
+    """A generous bound on an episode: each leg and a half turn at half their speed, its hold, and 10 s.
+
+    Half speed, so a slow robot is not cut off: at its full speed the orun9
+    biped's legs take 30-60 s each, and at 0.85 of the command it ran past a
+    bound of each leg at its speed plus 10 s on every held-out sequence (orun21
+    G3, ADR-865). Play stops a second after the last point, so a sequence that
+    finishes is judged the same under either bound. Speed is judged apart.
+    """
 
     x = y = 0.0
     total = 10.0
-    turn = math.pi / max(1e-6, float(limits["wz"][1]))
+    turn = 2.0 * math.pi / max(1e-6, float(limits["wz"][1]))
     for point in plan["points"]:
         px, py = point["xy_m"]
-        total += math.hypot(px - x, py - y) / float(point["speed_mps"]) + turn + float(point["hold_s"])
+        total += 2.0 * math.hypot(px - x, py - y) / float(point["speed_mps"]) + turn + float(point["hold_s"])
         x, y = px, py
     return total
 
@@ -640,6 +660,8 @@ def course_ground(np: Any, course: Mapping[str, Any]) -> Any:
 def play(options: argparse.Namespace) -> int:
     """Play one held-out (or training) sequence with a policy and write its view and readings."""
 
+    import hashlib
+
     import mujoco
     import numpy as np
 
@@ -647,7 +669,8 @@ def play(options: argparse.Namespace) -> int:
     import cadex_train
 
     policy_path = Path(options.policy).expanduser()
-    player = Player(policy_path, Path(options.task).expanduser(), options.goals.split(","))
+    player = Player(policy_path, Path(options.task).expanduser(), options.goals.split(","),
+                    other_model=options.other_model)
     if options.sequence:
         plan = json.loads(Path(options.sequence).expanduser().read_text(encoding="utf-8"))
         if plan.get("schema") != GOTO_SCHEMA:
@@ -755,7 +778,9 @@ def play(options: argparse.Namespace) -> int:
                   "highest_mm": course["highest_mm"], "boxes": len(course["boxes"]),
                   "domes": len(course.get("domes") or ())},
               "limits": player.limits, "layer": dict(LAYER), "seconds": round(len(record["index"]) * player.dt, 2),
-              "witness_error": player.witness_error, "view": str(trace), **readings}
+              "witness_error": player.witness_error, "view": str(trace),
+              "model_sha256": hashlib.sha256(player.model_xml).hexdigest(), "trained_on": player.trained_on,
+              **readings}
     (out.parent / "goto.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
     print(json.dumps({"view": str(trace), "seconds": result["seconds"], "reached": readings["reached"],
                       "of": count, "pass": readings["pass"], "speed_ratios": readings["speed_ratios"]}))
@@ -772,6 +797,8 @@ def main(argv: Sequence[str]) -> int:
             verb.add_argument("--task", required=True, help="the bundle the policy trained on")
             verb.add_argument("--goals", default="cx,cy,cw",
                               help="the task's forward, lateral and yaw-rate goals, in that order")
+            verb.add_argument("--other-model", action="store_true",
+                              help="play on a model the policy did not train on, its channels matched by name")
             verb.add_argument("--view-dir", default=None, help="default: view/ beside the policy")
             verb.add_argument("--seconds", type=float, default=None, help="default: episode_seconds()")
             verb.add_argument("--fps", type=float, default=25.0, help="view frames per second")

@@ -10,8 +10,10 @@ kept under its old numbers because records cite them.
 Each step names the ADR, run or probe that is its evidence. Records are
 `[rec: slug]` (read them with `governor snapshot`), and the probes are
 `docs/probes/orun21/*.md`. A step with no run behind it says so. *Limits*,
-at the end, lists what this recipe is known to miss, and K1 is not ticked
-until the biped has been taken through it by this file alone.
+at the end, lists what this recipe is known to miss. The biped was taken
+from its CAD through §R and §G by this file alone (ADR-865); the places
+it was wrong or silent are fixed in §G.1, §G.2, §G.4 and §G.7, and the biped
+did not pass G3's bar (*Limits*).
 
 **The route in one screen.**
 
@@ -21,7 +23,7 @@ until the biped has been taken through it by this file alone.
 | concept | `cadex_concept.py SPEC --out concept.xml` | ADR-842 |
 | task | `cadex_joystick.py TASK.json --out DIR` | ADR-862 |
 | train | `cadex_train.py ... --goto walk:...,run:... --goto-share 0.2` | ADR-840, G2-GOTO.md |
-| judge go-to-point | `docs/probes/orun21/g2_judge.py POLICY TASK OUT` | ADR-839, ADR-858 |
+| judge go-to-point | `docs/probes/orun21/g2_judge.py POLICY TASK OUT` (`--other-model` on the export) | ADR-839, ADR-858, ADR-865 |
 | freeze, CAD | the project's script, with `assembly.task` | ADR-846, ADR-847 |
 | export | `cadex export --out DIR` (copies the accepted attempt) | ADR-848 |
 | compare | `cadex_cad_vs_concept.py concept.xml EXPORT.xml` | ADR-843 |
@@ -134,7 +136,10 @@ ends, not on a clock. This replaces separate stand, sprint and turn tasks.
    joystick: forward and lateral speed and yaw rate. `cadex_goto`'s layer
    turns each point into those commands from the base's pose. A point
    behind is a turn on the spot, and a hold is a zero command with
-   corrections. The other route, end-to-end position targets (Rudin et al.
+   corrections. A turn on the spot starts past 60° off and goes on until the
+   point is within 30°, so a robot whose step-off yaws it back is not
+   caught at one edge (ADR-865: the biped chattered at a single 60° edge
+   and turned for 200 s). The other route, end-to-end position targets (Rudin et al.
    2022), is the charter's E1 and has no run.
 2. **Write the task onto the robot's model.** `cadex_joystick.py TASK.json
    --out DIR` writes G2's task onto any `cadex-training-task-v1` bundle: an
@@ -143,7 +148,14 @@ ends, not on a clock. This replaces separate stand, sprint and turn tasks.
    the substeps from its timestep. It writes Playground's terms (§D) with
    the Go1's speeds (±1.5, ±0.8 m/s, ±1.2 rad/s; `--speeds` changes them).
    On the Go1 it writes orun18's bundle back again, up to channel names.
-   The task names nothing robot-specific beyond the model.
+   The task names nothing robot-specific beyond the model. Slower
+   `--speeds` scale the tracking widths and the reset kick with them, and
+   the trunk payload is capped at ±20% of the trunk's mass (ADR-865). Before
+   that, the biped's 0.2 m/s commands paid 0.85 of the tracking reward for
+   standing, and its policy stood; a 0.5 m/s reset kick tipped it over
+   (episodes 334 of 1000 steps); and its 0.26 kg pelvis drew a negative
+   mass. A CAD task with no goal (the biped's fixed-speed walk) is a valid
+   source.
 3. **Train with the layer on a fifth of the episodes.** Add `--goto
    walk:0.4-0.7,run:1.0-1.5 --goto-share 0.2` to the run (ADR-840). Each
    such episode plays one of 1,024 seeded `train` sequences, turned to a
@@ -165,7 +177,14 @@ ends, not on a clock. This replaces separate stand, sprint and turn tasks.
    by the layer's arrival rule, so the speed column and `leg_s` (time per
    point) are what tell policies apart. leon V's best pass (4/10) was
    iteration 900, not its best-reward 1113 (2/10) or its last (2/10)
-   (G3-GOTO.md).
+   (G3-GOTO.md). **On the export:** a policy trained on the cut is judged
+   on `cadex_joystick.py`'s task written onto the export's bundle, with
+   `--other-model`: the channels match by name, and `goto.json` records
+   both models' digests (ADR-865). `cadex evaluate` (§R step 9) judges the
+   engine's own success spec, which for a CAD task is its gait, not
+   go-to-point. The play now runs to a bound of each leg and a half turn
+   at half their speed: the old bound (each leg at its full speed, plus
+   10 s) cut every biped sequence off unfinished (ADR-865).
 5. **The judge has a picture.** The player writes a `view/` the dashboard
    plays with the points drawn: the current point lit, the next ones dim,
    each coloured by its band, and a hold as a filling ring
@@ -175,6 +194,22 @@ ends, not on a clock. This replaces separate stand, sprint and turn tasks.
    (206.4 M steps, 602 s): all 80 held-out points reached, every hold kept,
    0 falls, 4/10 passes at iteration 900. Every miss was a walk leg at
    0.80–0.85 of a 0.5 m/s command (*Limits*).
+7. **A slower robot scales the Go1's speeds by one ratio.** Take the
+   robot's top speed from its CAD task (the success spec's speed bound) and
+   scale the Go1's `--speeds 1.5,0.8,1.2` and bands
+   `walk:0.4-0.7,run:1.0-1.5` by the ratio to 1.5 m/s. The orun9 biped's
+   `W3-speed` tops at 240 mm/s, a ratio of 0.16: `--speeds
+   0.24,0.128,0.192` and `--goto walk:0.064-0.112,run:0.16-0.24`, given to
+   both the trainer and `g2_judge.py --bands`. The biped
+   (G3-GOTO.md, `orun21-lab/g3/biped`) went export → cut → relay →
+   `cadex_joystick.py` → G2's command on the cut (206.4 M steps, 478.6 s).
+   At iteration 1200 it reached all 80 held-out points, held every hold
+   within 0.100 m and did not fall, on the cut and on the export, but passed
+   0/10 on the cut and 2/10 on the export: each seed's slowest leg was at
+   0.80–0.86 of its command, leon V's signature. A 300-iteration screen
+   (49.2 M) walked, and did not turn in place, so a robot with no hip yaw
+   (the biped's legs are roll, pitch and knee) needs the full budget to
+   learn a stepping turn.
 
 ## T. Terrain (ADR-852–861)
 
@@ -248,7 +283,7 @@ tracks 0.94–0.97 of Playground's own speeds with no falls (GO1-BASELINE.md).
 | reward | Playground's terms and weights, times the control interval, `--reward-floor 0` | C-11 |
 | termination | upside down only | C-12 |
 | reset | yaw uniform; go-to-point sequences turned to the start's heading | C-13 |
-| randomisation | floor friction 0.4–1.0; joint frictionloss and armature; every body's mass ±10%; ±1 kg on the root; drawn once per environment | C-14, C-15 |
+| randomisation | floor friction 0.4–1.0; joint frictionloss and armature; every body's mass ±10%; ±1 kg on the root, at most ±20% of it (ADR-865); drawn once per environment | C-14, C-15 |
 | commands | ±1.5, ±0.8 m/s, ±1.2 rad/s, held 250 steps; go-to-point layer on 0.2 of episodes | C-1–C-4, ADR-840 |
 | PPO | 8192 envs, unroll 20, 4 epochs × 32 minibatches, 512-256-128, γ 0.97, lr 3e-4, entropy 0.01, clip 0.3, grad norm 1.0 | C-17, C-18 |
 | budget | 1,260 iterations = 206.4 M env steps (Playground's 200 M) | C-19 |
@@ -265,9 +300,11 @@ State budgets in env steps and wall time, not iterations.
 1. **A full go-to-point run is Playground's: 206.4 M env steps.** On the
    5090 that is 333 s on the Go1, against Playground's 385 s for 200 M on
    the same card. It is 602 s on leon V's concept and 664 s for the same
-   run at share 0 (G3-GOTO.md). A 300-iteration screen (49.2 M, 226 s on
-   leon V) is too short to judge go-to-point: it reached 2 of 10 sequences
-   and stood still at 1.5 m/s.
+   run at share 0, and 479 s on the biped's cut (G3-GOTO.md). A
+   300-iteration screen (49.2 M, 226 s on leon V, 186 s on the biped) is
+   too short to judge go-to-point: leon V's reached 2 of 10 sequences and
+   stood still at 1.5 m/s, and the biped's walked but could not turn in
+   place.
 2. **A route screen is 49.2 M** (8192 × 300 × 20): enough to compare a
    concept against its cut on a declared gait (§R step 8, ITERATION.md §9).
 3. **Terrain steps are warm extensions of 40–75 M** (§T.6), each judged on
@@ -559,7 +596,13 @@ feature with its probe in `docs/probes/l3r1/`:
 What this recipe is known to miss, and what no run has shown yet.
 
 **Open misses.**
-- **leon V's slow walk.** On §G leon V's concept passes 4/10, and every
+- **The slow walk, on both robots after the Go1.** The biped passes 0/10 on
+  its cut and 2/10 on its export, with every point reached and every hold
+  kept; each seed fails on one leg at 0.80–0.86 of its command (G3-GOTO.md).
+  The biped weighs 0.65 kg, a twentieth of the Go1, so the effort scale
+  below cannot be all of it.
+- **leon V's slow walk.** On §G leon V's concept passes 4/10 (3/10 under
+  the 30° turn exit of ADR-865), and every
   failure is a walk leg at 0.80–0.85 of a 0.5 m/s command (constant
   0.5 m/s gives 0.433). Share 0 did not lift it (0/10, ADR-863). The
   untested hypothesis is the effort scale: Playground's torque and energy
@@ -593,7 +636,14 @@ What this recipe is known to miss, and what no run has shown yet.
   needs a bundle to write onto, and Cadex has no command that makes a
   concept's first bundle with no CAD project. Every concept run so far
   relayed a CAD export's task or used a robot's own script.
-- **§G on a CAD-derived cut, and on the biped.** Neither has been run.
+- **§G on leon V's cut.** Not run. The biped's cut has been (G3-GOTO.md).
+- **Length-scaled terms.** The writer's foot swing height (0.1 m, the Go1's)
+  and the sequences' 2–5 m spacing are absolute. On the biped, whose hips
+  stand 0.23 m high, the swing target is near half a leg and a leg takes
+  30–60 s; neither has been scaled or tested.
+- **The biped skipped the concept.** Its CAD existed and no geometry was in
+  question (§R), so its route began at the export; its concept spec
+  (`examples/concept/orun9-biped.json`) has not trained on §G.
 - **The biped's servo armature.** Its export carries armature 0 on every
   driven joint (`green-wren-7528`), so the rotor inertia does not reach the
   cut either.

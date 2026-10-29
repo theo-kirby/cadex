@@ -21,9 +21,12 @@ stated generically:
   driven joint's position and velocity, and the last command;
 - **actions**: home + 0.5 rad, clipped to the joint's range, on every
   position drive;
-- **reward**: Playground's terms and weights, times the control interval;
+- **reward**: Playground's terms and weights, times the control interval; the
+  tracking widths, like the reset kick, scale with ``--speeds`` against the
+  Go1's (squared for the widths);
 - **randomisation**: floor friction 0.4–1.0, joint frictionloss and armature,
-  every body's mass ±10 %, a ±1 kg payload on the root;
+  every body's mass ±10 %, a ±1 kg payload on the root (at most ±20 % of its
+  mass);
 - **termination**: upside down.
 
 What is the robot's own is read from its model: the root (the free joint's
@@ -58,6 +61,21 @@ _ALLOWED = (ast.Expression, ast.BinOp, ast.UnaryOp, ast.Call, ast.Name, ast.Load
 FORMULA_NODES, FORMULA_CHARACTERS, REWARD_TERMS = 512, 2048, 32
 #: Playground's Go1 swing height for feet_clearance, m.
 SWING_M = 0.1
+#: Playground's ±1 kg payload on the trunk, capped at this share of the trunk's
+#: own mass, so a small robot's trunk never draws a negative mass (the orun9
+#: biped's pelvis is 0.26 kg). The Go1's 5.2 kg trunk and leon V's keep 1 kg.
+PAYLOAD_KG, PAYLOAD_SHARE = 1.0, 0.2
+#: The Go1's command bounds, m/s and rad/s, which Playground's tracking widths
+#: (0.25) and reset kick (0.5 m/s, 0.5 rad/s) are set against. A robot given
+#: slower ``--speeds`` has them scaled with its speeds, so a stand still costs
+#: what it costs the Go1: at 0.25 the biped's 0.2 m/s command paid 0.85 for
+#: standing, and its policy stood (orun21 G3, ADR-865).
+GO1_SPEEDS = (1.5, 0.8, 1.2)
+#: Written when the source bundle declares no goal (an engine task with a
+#: fixed speed, such as the orun9 biped's walk): the trainer records it and
+#: draws the value goals below by CadexDynamics.GOAL_ALGORITHM.
+GOAL_ALGORITHM = ("CadexDynamics.GOAL_ALGORITHM: each value goal's segments drawn uniform(low, high) "
+                  "from random.Random(seed) in bundle order, segment k from control step k * resample_steps")
 
 
 def _fits(formula: str) -> bool:
@@ -213,9 +231,10 @@ def write(task_path: Path, out: Path, speeds: tuple[float, float, float], label:
                  "channels": [f"c_{short[a['joint']]}", f"c_{short[a['joint']]}_rate"],
                  "unit": "deg", "rate_unit": "deg/s"} for i, a in enumerate(actions)]
 
+    linear, angular = speeds[0] / GO1_SPEEDS[0], speeds[2] / GO1_SPEEDS[2]
     terms = [
-        ("tracking_lin_vel", 1.0, "exp(-(((cx-bvx)/1000)**2+((cy-bvy)/1000)**2)/0.25)"),
-        ("tracking_ang_vel", 0.5, f"exp(-((cw-bwz)/{RAD:.4f})**2/0.25)"),
+        ("tracking_lin_vel", 1.0, f"exp(-(((cx-bvx)/1000)**2+((cy-bvy)/1000)**2)/{0.25 * linear ** 2:g})"),
+        ("tracking_ang_vel", 0.5, f"exp(-((cw-bwz)/{RAD:.4f})**2/{0.25 * angular ** 2:g})"),
         ("lin_vel_z", -0.5, "(vz/1000)**2"),
         ("ang_vel_xy", -0.05, f"(wx/{RAD:.4f})**2+(wy/{RAD:.4f})**2"),
         ("orientation", -5.0, "(2*(qx*qz+qw*qy))**2+(2*(qy*qz-qw*qx))**2"),
@@ -271,8 +290,9 @@ def write(task_path: Path, out: Path, speeds: tuple[float, float, float], label:
                                   "label": f"mass_{_name(check.body(body).name)}", "mode": "scale",
                                   "subject": check.body(body).name, "target": "mass"})
     trunk_kg = float(check.body_mass[trunk])
-    randomisation.append({"fields": [{"field": "body_mass", "index": trunk}], "low": 1.0 - 1.0 / trunk_kg,
-                          "high": 1.0 + 1.0 / trunk_kg, "label": "trunk_payload", "mode": "scale",
+    payload = min(PAYLOAD_KG, PAYLOAD_SHARE * trunk_kg) / trunk_kg
+    randomisation.append({"fields": [{"field": "body_mass", "index": trunk}], "low": 1.0 - payload,
+                          "high": 1.0 + payload, "label": "trunk_payload", "mode": "scale",
                           "subject": root, "target": "mass"})
 
     vx, vy, wz = speeds
@@ -289,15 +309,15 @@ def write(task_path: Path, out: Path, speeds: tuple[float, float, float], label:
     name = _name(label)
     task = {
         "actions": actions, "commands": commands, "disturbance": [], "episode": episode,
-        "functions": FUNCTIONS, "goal": goals, "goal_algorithm": source["goal_algorithm"], "label": label,
+        "functions": FUNCTIONS, "goal": goals, "goal_algorithm": source.get("goal_algorithm") or GOAL_ALGORITHM, "label": label,
         "model": {"bytes": len(text), "mujoco_version": mujoco.__version__, "output": name,
                   "path": f"outputs/{name}-model.xml", "sha256": hashlib.sha256(text).hexdigest()},
         "mujoco_version": mujoco.__version__,
         "observations": [{k: v for k, v in r.items() if k != "role" or v == "privileged"} for r in observations],
         "randomisation": randomisation,
-        "reset_variation": [{"angular_velocity_high_rad_s": 0.5, "angular_velocity_low_rad_s": -0.5,
+        "reset_variation": [{"angular_velocity_high_rad_s": 0.5 * angular, "angular_velocity_low_rad_s": -0.5 * angular,
                              "body": root, "body_id": trunk, "clearance_mm": 0.0, "height_high_m": 0.0,
-                             "height_low_m": 0.0, "label": "reset_variation", "linear_velocity_high_m_s": 0.5,
+                             "height_low_m": 0.0, "label": "reset_variation", "linear_velocity_high_m_s": 0.5 * linear,
                              "linear_velocity_low_m_s": 0.0, "qpos_adr": int(check.jnt_qposadr[free[0]]),
                              "qvel_adr": int(check.jnt_dofadr[free[0]]), "tilt_high_rad": 0.0, "tilt_low_rad": 0.0}],
         "reward": reward, "schema": "cadex-training-task-v1",
