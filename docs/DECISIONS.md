@@ -46813,3 +46813,61 @@ within 0.5%). Env steps/s at 8192 envs:
   gives the same compiled options as the model `cut` writes.
 - The biped's fidelity pass still gates only 1 of 12 signals (ADR-841).
   This unit does not change that; it remains an open claim.
+
+## ADR-843 — One concept-against-CAD comparison for any robot (2026-10-28, orun21 P1)
+
+**Context.** P1 asks for leon V's `tools/cad_vs_concept.py` as one Cadex
+command, generic over robots. leon V's copy names its four leg roots, four
+paws and fourteen actuated joints. It also cannot read a training model: the
+cut (ADR-841) fuses a joint-free foot body into its shin, and leon V's copy
+keys each leg by its foot body.
+
+**Decision.** `training/cadex_cad_vs_concept.py CONCEPT.xml CAD.xml` measures
+the same rows as leon V's copy (total and trunk mass, centre of mass, each
+leg's mass, hip height, reach, bend and foot x, each driven joint's anchor,
+load inertia and armature), flags each difference over 5% or 10 mm, and
+names nothing per robot:
+- the feet are the `touch` sensors' sites, and a site is the foot point.
+  On leon V the site is the paw sphere's centre exactly; the biped's box
+  feet have no sphere;
+- a leg is rooted at the foot's highest **jointed** ancestor whose subtree
+  holds no other foot. A joint-free body above it (the biped's
+  `c_servo_roll_*`, a housing on the pelvis) moves with the trunk and is
+  counted there. The cut fuses such bodies into the trunk, so a root
+  without this rule changed between an export and its cut;
+- the driven joints are those an actuator transmits to;
+- rows match by the leg root's body name and the joint's name. A leg or
+  joint in one model only is listed as unmatched, and the command exits 2
+  when the models share no leg or no joint.
+
+**Evidence** (`~/cadex-projects/orun21-lab/p1-cvc/*.json`, CPU):
+- **It reproduces leon V's A3 table exactly.** Frozen concept E2
+  (`8eee5da9`) against the frozen CAD export (`41a4e7e0`): 95 rows, every
+  value equal to leon V's `runs/a3-frozen/cad-vs-concept.json` (max
+  difference 0.0), and the same 25 flagged.
+- **A cut reads as its export.** leon V export against its cut
+  (`f6ed66de`): 0 of 95 flagged, max |difference| 4e-9. Biped export
+  (`2b9c8268`) against its cut (`b1e12e2d`): 0 of 45, 4e-10.
+- **leon V, concept against the cut it trains on:**
+
+| concept | sha256 | mass concept → cut | flagged | what is flagged |
+|---|---|---|---|---|
+| E2 (frozen, ADR-007 of leon V) | `8eee5da9` | 31.10 → 33.31 kg (+7.1%) | 25 / 95 | mass +7.1%; each leg's mass (fore +17.2%, hind +8.3%); shoulder and elbow anchors 11 mm; 14 load inertias (−13% to +26%) |
+| D1 (the round D1 concept) | `0959b4a3` | 28.80 → 33.31 kg (+15.7%) | 31 / 95 | as E2, and hind legs +44.7%, CoM x −11.4 mm, the hind hip and knee armature +104% (D1's AK10-9s against the CAD's RS04s), hind and spine load inertias +35% to +51% |
+
+  On both, hip heights, reach and foot x agree within 0.7 mm and bend within 1.5%:
+  the geometry that sets the gait is the concept's. What differs is mass and
+  where it sits. E2 is the concept the CAD was built to; D1 is what the CAD
+  would be judged against had the hind drives not been changed at E1.
+
+**Consequences.**
+- leon V's `tools/cad_vs_concept.py` is superseded for the Cadex route; its
+  copy stays in leon V's repository, which is read-only to this run.
+- A concept spec that is to be compared must name its leg roots and driven
+  joints as the CAD does. leon V's does. The biped has no concept yet;
+  writing it to the CAD's names is the next P1 step.
+- `training/test_cadex_training_model.py` gains one test, a contract
+  between the cut and the comparison: on the toy export, whose feet the cut
+  fuses into the thighs, the legs are found from the touch sites and every
+  row of export against cut is equal.
+- The tier decision still waits on the biped's concept against its cut.

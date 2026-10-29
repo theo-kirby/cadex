@@ -762,6 +762,20 @@ systemd-run --user --scope -p MemoryMax=30G \
     [--envs 2048,8192] [--integrator implicitfast] [--json OUT]
 ```
 
+`cadex_cad_vs_concept.py` measures one model beside another at the build
+pose and flags each difference over 5%, or 10 mm for a position (ADR-843):
+the total and trunk mass, the centre of mass, each leg's mass, hip height,
+reach, bend and foot x, and each driven joint's anchor, load inertia about
+its axis and armature. It names nothing per robot: the feet are the `touch`
+sites, a leg is rooted at the highest jointed body carrying only its foot,
+and rows match by body and joint name, so a concept spec meant to be
+compared names its bodies and joints as the CAD does. Either side may be a
+concept, an export or a cut; a cut reads as its export to 1e-8.
+
+```bash
+~/cadex-train-venv/bin/python training/cadex_cad_vs_concept.py CONCEPT.xml CAD.xml [--json OUT]
+```
+
 ## What the suites do, and do not, prove
 
 No suite trains (ADR-725). The engine and CLI suites hold the boundary
@@ -769,7 +783,7 @@ above and nothing of the learner. The training venv's own tests,
 `training/test_cadex_proxy.py`, `training/test_cadex_training_model.py`,
 `training/test_curriculum_warm_start.py`,
 `training/test_canonical_body.py`, `training/test_terrain_pool.py` and
-`training/test_distill.py`, cover the proxy, the training model's cut and the bench's solver override, the warm-start rules, the base
+`training/test_distill.py`, cover the proxy, the training model's cut, the bench's solver override and the comparison's leg discovery, the warm-start rules, the base
 remap, the course pool's height scan (ADR-747) and distillation's routing
 and refusals. A change to the trainer is
 verified by running it: a few iterations on CPU (`SETUP.md` §b), then the

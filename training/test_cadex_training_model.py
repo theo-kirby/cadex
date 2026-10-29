@@ -116,3 +116,19 @@ def test_the_bench_times_the_setting_the_cut_writes():
         for name in ("timestep", "iterations", "ls_iterations", "integrator", "disableflags"):
             assert getattr(overridden.opt, name) == getattr(written, name), (setting, name)
         assert B.tier(xml) == "training" and B.tier(EXPORT) is None
+
+
+def test_the_comparison_finds_the_legs_and_the_cut_unchanged(tmp_path):
+    """``cadex_cad_vs_concept`` finds each leg from its touch site and reads a cut, its feet fused, as its export."""
+
+    import cadex_cad_vs_concept as C
+
+    xml, _ = T.derive(EXPORT, **T.DEFAULTS)
+    (tmp_path / "export.xml").write_text(EXPORT)
+    (tmp_path / "cut.xml").write_text(xml)
+    export, cut = C.measure(tmp_path / "export.xml"), C.measure(tmp_path / "cut.xml")
+    assert {k: v["foot_site"] for k, v in export["legs"].items()} == {"c_thigh_l": "obs/3/contact", "c_thigh_r": "obs/4/contact"}
+    assert list(export["joints"]) == ["j_hip_l", "j_hip_r"]
+    rows = C.compare(export, cut)
+    assert len(rows) == 5 + 2 * 5 + 2 * 5 and not any(r["flag"] for r in rows)
+    assert max(abs(r["diff"]) for r in rows) < 1e-9
