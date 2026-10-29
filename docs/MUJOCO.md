@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-27
+Verified against source: 2026-10-29
 
 Rigid-body dynamics on MuJoCo is part of the engine (ADR-102), and it runs
 to its end: an agent takes a robot from an idea, through a designed
@@ -263,14 +263,16 @@ one. Course 0 is what the descriptor's `features` and `boxes` describe and
 what the model and `rollout_policy` stand on; evaluation draws its own
 (ADR-718, below).
 The descriptor's `pool` carries every course as features, its lowest and
-highest point and its box count, and `slots` the fullest course's count: the
-model has that many `environment/terrain/<i>` boxes, the ones course 0 does
-not fill parked as 1 mm cubes a metre under the plane. Features, not boxes,
-because the bundle is written indented under a 1 MB cap the 30-joint cat's
-already fills to 700 KB, and a box is about 3.5 times a feature's bytes
-(about 2.5 KB a course on a 13 m course). The trainer rebuilds each
-course's boxes with its own copy of the builder (`course_boxes`,
-`course_geoms`, held equal to the engine's on every pooled course), and at
+highest point, and its boxes and domes placed (ADR-852): every box record,
+block and ramp as well as stone, carries `centre_mm`, `quat` and `half_mm`,
+computed once in `terrain_boxes`. `slots` is the fullest course's box count:
+the model has that many `environment/terrain/<i>` boxes, the ones course 0
+does not fill parked as 1 mm cubes a metre under the plane. Placed boxes
+cost about six times the features' bytes (a 32-course pool on an 11 m
+course, 78 KB to 482 KB indented) inside the 4 MB bundle cap (ADR-738). The
+trainer builds no course: it reads each course's placed boxes
+(`course_geoms`), `training/test_terrain_pool.py` holds what it places and
+scans to the engine's on a pool of every box kind, and at
 every reset gives each environment a course by `jax.random.randint` folded
 with 717; `place_course` writes that course's positions, turns, sizes and
 derived bounds into the MJX model's terrain geoms inside the vmapped step,

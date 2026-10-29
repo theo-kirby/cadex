@@ -1622,11 +1622,10 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
 
 # ---------------------------------------------------------------------------
 # A course re-drawn per episode (ADR-717). The bundle's terrain carries a
-# pool of courses as features; each environment is given one at every reset
-# and the model's terrain geoms are placed there. The box builder below is
-# ``CadexDynamics.terrain_boxes`` and ``terrain_box_geoms`` written out again,
-# because this file cannot import the engine. No test holds the two equal
-# since ADR-725: change them together.
+# pool of courses, each with its boxes and domes as the engine placed them
+# (ADR-852); each environment is given one at every reset and the model's
+# terrain geoms are placed there. This file builds no course: the engine's
+# ``terrain_boxes`` is the one source.
 # ---------------------------------------------------------------------------
 
 #: How this trainer gives an environment its course: drawn on device, on the
@@ -1638,178 +1637,27 @@ TERRAIN_POOL_ALGORITHM = (
     "drawn by the engine (terrain.random.algorithm)"
 )
 
-#: ``CadexDynamics`` constants the builder needs, copied and pinned equal.
+#: ``CadexDynamics`` constants for parking an empty slot, copied and pinned
+#: equal (``test_terrain_pool.py``).
 TERRAIN_BASE_MM = 50.0
-TERRAIN_FLAT_MM = 0.1
-TERRAIN_RAMP_HALF_THICKNESS_MM = 10.0
 TERRAIN_PARKED_DEPTH_MM = 1000.0
 TERRAIN_PARKED_HALF_MM = 1.0
-TERRAIN_RUNOUT_MM = 50000.0
-TERRAIN_ROCK_CELLS = 3
-TERRAIN_ROCK_TILT_DEG = (10.0, 25.0)
-TERRAIN_ROCK_EMPTY = 0.3
-
-
-def course_domes(features: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
-    """A validated course's dome records (``CadexDynamics.terrain_boxes``'
-    ``domes``, ADR-744): each bump a sphere whose cap is the bump."""
-
-    domes = []
-    for feature in features:
-        if feature["kind"] != "bump":
-            continue
-        foot, rise = feature["radius_mm"], feature["height_mm"]
-        domes.append({"x_mm": float(feature["x_mm"]), "y_mm": float(feature["y_mm"]),
-                      "top_mm": _course_profile_mm(features, feature["x_mm"]) + rise,
-                      "radius_mm": (foot * foot + rise * rise) / (2.0 * rise)})
-    return domes
-
-
-def _course_profile_mm(features: Sequence[dict[str, Any]], x_mm: float) -> float:
-    height = 0.0
-    for feature in features:
-        if feature["kind"] == "step":
-            if x_mm >= feature["x_mm"]:
-                height += feature["height_mm"]
-        elif feature["kind"] == "slope":
-            run = min(max(x_mm, feature["from_x_mm"]), feature["to_x_mm"]) - feature["from_x_mm"]
-            height += run * math.tan(math.radians(feature["grade_deg"]))
-    return height
-
-
-def course_boxes(features: Sequence[dict[str, Any]], x_range_mm: Sequence[float],
-                 y_range_mm: Sequence[float]) -> list[dict[str, Any]]:
-    """A validated course's box records (``CadexDynamics.terrain_boxes``,
-    without its refusals: the engine made them when it drew the pool); its
-    bumps are :func:`course_domes`."""
-
-    x0, x1 = (float(value) for value in x_range_mm)
-    y0, y1 = (float(value) for value in y_range_mm)
-    cuts = {x0, x1}
-    for feature in features:
-        if feature["kind"] not in ("step", "slope"):
-            continue
-        for key in ("x_mm",) if feature["kind"] == "step" else ("from_x_mm", "to_x_mm"):
-            if x0 < feature[key] < x1:
-                cuts.add(float(feature[key]))
-    edges = sorted(cuts)
-    segments = []
-    for a, b in zip(edges, edges[1:]):
-        rise = sum(
-            math.tan(math.radians(feature["grade_deg"]))
-            for feature in features
-            if feature["kind"] == "slope"
-            and feature["from_x_mm"] <= a and feature["to_x_mm"] >= b
-        )
-        za = _course_profile_mm(features, a)
-        segments.append((a, b, za, za + rise * (b - a)))
-    lowest = min(0.0, *(min(za, zb) for _, _, za, zb in segments))
-    boxes: list[dict[str, Any]] = []
-
-    def box(shape, xs, ys, tops):
-        boxes.append({"shape": shape, "x_range_mm": [float(v) for v in xs],
-                      "y_range_mm": [float(v) for v in ys],
-                      "top_mm": [float(v) for v in tops]})
-
-    # ADR-745: the first and last level run on past the extent, and every
-    # segment across it, so the ground has no edge an episode reaches.
-    a, b, za, zb = segments[0]
-    if abs(zb - za) <= TERRAIN_FLAT_MM:
-        segments[0] = (x0 - TERRAIN_RUNOUT_MM, b, za, zb)
-    else:
-        segments.insert(0, (x0 - TERRAIN_RUNOUT_MM, x0, za, za))
-    a, b, za, zb = segments[-1]
-    if abs(zb - za) <= TERRAIN_FLAT_MM:
-        segments[-1] = (a, x1 + TERRAIN_RUNOUT_MM, za, zb)
-    else:
-        segments.append((x1, x1 + TERRAIN_RUNOUT_MM, zb, zb))
-    across = (y0 - TERRAIN_RUNOUT_MM, y1 + TERRAIN_RUNOUT_MM)
-    for a, b, za, zb in segments:
-        low = min(za, zb)
-        if low > lowest + TERRAIN_FLAT_MM:
-            box("block", (a, b), across, (low, low))
-        if abs(zb - za) > TERRAIN_FLAT_MM:
-            box("ramp", (a, b), across, (za, zb))
-    for feature in features:
-        if feature["kind"] == "platform":
-            top = _course_profile_mm(features, feature["x_mm"]) + feature["height_mm"]
-            box("block", (feature["x_mm"] - feature["length_mm"] / 2.0,
-                          feature["x_mm"] + feature["length_mm"] / 2.0),
-                (feature["y_mm"] - feature["width_mm"] / 2.0,
-                 feature["y_mm"] + feature["width_mm"] / 2.0), (top, top))
-        elif feature["kind"] == "rock":
-            boxes.extend(course_rock_stones(feature, _course_profile_mm(features, feature["x_mm"])))
-    return boxes
-
-
-def course_rock_stones(rock: dict[str, Any], ground_mm: float) -> list[dict[str, Any]]:
-    """A rock patch's stones (``CadexDynamics.terrain_rock_stones``, ADR-745)."""
-
-    import random
-
-    x, y, radius, height = (float(rock[key]) for key in ("x_mm", "y_mm", "radius_mm", "height_mm"))
-    rng = random.Random(f"cadex-rock:{x!r}:{y!r}:{radius!r}:{height!r}")
-    cell = 2.0 * radius / TERRAIN_ROCK_CELLS
-    room = cell / 2.0
-    stones = []
-    for i in range(TERRAIN_ROCK_CELLS):
-        for j in range(TERRAIN_ROCK_CELLS):
-            centre_cell = (i, j) == (TERRAIN_ROCK_CELLS // 2, TERRAIN_ROCK_CELLS // 2)
-            if not centre_cell and rng.random() < TERRAIN_ROCK_EMPTY:
-                continue
-            about = rng.choice(("x", "y"))
-            tilt = math.radians(rng.uniform(*TERRAIN_ROCK_TILT_DEG)) * rng.choice((-1.0, 1.0))
-            sine, cosine = abs(math.sin(tilt)), math.cos(tilt)
-            turned = (rng.uniform(0.55, 0.95) * room - height * sine) / cosine
-            across = rng.uniform(0.55, 0.95) * room
-            reach = turned * cosine + height * sine
-            rise = turned * sine + height * cosine
-            if about == "y":
-                half, plan = [turned, across, height], (reach, across)
-                quat = [math.cos(tilt / 2.0), 0.0, math.sin(tilt / 2.0), 0.0]
-            else:
-                half, plan = [across, turned, height], (across, reach)
-                quat = [math.cos(tilt / 2.0), math.sin(tilt / 2.0), 0.0, 0.0]
-            cx = x - radius + (i + 0.5) * cell + rng.uniform(-1.0, 1.0) * (room - plan[0])
-            cy = y - radius + (j + 0.5) * cell + rng.uniform(-1.0, 1.0) * (room - plan[1])
-            peak = float(ground_mm) + rng.uniform(0.4, 1.0) * height
-            stones.append({"shape": "stone", "centre_mm": [cx, cy, peak - rise],
-                           "quat": quat, "half_mm": half, "top_mm": peak})
-    return stones
 
 
 def course_geoms(boxes: Sequence[dict[str, Any]], lowest_mm: float, slots: int,
                  scale: float) -> dict[str, Any]:
     """Where each of ``slots`` box geoms stands for one course, in metres
-    (``CadexDynamics.terrain_box_geoms``): the course's boxes, then parked
+    (``CadexDynamics.terrain_box_geoms``): the course's boxes as the engine
+    placed them (``centre_mm``, ``quat``, ``half_mm``; ADR-852), then parked
     cubes under the plane. ``scale`` is the bundle's metres per millimetre
     (``terrain.scale``)."""
 
     lowest = float(lowest_mm)
     pos, quat, size = [], [], []
     for record in boxes:
-        if record["shape"] == "stone":
-            pos.append([value * scale for value in record["centre_mm"]])
-            quat.append([float(value) for value in record["quat"]])
-            size.append([value * scale for value in record["half_mm"]])
-            continue
-        (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
-        za, zb = record["top_mm"]
-        if record["shape"] == "block":
-            bottom = lowest - TERRAIN_BASE_MM
-            centre = [(xa + xb) / 2.0, (ya + yb) / 2.0, (za + bottom) / 2.0]
-            half = [(xb - xa) / 2.0, (yb - ya) / 2.0, (za - bottom) / 2.0]
-            turn = [1.0, 0.0, 0.0, 0.0]
-        else:
-            grade = math.atan2(zb - za, xb - xa)
-            thick = TERRAIN_RAMP_HALF_THICKNESS_MM
-            centre = [(xa + xb) / 2.0 + thick * math.sin(grade), (ya + yb) / 2.0,
-                      (za + zb) / 2.0 - thick * math.cos(grade)]
-            half = [math.hypot(xb - xa, zb - za) / 2.0, (yb - ya) / 2.0, thick]
-            turn = [math.cos(grade / 2.0), 0.0, -math.sin(grade / 2.0), 0.0]
-        pos.append([value * scale for value in centre])
-        quat.append(turn)
-        size.append([value * scale for value in half])
+        pos.append([value * scale for value in record["centre_mm"]])
+        quat.append([float(value) for value in record["quat"]])
+        size.append([value * scale for value in record["half_mm"]])
     parked = lowest - TERRAIN_BASE_MM - TERRAIN_PARKED_DEPTH_MM
     for _ in range(int(slots) - len(boxes)):
         pos.append([0.0, 0.0, parked * scale])
@@ -1879,12 +1727,11 @@ def terrain_pool(np: Any, terrain: dict[str, Any]) -> dict[str, Any]:
         "plane_z", "pos", "quat", "size", "scan", "lowest", "dome_pos", "dome_size",
         "dome_scan")}
     for course in terrain["pool"]:
-        boxes = course_boxes(course["features"], terrain["x_range_mm"], terrain["y_range_mm"])
-        if len(boxes) != int(course["boxes"]):
+        boxes, domes = course["boxes"], course.get("domes") or []
+        if not isinstance(boxes, list) or not isinstance(domes, list):
             raise SystemExit(
-                f"a pooled course builds {len(boxes)} boxes here and "
-                f"{course['boxes']} in the engine, so this trainer's box "
-                "builder is not the engine's")
+                "this bundle's terrain pool counts its courses' boxes rather than "
+                "carrying them (before ADR-852); re-export the task bundle")
         placed = course_geoms(boxes, course["lowest_mm"], slots, float(terrain["scale"]))
         lowest = float(course["lowest_mm"])
         columns["plane_z"].append(placed["plane_z_m"])
@@ -1893,12 +1740,6 @@ def terrain_pool(np: Any, terrain: dict[str, Any]) -> dict[str, Any]:
         columns["size"].append(placed["size_m"])
         columns["lowest"].append(lowest)
         columns["scan"].append(box_scan_rows(course_geoms(boxes, lowest, slots, 1.0)))
-        domes = course_domes(course["features"])
-        if len(domes) != int(course.get("domes", 0)):
-            raise SystemExit(
-                f"a pooled course builds {len(domes)} domes here and "
-                f"{course.get('domes', 0)} in the engine, so this trainer's dome "
-                "builder is not the engine's")
         parked = lowest - TERRAIN_BASE_MM - TERRAIN_PARKED_DEPTH_MM
         rows = ([[d["x_mm"], d["y_mm"], d["top_mm"] - d["radius_mm"], d["radius_mm"]] for d in domes]
                 + [[0.0, 0.0, parked, 0.0]] * (dome_slots - len(domes)))

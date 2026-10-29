@@ -408,8 +408,10 @@ every environment uses environment 0's.
 ## Courses, re-drawn per episode (ADR-717)
 
 A task on a drawn box course carries its pool of courses in the bundle's
-`terrain.pool`. The trainer rebuilds each pooled course's boxes with its
-own copy of the engine's builder (`course_boxes`, `course_geoms`), and at
+`terrain.pool`, each course with its boxes and domes placed by the engine
+(ADR-852): the trainer builds no course, it reads `centre_mm`, `quat` and
+`half_mm` (`course_geoms`), and `test_terrain_pool.py` holds what it places
+to the engine's `terrain_box_geoms` on a pool of every box kind. At
 every reset gives each environment a course by `jax.random.randint` folded
 from the reset key. `place_course` writes that course's geoms into the MJX
 model inside the vmapped step, and the height scan (ADR-715) reads the

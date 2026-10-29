@@ -1,26 +1,76 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""ADR-747: a drawn box course of moguls alone has no box slots, and the pool
-keeps its slot axis, so the height scan reads the domes.
+"""The trainer places a pooled course where the engine does (ADR-852), and a
+pool of moguls alone keeps its slot axis (ADR-747).
 
-orun8's G3 probe found it: a pool drawn with only ``bump_mm`` built ``scan``
-as ``(P, 0)`` rather than ``(P, 0, 15)``, and the jitted scan indexed past it.
-No jax: the scan is the same function in numpy.
+ADR-852 made the engine the one terrain builder: each pooled course carries
+its boxes and domes placed, and the trainer only reads them. The parity test
+draws a pool through ``CadexDynamics`` itself with every box kind (steps,
+slopes, bumps, platforms, rocks) and holds the trainer's arrays to the
+engine's ``terrain_box_geoms`` and ``terrain_dome_geoms``, so the two cannot
+drift. No jax: ``terrain_pool`` and the scan are numpy.
 """
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import numpy as np
 
-from cadex_train import height_scan_vector, terrain_pool
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "Mod" / "cadex"))
+import CadexDynamics  # noqa: E402
 
-BUMP = {"kind": "bump", "height_mm": 73.9, "radius_mm": 304.9, "x_mm": 2349.3, "y_mm": 3095.2}
+import cadex_train  # noqa: E402
+from cadex_train import height_scan_vector, terrain_pool  # noqa: E402
+
+BUMP = {"x_mm": 2349.3, "y_mm": 3095.2, "top_mm": 73.9, "radius_mm": 667.9}
 TERRAIN = {
     "kind": "boxes", "x_range_mm": [-2000.0, 9000.0], "y_range_mm": [-4000.0, 4000.0],
     "lowest_mm": 0.0, "slots": 0, "dome_slots": 2, "scale": 0.001,
-    "pool": [{"features": [BUMP], "lowest_mm": 0.0, "highest_mm": 73.9, "boxes": 0, "domes": 1}],
+    "pool": [{"features": [], "lowest_mm": 0.0, "highest_mm": 73.9, "boxes": [], "domes": [BUMP]}],
 }
+
+
+def test_the_trainer_places_every_pooled_course_where_the_engine_does():
+    for name in ("TERRAIN_BASE_MM", "TERRAIN_PARKED_DEPTH_MM", "TERRAIN_PARKED_HALF_MM"):
+        assert getattr(cadex_train, name) == getattr(CadexDynamics, name), name
+    declared = {
+        "form": "boxes", "x_range_mm": [-2000.0, 9000.0], "y_range_mm": [-2000.0, 2000.0],
+        "random": {"seed": 7, "courses": 6, "step_mm": [40.0, 120.0], "grade_deg": [5.0, 15.0],
+                   "bump_mm": [20.0, 60.0], "bumps": 3, "platform_mm": [80.0, 200.0],
+                   "rock_mm": [30.0, 60.0]},
+    }
+    terrain = CadexDynamics.terrain_grid(declared)["descriptor"]
+    shapes = {box["shape"] for course in terrain["pool"] for box in course["boxes"]}
+    assert shapes == {"block", "ramp", "stone"}, shapes
+    assert any(course["domes"] for course in terrain["pool"])
+
+    pool = terrain_pool(np, terrain)
+    for index, course in enumerate(terrain["pool"]):
+        lowest = float(course["lowest_mm"])
+        boxes = CadexDynamics.terrain_box_geoms(course["boxes"], lowest, terrain["slots"])
+        assert np.allclose(pool["plane_z"][index], boxes["plane_z_m"], atol=1e-12)
+        assert np.allclose(pool["pos"][index], boxes["pos_m"], atol=1e-12)
+        assert np.allclose(pool["quat"][index], boxes["quat"], atol=1e-12)
+        assert np.allclose(pool["size"][index], boxes["size_m"], atol=1e-12)
+        domes = CadexDynamics.terrain_dome_geoms(course["domes"], lowest, terrain["dome_slots"])
+        assert np.allclose(pool["dome_pos"][index], domes["pos_m"], atol=1e-12)
+        assert np.allclose(pool["dome_size"][index][:, 0], domes["radius_m"], atol=1e-12)
+
+    # The scan reads the ground the engine reads, on each course.
+    task = {"terrain": terrain,
+            "scans": [{"body_id": 0, "scale": 1000.0,
+                       "offsets_mm": [[x, y] for x in range(-1500, 8500, 250)
+                                      for y in (-600.0, 0.0, 600.0)]}]}
+    xpos, xmat = np.zeros((1, 1, 3)), np.eye(3).reshape(1, 1, 9)
+    for index, course in enumerate(terrain["pool"]):
+        placed = (pool["scan"][[index]], pool["lowest"][[index]], pool["dome_scan"][[index]])
+        scan = height_scan_vector(np, task, xpos, xmat, course=placed)[0]
+        ground = [CadexDynamics.terrain_box_ground_mm(course, x, y)
+                  for x, y in task["scans"][0]["offsets_mm"]]
+        assert np.allclose(-scan, ground, atol=1e-6), index
 
 
 def test_a_course_of_moguls_alone_keeps_its_slot_axis_and_scans_its_dome():
@@ -37,4 +87,4 @@ def test_a_course_of_moguls_alone_keeps_its_slot_axis_and_scans_its_dome():
     course = (pool["scan"][[0]], pool["lowest"][[0]], pool["dome_scan"][[0]])
     scan = height_scan_vector(np, task, xpos, xmat, course=course)
     # Over the dome's peak, then a metre off it on the plane.
-    assert np.allclose(scan[0], [500.0 - BUMP["height_mm"], 500.0], atol=1e-6)
+    assert np.allclose(scan[0], [500.0 - BUMP["top_mm"], 500.0], atol=1e-6)

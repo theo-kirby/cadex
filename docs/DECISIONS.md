@@ -47350,3 +47350,62 @@ and eight are listed with their one-line fixes. The fixed ones:
 - Before this, a stage that read `idle` during agent work, or a card that read
   a judge's output directory, was the dashboard being wrong rather than the
   project being quiet.
+
+## ADR-852 — The engine places every terrain box; the trainer builds no course (2026-10-29, orun21 T1)
+
+**Context.** T1 asks that one terrain spec compile to geoms in the engine and
+the trainer from a single source, or that a parity test fail when they
+drift. Since ADR-717 the bundle's `terrain.pool` carried each drawn course
+as features and a box count, and `training/cadex_train.py` rebuilt the boxes
+with a hand copy of `CadexDynamics.terrain_boxes`, `terrain_rock_stones`,
+the dome builder and `terrain_box_geoms`: about 150 lines and seven copied
+constants. Its only guard was a box-count check at load. No test had held
+the copy equal since ADR-725, and STATE's `shy-sky-8568` names it. The pool
+held features rather than boxes because the bundle was capped at 1 MB.
+ADR-738 raised that cap to 4 MB.
+
+**Decision.**
+- **The placement is computed once, in the engine.** `terrain_boxes` gives
+  every box record its pose: `centre_mm`, `quat` (`wxyz`) and `half_mm`.
+  Block and ramp records now get it too (`_terrain_box_pose`); before, only
+  stones had one. `terrain_box_geoms` reads those three fields for every
+  shape and no longer branches on block and ramp.
+- **Each pooled course carries its `boxes` and `domes` records** in place of
+  their counts.
+- **The trainer builds no course.** `course_boxes`, `_course_profile_mm`,
+  `course_rock_stones` and `course_domes` are deleted, along with the
+  run-out, ramp, flat and rock constants. `course_geoms` reads the placed
+  records and adds parked slots. A bundle whose pool still carries counts is
+  refused with "re-export the task bundle".
+- **The parity test** is `training/test_terrain_pool.py`. It draws a
+  six-course pool through `CadexDynamics.terrain_grid` with steps, slopes,
+  bumps, platforms and rocks, so block, ramp, stone and dome are all present.
+  It holds the trainer's `terrain_pool` arrays to the engine's
+  `terrain_box_geoms` and `terrain_dome_geoms` on every course. It holds the
+  trainer's numpy height scan to `terrain_box_ground_mm` at 120 points per
+  course. It also pins the three parking constants equal.
+
+**Cost.** The bundle grows. A 32-course pool on an 11 m extent goes from
+78 KB to 482 KB indented, and 584 boxes are carried. The orun7 cat's
+1.02 MB task would reach about 1.5 MB, within the 4 MB cap. Every task on a
+box course changes its terrain bytes and therefore its digest. Plain courses
+change because their records gain a pose; drawn ones because the pool gains
+records. A policy trained on an older bundle of a box course re-verifies
+only against a re-exported bundle. Heightfield and flat tasks are unchanged.
+
+**Evidence.**
+- Against `HEAD`'s engine and trainer, on a 32-course draw of every kind,
+  the result is bit-identical. `terrain_box_geoms` of course 0 matches with
+  `rtol=0, atol=0`. Every `terrain_pool` array is `np.array_equal`. So the
+  MJCF the engine writes and the geoms MJX re-places are unchanged.
+- The parity test fails when either side drifts:
+  - with the trainer's parking depth set to 900 mm;
+  - with the engine's ramp quaternion sign flipped and the trainer left as
+    it is (the scan check catches this).
+- `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
+  passed. `training/`: 90 passed.
+
+**Not in this decision.** The heightfield form (ADR-714) is still built only
+by the engine. The trainer reads its `hfield_data` from the compiled model,
+so that is one source already. Its MJX divergence (`winter-bay-5176`) is
+unchanged. So are T1's new kinds, levels and curriculum.

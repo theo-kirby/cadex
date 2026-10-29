@@ -3840,6 +3840,11 @@ def terrain_boxes(
     each a ``centre_mm``, a ``wxyz`` ``quat``, ``half_mm`` and its peak,
     ``top_mm``, on flat ground. Returns ``boxes``, ``domes``, ``lowest_mm``
     and ``highest_mm``.
+
+    ADR-852: every box record, a block's and a ramp's too, carries where its
+    box stands, ``centre_mm``, ``quat`` (``wxyz``) and ``half_mm``
+    (:func:`_terrain_box_pose`), so the MJCF, the dashboard and a trainer
+    re-placing a pooled course read one placement and build none.
     """
 
     x0, x1 = (float(value) for value in x_range_mm)
@@ -3887,7 +3892,8 @@ def terrain_boxes(
     def box(shape: str, xs: Sequence[float], ys: Sequence[float], tops: Sequence[float]) -> None:
         boxes.append({"shape": shape, "x_range_mm": [float(v) for v in xs],
                       "y_range_mm": [float(v) for v in ys],
-                      "top_mm": [float(v) for v in tops]})
+                      "top_mm": [float(v) for v in tops],
+                      **_terrain_box_pose(shape, xs, ys, tops, lowest)})
 
     segments = _terrain_runout(segments, x0, x1)
     for a, b, za, zb in segments:
@@ -3953,6 +3959,29 @@ def terrain_boxes(
     highest = max([lowest, *(_terrain_record_peak_mm(record) for record in boxes),
                    *(record["top_mm"] for record in domes)])
     return {"boxes": boxes, "domes": domes, "lowest_mm": lowest, "highest_mm": highest}
+
+
+def _terrain_box_pose(shape: str, xs: Sequence[float], ys: Sequence[float],
+                      tops: Sequence[float], lowest_mm: float) -> dict[str, list[float]]:
+    """Where a ``block`` or ``ramp`` record's box stands (ADR-716, ADR-852),
+    in mm: a block from :data:`TERRAIN_BASE_MM` below the course's lowest
+    point to its top; a ramp a box :data:`TERRAIN_RAMP_HALF_THICKNESS_MM`
+    thick turned about y to its grade, its top face the record's."""
+
+    (xa, xb), (ya, yb), (za, zb) = ([float(v) for v in pair] for pair in (xs, ys, tops))
+    if shape == "block":
+        bottom = float(lowest_mm) - TERRAIN_BASE_MM
+        return {"centre_mm": [(xa + xb) / 2.0, (ya + yb) / 2.0, (za + bottom) / 2.0],
+                "quat": [1.0, 0.0, 0.0, 0.0],
+                "half_mm": [(xb - xa) / 2.0, (yb - ya) / 2.0, (za - bottom) / 2.0]}
+    grade = math.atan2(zb - za, xb - xa)
+    thick = TERRAIN_RAMP_HALF_THICKNESS_MM
+    # The top face's centre, less the half-thickness along its normal
+    # (-sin, 0, cos); turning about y by -grade lifts +x by the grade.
+    return {"centre_mm": [(xa + xb) / 2.0 + thick * math.sin(grade), (ya + yb) / 2.0,
+                          (za + zb) / 2.0 - thick * math.cos(grade)],
+            "quat": [math.cos(grade / 2.0), 0.0, -math.sin(grade / 2.0), 0.0],
+            "half_mm": [math.hypot(xb - xa, zb - za) / 2.0, (yb - ya) / 2.0, thick]}
 
 
 def _terrain_runout(segments: Sequence[tuple[float, float, float, float]],
@@ -4399,11 +4428,9 @@ def terrain_box_geoms(
     """Where a box course's geoms stand (ADR-716, ADR-717), in MuJoCo's units.
 
     ``plane_z_m`` is the plane's height, and ``pos_m``, ``quat`` and
-    ``size_m`` one row per box: a ``block`` from :data:`TERRAIN_BASE_MM`
-    below the plane to its top, a ``ramp`` a box
-    :data:`TERRAIN_RAMP_HALF_THICKNESS_MM` thick turned about y to its grade
-    with its top face the record's. With ``slots``, the rows run on to that
-    many, each past the course's own boxes parked
+    ``size_m`` one row per box, as its record places it (``centre_mm``,
+    ``quat``, ``half_mm``; :func:`terrain_boxes`, ADR-852). With ``slots``,
+    the rows run on to that many, each past the course's own boxes parked
     (:data:`TERRAIN_PARKED_DEPTH_MM`). The MJCF writes these, and a trainer
     re-placing a pooled course writes the same rows into its model.
     """
@@ -4411,31 +4438,9 @@ def terrain_box_geoms(
     lowest = float(lowest_mm)
     pos, quat, size = [], [], []
     for record in boxes:
-        if record["shape"] == "stone":
-            # ADR-745: a rock patch's stone stands as drawn.
-            pos.append(vector_m(record["centre_mm"]))
-            quat.append([float(value) for value in record["quat"]])
-            size.append(vector_m(record["half_mm"]))
-            continue
-        (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
-        za, zb = record["top_mm"]
-        if record["shape"] == "block":
-            bottom = lowest - TERRAIN_BASE_MM
-            centre = [(xa + xb) / 2.0, (ya + yb) / 2.0, (za + bottom) / 2.0]
-            half = [(xb - xa) / 2.0, (yb - ya) / 2.0, (za - bottom) / 2.0]
-            turn = [1.0, 0.0, 0.0, 0.0]
-        else:
-            grade = math.atan2(zb - za, xb - xa)
-            thick = TERRAIN_RAMP_HALF_THICKNESS_MM
-            # The top face's centre, less the half-thickness along its normal
-            # (-sin, 0, cos); turning about y by -grade lifts +x by the grade.
-            centre = [(xa + xb) / 2.0 + thick * math.sin(grade), (ya + yb) / 2.0,
-                      (za + zb) / 2.0 - thick * math.cos(grade)]
-            half = [math.hypot(xb - xa, zb - za) / 2.0, (yb - ya) / 2.0, thick]
-            turn = [math.cos(grade / 2.0), 0.0, -math.sin(grade / 2.0), 0.0]
-        pos.append(vector_m(centre))
-        quat.append(turn)
-        size.append(vector_m(half))
+        pos.append(vector_m(record["centre_mm"]))
+        quat.append([float(value) for value in record["quat"]])
+        size.append(vector_m(record["half_mm"]))
     if slots is not None:
         if len(boxes) > int(slots):
             raise ValueError(f"{len(boxes)} boxes do not fit {slots} slots")
@@ -4755,12 +4760,12 @@ def _terrain_box_course(
     With ``random`` (ADR-717) the features are drawn, not listed: course 0
     is the one the descriptor's ``features`` and ``boxes`` describe and the
     model carries, and ``pool`` holds every course of the draw as its
-    features, its lowest and highest point and its box count; ``slots`` is
-    the fullest course's, and the model has that many box geoms, so a
-    trainer re-places any pooled course per episode. The pool carries
-    features rather than boxes because the bundle is capped
-    (:data:`MAXIMUM_TASK_BYTES`) and written indented: a box is about
-    3.5 times a feature's bytes."""
+    features, its lowest and highest point, and its boxes and domes placed
+    (ADR-852); ``slots`` is the fullest course's, and the model has that
+    many box geoms, so a trainer re-places any pooled course per episode
+    and builds none. Placed boxes cost about six times a course's feature
+    bytes (a 32-course pool on 11 m, 78 KB to 482 KB indented), well
+    inside :data:`MAXIMUM_TASK_BYTES` (4 MB, ADR-738)."""
 
     random_spec = None
     if terrain.get("random") is not None:
@@ -4821,10 +4826,12 @@ def _terrain_box_course(
         # The model's metres per course millimetre, which a trainer placing
         # a pooled course multiplies by rather than converting (ADR-717).
         descriptor["scale"] = length_m(1.0)
+        # ADR-852: each course carries its own boxes and domes, placed, so
+        # the trainer builds none of them.
         descriptor["pool"] = [
             {"features": drawn, "lowest_mm": entry["lowest_mm"],
-             "highest_mm": entry["highest_mm"], "boxes": len(entry["boxes"]),
-             "domes": len(entry["domes"])}
+             "highest_mm": entry["highest_mm"], "boxes": entry["boxes"],
+             "domes": entry["domes"]}
             for drawn, entry in courses
         ]
     if terrain.get("collides_with") is not None:
