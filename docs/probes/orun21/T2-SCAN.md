@@ -105,7 +105,7 @@ reached a point.)
   mm faces. Following the critic's rule, the next step is a foot-swing or clearance term
   (Rudin et al. 2022's feet-air-time, legged_gym's `feet_air_time` with a swing-height
   target), not more steps. The trainer already pays both through a task's `feet` block
-  (`air_time`, `swing_height`, ADR-769). The Go1 bundle carries no `feet` block, so the
+  (`air_time`, `swing_height`, ADR-870). The Go1 bundle carries no `feet` block, so the
   next screen needs only a bundle change. The maze or wall sequence is still unplayed. `g2_judge.py` and
   `cadex_goto play` draw random held-out points, and they cannot yet place points through a
   maze's corridor.
