@@ -1,11 +1,11 @@
-# Training a policy: the four ways
+# Training a policy: local, remote and cloud
 
-Verified against source: 2026-10-27. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-29. Provenance: `[Cadex-new]`. See
 ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
 `training/README.md` is *what the trainer is*. This is *how to run it*, end
-to end, four ways. Pick the row that matches the hardware you have:
+to end, with a Runpod provisioning path as well. Pick the row that matches the hardware you have:
 
 | | You have | Read |
 |---|---|---|
@@ -13,8 +13,9 @@ to end, four ways. Pick the row that matches the hardware you have:
 | **(b)** | one machine, no usable GPU | [§b](#b-cpu-only) |
 | **(c)** | your laptop, plus a separate GPU box | [§c](#c-a-separate-gpu-box) |
 | **(d)** | ...and you want to drive (c) with one command | [§d](#d-driving-the-box-with-remote_trainsh) |
+| **(e)** | a Mac and a Runpod account | [§e](#e-runpod-from-a-mac-adr-872) |
 
-Two facts shape all four. **The engine cannot train** — no `jax` and no
+Two facts shape every option. **The engine cannot train** — no `jax` and no
 `mjx` reaches `src/Mod/cadex` or a staged payload (ADR-084;
 `test_engine_purity_guardrails` and the packaged gate assert it). And
 **the Mac cannot train**, in the sense that matters: MJX needs JAX-on-GPU, `jax-metal` is 0.1.0, and the community MPS backends have
@@ -432,3 +433,134 @@ reads differently is a refusal, not a bad gait.
   first non-finite number and names the iteration, rather than training on
   for another 150 and then dying in the encoder. The task is wrong, not the
   run — check the reward expression and the episode's termination.
+
+## (e) Runpod from a Mac (ADR-872)
+
+`runpod.py` provisions an on-demand NVIDIA Pod, prepares the exact local
+trainer and dispatches the existing detached `cadex walk`. Design, rendering,
+policy verification and evaluation stay on the Mac. This is an offboard CLI
+an agent can invoke; MCP `train_start` still selects the local trainer.
+No Runpod SDK, CUDA or training dependencies enter the engine or pixi.
+
+**Status:** live A40 bootstrap and a two-iteration GPU training run verified
+on 2026-10-29, in addition to local process/transport tests. See the smoke
+record in `training/README.md`; this does not establish locomotion quality.
+
+### Account and first worker
+
+Create a Runpod account with billing and a dedicated API key with Pod
+read/write access. Keep the API key in the terminal environment as
+`RUNPOD_API_KEY`; never paste it into a chat or commit it. Use an existing
+SSH private key with its matching `.pub` file, or create a dedicated one:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/cadex_runpod
+ssh-add ~/.ssh/cadex_runpod
+```
+
+An encrypted key must be unlocked in the SSH agent: dispatch uses BatchMode.
+From the repository root, inspect the request without credentials or spending:
+
+```bash
+python3 training/runpod.py up --ssh-key ~/.ssh/cadex_runpod --dry-run
+```
+
+Then, with `RUNPOD_API_KEY` exported in your terminal:
+
+```bash
+python3 training/runpod.py up --ssh-key ~/.ssh/cadex_runpod --max-hours 2
+python3 training/runpod.py status
+```
+
+The default is one RTX 4090, Secure Cloud, on-demand, a 40 GB persistent
+**Pod disk**, and a CUDA Ubuntu 24.04 image. `--gpu` and `--data-center`
+select alternatives; this does not query prices or guarantee availability.
+Check the console's current rate before `up`. Local metadata is saved to
+`training/.runpod.json` (gitignored, mode 0600); `--state PATH` before the
+subcommand supports another worker. Do not delete this locator while its
+Pod still exists. If a create request times out, inspect the console before
+retrying: the provider may have created it despite the missing response.
+
+Bootstrap installs Python 3.12, SSH and rsync; uploads the trainer,
+requirements and supervisor into a content-addressed release; creates a
+separate venv; installs the pinned CUDA JAX extras; and checks the GPU and
+trainer hash. No private repository credential is needed on the Pod.
+SSH accepts a previously unseen host key and rejects changed keys; the
+worker's host key is retained on its Pod disk across starts and copied to
+a private container file for sshd: the mounted disk does not retain Unix modes.
+Uploads preserve contents and timestamps, not ownership. Driver compatibility
+is checked by importing CUDA JAX, without an upper CUDA-version allowlist.
+
+### Train and bring it home
+
+First build a project with an accepted training task. Begin with a small
+trial; environment counts and iteration counts depend on the design:
+
+```bash
+python3 training/runpod.py train --project ~/cadex-projects/my-robot \
+    --run cloud-smoke --budget-s 600 -- --iterations 2 --envs 64 --seed 0
+python3 training/runpod.py collect --project ~/cadex-projects/my-robot \
+    --run cloud-smoke --watch --stop
+```
+
+The training seed must not be an evaluation seed. Options after `--` are
+existing `cadex walk` training options, including ordinary warm starts.
+Run names are single-use. Teacher/family transfer is not implemented by
+this dispatcher; do not pass local file dependencies it cannot transfer.
+The cloud wrapper does not add these flags to `cadex walk`.
+
+`train` returns after launch. `collect --watch` polls and mirrors policies,
+progress and `view/` previews to `runs/<run>/train/`, where the dashboard
+reads them. It then invokes `cadex walk --complete`: digest/task checks,
+asset storage, declaration, verified rollout and review stay on the Mac.
+`--stop` stops the Pod **only after completion succeeds**. Without `--watch`,
+collection checks once. Failed jobs retain checkpoints and logs for inspection;
+the wrapper does not declare a failed run's checkpoint automatically.
+
+Closing the Mac after dispatch does not stop training. Dashboard updates
+resume when collection resumes. If the Pod's lease expired before collection:
+
+```bash
+python3 training/runpod.py start --max-hours 1
+python3 training/runpod.py collect --project ~/cadex-projects/my-robot \
+    --run cloud-smoke --stop
+```
+
+`start` refreshes SSH details and rearms the lease; it refuses an already
+running Pod. GPU capacity may be unavailable when restarting a stopped Pod.
+
+### Deadlines, credentials and storage
+
+There are two independent limits:
+
+- `--budget-s` bounds the actual remote trainer, including compilation. The
+  supervisor terminates its process group, escalates to KILL after ten seconds,
+  preserves checkpoints and publishes a failed `budget_exhausted` snapshot.
+- `--max-hours` bounds the Pod session from creation/start (maximum 24 hours),
+  including setup and idle time. After SSH becomes ready, a detached watchdog
+  requests Pod stop at that deadline and retries failures. The API key is sent
+  over encrypted stdin to that process and held in memory, never written into
+  the image, local state, persistent disk or Pod environment. Use a dedicated
+  restricted key. Until the watchdog reports armed, keep the Mac connected.
+
+The watchdog is **best effort**, not a provider-enforced dollar cap: worker
+failure, a revoked key or provider/API outage can prevent shutdown. Setup
+errors request Pod stop immediately. Check `status` or the console to confirm
+billing stopped; manage account limits in Runpod as well. The helper does not
+terminate Pods or delete storage. Stop retains the Pod disk, whose storage
+billing continues. Termination in the console deletes that disk; collect any
+files you need first. This first version does not use network volumes or spot
+instances, and `.cxpolicy` warm starts are not exact optimizer-state resumes.
+
+```bash
+python3 training/runpod.py stop
+```
+
+Provider contracts: [REST API schema](https://rest.runpod.io/v1/openapi.json),
+[full SSH](https://docs.runpod.io/pods/configuration/use-ssh),
+[restart capacity](https://docs.runpod.io/pods/troubleshooting/zero-gpus).
+
+Runpod releases also carry `cadex_goto.py` for the current trainer. Supervised
+training defaults `CADEX_JAX_CACHE` to `/workspace/cadex/cache/jax`, on the
+retained Pod disk, so identical programs can reuse compiled kernels after a stop
+and restart. A replacement Pod has a separate disk and starts with a cold cache.

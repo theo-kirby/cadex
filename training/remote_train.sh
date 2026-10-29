@@ -370,7 +370,7 @@ REMOTE
     local mine theirs at
     mine="$(sha256_of "${here}/cadex_train.py")"
     theirs="$(grep '^trainer ' <<<"${report}" | head -1)"; theirs="${theirs#trainer }"
-    at="$(grep '^at ' <<<"${report}" | head -1)"; at="${at#at }"
+    at="$(grep '^at ' <<<"${report}" | head -1 || true)"; at="${at#at }"
     [ -n "${at}" ] && printf '    %-14s %s\n' "box at" "${at}"
     if [ "${theirs}" = "${mine}" ]; then
         printf '    %-14s %s\n' trainer "${mine:0:12} -- matches this repo"
@@ -531,6 +531,13 @@ REMOTE
 cmd_train() {
     load_config
 
+    local budget="${CADEX_TRAIN_BUDGET_S:-}"
+    case "${budget}" in
+        *[!0-9]*) echo "FAIL: CADEX_TRAIN_BUDGET_S must be a positive integer."; exit 2 ;;
+    esac
+    if [ -n "${budget}" ] && [ "${budget}" -le 0 ]; then
+        echo "FAIL: CADEX_TRAIN_BUDGET_S must be positive."; exit 2
+    fi
     local allow_cpu=0 detach=0 bundle="" out="" extra="" seen_dashdash=0
     local warm_policy="" warm_parent=""
     while [ "$#" -gt 0 ]; do
@@ -574,6 +581,9 @@ cmd_train() {
         exit 2
     fi
 
+    if [ -n "${budget}" ] && [ "${detach}" -ne 1 ]; then
+        echo "FAIL: CADEX_TRAIN_BUDGET_S requires --detach."; exit 2
+    fi
     require CADEX_TRAIN_REPO "${remote_repo}"
     require CADEX_TRAIN_VENV "${remote_venv}"
     require CADEX_TRAIN_WORK "${remote_work}"
@@ -637,7 +647,7 @@ PY
     echo "==> box    ${target}:${remote_dir}"
 
     on_box "mkdir -p $(shquote "${remote_dir}")"
-    rsync -e "${rsync_ssh}" -a "${bundle}" "${model}" "${target}:${remote_dir}/"
+    rsync -e "${rsync_ssh}" -rt "${bundle}" "${model}" "${target}:${remote_dir}/"
 
     # The warm start, carried and re-pointed. Both the detached and the
     # blocking path run the trainer with `${extra}`, so rewriting it here
@@ -645,13 +655,13 @@ PY
     if [ -n "${warm_policy}" ] || [ -n "${warm_parent}" ]; then
         on_box "mkdir -p $(shquote "${remote_dir}/warm")"
         if [ -n "${warm_policy}" ] && [ -n "${warm_parent}" ]; then
-            rsync -e "${rsync_ssh}" -a "${warm_policy}" "${warm_parent}" \
+            rsync -e "${rsync_ssh}" -rt "${warm_policy}" "${warm_parent}" \
                   "${target}:${remote_dir}/warm/"
         elif [ -n "${warm_policy}" ]; then
-            rsync -e "${rsync_ssh}" -a "${warm_policy}" \
+            rsync -e "${rsync_ssh}" -rt "${warm_policy}" \
                   "${target}:${remote_dir}/warm/"
         else
-            rsync -e "${rsync_ssh}" -a "${warm_parent}" \
+            rsync -e "${rsync_ssh}" -rt "${warm_parent}" \
                   "${target}:${remote_dir}/warm/"
         fi
         if [ -n "${warm_policy}" ]; then
@@ -777,6 +787,12 @@ detached_train() {
     #     redirected.
     local inner
     inner="echo \$\$ > $(shquote "${remote_dir}/train.pid"); exec"
+    if [ -n "${CADEX_TRAIN_BUDGET_S:-}" ]; then
+        on_box "test -f $(shquote "${remote_repo}/training/runpod_worker.py")"
+        inner="${inner} $(shquote "${remote_venv}/bin/python")"
+        inner="${inner} $(shquote "${remote_repo}/training/runpod_worker.py")"
+        inner="${inner} --seconds ${CADEX_TRAIN_BUDGET_S} --"
+    fi
     inner="${inner} $(shquote "${remote_venv}/bin/python")"
     inner="${inner} $(shquote "${remote_repo}/training/cadex_train.py")"
     inner="${inner} $(shquote "${remote_dir}/${bundle_name}")"
@@ -820,17 +836,17 @@ PYRECEIPT
 sync_run() {
     local remote_dir="$1" dest="$2"
     mkdir -p "${dest}"
-    # `--ignore-missing-args` is not portable, so a run whose first
-    # progress.json has not landed yet is a non-fatal rsync rather than an
-    # error: the loop tries again in a moment.
+    # Snapshot progress first, then fetch every artifact that snapshot names.
+    # Publish it only after transfers succeed; view/ is optional.
     rsync -e "${rsync_ssh}" -a \
         "${target}:${remote_dir}/progress.json" \
-        "${dest}/training-progress.json" 2>/dev/null || return 1
-    # Every checkpoint the run has written, including the one it is named
-    # for. `-a` skips what has not changed, so this is one stat per file
-    # after the first pass.
-    rsync -e "${rsync_ssh}" -a --include="*.cxpolicy" --exclude="*" \
-        "${target}:${remote_dir}/" "${dest}/" 2>/dev/null || true
+        "${dest}/.progress.json.tmp" 2>/dev/null || return 1
+    rsync -e "${rsync_ssh}" -a --include="*.cxpolicy" --include="view/" \
+        --include="view/***" --exclude="*" \
+        "${target}:${remote_dir}/" "${dest}/" || return 1
+    cp "${dest}/.progress.json.tmp" "${dest}/.training-progress.json.tmp"
+    mv "${dest}/.training-progress.json.tmp" "${dest}/training-progress.json"
+    mv "${dest}/.progress.json.tmp" "${dest}/progress.json"
     return 0
 }
 
@@ -914,10 +930,15 @@ cmd_pull() {
     resolve_remote_paths
     local remote_dir="${remote_work%/}/${run_id}"
     mkdir -p "${dest}"
-    sync_run "${remote_dir}" "${dest}" || echo "NOTE: no progress.json yet."
+    local sync_ok=1 log_ok=1
+    sync_run "${remote_dir}" "${dest}" || sync_ok=0
+    if [ "${sync_ok}" -eq 0 ]; then echo "NOTE: progress/artifact sync incomplete."; fi
     # The log too, which is the only place a traceback lives.
     rsync -e "${rsync_ssh}" -a "${target}:${remote_dir}/train.log" \
-        "${dest}/train.log" 2>/dev/null || true
+        "${dest}/train.log" 2>/dev/null || log_ok=0
+    if [ "${CADEX_TRAIN_STRICT_SYNC:-0}" = 1 ]; then
+        [ "${sync_ok}" -eq 1 ] && [ "${log_ok}" -eq 1 ] || return 1
+    fi
 
     echo "==> ${dest}"
     local file digest

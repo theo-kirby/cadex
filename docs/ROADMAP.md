@@ -1,6 +1,6 @@
 # ROADMAP.md — Where Cadex Stands and What's Next
 
-Verified against source: 2026-10-27
+Verified against source: 2026-10-29
 
 The destination is [`VISION.md`](VISION.md): *describe a robot or mechanism
 to your agent; get back a design you can build and a policy that moves it*,
@@ -38,6 +38,14 @@ meet first, and gives the North Star a measurement again. Version 0.3.0
 rather than 0.2.x, because behaviour changed since 0.2.0 (partial rebuilds,
 the worker bundle, new script surface: `height_scan_far`, gait families,
 banded goals).
+
+### Cloud training (ADR-872)
+
+- [x] Runpod provisioning, isolated trainer bootstrap, bounded detached CLI
+      dispatch, local collection and Pod stop with retained disk.
+- [x] Verify a real Runpod GPU smoke run from the Mac, including disconnect,
+      collection, local policy verification and confirmed compute shutdown.
+- [ ] Route MCP training tools through the configured cloud worker.
 
 ### Must
 

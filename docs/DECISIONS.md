@@ -48166,3 +48166,67 @@ are catalogued, from sources better than the RS04's.
 
   It also checks that every other QDD's rear circle is unchanged. Plus a
   kernel build of both drives, `pixi run test-engine` and `pytest cli/tests`.
+
+## ADR-872 — Runpod is an offboard worker for the remote walk (2026-10-29)
+
+**Context.** The owner designs on a Mac and wants GPU policy training in the
+cloud. SSH dispatch already exists, but assumes a prepared GPU box, has no
+remote wall-clock supervisor, and omits the trainer's dashboard previews.
+
+**Decision.** `training/runpod.py` uses Runpod's REST API through the standard
+library to create one on-demand NVIDIA Pod with a persistent Pod disk. It
+uploads a content-addressed trainer release and installs its pinned dependencies
+in a separate venv. `train` wraps the existing detached remote walk; `collect`
+mirrors artifacts and invokes local walk completion. No engine, protocol,
+pixi dependency or MCP tool-surface change. MCP routing remains future work.
+
+`runpod_worker.py` bounds the trainer process group. A separate Pod lease
+watchdog receives a restricted API key through encrypted stdin, holds it in
+memory and retries Pod stop at the lease deadline. This is best-effort shutdown,
+not a provider spending cap. Bootstrap failure requests stop; collection can
+stop after local verification. Stop retains the disk; deletion is never automatic.
+
+Remote sync now copies previews as well as policies, and publishes the same
+snapshot under the walk's `training-progress.json` and dashboard's `progress.json`
+only after artifact transfer succeeds. The old swallowed checkpoint-transfer
+failure is removed. Cloud collection requests strict sync and checks provider
+status so it does not poll forever after the Pod has stopped.
+
+**Consequences.** Mac-local design, render and verification can share a detached
+GPU worker without installing JAX locally. Tests exercise dry-run/no-spend,
+failed-setup cleanup, remote process deadlines, successful receipts and transfer
+publication. Real provider bootstrap, dependency installation and GPU performance
+remain unverified until an account-backed smoke run. Storage bills continue after
+stop; spot recovery, network volumes, multi-robot inputs and MCP routing are not
+part of this initial path. See `training/SETUP.md` §e.
+
+
+## ADR-873 — Live Runpod mounted-storage and preflight fixes (2026-10-29)
+
+**Evidence.** An account-backed A40 smoke test exposed failures hidden by local
+fixtures: urllib's default User-Agent received HTTP 403; the CUDA version
+allowlist excluded a compatible 13.2 host; mounted storage exposed the SSH
+host key as 0666 and refused rsync chown; the remote preflight exited under
+pipefail when an uploaded trainer had no optional Git revision row.
+
+**Decision.** Set a named User-Agent in both controller and stop watchdog;
+remove the enumerated CUDA allowlist and keep the actual JAX GPU check; copy
+the retained host key to a chmod-600 container file; use rsync -rt for uploads;
+allow an absent Git row while still requiring the trainer SHA and exact pins.
+Mark a worker ready only after the complete preflight succeeds. No trainer
+algorithm, engine, protocol or product tool-surface changes.
+
+**Validation.** Thirteen local cloud contracts/regressions pass. Live A40
+preflight matches all pins and trainer SHA; the detached two-iteration smoke
+produced a GPU policy in 27.6 s, with witness error 2.66e-8. The local collection
+and robot training results are recorded separately. Runpod REST v1 is nearing
+retirement; migration to v2 remains follow-up work, not silently changed here.
+
+## ADR-874 — Runpod carries the current trainer helper and retains its cache (2026-10-29)
+
+After updating to ADR-849 and the go-to-point trainer, content-addressed Runpod
+releases include `cadex_goto.py`. The process supervisor supplies a default
+`CADEX_JAX_CACHE` on the retained Pod disk, preserving explicit overrides.
+This enables cache reuse across stops on the same Pod without changing the
+trainer or the existing budget/lease guards. Replacement disks remain cold.
+The 13 Runpod regression tests pass; live cache hits remain to be measured.

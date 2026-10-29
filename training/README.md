@@ -924,3 +924,29 @@ with the error (ADR-288). `done` is published only after the final policy is
 validated and saved. Hard kills or an unwritable progress file may instead leave
 a stale training snapshot; the dashboard does not call it success. Keep `progress.json`
 and its policy files together when retaining or copying a run. No new dependency.
+
+## Cloud dispatch from a Mac (ADR-872)
+
+`runpod.py` provisions and prepares an on-demand GPU worker and drives the
+existing remote walk. `runpod_worker.py` supplies remote process deadlines
+and a best-effort Pod stop watchdog. Results return to the Mac for engine
+verification and review. See [SETUP.md §e](SETUP.md#e-runpod-from-a-mac-adr-872)
+for credentials, commands, storage costs and the remaining live GPU smoke gate.
+Run `python -m pytest training/test_runpod.py` for the stdlib-only cloud
+contract tests; they require pytest but neither a cloud account nor JAX.
+
+### Live Runpod smoke, 2026-10-29
+
+An NVIDIA A40 on Secure Cloud passed the exact-package, trainer-hash and JAX
+GPU preflight. A detached hinged-arm reference run (2 iterations, 64 envs,
+seed 0, 600 s bound) trained in 27.6 s, wrote a GPU policy, and returned a
+witness error of 2.66e-8 against a 1e-4 tolerance. Collection, asset storage,
+policy declaration, local witness verification and rollout all exited 0.
+This is transport/trainer compatibility evidence, not a successful robot gait.
+The small reference's separate exact-geometry hold check found arm/base
+intersection; it was used only as a training and policy round-trip fixture.
+
+The live run also verified stop/start retention and exposed the fixes in
+ADR-873. Thirteen cloud contract/regression tests pass. Provider rate observed
+for this run: $0.59/hour, not a price guarantee. REST v1 retirement requires a
+v2 migration before 2026-11-15; see Runpod's official API migration guide.
