@@ -213,11 +213,31 @@ grid, lowest and highest, the validated features) in place of
 `environment.floor`, and `task_records` copies it into the bundle as
 `terrain`, a semantic field: another course is another task.
 
+**A course from a mesh (ADR-855).** `terrain={"mesh": "hills.stl",
+"x_range_mm": [...], "y_range_mm": [...], "cell_mm": 100}` samples a
+project mesh asset (STL, OBJ or PLY, in mm, put with `put_asset`) onto the
+heightfield grid: each vertex takes the highest point of any triangle over
+it, every vertex must be covered (`terrain_mesh_gap`), and the course is
+raised or lowered so the ground under the origin is z = 0. The sandboxed
+assembly worker reads the file from the attempt's staged `assets/` by
+`mesh.import_file`'s own reader and name check, so nothing outside the
+staging directory is read. It is at most 129 vertices a side and 500,000
+triangles, and takes no `features`, `random` or `collides_with`. The
+descriptor carries the sampled `heights_mm` and `mesh` (asset, sha256,
+triangle count), so the bundle's ground (`course_ground`), the trace's
+drawing and the MJCF's heightfield are one grid. On a 7 × 5 m
+rolling-hills STL at 100 mm cells, MuJoCo's ground is within 1.7 mm of
+the source surface away from its one sheer edge, and the dashboard's
+drawing matches the engine's at every vertex
+(`docs/probes/orun21/t1_file_shot.py`, `t1-file-course.png`). An image
+heightmap is not read: a mesh is the one file kind.
+
 **What trains on which form (ADR-854).** MJX trains on the heightfield
 when only spheres and capsules can touch it, which is Playground's
 arrangement. orun18's Go1, with four sphere feet, trained on a 30 × 30 m
 course of 30–60 mm bumps and dips to its flat result: 0/10 falls, tracking
-within 1% of flat at every command. It ran at 0.61× the plane's env
+within about 2% of flat at every command (0.481 against 0.470 m/s at
+0.5 m/s, the widest). It ran at 0.61× the plane's env
 steps/s. A box or a mesh on a heightfield goes through MJX's convex-prism
 collider, which is unstable. On ADR-714's block rig it sent 20 of 32
 environments non-finite on the CPU, and on the GPU threw one to 1.43 m at

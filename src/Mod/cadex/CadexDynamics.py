@@ -3618,6 +3618,17 @@ MAXIMUM_TERRAIN_CELLS = 262_144
 #: list longer than this is a generator that belongs in a loop in the script.
 MAXIMUM_TERRAIN_FEATURES = 64
 
+#: A course sampled from a mesh asset (ADR-855) is at most this many
+#: vertices a side: its heights travel in the descriptor, so a viewer, a
+#: ground query and the heightfield all read one grid, and a drawing needs
+#: no resampling (:data:`TERRAIN_DRAWING_MAXIMUM_VERTICES`). 129 vertices at
+#: 100 mm is a 12.8 m square; the heights are about 130 KB of a task bundle.
+MAXIMUM_TERRAIN_MESH_VERTICES = 129
+
+#: The most triangles a course mesh may carry: a sampled course is a grid,
+#: so a finer mesh than this adds bytes and sampling time, not ground.
+MAXIMUM_TERRAIN_MESH_TRIANGLES = 500_000
+
 #: The solid MuJoCo puts under the lowest point of a heightfield. It is what
 #: a foot meets if it gets below the surface between two contact checks, so
 #: it is thick against a step's worth of penetration, not a visual choice.
@@ -3871,6 +3882,65 @@ def terrain_height_mm(features: Sequence[Mapping[str, Any]], x_mm: float, y_mm: 
                     1.0 + math.cos(math.pi * distance / feature["radius_mm"])
                 )
     return height
+
+
+def terrain_mesh_heights(
+    triangles: Sequence[Sequence[Sequence[float]]],
+    x0_mm: float, y0_mm: float, cell_mm: float, nrow: int, ncol: int,
+) -> list[float | None]:
+    """A mesh's top surface sampled at a grid's vertices (ADR-855), pure.
+
+    ``triangles`` are three ``(x, y, z)`` corners in mm. Vertex ``(row,
+    column)`` stands at ``(x0 + column * cell, y0 + row * cell)``, row-major
+    with row 0 at -Y as MuJoCo reads a heightfield, and takes the highest
+    point of any triangle over it, undersides included, so an overhang
+    reads as its top; a vertical face has no footprint and adds nothing. ``None`` where no triangle covers the
+    vertex. Each triangle visits only the vertices inside its own footprint."""
+
+    heights: list[float | None] = [None] * (nrow * ncol)
+    tolerance = 1e-9
+    for corners in triangles:
+        (ax, ay, az), (bx, by, bz), (cx, cy, cz) = (
+            (float(p[0]), float(p[1]), float(p[2])) for p in corners)
+        area = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay)
+        if abs(area) < 1e-12:
+            continue  # vertical or degenerate: its edges are another face's
+        c_lo = max(0, math.ceil((min(ax, bx, cx) - x0_mm) / cell_mm - 1e-9))
+        c_hi = min(ncol - 1, math.floor((max(ax, bx, cx) - x0_mm) / cell_mm + 1e-9))
+        r_lo = max(0, math.ceil((min(ay, by, cy) - y0_mm) / cell_mm - 1e-9))
+        r_hi = min(nrow - 1, math.floor((max(ay, by, cy) - y0_mm) / cell_mm + 1e-9))
+        for row in range(r_lo, r_hi + 1):
+            y = y0_mm + row * cell_mm
+            for column in range(c_lo, c_hi + 1):
+                x = x0_mm + column * cell_mm
+                u = ((bx - x) * (cy - y) - (cx - x) * (by - y)) / area
+                v = ((cx - x) * (ay - y) - (ax - x) * (cy - y)) / area
+                w = 1.0 - u - v
+                if u < -tolerance or v < -tolerance or w < -tolerance:
+                    continue
+                z = u * az + v * bz + w * cz
+                index = row * ncol + column
+                if heights[index] is None or z > heights[index]:
+                    heights[index] = z
+    return heights
+
+
+def terrain_grid_height_mm(course: Mapping[str, Any], x_mm: float, y_mm: float) -> float:
+    """The ground of a course that carries its own grid (ADR-855), read
+    bilinearly between its vertices and held at its edge, as MuJoCo's
+    heightfield collides it."""
+
+    x0, x1 = (float(v) for v in course["x_range_mm"])
+    y0, y1 = (float(v) for v in course["y_range_mm"])
+    nrow, ncol = int(course["nrow"]), int(course["ncol"])
+    heights = course["heights_mm"]
+    fx = min(max((x_mm - x0) / (x1 - x0), 0.0), 1.0) * (ncol - 1)
+    fy = min(max((y_mm - y0) / (y1 - y0), 0.0), 1.0) * (nrow - 1)
+    c, r = min(int(fx), ncol - 2), min(int(fy), nrow - 2)
+    tx, ty = fx - c, fy - r
+    at = lambda row, column: float(heights[row * ncol + column])  # noqa: E731
+    return ((at(r, c) * (1 - tx) + at(r, c + 1) * tx) * (1 - ty)
+            + (at(r + 1, c) * (1 - tx) + at(r + 1, c + 1) * tx) * ty)
 
 
 def _terrain_profile_mm(features: Sequence[Mapping[str, Any]], x_mm: float) -> float:
@@ -4818,6 +4888,8 @@ def course_ground(course: Mapping[str, Any]) -> Any:
 
     if course.get("kind") == "boxes":
         return lambda x_mm, y_mm: terrain_box_ground_mm(course, x_mm, y_mm)
+    if course.get("heights_mm") is not None:
+        return lambda x_mm, y_mm: terrain_grid_height_mm(course, x_mm, y_mm)
     features = list(course.get("features") or ())
     return lambda x_mm, y_mm: terrain_height_mm(features, x_mm, y_mm)
 
@@ -4907,12 +4979,18 @@ def terrain_drawing(course: Mapping[str, Any]) -> dict[str, Any]:
         ]
         return drawing
     (x0, x1), (y0, y1) = drawing["x_range_mm"], drawing["y_range_mm"]
+    drawing["plane_z_mm"] = None
+    if course.get("heights_mm") is not None:
+        # A course from a file (ADR-855) carries its grid, which is already
+        # within the drawing's bound: drawn as it collides.
+        drawing["grid"] = {"rows": int(course["nrow"]), "columns": int(course["ncol"]),
+                           "heights_mm": [float(h) for h in course["heights_mm"]]}
+        return drawing
     cell = float(course.get("cell_mm") or TERRAIN_CELL_RANGE_MM[1])
     columns = min(int(round((x1 - x0) / cell)) + 1, TERRAIN_DRAWING_MAXIMUM_VERTICES)
     rows = min(int(round((y1 - y0) / cell)) + 1, TERRAIN_DRAWING_MAXIMUM_VERTICES)
     columns, rows = max(columns, 2), max(rows, 2)
     features = list(course.get("features") or ())
-    drawing["plane_z_mm"] = None
     drawing["grid"] = {
         "rows": rows, "columns": columns,
         # Row 0 at -Y, column 0 at -X, as MuJoCo reads a heightfield.
@@ -5132,7 +5210,8 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             reason="malformed_terrain",
             correction="Give terrain as a dict with x_range_mm, y_range_mm and features.",
         )
-    allowed = {"x_range_mm", "y_range_mm", "cell_mm", "features", "form", "random", "collides_with"}
+    allowed = {"x_range_mm", "y_range_mm", "cell_mm", "features", "form", "random",
+               "collides_with", "mesh"}
     extra = sorted(str(key) for key in terrain if key not in allowed)
     if extra:
         raise DynamicsError(
@@ -5149,6 +5228,17 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             correction=f"A course's form is one of {', '.join(TERRAIN_FORMS)}.",
             observed={"form": repr(form)},
         )
+    if terrain.get("mesh") is not None:
+        mixed = [key for key in ("features", "random", "collides_with") if terrain.get(key) is not None]
+        if form != "heightfield" or mixed:
+            raise DynamicsError(
+                f"{context} gives a mesh with {'form=' + repr(form) if form != 'heightfield' else ' and '.join(mixed)}.",
+                reason="malformed_terrain",
+                correction=(
+                    "A course from a mesh is sampled onto a heightfield (ADR-855) and is "
+                    "the whole course: give mesh, the ranges and cell_mm, and nothing else."
+                ),
+            )
     if form == "heightfield" and terrain.get("random") is not None:
         raise DynamicsError(
             f"{context} draws a random heightfield.",
@@ -5219,6 +5309,8 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             correction="Shrink the ranges or coarsen cell_mm.",
             observed={"cells": nrow * ncol, "maximum": MAXIMUM_TERRAIN_CELLS},
         )
+    if terrain.get("mesh") is not None:
+        return _terrain_mesh_course(terrain, (x0, x1), (y0, y1), cell, nrow, ncol, context)
     features = _terrain_features(terrain, context)
     boxed = sorted({feature["kind"] for feature in features} & set(TERRAIN_BOX_ONLY_KINDS))
     if boxed:
@@ -5253,6 +5345,93 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             "base_mm": TERRAIN_BASE_MM,
             "friction": list(ENVIRONMENT_FLOOR_FRICTION),
             "features": features,
+        },
+        "heights_mm": heights,
+    }
+
+
+def _terrain_mesh_course(
+    terrain: Mapping[str, Any], x_range: tuple[float, float], y_range: tuple[float, float],
+    cell: float, nrow: int, ncol: int, context: str,
+) -> dict[str, Any]:
+    """A course sampled from a mesh asset onto the heightfield grid (ADR-855).
+
+    ``terrain["mesh"]`` arrives as the asset's name and is resolved by the
+    sandboxed assembly worker, which reads it from the staged ``assets/``
+    as ``mesh.import_file`` does and hands in ``{"asset", "sha256",
+    "triangles"}``. The top surface is sampled at every vertex
+    (:func:`terrain_mesh_heights`), every vertex must be covered, and the
+    course is raised or lowered so the ground under the origin is z = 0.
+    The heights travel in the descriptor, so the bundle's ground, a drawing
+    and the MJCF's heightfield are one grid."""
+
+    mesh = terrain["mesh"]
+    if not isinstance(mesh, Mapping):
+        raise DynamicsError(
+            f"{context} names mesh {mesh!r}, which nothing has read.",
+            reason="terrain_mesh_unresolved",
+            correction=(
+                "Declare the course on assembly.mjcf in the project script: the "
+                "engine reads the named asset from the project's assets/ there."
+            ),
+        )
+    triangles = mesh["triangles"]
+    if len(triangles) > MAXIMUM_TERRAIN_MESH_TRIANGLES:
+        raise DynamicsError(
+            f"{context}'s mesh {mesh['asset']!r} has {len(triangles)} triangles; the "
+            f"accepted maximum is {MAXIMUM_TERRAIN_MESH_TRIANGLES}.",
+            reason="terrain_too_large",
+            correction="Decimate the mesh: the course is sampled at cell_mm, not at its triangles.",
+            observed={"triangles": len(triangles), "maximum": MAXIMUM_TERRAIN_MESH_TRIANGLES},
+        )
+    if max(nrow, ncol) > MAXIMUM_TERRAIN_MESH_VERTICES:
+        raise DynamicsError(
+            f"{context} samples its mesh at {ncol} x {nrow} vertices; a course from a "
+            f"mesh is at most {MAXIMUM_TERRAIN_MESH_VERTICES} a side.",
+            reason="terrain_too_large",
+            correction="Coarsen cell_mm or shrink the ranges.",
+            observed={"columns": ncol, "rows": nrow, "maximum": MAXIMUM_TERRAIN_MESH_VERTICES},
+        )
+    (x0, x1), (y0, y1) = x_range, y_range
+    sampled = terrain_mesh_heights(triangles, x0, y0, cell, nrow, ncol)
+    gaps = [index for index, height in enumerate(sampled) if height is None]
+    if gaps:
+        row, column = divmod(gaps[0], ncol)
+        raise DynamicsError(
+            f"{context}'s mesh {mesh['asset']!r} leaves {len(gaps)} of {nrow * ncol} "
+            f"vertices uncovered, the first at ({x0 + column * cell:g}, "
+            f"{y0 + row * cell:g}) mm.",
+            reason="terrain_mesh_gap",
+            correction=(
+                "Give ranges inside the mesh's footprint, or extend the mesh: a "
+                "course from a mesh is ground at every vertex, in the mesh's own mm."
+            ),
+            observed={"uncovered": len(gaps), "vertices": nrow * ncol},
+        )
+    grid = {"x_range_mm": [x0, x1], "y_range_mm": [y0, y1], "nrow": nrow, "ncol": ncol,
+            "heights_mm": sampled}
+    shift = -terrain_grid_height_mm(grid, 0.0, 0.0)
+    heights = [float(height) + shift for height in sampled]
+    lowest, highest = min(heights), max(heights)
+    _terrain_start_and_relief(lowest, highest, 0.0, context)
+    return {
+        "descriptor": {
+            "geom": ENVIRONMENT_TERRAIN_GEOM,
+            "body": "world",
+            "kind": "heightfield",
+            "x_range_mm": [x0, x1],
+            "y_range_mm": [y0, y1],
+            "cell_mm": cell,
+            "nrow": nrow,
+            "ncol": ncol,
+            "lowest_mm": lowest,
+            "highest_mm": highest,
+            "base_mm": TERRAIN_BASE_MM,
+            "friction": list(ENVIRONMENT_FLOOR_FRICTION),
+            "features": [],
+            "mesh": {"asset": str(mesh["asset"]), "sha256": str(mesh["sha256"]),
+                     "triangles": len(triangles)},
+            "heights_mm": heights,
         },
         "heights_mm": heights,
     }

@@ -109,6 +109,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
     side to one on its +x side; `cells_y: 1` is a corridor. Rock patches,
     tile patches and mazes sit on flat ground. Every level runs out 50 m past the extent, so
     leaving a course is flat ground, not a fall.
+  - **From a mesh** (ADR-855): `"mesh": "<asset>.stl"` (or `.obj`, `.ply`)
+    in place of `features` samples a project mesh asset's top surface onto
+    the heightfield grid, at most 129 vertices a side, covering every
+    vertex, shifted so the origin's ground is z = 0.
   - **Drawn courses.** `"random": {"seed", "courses", "step_mm",
     "grade_deg", "bump_mm", ...}` in place of `features` draws steps, slopes
     and bumps from magnitude ranges behind a flat `clear_mm` (default 500),

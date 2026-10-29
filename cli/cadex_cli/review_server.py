@@ -1217,7 +1217,9 @@ def mjcf_terrain(root: ElementTree.Element) -> dict[str, Any] | None:
     if not size or len(size) != 4 or nrow < 2 or ncol < 2 or len(elevation) != nrow * ncol:
         return None
     rows, columns = min(nrow, TERRAIN_MAXIMUM_VERTICES), min(ncol, TERRAIN_MAXIMUM_VERTICES)
-    heights = [(pos[2] + size[2] * elevation[round(r * (nrow - 1) / (rows - 1)) * ncol
+    # The XML's elevation lists its first row at +Y, an image's top row, and
+    # MuJoCo flips it on load; the drawing's row 0 is at -Y (ADR-855).
+    heights = [(pos[2] + size[2] * elevation[(nrow - 1 - round(r * (nrow - 1) / (rows - 1))) * ncol
                                              + round(c * (ncol - 1) / (columns - 1))]) * 1000.0
                for r in range(rows) for c in range(columns)]
     return terrain_block({

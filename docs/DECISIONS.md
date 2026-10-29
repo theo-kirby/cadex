@@ -47563,3 +47563,62 @@ the course was already untrainable; it is now refused when it is declared.
 `orun21-lab/go1-hfield/run1/progress.json` and `run1/judge.json`; bench
 `go1` and `go1-hfield`. `pixi run test-engine`: 158 passed, 3 skipped. After
 `pixi run build-engine`, `pytest cli/tests`: 53 passed.
+
+## ADR-855 — A course from a mesh asset is sampled onto the heightfield grid; the dashboard's heightfield is no longer drawn mirrored in y (2026-10-29, orun21 T1)
+
+**Context.** ADR-854 decided that a course from a file is a heightfield
+sampled from it, because MJX collides a mesh only by its convex hull, but
+built nothing. T1 asks for a course from a heightfield or mesh file, read
+safely inside the script sandbox and drawn by the dashboard.
+
+**Decision.**
+- `assembly.mjcf(..., terrain={"mesh": "<asset>", "x_range_mm",
+  "y_range_mm", "cell_mm"})` names a project mesh asset (STL, OBJ or PLY,
+  stored by `put_asset`). The sandboxed assembly worker
+  (`cadex_assembly_worker._terrain_with_mesh`) reads it from the attempt's
+  staged `assets/` with `mesh.import_file`'s own reader, name check and
+  traversal refusal (`cadex_mesh_worker._import_asset`), and hands the
+  triangles and the file's sha256 to `CadexDynamics.terrain_grid`. A name
+  outside `assets/` or missing is refused at build (`terrain_mesh_unreadable`);
+  a name no worker resolved, `terrain_mesh_unresolved`.
+- `CadexDynamics.terrain_mesh_heights` (pure) gives each grid vertex the
+  highest point of any triangle over it. Every vertex must be covered
+  (`terrain_mesh_gap`); the course is shifted so the ground under the
+  origin is z = 0, rather than refused, since a file's own datum is
+  arbitrary. At most 129 vertices a side (`MAXIMUM_TERRAIN_MESH_VERTICES`)
+  and 500,000 triangles. `features`, `random`, `collides_with` and
+  `form: "boxes"` are refused beside `mesh`.
+- The descriptor carries `heights_mm` and `mesh` (asset, sha256, triangle
+  count), so `course_ground` (bilinear, `terrain_grid_height_mm`),
+  `terrain_drawing` and the MJCF's heightfield are one grid. The trainer
+  needs nothing: it reads `hfield_data` from the model, as for any
+  heightfield.
+- **Image heightmaps are not read.** A mesh is the one file kind. A PNG
+  would add a stored suffix and a decoder for a course any tool can also
+  write as a mesh.
+- **Fixed in passing: `review_server.mjcf_terrain` drew every exported
+  heightfield mirrored in y.** MuJoCo writes an hfield's `elevation` with its
+  first row at +Y and flips it on load (checked on a 2 × 2 field: elevation
+  `0 0 1 1` collides 0.95 at y = −0.9); the reader took the first row as −Y.
+  Found because this course's drawing missed the engine's by 120 mm. Earlier
+  courses mostly vary along x, which a mirror in y hides. Now read from the
+  last row.
+
+**Measured** (`~/cadex-projects/orun21-lab/t1-file`, a free-base sled on
+`hills.stl`, 31,968 triangles of rolling hills, a 400 mm ridge with a pass
+and a hollow, made by its `make_course.py`). The script accepts in 4.8 s
+at 100 mm cells (71 × 51 vertices, relief −209 to 398 mm; sampling ~0.03 s).
+Rays on the exported MJCF in stock MuJoCo are within 1.73 mm of the source
+surface at 1,828 points away from the ridge's one sheer edge (p95 0.68 mm).
+`docs/probes/orun21/t1_file_shot.py` serves the project and lets the
+viewer draw the accepted export's course on its own: the drawn ground
+matches the engine's to 0.0007 mm at all 3,381 interior vertices and to
+15.7 mm at 2,000 random points (bilinear against two triangles across a
+400 mm ridge). Before the reader fix the random-point gap was 120 mm.
+`docs/probes/orun21/t1-file-course.png`.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. After `pixi run build-engine`, `pytest cli/tests`: 53 passed; `training/test_terrain_pool.py`: 2 passed.
+
+**Not changed.** No stored suffix, op or tool changes; every existing
+model, bundle and digest is unchanged (a declaration without `mesh` takes
+the old path). Levels and the curriculum remain T1's open items.
