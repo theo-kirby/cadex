@@ -1,12 +1,13 @@
 # orun21 M0: where a design-to-policy iteration's time goes
 
-Verified against source: 2026-10-28. Frozen run evidence; read it, never cite
+Verified against source: 2026-10-29. Frozen run evidence; read it, never cite
 it as current.
 
 M0 in two halves: **the log pass** over the last three Ouroboros runs (§1),
 then fresh timings on this checkout (§2–§6): the trainer's closing view, cold
 and warm builds of leon V and the biped, each model tier's steps/s, both
-suites, and the route's cheap legs. §7 ranks the sinks and names S1's three.
+suites, and the route's cheap legs. §7 ranks the sinks and names S1's three;
+§8 is S1's cuts and §9 re-times the two representative iterations after them.
 Everything timed ran on the lab copies in `~/cadex-projects/orun21-lab/`
 (32 CPUs, 60 GB, one RTX 5090).
 
@@ -342,3 +343,95 @@ again once its parts are kept (the before run itself re-accepted under a new
 digest, as ADR-848's did). What the warm build still spends: ~157 CPU-s before
 the swept fit, led by panel checks (`c_pnl_shin_r` 9.7 s, `c_pnl_withers`
 8.1 s) and the script (5.9 s), then the swept fit; not split further.
+
+## 9. The representative iterations, re-timed after S1
+
+`s1_iteration.sh` (this directory) runs both iterations one stage at a time on
+a lab copy of leon V at the P1 trot revision (`479e53ce`, export `41a4e7e0`),
+and times each stage (`orun21-lab/s1-iter/times.txt`). The engine is the dev
+tree at `eaa9fa5f` (ADR-848–850 in), and the trainer is this checkout's. Both
+routes train at P1's budget (8192 envs × 300 iterations × 20 steps, 49.2 M
+env steps, seed 0) and judge the best checkpoint with `cadex evaluate` on the
+project's export: 10 frozen seeds, 6 predicates.
+
+**Warm-up, not counted.** The copy's part cache was written under the
+pre-ADR-850 fingerprint, so `cadex export --rebuild` first warmed it:
+**1,442.4 s** (restore 446 s cold, then the build 997 s). The build hit the
+part cache but re-ran every static fit (`c_chest_frame / c_pnl_neck_collar`
+85 CPU-s, …), so the copied fit cache did not serve either. This is the
+cold-once cost that any engine edit to a fingerprint carries.
+
+**Concept route.** The spec change is real: the frozen spec's chest raised
+8.51 → 10.72 kg, so the concept weighs the CAD's 33.31 kg (ADR-843 found E2
+7.1% light).
+
+| stage | command | wall |
+|---|---|---|
+| spec → concept | `cadex_concept.py leon-v-frozen.json --set trunk.0.boxes.0.mass=10.72` | 0.1 s |
+| relay | `cadex_relay.py` the export's trot task onto it | 0.1 s |
+| train | `cadex_train.py`, 300 iterations (progress `wall_time_s` 260.6, launch to end 289.5) | 290.4 s |
+| judge | `cadex evaluate`, best (257): measure 30.6 s, **10/10**; film failed (below) | 36.2 s |
+| **total** | | **326.8 s** (5.4 min), without the film |
+
+**CAD route.** The edit is one script parameter, `panel_gap` 3.0 → 3.5 mm,
+accepted with `cadex script --set`.
+
+| stage | command | wall |
+|---|---|---|
+| edit + accept (the build) | `cadex script --set script.py` (one attempt, 1,408 s request to result) | **1,421.2 s** |
+| export | `cadex export --format brep` (copies the accepted attempt) | 1.1 s |
+| compare | `cadex_cad_vs_concept.py` concept against the new export | 0.1 s |
+| cut + fidelity | `cadex_training_model.py cut --project` (ok, cut `e5233cc9`) | 0.9 s |
+| relay | onto the cut | 0.1 s |
+| train | 300 iterations with `--cad-model` (`wall_time_s` 326.0, launch to end 362.5) | 363.4 s |
+| judge | `cadex evaluate`, best (275) on export `b5bb6356`: measure 30.5 s, film sheets 23.3 s, video 188.9 s; **10/10** (speed ratio 1.05, rated 0.82–0.84) | 244.6 s |
+| **total** | | **2,031.4 s** (33.9 min) |
+
+**Against the start.** M0 had no end-to-end iteration; §6 composed one at a
+206 M-step budget and before judging. The rows below are logged wall times at
+P1's 49.2 M-step budget on the pre-S1 code (`e69cab16`, ADR-847's runs in
+`orun21-lab/p1-leonv/`, export from §8's before run). No number from the
+before column is reused as new.
+
+| stage | before (pre-S1, logged) | after (§9) | what moved it |
+|---|---|---|---|
+| concept: spec + relay | 0.1 s (§6; relay not timed) | 0.2 s | — |
+| concept: train | 337.2 s (E2, launch to end) | 290.4 s | ADR-849, one witness/view rollout |
+| judge, measure | 32.8 s | 30.5–30.6 s | — |
+| judge, film | 215.3 s | 212.2 s (CAD only) | — |
+| **concept iteration** | **~627 s** (judged with film, best: 289.4 s) | **327 s** without film; ~539 s with the CAD judge's 212 s of film added | ADR-849 |
+| CAD: accept | 987 s (P1's accepted attempt `6c4f3251`, request to result; a task-only edit, no geometry changed) | 1,421 s (a geometry edit reaching every frame and panel) | not the same input; see below |
+| CAD: export | 1,844.5 s (§8 before, `--rebuild` was the only road) | 1.1 s | ADR-848 |
+| CAD: cut, fidelity, relay | 0.9 s | 1.1 s | — |
+| CAD: train | 392.8 s (launch to end) | 363.4 s | ADR-849 |
+| CAD: judge | 247.9 s | 244.6 s | — |
+| **CAD iteration** | **~3,473 s** (58 min) | **2,031 s** (34 min) | |
+
+- **The concept iteration is about 5 minutes and is training-bound.** The
+  judge's measurement is 31 s; drawing its film is 212 s, 40% of a judged
+  concept iteration. The trainer's end cut (ADR-849) shows as 47 s; its
+  compile cache did not hit, because each route's first model is new.
+- **The CAD iteration is now build-bound.** The export no longer rebuilds,
+  so the accept is the only build left, and it is 70% of the iteration. The
+  part cache (ADR-850) serves only parts the edit does not reach.
+  `panel_gap` reaches the frames through their panel bosses, so the accept
+  rebuilt `chest_frame` (290 CPU-s), `skull_frame` (184), `pelvis_frame` (86)
+  and re-ran the static and swept fits: 2,286 CPU-s in 1,408 s of wall. That
+  is close to M0's cold 1,433 s. A task-only edit like P1's should now hit
+  every part, but that was **not re-timed** here, so the 987 s before has no
+  after on the same input.
+- **The next sink is the geometry build of a whole-robot edit**, the fits
+  first (static fits 50–90 CPU-s a pair on the panels): §7 rank 3 cut what an
+  unchanged rebuild repeated, not what an edit causes. Rank 5 (the engine
+  suite, 130 s a commit) is untouched.
+- **The concept judge's film failed, and the cause is the open
+  `autumn-hawk-8597`, not S1.** The warm-up's `export --rebuild` attempt
+  requested no `display` (its `request.json` has no `display` key; P1's
+  accepted attempt and this accept's do), yet it became the accepted pin. So
+  `evaluate` measured the concept policy and then could not draw it: "the
+  accepted attempt retained no tessellation for c_chest_frame".
+- **The concept trained at the CAD's mass passes on the export.** It was
+  10/10, rated 0.75–0.77 and speed ratio 1.07–1.08. ADR-847's E2 concept, 7.1%
+  light, got 0/10 at this budget. Two things changed, the mass and the
+  builder (this concept is `cadex_concept.py`'s; E2 is leon V's own build), so
+  the mass alone is not shown to be the cause.
