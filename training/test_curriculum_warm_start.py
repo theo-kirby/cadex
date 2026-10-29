@@ -254,6 +254,8 @@ def test_the_curriculum_sets_say_what_they_mean():
     # ADR-871: ADR-824's weighted bands are a draw range too; ADR-900: so is a bound.
     assert CURRICULUM_GOAL_KEYS == {"low", "high", "nominal", "sequence", "bands", "bound"}
     assert "success" in CURRICULUM_TASK_KEYS
+    # ADR-861: ADR-870's foot terms are training reward, like ``reward``.
+    assert "feet" in CURRICULUM_TASK_KEYS
     assert CURRICULUM_EPISODE_KEYS == {"episode_seconds", "max_steps"}
 
 
@@ -358,3 +360,22 @@ def test_the_goal_algorithm_alone_may_not_move(goal_parent):
         check_policy_fits(
             goal_header(parent), bundle_of(child),
             options(init_from_task_change="a new algorithm", init_from_parent_task=str(path)))
+
+
+def test_a_scan_the_actor_gains_is_admitted_and_a_privileged_one_is_not_read(parent_file):
+    """ADR-859: a policy scan appends its channels after the source's inputs;
+    the step names ``scans.actor`` so the warm start widens the first layer.
+    A privileged scan is a course step only (ADR-736), and the actor's inputs
+    must still match the source's in order."""
+
+    scan = {"name": "hs", "kind": "height_scan", "body_id": 1, "scale": 1000.0,
+            "offsets_mm": [[0.0, 0.0], [100.0, 0.0]], "channels": ["hs_0", "hs_1"]}
+    flags = options(init_from_task_change="scan", init_from_parent_task=str(parent_file))
+    seen = child_with(scans=[dict(scan, role="policy")])
+    assert check_policy_fits(header_for(TASK), bundle_of(seen), flags) == ["scans", "scans.actor"]
+    hidden = child_with(scans=[dict(scan, role="privileged")])
+    assert check_policy_fits(header_for(TASK), bundle_of(hidden), flags) == ["scans"]
+    header = header_for(TASK)
+    header["observations"] = ["b", "a"]
+    with pytest.raises(SystemExit, match="the observation channels"):
+        check_policy_fits(header, bundle_of(seen), flags)

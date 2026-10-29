@@ -21,7 +21,7 @@
   // What the model is: sent to every viewer, and replayed onto one added later.
   var MODEL = ['clear', 'load', 'loadGhost', 'setGhost', 'setPoses', 'setHidden', 'select', 'setHeat',
                'setMeshLines', 'setReflections', 'setOcclusion', 'setDetail', 'setProxies', 'setTerrain', 'setSection', 'setLines',
-               'setTrail', 'showTrail', 'setTrailColours'];
+               'setTrail', 'showTrail', 'setTrailColours', 'setTargets', 'showTargets'];
   var EVERY = MODEL.concat(['draw', 'highlight', 'setOnPick', 'showProxies', 'showLines']);
 
   // A fetch that reads each URL once for every viewer that asks: the meshes come down once.

@@ -701,20 +701,36 @@ TRAINER_PROGRESS_SCHEMA = "cadex-training-progress-v1"
 #: How long a trainer's ``progress.json`` may go unwritten, while it says it is
 #: training, before a run with no record of its own is read as gone (ADR-835).
 TRAINER_QUIET_S = 600.0
+#: The least quiet a heartbeat trainer is allowed before it is read as gone (ADR-837).
+TRAINER_BEATS_S = 60.0
+
+
+#: How deep under a run a trainer's ``progress.json`` is looked for: a seed's
+#: directory (``seed0/``) or a stage's seed (``stage2/seed0/``) (ADR-837).
+TRAINER_PROGRESS_GLOBS = ("*/progress.json", "*/*/progress.json")
+
+
+def _progress_files(directory: Path) -> list[str]:
+    """``train/progress.json`` first, then every trainer snapshot below the run."""
+
+    found = {path.relative_to(directory).as_posix()
+             for pattern in TRAINER_PROGRESS_GLOBS for path in directory.glob(pattern)}
+    found.discard("train/progress.json")
+    return ["train/progress.json"] + sorted(found)
 
 
 def trainer_progress(run_dir: Path | str) -> str | None:
-    """The run's trainer telemetry, relative to the run (ADR-835).
+    """The run's trainer telemetry, relative to the run (ADR-835, ADR-837).
 
     ``train/progress.json`` where a walk puts it, else the newest
-    ``*/progress.json`` one level down, where a trainer run by hand writes it
-    beside its policy (``seed0/``). Never a file reached through a symlink out.
+    ``progress.json`` one or two levels down, where a trainer run by hand
+    writes it beside its policy (``seed0/``, ``stage2/seed0/``). Never a file
+    reached through a symlink out.
     """
 
     directory = Path(run_dir).expanduser()
     found: list[tuple[float, str]] = []
-    for relative in ["train/progress.json"] + sorted(
-            path.relative_to(directory).as_posix() for path in directory.glob("*/progress.json")):
+    for relative in _progress_files(directory):
         reference = resolve_reference(directory, relative)
         if reference["error"] or not reference["exists"]:
             continue
@@ -737,8 +753,7 @@ def trainer_view(run_dir: Path | str) -> tuple[str | None, str | None]:
 
     directory = Path(run_dir).expanduser()
     found: list[tuple[float, str, str | None]] = []
-    for relative in ["train/progress.json"] + sorted(
-            path.relative_to(directory).as_posix() for path in directory.glob("*/progress.json")):
+    for relative in _progress_files(directory):
         base = Path(relative).parent
         trace = (base / "view" / "trace.json").as_posix()
         reference = resolve_reference(directory, trace)
@@ -767,7 +782,12 @@ def _trainer_gone(progress: Mapping[str, Any], progress_path: str) -> str | None
         quiet = time.time() - float(progress.get("updated_at") or 0.0)
     except (TypeError, ValueError):
         quiet = math.inf
-    if quiet <= TRAINER_QUIET_S:
+    # A trainer that keeps a heartbeat (ADR-837) writes through its compile,
+    # so six missed beats is a dead process; an older one gets the old grace.
+    beat = (progress.get("run") or {}).get("heartbeat_s") if isinstance(progress.get("run"), Mapping) else None
+    allowed = max(TRAINER_BEATS_S, 6.0 * float(beat)) \
+        if isinstance(beat, (int, float)) and math.isfinite(beat) and beat > 0 else TRAINER_QUIET_S
+    if quiet <= allowed:
         return None
     return f"the trainer stopped writing {progress_path} {quiet / 60:.0f} min ago without finishing"
 
@@ -799,10 +819,18 @@ def _trainer_record(directory: Path, progress_path: str) -> dict[str, Any] | Non
         recorded_at = None
     receipt = {key: progress[key] for key in ("reward_per_step", "wall_time_s", "device",
                                               "task_sha256", "state") if key in progress}
+    stated = progress.get("model") if isinstance(progress.get("model"), Mapping) else {}
     return {"schema": RUN_RECORD_SCHEMA, "run": directory.name, "recorded_at": recorded_at,
             "status": status, "error": error, "mode": "train", "walk_seconds": None,
             "model": {"accepted_revision": None, "digest": None,
-                      "identity_source": "trainer telemetry only: no run.json (ADR-835)"},
+                      "identity_source": "trainer telemetry only: no run.json (ADR-835)",
+                      # ADR-837: the trainer's own word on its model; ADR-838
+                      # draws the CAD on its bodies from the last two.
+                      "tier": stated.get("tier"),
+                      "mjcf_sha256": progress.get("model_sha256"),
+                      "cad_sha256": stated.get("cad_sha256"),
+                      "bodies": stated.get("bodies")
+                      if isinstance(stated.get("bodies"), Mapping) else None},
             "params": {"values": {}, "specs": None, "specs_source": "unavailable"},
             "project_docs": {"dir": None, "files": {}, "skipped": [], "note": "not snapshotted"},
             "task": {"bundle": None, "sha256": progress.get("task_sha256"), "model_xml": None},

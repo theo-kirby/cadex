@@ -159,6 +159,7 @@ from .smoke import (
     find_optional_task,
     run_smoke,
     retained_bundle,
+    retained_display,
     check_geometry,
     smoke_cell,
     smoke_command,
@@ -277,7 +278,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     export_parser = subparsers.add_parser(
-        "export", help="Rebuild the accepted script and write its outputs."
+        "export", help="Write the accepted revision's outputs, copied from the "
+        "attempt the store retained (ADR-848); --rebuild re-runs the script."
+    )
+    export_parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        default=False,
+        help="Restore and rebuild the accepted script on this engine before "
+        "writing, as export did before ADR-848.",
     )
     export_parser.add_argument(
         "--blueprints",
@@ -631,6 +640,12 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate_parser.add_argument(
         "--task", dest="task_name", default="", metavar="NAME",
         help="Pick the policy declared against this task output.",
+    )
+    evaluate_parser.add_argument(
+        "--weights", default="", metavar="FILE",
+        help="Hold this .cxpolicy file, which no script declares, to --task's "
+        "success spec on the accepted model instead (a policy trained on a "
+        "concept or a cut, ADR-846). Needs --task and --out.",
     )
     evaluate_parser.add_argument(
         "--timeout", type=float, default=EVALUATE_TIMEOUT_S, metavar="SECONDS",
@@ -1372,14 +1387,50 @@ def command_params(args: argparse.Namespace, report: RunReport) -> int:
 
 
 def command_export(args: argparse.Namespace, report: RunReport) -> int:
-    """Rebuild the accepted script and write its outputs."""
+    """Write the accepted revision's outputs: copied as retained, or rebuilt.
+
+    The attempt the store retained under the accepted pin is the accepted
+    model, its result carrying the accepted digest, so its files are copied
+    and no script runs (ADR-848). Before, the engine's open re-ran the whole
+    script to re-prove the digest and the rebuild ran it again: 1,094 s for an
+    unchanged leon V. ``--rebuild``, or a store with no valid retained
+    attempt, takes that road: restore, rebuild, write.
+    """
 
     if not args.out:
         report.error = "export needs --out."
         return EXIT_USAGE
+    retained = None
+    if not args.rebuild:
+        project_root = Path(args.project).expanduser()
+        with project_lock(project_root, wait=bool(args.wait)):
+            report.project_root = str(project_root.resolve())
+            try:
+                retained = retained_display(project_root.resolve())
+            except (SmokeError, OSError, ValueError, KeyError, TypeError) as exc:
+                report.notes.append(f"no retained accepted attempt to copy ({exc}); rebuilding.")
+            else:
+                state, display = retained
+                engine = resolve_engine(args.engine or None)
+                report.engine = engine.describe()
+                report.accepted_revision = report.revision = state["accepted_revision"]
+                report.digest = state["accepted_digest"]
+                report.params = params_from_script({"params": {
+                    "specs": state.get("param_specs") or [],
+                    "values": state.get("param_values") or {}}})
+                _progress(" · retained attempt")
+                _finish(args, report, engine, display)
+    if retained is not None:
+        if getattr(args, "blueprints", False):
+            # Blueprints are a read of the store, so the engine opens unrestored.
+            with _engine_session(args, report, restore=False) as (_engine, client):
+                _export_blueprints(args, client, report)
+        report.ok = True
+        return EXIT_OK
     with _engine_session(args, report) as (engine, client):
         _progress(" · rebuild")
-        reply = client.request("rebuild")
+        # The accepted pin it becomes keeps triangles, as an accept's does (ADR-851).
+        reply = client.request("rebuild", {"display": dict(STANDARD_DISPLAY)})
         apply_modeling_reply(report, reply)
         if reply.get("ok") is not True:
             report.error = str(
@@ -1388,15 +1439,19 @@ def command_export(args: argparse.Namespace, report: RunReport) -> int:
             return EXIT_REJECTED
         _finish(args, report, engine, reply.get("display"))
         if getattr(args, "blueprints", False):
-            copied = export_blueprints(client, args.out)
-            report.notes.append(
-                "blueprints: copied {:d} sheet(s) into {:s}.".format(
-                    len(copied), str(Path(args.out).expanduser()))
-                if copied else
-                "blueprints: the project has none stored."
-            )
+            _export_blueprints(args, client, report)
         report.ok = True
         return EXIT_OK
+
+
+def _export_blueprints(args: argparse.Namespace, client: CadexdClient, report: RunReport) -> None:
+    copied = export_blueprints(client, args.out)
+    report.notes.append(
+        "blueprints: copied {:d} sheet(s) into {:s}.".format(
+            len(copied), str(Path(args.out).expanduser()))
+        if copied else
+        "blueprints: the project has none stored."
+    )
 
 
 def command_render(args: argparse.Namespace, report: RunReport) -> int:
@@ -1686,7 +1741,7 @@ def command_link(args: argparse.Namespace, report: RunReport) -> int:
             return EXIT_OK
 
         _progress(" · rebuild")
-        rebuilt = client.request("rebuild")
+        rebuilt = client.request("rebuild", {"display": dict(STANDARD_DISPLAY)})
         apply_modeling_reply(report, rebuilt)
         if rebuilt.get("ok") is not True:
             report.error = str(
@@ -1835,7 +1890,8 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
 
     with _engine_session(args, report) as (engine, client):
         _progress(" · rebuild")
-        reply = client.request("rebuild")
+        # The accepted pin it becomes keeps triangles, as an accept's does (ADR-851).
+        reply = client.request("rebuild", {"display": dict(STANDARD_DISPLAY)})
         apply_modeling_reply(report, reply)
         if reply.get("ok") is not True:
             report.error = str(
@@ -2138,10 +2194,16 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
         if value is not None and not (math.isfinite(value) and (value > 0 or value == least)):
             report.error = f"{flag} must be a {'time' if least == 0.0 else 'positive step'} in seconds."
             return EXIT_USAGE
+    if args.weights and (not args.task_name or not args.out or args.policy_name):
+        # A candidate is no declared policy: it names its task, and lands
+        # outside evaluations/, which lists declared policies only.
+        report.error = "--weights needs --task and --out, and takes no --policy."
+        return EXIT_USAGE
     with _engine_session(args, report, restore=False) as (engine, _client):
         root = Path(report.project_root)
         try:
-            inputs = retained_inputs(root, task_name=args.task_name, policy_name=args.policy_name)
+            inputs = retained_inputs(root, task_name=args.task_name, policy_name=args.policy_name,
+                                     weights_file=Path(args.weights) if args.weights else None)
         except EvaluateRefused as exc:
             report.error = str(exc)
             return EXIT_REJECTED
@@ -2151,7 +2213,8 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
         report.out_dir = str(out)
         _progress(
             " · evaluate  {:s} on {:s}  {:d} seed(s)".format(
-                inputs["policy_output"], inputs["task_output"], len(inputs["seeds"]))
+                inputs["policy_output"] or Path(inputs["weights"]).name, inputs["task_output"],
+                len(inputs["seeds"]))
         )
         try:
             measured = (read_report(out, inputs) if args.film_only else
@@ -3265,7 +3328,7 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
         )
     if command == "evaluate":
         return "evaluate {:s} on {:s} → {:s} ({:s})".format(
-            str(report.evaluation.get("policy_output") or "?"),
+            str(report.evaluation.get("policy_output") or "a candidate"),
             str(report.evaluation.get("task_output") or "?"),
             str(report.evaluation.get("verdict") or "?"),
             str(Path(str(report.out_dir)).name),

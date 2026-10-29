@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-27. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-29. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one (ADR-498):
 no display, no `bpy`, no shell code. It is how an agent, a person at a
@@ -52,7 +52,7 @@ brings.
 | `cadex params --set k=v` | Set declared parameters and rebuild. |
 | `cadex script` | Print the project script. |
 | `cadex script --set FILE` | Replace the script from a file and rebuild. An accepted build carries `verdicts`, the brief an MCP build reply carries (ADR-689, §4). |
-| `cadex export` | Rebuild the accepted script and write its outputs (§3). |
+| `cadex export` | Write the accepted revision's outputs (§3), copied from the attempt the store retained under the accepted pin, digest-checked; no script runs and no engine opens (ADR-848). With `--rebuild`, or when the store has no valid retained attempt (or the working script is not the accepted one), it opens the engine with the restore pass, rebuilds and writes, as before. |
 | `cadex section --plane XY [--offset-mm 8]` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240, "Section and render" below). Omit `--offset-mm` and the offset is derived from the accepted bounds (ADR-273, ADR-275). |
 | `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews, a 1024 px studio `hero.png` (ADR-412), the concept sheet `sheet.png` (ADR-430) and `review/render/summary.json`, bearing the accepted revision (ADR-239). CPU only. |
 | `cadex hero [--only ITEMS] [--run NAME] [--software] [--no-engine] [--focus REGEX]` | Write the project's presentation folder, `hero/` (ADR-677, `docs/DASHBOARD.md` §26): five stills in different looks, a dashboard screenshot, the concept sheet, the chosen rollout as `rollout.mp4`, and `hero-landscape.mp4` and `hero-square.mp4` (a turn that wipes clay → aluminium → wireframe → the design's materials, then the rollout and the training curves, plus a faster wireframe turn). The rollout is the longest episode any run's policy lasted, the newest among equals, or `--run`'s. Needs headless Chromium (GPU when there is one; `--software` forces software WebGL) and FFmpeg; opens the engine only to draw a missing concept sheet (`--no-engine`: never). `hero/hero.json` names what was made and why anything was not; exit 0 only when everything asked for was made. `--only` takes a comma-separated subset of `stills`, `dashboard`, `sheet`, `rollout`, `video` and `views`; a bare run makes all but `views`, which writes `view-{hero,side,front,rear,top,head}.png` from fixed cameras measured from the design's front towards the parts `--focus` names (default a creature's head) (ADR-792). The folder keeps itself out of the project's git. |
@@ -84,7 +84,8 @@ Flags, valid on either side of the subcommand:
 | `--max-common-volume-mm3 N` | `clearance` and `smoke`: flag volumes strictly above N (default 0.000001 mm³). Thresholds must be finite and nonnegative; changing them does not rebuild. |
 | `--assembly OUTPUT` | `inventory` and `clearance`: the assembly output. A project publishes at most one, so this is a check. |
 | `--seconds S`, `--mode hold\|zero`, `--penetration-mm N`, `--rest-speed-mm-s N`, `--max-tilt-degrees N`, `--fps N`, `--timeout S`, `--model NAME`, `--task NAME` | `smoke` ("Smoke" below). |
-| `--policy NAME`, `--task NAME`, `--timeout S`, `--film SEEDS`, `--no-video`, `--detail-start S`, `--detail-step S`, `--film-only` | `evaluate` ("Evaluate" below). |
+| `--policy NAME`, `--task NAME`, `--weights FILE`, `--timeout S`, `--film SEEDS`, `--no-video`, `--detail-start S`, `--detail-step S`, `--film-only` | `evaluate` ("Evaluate" below). |
+| `--rebuild` | `export` only: restore and rebuild the accepted script on this engine before writing, re-proving its digest (ADR-848). The rebuild asks for standard display, as `export`'s, `train`'s and `link`'s rebuilds all do, so the attempt it pins keeps triangles for `look`, renders and films (ADR-851). |
 | `--blueprints` | `export` only: also copy the stored blueprint sheets into `--out`, store filenames kept (ADR-150, ADR-157). |
 | `--engine ROOT` | A staged engine payload. Default: `$CADEX_ENGINE_ROOT`, then the dev tree (§6). |
 | `--engine-timeout S`, `--engine-memory MB` | The engine budgets for this call only (ADR-517), over the stored ones; `walk` hands them to every leg. Every engine run's envelope carries `budgets`: `in_force`, `stored`, and each one's `source` (`override`, `project` or `engine`). |
@@ -647,6 +648,14 @@ engine verified; every file is checked against the store's digest, and the
 weights against the receipt. `--policy NAME` or `--task NAME` picks among
 several. No declared policy, or no success spec, is exit 3.
 
+**A candidate** (ADR-846): `--weights FILE --task NAME --out DIR` holds a
+`.cxpolicy` that no script declares -- one trained on a concept or a
+training model, on the export's task re-laid by `training/cadex_relay.py` --
+to that task's success spec on the accepted model, by the same runner. Its
+report's `policy_output` is empty and `weights` is the file's path; it needs
+`--out` (the dashboard lists declared policies only) and takes no
+`--policy`. Nothing verified it, so it judges a policy and declares none.
+
 **What it runs.** `cli/cadex_cli/evaluate_runner.py` under the engine's
 interpreter, calling `CadexDynamics.evaluate_success`: per seed, one
 rollout under the spec's horizon, randomisation, reset variation,
@@ -806,7 +815,12 @@ New visits open the current run (ADR-299): the newest running or pending
 record with fresh telemetry, otherwise the latest recorded attempt; with no
 runs, the accepted view. `review_server.default_run(review)` is that rule.
 
-**Telemetry** (ADR-287) is read from each run's `runs/<name>/train/progress.json`.
+**Telemetry** (ADR-287) is read from each run's `runs/<name>/train/progress.json`,
+else the newest `progress.json` one or two levels below the run (a seed's or
+a stage's seed's directory, ADR-835, ADR-837). It carries the trainer's
+`driver` and `model` (`tier`, `sha256`, `cad_sha256`, `path`, and in the
+detail form `bodies`, each body's CAD bodies; ADR-837), or none from a
+trainer older than that.
 `GET /api/project` carries every run's telemetry as a bounded **summary**
 (state, reason, latest metrics, sample counts, checkpoint counts, `eta_s`,
 `wall_time_s`, `best_iteration`, `best_reward_per_step`, `warning`;
@@ -923,8 +937,8 @@ of a fixture biped that reaches every route disagree, in the way
 | `GET api/evaluation/<name>` | one evaluation report, and what of its film is on disk | `name`, `relation`, `stamp`, `files`, `report` | |
 | `GET api/model/accepted` | the accepted attempt's model | `schema`, `view`, `run`, `relation`, `revision`, `digest`, `available`, `reason`, `source`, `placement_source`, `components`, `collision`, `contacts`, `exploded`, `appearance`, `measurements` | `meshes` |
 | `GET api/model/revision/<ordinal>` | one retained revision's model, its ghost and changed parts | `view`, `ordinal`, `revision`, `digest`, `available`, `reason`, `components`, `previous`, `changed`, `source` | `compare` |
-| `GET api/model/run/<run>` | the model a run retained | `schema`, `view`, `run`, `relation`, `revision`, `digest`, `available`, `reason`, `source`, `placement_source`, `components`, `collision`, `contacts`, `exploded`, `appearance`, `measurements` | `playback`, `meshes` |
-| `GET api/playback/run/<run>` | the run's rollout trace as playback frames | `available`, `run`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `policy`, `terrain` |
+| `GET api/model/run/<run>` | the model a run retained | `schema`, `view`, `run`, `relation`, `revision`, `digest`, `available`, `reason`, `source`, `placement_source`, `components`, `collision`, `contacts`, `exploded`, `appearance`, `measurements` | `playback`, `meshes`, `tier` |
+| `GET api/playback/run/<run>` | the run's rollout trace as playback frames | `available`, `run`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `policy`, `terrain`, `goto` |
 | `GET api/playback/checkpoint/<run>/<stem>` | one checkpoint's rollout as playback frames | `available`, `run`, `stem`, `checkpoint`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `policy`, `terrain` |
 | `GET api/playback/reference/<task>` | an accepted task's gait reference (ADR-703) as playback frames: its one stride repeated a stride further on each time, for about 4 s | `available`, `task`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `reference`, `strides` |
 | `GET api/checkpoints/<run>` | any run's checkpoint rollouts, as `stage.checkpoints` lists the stage's run (ADR-790) | `run`, `items`, `pending`, `listed_of`, `reason` | |

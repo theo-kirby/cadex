@@ -3,8 +3,8 @@
 
 """ADR-834: a concept spec is written as the engine writes a model, so tools read it by name.
 
-Needs ``mujoco`` (the training venv); no jax, no GPU. The spec is
-``examples/concept/leon-iv.json``.
+Needs ``mujoco`` (the training venv); no jax, no GPU. The specs are
+``examples/concept/leon-iv.json`` and, for a flat foot, ``orun9-biped.json``.
 """
 
 from __future__ import annotations
@@ -56,6 +56,21 @@ def test_feet_rest_on_the_floor_and_right_mirrors_left():
     assert model.jnt_pos[right][1] == pytest.approx(-model.jnt_pos[left][1])
 
 
+def test_a_flat_foot_stands_on_its_soles():
+    """ADR-844: soles rest on the floor, inside the touch box, and carry the robot at zero action."""
+    spec = json.loads((Path(__file__).resolve().parents[1] / "examples" / "concept" / "orun9-biped.json")
+                      .read_text(encoding="utf-8"))
+    model, data, _ = compiled(spec)
+    bottoms = [data.geom_xpos[g][2] - model.geom_size[g][0] for g in range(model.ngeom)
+               if model.geom_type[g] == mujoco.mjtGeom.mjGEOM_CAPSULE and "/collision" in model.geom(g).name]
+    assert len(bottoms) == 4 and max(bottoms) == pytest.approx(0.0, abs=1e-6)
+    for _ in range(int(2.0 / model.opt.timestep)):
+        mujoco.mj_step(model, data)
+    touch = [data.sensordata[model.sensor_adr[i]] for i in range(model.nsensor)
+             if model.sensor_type[i] == mujoco.mjtSensor.mjSENS_TOUCH]
+    assert len(touch) == 2 and sum(touch) == pytest.approx(9.81 * model.body_subtreemass[1], rel=0.02)
+
+
 def test_a_set_moves_the_stance():
     _, _, base = compiled(SPEC)
     longer = C.apply_sets(SPEC, ["legs.1.joints.1.length=0.2"])
@@ -90,6 +105,8 @@ def test_a_view_is_a_mesh_per_body_and_a_trace_of_them(tmp_path):
     meshes = {path.stem for path in tmp_path.glob("*.stl")}
     assert "c_chest_frame" in meshes and "c_paw_hl" in meshes
     assert [frame["nominal_time_s"] for frame in trace["frames"]] == [0.0, 0.02, 0.04]
-    assert set(trace["frames"][0]["component_placements"]) == meshes
+    # Every named body is placed, meshless ones too, for the CAD they carry (ADR-838).
+    names = {model.body(b).name for b in range(1, model.nbody)}
+    assert set(trace["frames"][0]["component_placements"]) == names and meshes < names
     chest = (tmp_path / "c_chest_frame.stl").read_bytes()
     assert len(chest) == 84 + 50 * int.from_bytes(chest[80:84], "little") == 84 + 50 * 24

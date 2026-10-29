@@ -176,8 +176,10 @@ API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         "view", "ordinal", "revision", "digest", "available", "reason", "components", "previous",
         "changed", "source"}), frozenset({"compare"})),
     # A run with no rollout yet at the accepted revision borrows its model.
-    "model/run/<run>": (_MODEL_KEYS, frozenset({"playback", "meshes"})),
-    "playback/run/<run>": (frozenset({"available", "run", "source"}), _PLAYBACK_KEYS),
+    # A trainer's run says its model's tier and whether the CAD is on its bodies (ADR-838).
+    "model/run/<run>": (_MODEL_KEYS, frozenset({"playback", "meshes", "tier"})),
+    # A go-to-point episode (ADR-839) is a trainer view, read only as a run's playback.
+    "playback/run/<run>": (frozenset({"available", "run", "source"}), _PLAYBACK_KEYS | {"goto"}),
     "playback/checkpoint/<run>/<stem>": (frozenset({"available", "run", "stem", "checkpoint", "source"}),
                                          _PLAYBACK_KEYS),
     "playback/reference/<task>": (frozenset({"available", "task", "source"}),
@@ -453,6 +455,7 @@ def trace_playback(trace: Mapping[str, Any] | None) -> dict[str, Any]:
     # What the motors did (ADR-727): each frame's joint positions, velocities and efforts, in
     # the trace's channel order, for the Activations editor.
     measured: dict[str, list[list[float] | None]] = {"joints": [], "velocities": [], "efforts": []}
+    goto: list[dict[str, Any] | None] = []
     previous: dict[str, list[float]] = {}
     for time_s, frame in timed:
         poses: dict[str, dict[str, list[float]]] = {}
@@ -469,6 +472,7 @@ def trace_playback(trace: Mapping[str, Any] | None) -> dict[str, Any]:
             continue
         times.append(time_s)
         frames.append(poses)
+        goto.append(_goto_state(frame.get("goto")))
         raw = frame.get("actuator_commands")
         commands.append([float(x) for x in raw] if isinstance(raw, list) else None)
         for key, field in (("joints", "joint_positions"), ("velocities", "joint_velocities"),
@@ -490,7 +494,41 @@ def trace_playback(trace: Mapping[str, Any] | None) -> dict[str, Any]:
     terrain = terrain_block(trace.get("terrain"))
     if terrain is not None:
         playback["terrain"] = terrain
+    points = _goto_points(trace.get("goto"))
+    if points and any(state is not None for state in goto):
+        playback["goto"] = {"points": points, "frames": goto}
     return playback
+
+
+def _goto_points(sequence: Any) -> list[dict[str, Any]]:
+    """A go-to-point episode's points (``training/cadex_goto.py``, ADR-839), or none."""
+
+    if not isinstance(sequence, Mapping) or not isinstance(sequence.get("points"), list):
+        return []
+    points = []
+    for point in sequence["points"]:
+        try:
+            x, y = (float(v) for v in point["xy_m"])
+            row = {"xy_m": [x, y], "speed_mps": float(point["speed_mps"]),
+                   "hold_s": float(point.get("hold_s") or 0.0), "band": str(point.get("band") or "")}
+        except (KeyError, TypeError, ValueError):
+            return []
+        if not all(math.isfinite(v) for v in (x, y, row["speed_mps"], row["hold_s"])):
+            return []
+        points.append(row)
+    return points
+
+
+def _goto_state(state: Any) -> dict[str, Any] | None:
+    """One frame's go-to-point state: the lit point, whether it is held, the hold's filled share."""
+
+    if not isinstance(state, Mapping):
+        return None
+    try:
+        return {"index": int(state["index"]), "arrived": bool(state.get("arrived")),
+                "hold": max(0.0, min(1.0, float(state.get("hold") or 0.0)))}
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 #: A trace channel's keys beyond the command range, passed through when the trace has them: which
@@ -658,12 +696,18 @@ _CHECKPOINT_MEMO_SIZE = 512
 
 
 def _checkpoint_dir(root: Path, run: str) -> Path | None:
-    """``runs/<run>/train`` when it resolves inside the project, else ``None``."""
+    """``runs/<run>/train`` when it resolves inside the project, else the
+    directory of the trainer's newest ``progress.json`` (``seed0/``,
+    ``stage2/seed0/``), where a trainer started by hand leaves its checkpoints
+    (ADR-851); ``None`` when neither does."""
 
-    ref = resolve_reference(root, f"{RUNS_DIRNAME}/{run}/train")
-    if ref["error"] or not ref["exists"] or not (root / ref["path"]).is_dir():
-        return None
-    return root / ref["path"]
+    for relative in ("train", str(Path(trainer_progress(root / RUNS_DIRNAME / run) or ".").parent)):
+        if relative == ".":
+            continue
+        ref = resolve_reference(root, f"{RUNS_DIRNAME}/{run}/{relative}")
+        if not ref["error"] and ref["exists"] and (root / ref["path"]).is_dir():
+            return root / ref["path"]
+    return None
 
 
 def _checkpoint_head(path: Path) -> dict[str, Any]:
@@ -718,7 +762,7 @@ def checkpoint_rollouts(project_root: Path | str, run: str) -> dict[str, Any]:
     train = _checkpoint_dir(root, run)
     if train is None:
         return {"run": run, "items": [], "pending": 0, "listed_of": 0,
-                "reason": "the run has no train directory"}
+                "reason": "the run has no train directory and no trainer telemetry"}
     found: dict[str, dict[str, Any]] = {}
     for path in train.iterdir():
         match = _CHECKPOINT_FILE.fullmatch(path.name)
@@ -744,8 +788,15 @@ def checkpoint_rollouts(project_root: Path | str, run: str) -> dict[str, Any]:
                        if head["state"] == "ready" else None)
         items.append(item)
     items.sort(key=lambda item: (int(item["tag"]), item["stem"]))
+    reason = "" if items or pending else "no checkpoint rolled out yet"
+    if train.name != "train" and pending:
+        # The trainer rolls each checkpoint out as it writes it (ADR-851), so
+        # one with no trace here never gets one: not pending, said once.
+        reason = (f"{pending} checkpoint{'s' if pending > 1 else ''} with no rollout: "
+                  "the trainer wrote none (before ADR-851, or --view-seconds 0)")
+        pending = 0
     return {"run": run, "items": items[-CHECKPOINTS_LISTED:], "pending": pending,
-            "listed_of": len(items), "reason": "" if items or pending else "no checkpoint rolled out yet"}
+            "listed_of": len(items), "reason": reason}
 
 
 def checkpoint_playback(project_root: Path | str, run: str, stem: str) -> dict[str, Any] | None:
@@ -1166,7 +1217,9 @@ def mjcf_terrain(root: ElementTree.Element) -> dict[str, Any] | None:
     if not size or len(size) != 4 or nrow < 2 or ncol < 2 or len(elevation) != nrow * ncol:
         return None
     rows, columns = min(nrow, TERRAIN_MAXIMUM_VERTICES), min(ncol, TERRAIN_MAXIMUM_VERTICES)
-    heights = [(pos[2] + size[2] * elevation[round(r * (nrow - 1) / (rows - 1)) * ncol
+    # The XML's elevation lists its first row at +Y, an image's top row, and
+    # MuJoCo flips it on load; the drawing's row 0 is at -Y (ADR-855).
+    heights = [(pos[2] + size[2] * elevation[(nrow - 1 - round(r * (nrow - 1) / (rows - 1))) * ncol
                                              + round(c * (ncol - 1) / (columns - 1))]) * 1000.0
                for r in range(rows) for c in range(columns)]
     return terrain_block({
@@ -1535,6 +1588,8 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
             "mesh": f"mesh/run/{run_name}/{output}.stl", "mesh_status": "retained",
             "placement": None, "placement_source": "no component placement recorded: identity",
         })
+    if model_block.get("tier"):
+        model["tier"] = _cad_on_bodies(root, model_block, entries)
     model.update({
         "available": True,
         "source": f"runs/{run_name}/{mesh_dir.relative_to(run_dir).as_posix()}/*.stl "
@@ -1554,6 +1609,127 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
                           "url": f"api/playback/run/{run_name}"}
                          if playback["available"] else {"available": False, "reason": playback["reason"]})
     return model
+
+
+def _quat_mul(a: Sequence[float], b: Sequence[float]) -> list[float]:
+    """Hamilton product of two (x, y, z, w) quaternions."""
+
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return [aw * bx + ax * bw + ay * bz - az * by, aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw, aw * bw - ax * bx - ay * by - az * bz]
+
+
+def _quat_rotate(q: Sequence[float], v: Sequence[float]) -> list[float]:
+    return _quat_mul(_quat_mul(q, [*v, 0.0]), [-q[0], -q[1], -q[2], q[3]])[:3]
+
+
+def _rest_frames(xml: bytes) -> tuple[dict[str, tuple[list[float], list[float]]] | None, str]:
+    """Each named body's frame at rest in an MJCF, (position mm, rotation xyzw),
+    composed from ``pos``/``quat``; None and why for a body that orients
+    itself any other way."""
+
+    try:
+        world = ElementTree.fromstring(xml).find("worldbody")
+    except ElementTree.ParseError as error:
+        return None, f"the CAD export does not parse: {error}"
+    frames: dict[str, tuple[list[float], list[float]]] = {}
+
+    def walk(element: ElementTree.Element, origin: list[float], turn: list[float]) -> str:
+        for body in element.findall("body"):
+            odd = [key for key in ("euler", "axisangle", "xyaxes", "zaxis") if body.get(key)]
+            if odd:
+                return f"body {body.get('name')} is oriented by {odd[0]}, which is not read here"
+            pos = [float(v) * 1000.0 for v in (body.get("pos") or "0 0 0").split()]
+            w, x, y, z = (float(v) for v in (body.get("quat") or "1 0 0 0").split())
+            norm = math.sqrt(w * w + x * x + y * y + z * z) or 1.0
+            here = [a + b for a, b in zip(origin, _quat_rotate(turn, pos))]
+            rotation = _quat_mul(turn, [x / norm, y / norm, z / norm, w / norm])
+            if body.get("name"):
+                frames[str(body.get("name"))] = (here, rotation)
+            why = walk(body, here, rotation)
+            if why:
+                return why
+        return ""
+
+    why = walk(world, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]) if world is not None else "the CAD export has no worldbody"
+    return (None, why) if why else (frames, "")
+
+
+def _cad_on_bodies(root: Path, block: Mapping[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """The CAD a trainer's run carries on its bodies (ADR-838), and what its tier says.
+
+    A concept is its primitives and says so. A training model cut from the CAD
+    (its ``cad_sha256``) or the CAD export itself (its own digest) is matched
+    against the accepted attempt's MJCF exports; on a match, each body's entry
+    gains ``cad``: the accepted parts its CAD bodies carry (ADR-837's
+    ``bodies``), placed in that body's frame at rest, and ``outline``, so the
+    page draws the parts solid and the trained primitives as outlines. A
+    Cadex export keeps every body frame at the assembly origin; a model cut
+    from it keeps its bodies' frames, and the outlines show it if it did not.
+    """
+
+    tier = str(block.get("tier") or "unstated")
+    # The trainer places every body; one with no geometry is not a missing mesh.
+    for entry in entries:
+        if entry.get("mesh") is None:
+            entry["mesh_status"] = "no geometry"
+    out: dict[str, Any] = {"name": tier, "cad": False, "revision": None, "parts": 0, "reason": ""}
+    if tier == "concept":
+        out.update(label="concept: its primitives are the design",
+                   reason="a concept model carries no CAD")
+        return out
+    digest = block.get("cad_sha256") if tier == "training" else block.get("cad_sha256") or block.get("mjcf_sha256")
+    bodies = block.get("bodies")
+    label = {"training": "training model", "cad": "CAD export"}.get(tier, "model of unstated tier")
+    out["label"] = label + ": primitives only"
+    if not isinstance(digest, str) or not isinstance(bodies, Mapping):
+        out["reason"] = "the trainer named no CAD export or body map"
+        return out
+    staging, manifest, why = _accepted_staging(root)
+    if staging is None:
+        out["reason"] = f"no accepted CAD to match: {why}"
+        return out
+    export = None
+    for output in (_load_json(staging / "result.json") or {}).get("outputs") or []:
+        relative = output.get("artifact_path") if output.get("type") == "mjcf" else None
+        item = resolve_reference(staging, relative) if relative else None
+        if item and not item["error"] and item["exists"] and _sha256(staging / item["path"]) == digest:
+            export = staging / item["path"]
+            break
+    if export is None:
+        out["reason"] = "its CAD export is not the accepted revision's"
+        return out
+    frames, why = _rest_frames(export.read_bytes())
+    if frames is None:
+        out["reason"] = why
+        return out
+    parts = {c.get("name"): c for c in accepted_model(root).get("components") or [] if c.get("mesh")}
+    drawn = 0
+    for entry in entries:
+        frame = frames.get(entry["name"])
+        if frame is None:
+            continue
+        origin, turn = frame
+        back = [-turn[0], -turn[1], -turn[2], turn[3]]
+        carried = []
+        for name in bodies.get(entry["name"]) or []:
+            part = parts.get(name)
+            if part is None:
+                continue
+            placed = part.get("placement") or {"position_mm": [0.0, 0.0, 0.0], "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}
+            offset = [a - b for a, b in zip(placed["position_mm"], origin)]
+            carried.append({
+                **{key: part.get(key) for key in ("name", "output", "mesh", "color", "role", "finish", "supplier")},
+                "placement": {"position_mm": _quat_rotate(back, offset),
+                              "rotation_xyzw": _quat_mul(back, placed["rotation_xyzw"])}})
+        if carried:
+            entry.update(cad=carried, outline=True)
+            drawn += len(carried)
+    out.update(cad=drawn > 0, revision=(manifest or {}).get("accepted_revision"), parts=drawn,
+               label=f"{label}: CAD on its bodies, primitives outlined" if drawn else out["label"],
+               reason="" if drawn else "no accepted part matched a body")
+    return out
 
 
 def _model_before_rollout(root: Path, model: dict[str, Any]) -> dict[str, Any]:
@@ -2097,6 +2273,30 @@ def _spark(points: list[list[float]], limit: int = SPARK_POINTS) -> list[list[fl
     return [[int(i), float(f"{v:.5g}")] for i, v in points]
 
 
+#: The tiers a trainer may say its model is (``cadex_train.MODEL_TIERS``, ADR-837).
+TRAINER_MODEL_TIERS = ("concept", "training", "cad", "unstated")
+
+
+def _trainer_model(model: Any) -> dict[str, Any] | None:
+    """A trainer's ``model`` block (ADR-837), checked: its tier, digests, path
+    and the CAD bodies each body carries; None when the trainer wrote none."""
+
+    if not isinstance(model, Mapping):
+        return None
+    bodies = model.get("bodies")
+    bodies = {str(name): [str(part) for part in parts][:512]
+              for name, parts in list(bodies.items())[:2048] if isinstance(parts, list)} \
+        if isinstance(bodies, Mapping) else {}
+    tier = model.get("tier")
+
+    def digest(value: Any) -> str | None:
+        return value if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) else None
+
+    return {"tier": tier if tier in TRAINER_MODEL_TIERS else "unstated",
+            "sha256": digest(model.get("sha256")), "cad_sha256": digest(model.get("cad_sha256")),
+            "path": str(model.get("path") or "")[:240], "bodies": bodies}
+
+
 def _telemetry_summary(result: dict[str, Any], reported: int, *, spark: bool = False) -> dict[str, Any]:
     """The run-list form of a telemetry result (ADR-321): the same state,
     reason and latest metrics, with each history replaced by its sample
@@ -2108,6 +2308,9 @@ def _telemetry_summary(result: dict[str, Any], reported: int, *, spark: bool = F
 
     if spark:
         result["spark"] = {key: _spark(result.get(key) or []) for key in SPARK_KEYS}
+    if result.get("model"):
+        # The body map is the detail form's (ADR-837); the list keeps the tier.
+        result["model"] = {key: value for key, value in result["model"].items() if key != "bodies"}
     result["samples"] = {key: len(result.pop(key, []) or []) for key in HISTORY_KEYS}
     result.pop("checkpoints", None)
     result["checkpoints_reported"] = reported
@@ -2176,6 +2379,11 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
         result["warning"] = str(data.get("warning") or "")[:300]
         # The run's own label, as the trainer was given it (ADR-606).
         result["label"] = str(data.get("label") or "")[:120]
+        # ADR-837: who started the run and what its model is, as the trainer
+        # wrote them; absent from a trainer older than the contract.
+        result["driver"] = str((data.get("run") or {}).get("driver") or "")[:40] \
+            if isinstance(data.get("run"), Mapping) else ""
+        result["model"] = _trainer_model(data.get("model"))
     except (OSError, TypeError, ValueError, OverflowError):
         return finish({"state": "invalid", "reason": "training telemetry has invalid metrics",
                        "checkpoints": [], **{key: [] for key in HISTORY_KEYS}})
@@ -2499,13 +2707,15 @@ def default_run(review: Mapping[str, Any]) -> str:
 
     The newest ``running``/``pending`` record whose telemetry is ``starting``
     or ``training`` comes first; otherwise the newest record, failed or
-    interrupted included; ``accepted`` when there are no runs. ``review`` is
+    interrupted included; ``accepted`` when there are no runs. A directory
+    with no record and no telemetry (``empty``) is not a run to open
+    (ADR-851). ``review`` is
     ``ReviewProject.review()`` (records oldest first, telemetry attached).
     Names play no part: a checker that wants to know what the page will
     select asks this, not the run's suffix.
     """
 
-    runs = list(review.get("runs") or [])
+    runs = [run for run in review.get("runs") or [] if run.get("status") != "empty"]
     active = [run for run in runs if run.get("status") in ("running", "pending")
               and (run.get("telemetry") or {}).get("state") in ("starting", "training")]
     candidates = active or runs
@@ -2576,10 +2786,31 @@ def _evaluate_in_flight(activity: Mapping[str, Any]) -> str | None:
     the design, before any evaluation directory exists to read."""
 
     for entry in activity.get("entries") or []:
-        if entry.get("tool") == "evaluate":
+        # The agent's tool, or the same command from a shell (ADR-836, ADR-851).
+        if entry.get("tool") in ("evaluate", "cadex evaluate"):
             if entry.get("outcome") != "running":
                 return None
             return str(entry.get("t") or "") or None
+    return None
+
+
+#: Calls whose recent use is not design work: the training and evaluating
+#: stages show them while they last (ADR-851).
+_NOT_DESIGNING = frozenset({"train", "walk", "evaluate"})
+
+
+def _agent_worked_at(activity: Mapping[str, Any]) -> tuple[float, str] | None:
+    """When the newest agent or ``cadex`` call was logged, and its tool (ADR-836,
+    ADR-851); ``None`` when that call trained or evaluated, which the training
+    and evaluating stages show while they last and which is not designing after."""
+
+    for entry in activity.get("entries") or []:
+        stamp, tool = _stamp(entry.get("t")), str(entry.get("tool") or "")
+        if stamp is None:
+            continue
+        if tool.removeprefix("cadex ") in _NOT_DESIGNING:
+            return None
+        return stamp, tool or "a"
     return None
 
 
@@ -2642,7 +2873,8 @@ def project_stage(root: Path, review: Mapping[str, Any], *, checkpoints: bool = 
     telemetry has gone quiet -- ``stale``), ``stopped`` (the newest run was
     stopped on request, ``reason`` the request's, ADR-559), ``failed`` (the
     newest run failed and no revision was accepted after it), ``designing`` (a revision was
-    accepted inside :data:`DESIGNING_WINDOW_S`), else ``idle``. ``since`` is
+    accepted, or the newest call in the activity log made, inside
+    :data:`DESIGNING_WINDOW_S`, ADR-851), else ``idle``. ``since`` is
     when that state's evidence was written. ``run`` is the newest run
     training, a quiet one included, else the one :func:`default_run`
     picks, and ``training`` its telemetry with the
@@ -2671,6 +2903,7 @@ def project_stage(root: Path, review: Mapping[str, Any], *, checkpoints: bool = 
     stage: dict[str, Any] = {"state": "idle", "reason": "", "since": _iso(accepted_at) if accepted_at else None}
     evaluating = _evaluation_running(root, now)
     calling = _evaluate_in_flight(review.get("activity") or {})
+    worked_at = _agent_worked_at(review.get("activity") or {})
     recorded_at = _stamp(record.get("recorded_at")) if record else None
     # The agent's call names what the owner can act on and started first, so
     # it wins; a directory's name is an internal id and never shown (ADR-555).
@@ -2693,6 +2926,10 @@ def project_stage(root: Path, review: Mapping[str, Any], *, checkpoints: bool = 
                      since=_iso(recorded_at) if recorded_at else None)
     elif accepted_at is not None and now - accepted_at <= DESIGNING_WINDOW_S:
         stage.update(state="designing", reason=f"revision {trail[0].get('ordinal')} accepted")
+    elif worked_at is not None and now - worked_at[0] <= DESIGNING_WINDOW_S:
+        # The agent at work with nothing accepted yet: a look, a refused
+        # script, a measurement (ADR-851).
+        stage.update(state="designing", reason=f"the agent's {worked_at[1]} call", since=_iso(worked_at[0]))
     # The read run's checkpoint rollouts, for the 3D viewport's scrubber (ADR-545).
     if not checkpoints:
         return {**stage, "run": None if record is None else name, "runs": len(runs), "training": training}
@@ -3471,8 +3708,28 @@ _CARD_INPUTS = (PROJECT_SCRIPT_FILENAME, str(ACTIVITY_PATH), f"{HISTORY_DIR}/{HI
                 RUNS_DIRNAME, "evaluations", PRESENTATION_DIR, f"{PRESENTATION_DIR}/summary.json")
 
 
+def _run_written(run_dir: Path) -> int | None:
+    """When a run's record, else its trainer's telemetry, was last written; ``None`` for neither."""
+
+    for name in (RUN_RECORD_FILENAME, "review.json"):
+        try:
+            return (run_dir / name).stat().st_mtime_ns
+        except OSError:
+            pass
+    progress = trainer_progress(run_dir)
+    try:
+        return (run_dir / progress).stat().st_mtime_ns if progress else None
+    except OSError:
+        return None
+
+
 def _newest_run_dir(root: Path) -> tuple[Path | None, int]:
-    """The run directory whose record was written last, by stat alone, and how many there are."""
+    """The run whose record or trainer telemetry was written last, by stat, and how many there are.
+
+    A directory with neither is not a run the page would open (a judge's
+    output dropped under ``runs/``), so it is never the card's run; a bare
+    trainer's run is stamped by its ``progress.json``, wherever it sits
+    (ADR-851)."""
 
     runs = root / RUNS_DIRNAME
     if not runs.is_dir() or runs.is_symlink():
@@ -3482,10 +3739,9 @@ def _newest_run_dir(root: Path) -> tuple[Path | None, int]:
         if not child.is_dir():
             continue
         count += 1
-        try:
-            written = (child / RUN_RECORD_FILENAME).stat().st_mtime_ns
-        except OSError:
-            written = child.stat().st_mtime_ns
+        written = _run_written(child)
+        if written is None:
+            continue
         if written > stamp or (written == stamp and newest is not None and child.name > newest.name):
             newest, stamp = child, written
     return newest, count
@@ -3495,7 +3751,7 @@ def _card_fingerprint(root: Path, newest: Path | None) -> tuple[Any, ...]:
     stamps: list[Any] = []
     paths = [root / relative for relative in _CARD_INPUTS]
     if newest is not None:
-        paths += [newest / RUN_RECORD_FILENAME, newest / "train" / "progress.json"]
+        paths += [newest / RUN_RECORD_FILENAME, newest / (trainer_progress(newest) or "train/progress.json")]
     for path in paths:
         try:
             stat = path.stat()

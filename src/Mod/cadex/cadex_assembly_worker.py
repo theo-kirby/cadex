@@ -4035,7 +4035,7 @@ def _execute_mjcf_export(
             actuators=model_inputs["actuators"],
             couplings=model_inputs["couplings"],
             # ADR-714: a declared course replaces the free base's plane.
-            terrain=properties.get("terrain"),
+            terrain=_terrain_with_mesh(properties.get("terrain")),
         )
         # Resolved against the tree that was just built, not against the
         # graph: a channel on a joint the spanning forest turned into a loop
@@ -5264,6 +5264,49 @@ def _success_input(
             for item in properties["disturbance"]
         ]
     return resolved
+
+
+def _terrain_with_mesh(terrain: Any) -> Any:
+    """A terrain declaration with its ``mesh`` asset read (ADR-855).
+
+    The name is resolved against the staged ``assets/`` directory the
+    request bound (``cadex_part_worker.configure_part_assets``) by the same
+    reader, name check and traversal refusal ``mesh.import_file`` uses, so
+    the course is read inside the sandbox from the attempt's own copy and
+    never from the project tree. The engine samples the triangles
+    (``CadexDynamics._terrain_mesh_course``); the file's digest goes with
+    them into the descriptor."""
+
+    if not isinstance(terrain, Mapping) or not isinstance(terrain.get("mesh"), str):
+        return terrain
+    import CadexDynamics
+    import cadex_part_worker
+    from cadex_mesh_worker import _import_asset
+
+    name = terrain["mesh"]
+    root = cadex_part_worker._ASSET_ROOT
+    if root is None:
+        raise CadexDynamics.DynamicsError(
+            f"the terrain names mesh {name!r}, but this request staged no assets.",
+            reason="terrain_mesh_unresolved",
+            correction="Build the course from the project script, which stages the project's assets.",
+        )
+    try:
+        mesh = _import_asset(Path(root), name)
+    except Exception as error:  # noqa: BLE001 -- the reader's refusal, restated as the terrain's
+        raise CadexDynamics.DynamicsError(
+            f"the terrain's mesh: {error}",
+            reason="terrain_mesh_unreadable",
+            correction=str(getattr(error, "correction", "") or
+                           "Put the STL, OBJ or PLY into the project's assets with put_asset."),
+        ) from error
+    points, facets = mesh.Topology
+    corners = [(float(p.x), float(p.y), float(p.z)) for p in points]
+    return {**terrain, "mesh": {
+        "asset": name,
+        "sha256": hashlib.sha256((Path(root) / "assets" / name).read_bytes()).hexdigest(),
+        "triangles": [(corners[a], corners[b], corners[c]) for a, b, c in facets],
+    }}
 
 
 def _dynamics_failure(

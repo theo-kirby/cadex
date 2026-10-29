@@ -25,6 +25,8 @@ export const FOLLOW = {fraction:.22, subject_y:-.06, max_drift:.26, smooth_frame
 // the page's `--warn` through the solids, and only while the labelled toggle is on. Never in a
 // recording, never by default: what the viewer shows is the tessellated solid.
 const PROXY = {color:0xffe08a, opacity:.9};
+// A training body's primitives over the CAD it carries (ADR-838): a colour no part is drawn in.
+const PRIMITIVE = {color:0x35c4ff, opacity:.8};
 // Section and explode (DASHBOARD.md §24). A section clips the solids at the plane and offset of
 // the `cadex section` cut it shows, keeping the side below the offset; the leader lines are the
 // engine's exploded-view segments, in the page's `--muted`.
@@ -433,6 +435,7 @@ export function create(canvas, {labels=true}={}) {
     if (bounds) {frameBounds(bounds); if (terrain&&!had) fit();}
     // The trail lies on the ground, so it is laid again on a new one.
     if (trailCourse) buildTrail();
+    if (targetCourse) buildTargets();
     draw(); return terrain?(terrain.boxes||[]).length+(terrain.domes||[]).length||1:0;
   }
   // The timer: one textured quad in an orthographic overlay scene, painted after the stage.
@@ -734,9 +737,9 @@ export function create(canvas, {labels=true}={}) {
     draw();
   }
   function clear() {
-    disposeProxies(); proxyGeoms=[]; setLines([]); trailCourse=null; disposeTrail();
+    disposeProxies(); proxyGeoms=[]; setLines([]); trailCourse=null; disposeTrail(); targetCourse=null; disposeTargets();
     meshes.forEach(m=> {
-      model.remove(m); m.geometry.dispose(); Object.values(m.userData.materials).forEach(mat=>mat.dispose()); m.userData.meshLines?.geometry.dispose();
+      model.remove(m); m.geometry.dispose(); Object.values(m.userData.materials).forEach(mat=>mat.dispose()); m.userData.meshLines?.geometry.dispose(); m.userData.outline?.geometry.dispose(); m.userData.outline?.material.dispose();
     });
     meshes.clear(); clearGhost(); bounds=null;triangleCount=0;picked=null;draw();
   }
@@ -763,6 +766,10 @@ export function create(canvas, {labels=true}={}) {
       g.setAttribute('color',new THREE.Float32BufferAttribute(board.colours,3));
       m.vertexColors=true; m.color.set(0xffffff);
       board={chip:board.chip, pad:board.pad};
+    } else if (entry.colours) {
+      // A training body carrying CAD (ADR-838): each part in its own colour.
+      g.setAttribute('color',new THREE.Float32BufferAttribute(entry.colours,3));
+      m.vertexColors=true; m.color.set(0xffffff);
     }
     return {m, finish, colour, board};
   }
@@ -778,13 +785,19 @@ export function create(canvas, {labels=true}={}) {
       g.computeBoundingBox();
       const {m:mat, finish, colour, board}=material(entry,i,g);
       // Its matcap twin (ADR-676) shares the page's one baked sphere; a look swaps between them.
-      const twin=new THREE.MeshMatcapMaterial({color:0xffffff, side:THREE.DoubleSide});
+      const twin=new THREE.MeshMatcapMaterial({color:0xffffff, side:THREE.DoubleSide, vertexColors:!!entry.colours});
       const m=new THREE.Mesh(g,mat);
       m.userData.materials={parts:mat, matcap:twin};
       m.userData.mmBounds=new THREE.Box3().setFromArray(entry.positions);
-      m.userData.world=entry.world===true; m.userData.finish=finish; m.userData.env=FINISHES[finish].env; m.userData.colour=colour; m.userData.board=board;
+      m.userData.world=entry.world===true; m.userData.finish=finish; m.userData.env=FINISHES[finish].env; m.userData.colour=colour; m.userData.board=board; m.userData.tinted=!!entry.colours;
       m.visible=!hidden&&!(entry.world!==true&&hiddenNames.has(entry.name));
       m.castShadow=true;m.receiveShadow=true;pose(m,entry.placement);
+      if (entry.outline?.length) {
+        // The primitive the body trained as, outlined over its CAD (ADR-838); it moves with it.
+        const pg=new THREE.BufferGeometry(); pg.setAttribute('position',new THREE.Float32BufferAttribute(entry.outline.map(v=>v*.001),3));
+        const line=new THREE.LineSegments(new THREE.EdgesGeometry(pg,20),new THREE.LineBasicMaterial({color:PRIMITIVE.color,transparent:true,opacity:PRIMITIVE.opacity,depthTest:false,toneMapped:false}));
+        pg.dispose(); line.renderOrder=1; m.add(line); m.userData.outline=line;
+      }
       meshes.set(entry.name,m);model.add(m);triangleCount+=entry.positions.length/9;
     });
     selectedNames=selectedNames.filter(n=>meshes.has(n)&&!meshes.get(n).userData.world);
@@ -792,10 +805,24 @@ export function create(canvas, {labels=true}={}) {
     updateBounds();if(bounds)frameBounds(bounds);applySection();fit();
     return entries.map((e,i)=>({name:e.name,triangles:e.positions.length/9,color:[16,8,0].map(shift=>(colourOf(e,i)>>shift)&255)}));
   }
+  async function stlOf(url,fetchImpl) {const r=await fetchImpl(url);if(!r.ok)throw new Error('mesh HTTP '+r.status);return parseStl(await r.arrayBuffer());}
+  // A body that carries CAD (ADR-838): its accepted parts, each placed in the body's frame and
+  // in its own colour, are the solid; the primitive it trained as is kept as its outline.
+  async function carried(e,primitive,fetchImpl) {
+    const parts=await Promise.all(e.cad.map(async p=>({p, mm:await stlOf(p.mesh,fetchImpl)})));
+    const positions=[], colours=[], v=new THREE.Vector3(), q=new THREE.Quaternion(), t=new THREE.Vector3(), c=new THREE.Color();
+    parts.forEach(({p,mm},i)=> {
+      q.fromArray(p.placement.rotation_xyzw); t.fromArray(p.placement.position_mm); c.setHex(colourOf(p,i));
+      for (let k=0;k<mm.length;k+=3) {v.set(mm[k],mm[k+1],mm[k+2]).applyQuaternion(q).add(t); positions.push(v.x,v.y,v.z); colours.push(c.r,c.g,c.b);}
+    });
+    const first=e.cad[0]||{};
+    return {...e, finish:first.finish, supplier:first.supplier, color:first.color, positions, colours, outline:primitive};
+  }
   async function load(manifest,fetchImpl=window.fetch.bind(window)) {
-    const entries=await Promise.all((manifest?.components||[]).filter(e=>e.mesh).map(async e=> {
-      const r=await fetchImpl(e.mesh);if(!r.ok)throw new Error('mesh HTTP '+r.status);
-      return {...e, positions:parseStl(await r.arrayBuffer())};
+    // A body with no primitive of its own may still carry CAD.
+    const entries=await Promise.all((manifest?.components||[]).filter(e=>e.mesh||e.cad?.length).map(async e=> {
+      const positions=e.mesh?await stlOf(e.mesh,fetchImpl):null;
+      return e.outline&&e.cad?.length ? carried(e,positions,fetchImpl) : {...e, positions};
     }));
     return install(entries);
   }
@@ -941,6 +968,77 @@ export function create(canvas, {labels=true}={}) {
   }
   // Shows the trail as far as t seconds; it does not draw: the poses that move the design do.
   function showTrail(t) {trailAt=Number.isFinite(Number(t))?Number(t):Infinity; applyTrailAt(); return trailAt;}
+  // Go-to-point targets (ADR-839): the episode's points on the ground, each coloured by its
+  // commanded speed (slowest green, fastest orange, over the episode's own range). The point lit
+  // now is bright, with a beacon over it; the ones to come are dim; the ones done are faint. A
+  // point's disc is the hold's 0.15 m and its outer line the 0.3 m reach; while it is held a ring
+  // between them fills clockwise from the top as the hold runs. Beside the model like the trail:
+  // it sizes, picks and outlines nothing.
+  const targets=new THREE.Group(); targets.renderOrder=3; world.add(targets);
+  const TARGET={hold_m:.15, reach_m:.3, ring:[.19,.25], beacon_m:.5, lit:.95, next:.38, done:.1,
+                ramp:['#4fd1a5','#ffd166','#ff7a45']};
+  let targetCourse=null, targetMarks=[], targetState=null;
+  function disposeTargets() {
+    targets.children.slice().forEach(g=>{targets.remove(g); g.traverse(o=>{if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose();});});
+    targetMarks=[];
+  }
+  function speedColour(t) {
+    const n=TARGET.ramp.length-1, at=Math.min(n-1,Math.floor(t*n)), f=t*n-at;
+    return new THREE.Color(TARGET.ramp[at]).lerp(new THREE.Color(TARGET.ramp[at+1]),f);
+  }
+  function buildTargets() {
+    disposeTargets();
+    const pts=targetCourse||[]; if (!pts.length) return;
+    const speeds=pts.map(p=>p.speed_mps), lo=Math.min(...speeds), hi=Math.max(...speeds);
+    pts.forEach((p,i)=> {
+      const x=p.xy_m[0]*1000, y=p.xy_m[1]*1000, colour=speedColour(hi>lo?(p.speed_mps-lo)/(hi-lo):1);
+      const mat=()=>new THREE.MeshBasicMaterial({color:colour, transparent:true, depthWrite:false, side:THREE.DoubleSide,
+        toneMapped:false, polygonOffset:true, polygonOffsetFactor:-3, polygonOffsetUnits:-3});
+      const mark=new THREE.Group(); mark.position.set(x*.001,y*.001,(groundZ(x,y)+2)*.001);
+      const disc=new THREE.Mesh(new THREE.CircleGeometry(TARGET.hold_m,48),mat());
+      const reach=new THREE.Mesh(new THREE.RingGeometry(TARGET.reach_m-.014,TARGET.reach_m,72),mat());
+      const track=new THREE.Mesh(new THREE.RingGeometry(TARGET.ring[0],TARGET.ring[1],72),mat());
+      const fill=new THREE.Mesh(new THREE.BufferGeometry(),mat());
+      const beacon=new THREE.Mesh(new THREE.CylinderGeometry(.012,.012,TARGET.beacon_m,10),mat());
+      beacon.rotation.x=Math.PI/2; beacon.position.z=TARGET.beacon_m/2;
+      [disc,reach,track,fill,beacon].forEach(m=>{m.raycast=()=>{}; m.renderOrder=3; mark.add(m);});
+      targets.add(mark);
+      targetMarks.push({disc,reach,track,fill,beacon,hold:p.hold_s>0,filled:-1});
+    });
+    showTargets(targetState);
+  }
+  // The episode's points, [{xy_m, speed_mps, hold_s, band}], or null to remove them.
+  function setTargets(points) {
+    targetCourse=Array.isArray(points)&&points.length?points.map(p=>({...p, xy_m:p.xy_m.slice()})):null;
+    targetState=null; buildTargets(); draw(); return targetMarks.length;
+  }
+  // The state at the time shown, {index, arrived, hold}; it does not draw: the poses do.
+  function showTargets(s) {
+    targetState=s&&Number.isFinite(Number(s.index))?{index:Number(s.index), arrived:!!s.arrived, hold:Number(s.hold)||0}:null;
+    const at=targetState?targetState.index:0;
+    targetMarks.forEach((m,i)=> {
+      const o=i<at?TARGET.done:i===at?TARGET.lit:TARGET.next;
+      m.disc.material.opacity=o; m.reach.material.opacity=i===at?TARGET.lit:o*.8;
+      m.beacon.visible=i===at; m.track.visible=i===at&&m.hold; m.track.material.opacity=.22;
+      const share=i===at&&targetState&&targetState.arrived&&m.hold?Math.round(Math.max(0,Math.min(1,targetState.hold))*64)/64:0;
+      if (share!==m.filled) {
+        m.fill.geometry.dispose();
+        m.fill.geometry=share>0?new THREE.RingGeometry(TARGET.ring[0],TARGET.ring[1],72,1,Math.PI/2-2*Math.PI*share,2*Math.PI*share):new THREE.BufferGeometry();
+        m.filled=share;
+      }
+      m.fill.visible=share>0; m.fill.material.opacity=TARGET.lit;
+    });
+    return targetState;
+  }
+  // Frames every point and the start from above, three-quarter on, for a whole-course look.
+  function frameTargets() {
+    if (!targetCourse) return null;
+    const xs=[0,...targetCourse.map(p=>p.xy_m[0]*1000)], ys=[0,...targetCourse.map(p=>p.xy_m[1]*1000)];
+    const min=[Math.min(...xs),Math.min(...ys)], max=[Math.max(...xs),Math.max(...ys)];
+    const radius=Math.hypot(max[0]-min[0],max[1]-min[1])/2+400, tanV=Math.tan(camera.fov*Math.PI/360);
+    c={yaw:.8,pitch:.95,distance:radius/Math.sin(Math.atan(tanV))*1.05,target:[(min[0]+max[0])/2,(min[1]+max[1])/2,floorZ*1000]};
+    draw(); return c;
+  }
   // Where the design's feet came down on a rollout (`frames`, each {name: placement}, at `times`):
   // a solid touches down when its lowest point comes within a hair of the ground under it and lifts
   // off when it rises clear (2.5 hairs, so a foot that chatters is one step), and each stance leaves
@@ -1185,7 +1283,7 @@ export function create(canvas, {labels=true}={}) {
     meshes.forEach((m,n)=> {
       if (m.userData.world) return;
       const {parts:p, matcap:t}=m.userData.materials, h=heat&&heat[n];
-      if (!heat) { p.color.copy(m.userData.board?c.setHex(0xffffff):m.userData.colour); p.vertexColors=!!m.userData.board; return; }
+      if (!heat) { p.color.copy(m.userData.board||m.userData.tinted?c.setHex(0xffffff):m.userData.colour); p.vertexColors=!!(m.userData.board||m.userData.tinted); return; }
       p.color.setHex(h==null?HEAT.rest:h); p.vertexColors=false; t.color.setHex(h==null?HEAT.rest:h);
       if (h!=null&&!on.has(n)) p.emissive.setHex(h).multiplyScalar(HEAT.glow);
     });
@@ -1288,12 +1386,12 @@ export function create(canvas, {labels=true}={}) {
     meshes.forEach(m=>{m.userData.materials.parts.envMapIntensity=m.userData.env*reflections*lighting.env;}); draw(); return reflections;
   }
   applyLook();
-  return {available:true,load,install,clear,fit,draw,setPoses,setTrail,setTrailStyle,setTrailColours,showTrail,footfalls,trail:()=>({style:trailStyle,at:trailAt,stops:trailEnds.length,shown:trail.children[0]?trail.children[0].geometry.drawRange.count:0}),centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,setTerrain,groundAt,
+  return {available:true,load,install,clear,fit,draw,setPoses,setTrail,setTrailStyle,setTrailColours,showTrail,setTargets,showTargets,frameTargets,targets:()=>({points:targetMarks.length,state:targetState}),footfalls,trail:()=>({style:trailStyle,at:trailAt,stops:trailEnds.length,shown:trail.children[0]?trail.children[0].geometry.drawRange.count:0}),centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,setTerrain,groundAt,
     setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
     setLook,look:()=>look,setFov,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
     setHidden,hidden:()=>[...hiddenNames],select,setHeat,heat:()=>heat&&{...heat},selected:()=>selectedNames.slice(),parts,boundsOf,fitTo,
     pick,screenPoint,screenBox,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
-    camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,
+    camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,outlined:[...meshes.values()].filter(m=>m.userData.outline).length,
       world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,render_style:style,stage,showing:showing(),
       proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length}, ghost:ghost.children.map(m=>m.name),
       colours:Object.fromEntries([...meshes].map(([n,m])=>[n,'#'+m.userData.colour.getHexString()])),

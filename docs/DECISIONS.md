@@ -46452,3 +46452,1657 @@ stream is unchanged, and checks the refusals; `test_curriculum_warm_start.py`
 admits a bound as `goal.range`. `docs/MUJOCO.md` states the key. No
 protocol change.
 
+
+## ADR-837 — The trainer writes the run contract itself (2026-10-28, orun21 D1)
+
+**Context.** Since ADR-835 the dashboard reads a run a trainer started by
+hand from its `progress.json`, but that file said nothing between launch and
+iteration 0: on the Go1 reference it stayed `starting`, iteration −1, for
+54.6 s of compile, past the dashboard's 30 s stale line, and the ~50 s after
+the last iteration (final snapshot, witness check, closing view) was just as
+silent. It did not say who started the run, what tier its model is (a
+concept, a fast model cut from the CAD, the CAD export), or which CAD parts
+each body carries, so nothing could draw the CAD on a training model's bodies.
+A run nested a level deeper (`runs/<name>/<stage>/seed0/`) was not found.
+leon IV's `leon-iv-run-records` script backfilled records to cover the
+gaps.
+
+**Decision.**
+- **`progress.json` is the run record**, written by `training/cadex_train.py`
+  at launch (`starting`) and at the end (`done`/`failed`), and it carries two
+  more blocks, additive under `cadex-training-progress-v1`:
+  - `run`: `driver` (`CADEX_RUN_DRIVER`, else `shell`), `argv`, `pid`,
+    `heartbeat_s` and `ended_at`.
+  - `model`: `tier`, `sha256`, `path`, `cad_sha256` and `bodies`, each body
+    of the model mapped to the CAD bodies it carries. `--cad-model MJCF`
+    names the export the model was cut from; each CAD body folds into its
+    nearest ancestor the model kept. The tier is `--tier`, else the model's
+    `<custom><text name="cadex:tier">` mark, else `cad` or `training` by
+    comparing digests with `--cad-model`, else `unstated`.
+    `cadex_concept.py` marks every concept model `concept`.
+- **A heartbeat.** A daemon thread rewrites the snapshot every 10 s
+  (`HEARTBEAT_S`) when nothing else has, under the same lock as the training
+  loop's writes, and stops before the final word is written.
+- **The dashboard reads it.** `review_record` finds a trainer's snapshot one
+  *or two* levels below the run (`TRAINER_PROGRESS_GLOBS`). A trainer that
+  declares a heartbeat and has been quiet for six beats (at least 60 s) is
+  read as gone; one with no heartbeat keeps ADR-835's 10 minutes. Telemetry
+  gains `driver` and `model` (its `bodies` only in `api/run/<run>`'s detail
+  form), and a run with no `run.json` reports `model.tier` and
+  `model.mjcf_sha256`. No route or top-level reply key changes.
+  `test_http_api.py`'s fixture gains the blocks on its hand-started run and a
+  staged run whose heartbeat stopped, which must read `failed`.
+- `os` (the driver variable, the pid) and `threading` (the heartbeat) join
+  `test_offboard_boundaries.py`'s module-scope list. Both are standard
+  library, so ADR-084's rule is unchanged.
+
+**Evidence.** A 3-iteration Go1 run on this checkout, `progress.json` sampled
+every 3 s: the compile now takes 30 s, then about 50 s run after the last
+iteration, and `updated_at` was never more than 10.2 s old in either stretch
+(before: 54.6 s). The written `run` and `model`
+blocks read back through `read_run_record` and `training_telemetry` from a
+`runs/<name>/stage1/seed0/` copy. On leon V, the derived training model
+(24 bodies) against its CAD export folds all 101 CAD bodies; the export
+against itself reads `cad`; a concept from `leon-v-d1.json` reads `concept`
+and compiles in MuJoCo with the mark.
+
+**Consequences.**
+- No driver needs to write a record for a run to show its liveness, driver,
+  model tier and checkpoints. A `leon-iv-run-records`-style backfill is no
+  longer needed for any of these. Drawing the CAD on a training model's bodies
+  from `model.bodies` is the next step of D1. Until it lands, the backfill's
+  accepted-mesh rollout is still how a CAD body is watched.
+- A trainer copied into a project before this writes neither block. Its runs
+  read as before.
+- Found while testing: the Go1 reference bundle puts every geom in group 3,
+  so its `view/` has a trace and no meshes (ADR-835's view leaves group 3
+  out). This is recorded for D2.
+
+## ADR-838 — The dashboard draws the CAD on a training model's bodies (2026-10-28, orun21 D1)
+
+**Context.** Since ADR-837 a trainer's `progress.json` says its model's tier,
+the CAD export it was cut from (`cad_sha256`) and which CAD bodies each of its
+bodies carries (`bodies`), but the dashboard still drew only the primitives a
+run trained on: leon V's fast training model played as boxes and capsules,
+and a CAD body was watched only through leon IV's `leon-iv-run-records`
+backfill, which copied accepted meshes into a rollout. The trainer's `view/`
+also traced only the bodies with geometry, so CAD on a geom-less body (leon V's
+hip and shoulder drives, its spine yaw drive, the saddle panel: 14 of 101
+parts) had nothing to ride on.
+
+**Decision.**
+- **The match.** For a trainer's run, `api/model/run/<run>` matches
+  `model.cad_sha256` (for a `cad` run, also its own digest) against the
+  sha256 of each `mjcf` output in the accepted attempt's `result.json`. Only
+  the accepted revision counts; any other is reported, not drawn.
+- **The parts.** On a match, each body's component gains `cad`: the accepted
+  components named by its `bodies` entry (a Cadex export names each body
+  after its component), each with its mesh, colour, finish and its accepted
+  placement re-expressed in the body's rest frame (the export's `pos`/`quat`
+  chain; a body oriented any other way refuses the overlay with the reason),
+  and `outline: true`.
+- **The page** draws those parts solid, each in its own colour, posed by the
+  body's trace placement, and the body's own primitive mesh as `#35c4ff`
+  outlines through them. `#model-status` stays `loaded` and shows the tier's
+  label (`data-tier`): a concept says `concept: its primitives are the design`.
+- **The reply** gains an optional top-level `tier` (`name`, `cad`, `revision`,
+  `parts`, `label`, `reason`) on `model/run/<run>`; `docs/CLI.md`'s table and
+  `test_http_api.py` hold it, the fixture's hand-started run now cut from the
+  staged export and asserting the part it carries.
+- **`view/` traces every named body**, meshes only where there is geometry;
+  the dashboard lists a geom-less body as `no geometry`, not a missing mesh.
+
+**Evidence.** leon V (lab copy, accepted revision `67b2a28c`, export
+`41a4e7e0…`): `t1_bundle.py` on `runs/t0/train-model.xml` (cut from that
+export by leon V's `training_model.py`), then a bare `cadex_train.py --cad-model
+<export>` run, `runs/d1cad2`, 60 iterations × 4096 envs, served on 127.0.0.1:
+all 101 accepted parts drawn on the 24 training bodies, 16 primitive outlines,
+`docs/probes/orun21/d1-cad-on-bodies-iter60.png` and `-done.png`
+(`docs/probes/orun21/d1_shot.py` takes them). Before the `view/` change the
+same overlay drew 87 parts.
+
+**Consequences.**
+- The `leon-iv-run-records` backfill is not needed to watch the CAD on a
+  run's bodies either; with ADR-837 nothing it wrote is needed.
+- Assumes a model cut from the CAD keeps its bodies' frames (leon V's tool
+  does); the outlines show it when one does not. The accepted placements come
+  from the accepted attempt's own first simulation frame when it has one;
+  where that frame is not the rest pose the CAD would sit offset from the
+  outlines.
+- A run cut from an older revision draws primitives only, with the reason.
+
+## ADR-839 — Go-to-point is a velocity policy under a scripted layer, from one seeded source (2026-10-28, orun21 G1)
+
+**Context.** G2 asks for go-to-point on the Go1 by "the easier route that
+gives the better result". R1 (`docs/probes/orun21/RESEARCH.md`) compared two
+routes. Route A is an omnidirectional velocity-command policy under a scripted
+go-to-point layer. Route B is end-to-end position targets (Rudin et al. 2022).
+It recommended A: the trainer already matches Playground on the Go1 joystick,
+and the layer is a few lines. The engine's waypoint goal (ADR-751) draws its
+points on a clock, with no arrival trigger, no hold, no per-point speed and no
+marker (C-2), and nothing draws it. G1 asks that the owner see the target.
+
+**Decision.**
+- **Route A for G2.** Go-to-point is a velocity-command policy (forward,
+  lateral, yaw rate) driven by a scripted layer. Route B is E1's, judged the
+  same way. G2 still adds C-1 (a lateral speed goal where the bundle lacks
+  one), C-13 (a yaw-uniform start) and C-19 (a budget in env steps against
+  Playground's) when it trains.
+- **One source, `training/cadex_goto.py`**, for training and the judge,
+  standard library at module scope (ADR-084):
+  - `sequence(seed, split=, bands=)`: seeded by `(split, seed)`, so `train`
+    and `heldout` never share a sequence. 8 points by default, at least two
+    behind the leg before and two to a side, 2–5 m apart. Each has a speed
+    from its band (robot by robot), and at least two have a 1–3 s hold.
+  - `layer_step(xp, ...)`: the layer, written once with `xp.where` so numpy
+    and jitted JAX run the same code. The next point lights on arrival
+    (0.25 m, or 0.1 m when it has a hold) or when the hold ends, never on a
+    clock. The robot turns in place when the point is more than 60° off,
+    slows as it closes, and holds by small corrections.
+  - `play`: a `.cxpolicy` through the layer on stock MuJoCo, on the CPU, with
+    its forward pass checked against its witness. It writes `view/` with each
+    frame's lit point and hold share, and `goto.json` with G2's readings:
+    reach ≤ 0.3 m, hold ≤ 0.15 m, no fall, straight-leg speed within 15%.
+- **The trace carries it.** `write_view(..., goto=)` puts the sequence on the
+  trace and the state on each frame. `api/playback/run/<run>` passes it on
+  as an optional `goto` block (`points`, `frames`). A checkpoint's rollout is
+  an engine trace and never carries one. `docs/CLI.md` lists the block,
+  and `test_http_api.py` pins it on the hand-started run's view.
+- **The dashboard draws it.** During playback each point is drawn on the
+  ground and coloured by its speed. The lit point is bright with a beacon
+  over it, the next points are dim and finished ones faint. The disc is the
+  0.15 m hold zone and the outer line the 0.3 m reach. A hold is a ring that
+  fills clockwise. `#play-goto` names the lit point beside the clock
+  (`docs/DASHBOARD.md`).
+- **`view/` draws a robot that has only group-3 geoms.** If no robot geom is
+  below group 3 (Playground's Go1 keeps all 38 there), every visible geom is
+  drawn. Otherwise nothing changes. This closes `rustic-cloud-5989`.
+
+**Evidence.** The orun21 reference Go1 policy (`go1/run1/go1.cxpolicy`,
+`9ec81e8a…`, 206.4 M steps, untouched) was played through the layer on ten
+held-out sequences (`heldout:0`–`9`, bands walk 0.4–0.7 and run 1.0–1.5
+m/s, 3–5 points behind each). All ten pass every reading: 8/8 points
+reached, closest ≤ 0.255 m, worst hold 0.100 m, no fall, straight-leg speed
+0.920–0.958 of the command, 49–81 s an episode, under a second of CPU each.
+The dashboard shots and the film are in `docs/probes/orun21/G1-TARGETS.md`.
+`training/test_cadex_goto.py` holds the seeding, the shape and the
+arrival/hold rule. The layer runs under `jax.jit` unchanged.
+
+**Consequences.**
+- The joystick policy already does route A's job on flat ground. G2's work is
+  to train with this generator in the loop (yaw-uniform starts, lateral goal,
+  stated budget) and to judge with `play`, not to invent a controller.
+- Only 17 of the 37 run legs in those ten sequences had a straight second to
+  read for speed (all 43 walk legs did). G2 has to lengthen run legs or
+  shorten the read window before the speed bar covers the run band.
+- The judge reads reach through the layer's own trigger: a point the robot
+  never reaches shows as an episode that ran out of time on it. `episode_seconds`
+  bounds an episode generously (each leg at its speed, a half turn, its hold,
+  plus 10 s).
+- ADR-751's waypoint goal is unchanged and still drawn by nothing. G2 decides
+  whether it goes.
+- `play` reads sensors, goals and command channels. A policy that observes
+  contacts, trackers or scans is refused with the channel's name, and G3
+  extends the player where a robot needs it.
+
+## ADR-840 — The go-to-point layer commands a share of training episodes (2026-10-28, orun21 G2)
+
+**Context.** ADR-839 chose route A for G2: a velocity-command policy under
+`cadex_goto`'s scripted layer. It left training with the generator in the loop
+to G2 (C-1, C-13, C-19 of `docs/probes/orun21/RESEARCH.md`). It also found
+that only 17 of 37 held-out run legs were long enough to read for speed.
+
+**Decision.**
+- **`cadex_train.py --goto BANDS`** (off by default; without it the graph and
+  the policy header are unchanged). A share of episodes (`--goto-share`,
+  default 0.2) draws one of 1024 `train`-split sequences from `cadex_goto`,
+  turned to a uniform heading about the base's start. The three speed goals
+  named by `--goto-goals` (default `cx,cy,cw`, each a one-channel `value` in
+  a speed or rate unit) are the layer's command from the base pose at every
+  step, both observed and rewarded. The layer is `cadex_goto.layer_step`
+  itself, under `jax.jit`, so training and the judge share one source. A
+  waypoint goal or a fixed base is refused.
+- **C-13 by the plan's heading.** The Go1's actor reads no world yaw (`q` is
+  privileged), so turning the sequence is the yaw-uniform start it needs.
+  The bundle's reset is unchanged.
+- **C-1** needs no change on the Go1: its bundle has `cy` at ±0.8 m/s.
+- **Legs carry a lead.** `sequence` adds `lead_s` (2.5 s) at the leg's speed
+  to each leg's distance, so every run leg has a straight second to read
+  (37/37, up from 17/37). This changes every sequence: G1's held-out
+  readings are of the old ones.
+- **`goto.json` reads `leg_s`**, the time from a point lighting to reaching
+  it. With arrival by the layer's own radius, reach is close to guaranteed,
+  so time is the reading that shows what training buys.
+
+**Evidence** (`docs/probes/orun21/G2-GOTO.md`). Each run used run1's
+reference command, 206.4 M env steps (Playground: 200 M in 385 s on this
+5090):
+- share 0.5: 334.9 s of training. 3/10 held-out pass, failing on speed
+  (walk legs 0.767 at worst), 916 s over the ten episodes.
+- share 0.2: 332.9 s of training. **10/10 pass**, no fall, reach ≤ 0.255 m,
+  hold ≤ 0.100 m, speed 0.873–0.987. 884 s over the ten episodes.
+- the untouched reference: 10/10, 870 s.
+
+Run legs track better with the layer (0.98 against 0.95). Slow walking is
+lost in proportion to the share (0.470 → 0.458 → 0.443 m/s at a 0.5
+command).
+
+**Consequences.**
+- G2's pass bar is met on the Go1 (g2-goto-s20), but training with the layer
+  does not yet shorten the time to points. **Parked** (orun21 iteration 10,
+  G2 closed on this evidence): the slow-walk loss is a refinement, not a
+  gap. Its hypothesis, for whoever takes it up: slow layer commands are
+  under-penalised by the `exp(-err²/0.25)` tracking kernel, so the fix
+  changes the slow-speed signal (the layer's slow-down and hold commands, or
+  the kernel's width at low speed), not the share.
+- `cadex_goto play` remains the judge. G3 reuses `--goto` with the robot's
+  bands.
+
+## ADR-841 — The training model is cut in Cadex, generic over robots, and checks itself (2026-10-28, orun21 P1)
+
+**Context.** The training-model tier (a fast MJCF cut from the CAD export)
+lived only in leon V's `tools/training_model.py` and `training_fidelity.py`,
+with leon V's foot and fall-geom names and its export's file name written in,
+and a fixed solver chosen on leon V. P1 asks for the route in Cadex, one
+command, generic over robots.
+
+**Decision.** `training/cadex_training_model.py`, standard library at module
+scope (ADR-084), `mujoco` and `numpy` inside functions:
+- **`cut --project DIR --out MODEL.xml`** reads the accepted attempt's export
+  and writes leon V's cut (floor pairs only, static bodies fused, a cheap
+  solver, the same refusals), with nothing named per robot:
+  - **feet** are the colliding geoms on each body holding a `touch` sensor's
+    site, which every Cadex export writes per foot;
+  - **fall geoms** are the colliding geoms on the root, or on a body
+    carrying more than one foot once static bodies are fused (trunk, spine,
+    a head welded to the trunk); legs' geoms are switched off;
+  - the model is marked `cadex:tier = training`, so `cadex_train.py` and the
+    dashboard read its tier without being told.
+- **The cut checks itself.** It runs the fidelity and standing check on what
+  it cut and keeps the first setting of a ladder that passes, fastest first:
+  2 ms Euler (eulerdamp off) 2 / 3, then implicitfast at 2 ms 2 / 3. Naming
+  a solver option tries that one setting. `fidelity` judges any models
+  against an export.
+- `--feet` and `--fall-geoms` override the defaults.
+
+**Evidence** (`~/cadex-projects/orun21-lab/*/runs/p1-cut/cut.json`):
+- **leon V** (export `41a4e7e0`): the defaults find leon V's own four paws
+  and four fall geoms. The cut is byte-identical to leon V's `b09ec284`
+  except the tier mark (now `f6ed66de`). 102 → 25 bodies, 20 → 8 colliding
+  geoms. Euler 2 / 3 passes: 9 of 12 signals gated, worst 1.883 mm, stands
+  at 1.16° tilt. Implicitfast fails there (8.5 mm), so the order matters.
+- **The biped** (`orun9-biped`, export at revision `605e9bc8`): feet
+  `c_foot_l/r` (two capsules each), fall geom `c_pelvis/collision0`, 56 → 11
+  bodies. Euler 2 / 3 blows up: tilt 136° in the stand, and eulerdamp on
+  does not save it (293 mm). Its stiff servos on light links are unstable
+  under explicit damping. Implicitfast 2 / 3 passes: worst 1.115 mm, tilt
+  0.39°.
+- Each cut, check included, takes under 1 s on the CPU. CPU physics steps/s
+  at rest, one thread: leon V 63.9 k → 105.6 k, the biped 120.0 k → 156.7 k.
+  The MJX throughput bench is the next step of P1.
+
+**Consequences.**
+- leon V's `tools/training_model.py` and `tools/training_fidelity.py` are
+  superseded for the Cadex route. leon V is read-only to this run, so its
+  copies stay in its repository.
+- On the biped only 1 of 12 signals is gated: its export does not agree
+  with itself at half the step on the larger signals. The biped's fidelity
+  pass therefore rests on one signal and the stand. A gentler signal grid
+  for small robots would gate more; that is not done here.
+- `training/test_cadex_training_model.py` pins the cut's contract on a toy
+  export: dynamics kept, floor-only pairs at the stated condims, discovery,
+  the tier mark and the refusals.
+- The ladder's order (Euler first) is measured in MJX in ADR-842: Euler is
+  7% faster on leon V's cut, so the ladder stays as it is.
+
+## ADR-842 — One throughput bench for any MJCF, and the cut's ladder measured in MJX (2026-10-28, orun21 P1)
+
+**Context.** P1 asks for leon V's `tools/train_bench.py` as one Cadex
+command, generic over robots. ADR-841's ladder tries 2 ms Euler before
+implicitfast on the grounds that Euler is faster, but that was a guess,
+timed only on the CPU. M0's copy of the bench started every model from
+`qpos0` with zero controls, so the Go1 fell during its bench.
+
+**Decision.** `training/cadex_train_bench.py MODEL.xml` reports env steps/s
+in MJX for any MJCF (standard library at module scope, ADR-084):
+- every env starts from keyframe 0 with that keyframe's controls (the stand
+  a Cadex export solves, Playground's `home`), or from `qpos0` at zero
+  controls when the model has no keyframe;
+- it judges the stand on the free root's subtree centre of mass, because a
+  Cadex export puts every body frame at the origin;
+- `--integrator`, `--timestep`, `--iterations` and `--ls-iterations`
+  override the model's options. `Euler` switches Euler damping off, as the
+  cut writes it. One cut can then be timed under each ladder setting;
+- it reports the `cadex:tier` mark, and exits non-zero if any env goes
+  non-finite.
+
+**Evidence** (`~/cadex-projects/orun21-lab/p1-bench/*.json`, the 5090 on
+its own, 100 control steps; a first pass, kept in `first-pass/`, agrees
+within 0.5%). Env steps/s at 8192 envs:
+
+| model | sha256 | setting | MJX contacts / rows | env steps/s | stands |
+|---|---|---|---|---|---|
+| Go1 (Playground) | `1d03aaeb` | 4 ms Euler 1 / 5 | 4 / 40 | 1,497,518 | yes |
+| leon V concept D1 | `0959b4a3` | 2.5 ms Euler 1 / 5 | 18 / 102 | 525,379 | yes |
+| leon V cut, as written | `f6ed66de` | 2 ms Euler 2 / 3 | 18 / 68 | 302,874 | yes |
+| leon V cut, `--integrator implicitfast` | `f6ed66de` | 2 ms implicitfast 2 / 3 | 18 / 68 | 280,937 | yes |
+| leon V engine MJCF | `41a4e7e0` | 2 ms implicitfast 100 / 50 | 218 / 910 | 9,394 | yes |
+| biped cut, as written | `b1e12e2d` | 2 ms implicitfast 2 / 3 | 12 / 42 | 651,355 | yes |
+| biped cut, `--integrator Euler` | `b1e12e2d` | 2 ms Euler 2 / 3 | 12 / 42 | (679,161) | **non-finite** |
+| biped engine MJCF | `2b9c8268` | 2 ms implicitfast 100 / 50 | 12 / 54 | 181,295 | yes |
+
+- **The ladder stays as it is.** On the same cut, implicitfast is 7.2%
+  slower than Euler on leon V and 4.1% slower on the biped. Euler first
+  therefore buys 7% where it passes. On leon V implicitfast also fails
+  fidelity (8.5 mm, ADR-841), so the ladder would still be needed even if
+  speed were equal. The biped's Euler blow-up in MJX matches what the CPU
+  showed (136° tilt).
+- **The cut is worth having on both robots.** Against the engine MJCF it
+  is 32× faster on leon V and 3.6× on the biped. Against the Go1 it runs at
+  0.20× on leon V and 0.43× on the biped. leon V's concept, at 0.35×, is
+  still 1.7× faster than its cut. That gap is the concept's case in the
+  tier decision.
+- With a keyframe start, the Go1 now stands through its bench (centre of
+  mass 0.257 → 0.241 m) at the rate M0 recorded.
+
+**Consequences.**
+- leon V's `tools/train_bench.py` is superseded for the Cadex route. Its
+  copy stays in leon V's repository, which is read-only to this run.
+- `training/test_cadex_training_model.py` gains one test, a contract
+  between the two tools: for each `LADDER` setting, the bench's override
+  gives the same compiled options as the model `cut` writes.
+- The biped's fidelity pass still gates only 1 of 12 signals (ADR-841).
+  This unit does not change that; it remains an open claim.
+
+## ADR-843 — One concept-against-CAD comparison for any robot (2026-10-28, orun21 P1)
+
+**Context.** P1 asks for leon V's `tools/cad_vs_concept.py` as one Cadex
+command, generic over robots. leon V's copy names its four leg roots, four
+paws and fourteen actuated joints. It also cannot read a training model: the
+cut (ADR-841) fuses a joint-free foot body into its shin, and leon V's copy
+keys each leg by its foot body.
+
+**Decision.** `training/cadex_cad_vs_concept.py CONCEPT.xml CAD.xml` measures
+the same rows as leon V's copy (total and trunk mass, centre of mass, each
+leg's mass, hip height, reach, bend and foot x, each driven joint's anchor,
+load inertia and armature), flags each difference over 5% or 10 mm, and
+names nothing per robot:
+- the feet are the `touch` sensors' sites, and a site is the foot point.
+  On leon V the site is the paw sphere's centre exactly; the biped's box
+  feet have no sphere;
+- a leg is rooted at the foot's highest **jointed** ancestor whose subtree
+  holds no other foot. A joint-free body above it (the biped's
+  `c_servo_roll_*`, a housing on the pelvis) moves with the trunk and is
+  counted there. The cut fuses such bodies into the trunk, so a root
+  without this rule changed between an export and its cut;
+- the driven joints are those an actuator transmits to;
+- rows match by the leg root's body name and the joint's name. A leg or
+  joint in one model only is listed as unmatched, and the command exits 2
+  when the models share no leg or no joint.
+
+**Evidence** (`~/cadex-projects/orun21-lab/p1-cvc/*.json`, CPU):
+- **It reproduces leon V's A3 table exactly.** Frozen concept E2
+  (`8eee5da9`) against the frozen CAD export (`41a4e7e0`): 95 rows, every
+  value equal to leon V's `runs/a3-frozen/cad-vs-concept.json` (max
+  difference 0.0), and the same 25 flagged.
+- **A cut reads as its export.** leon V export against its cut
+  (`f6ed66de`): 0 of 95 flagged, max |difference| 4e-9. Biped export
+  (`2b9c8268`) against its cut (`b1e12e2d`): 0 of 45, 4e-10.
+- **leon V, concept against the cut it trains on:**
+
+| concept | sha256 | mass concept → cut | flagged | what is flagged |
+|---|---|---|---|---|
+| E2 (frozen, ADR-007 of leon V) | `8eee5da9` | 31.10 → 33.31 kg (+7.1%) | 25 / 95 | mass +7.1%; each leg's mass (fore +17.2%, hind +8.3%); shoulder and elbow anchors 11 mm; 14 load inertias (−13% to +26%) |
+| D1 (the round D1 concept) | `0959b4a3` | 28.80 → 33.31 kg (+15.7%) | 31 / 95 | as E2, and hind legs +44.7%, CoM x −11.4 mm, the hind hip and knee armature +104% (D1's AK10-9s against the CAD's RS04s), hind and spine load inertias +35% to +51% |
+
+  On both, hip heights, reach and foot x agree within 0.7 mm and bend within 1.5%:
+  the geometry that sets the gait is the concept's. What differs is mass and
+  where it sits. E2 is the concept the CAD was built to; D1 is what the CAD
+  would be judged against had the hind drives not been changed at E1.
+
+**Consequences.**
+- leon V's `tools/cad_vs_concept.py` is superseded for the Cadex route; its
+  copy stays in leon V's repository, which is read-only to this run.
+- A concept spec that is to be compared must name its leg roots and driven
+  joints as the CAD does. leon V's does. The biped has no concept yet;
+  writing it to the CAD's names is the next P1 step.
+- `training/test_cadex_training_model.py` gains one test, a contract
+  between the cut and the comparison: on the toy export, whose feet the cut
+  fuses into the thighs, the legs are found from the touch sites and every
+  row of export against cut is equal.
+- The tier decision still waits on the biped's concept against its cut.
+
+## ADR-844 — The biped's concept, written from its CAD, and a flat foot for concepts (2026-10-28, orun21 P1)
+
+**Context.** P1 asks that the biped go through the route with only Cadex's
+tools, and it has no concept spec: writing one from its CAD is part of the
+proof. A concept foot was a sphere (ADR-834). The biped stands on two 40 mm
+capsule soles per foot, and on a sphere it would be a point-footed robot
+that cannot stand still: a different robot, not a crude copy of this one.
+
+**Decision.**
+- `cadex_concept.py`'s `foot` takes optional `soles`, each a `from`/`to`
+  offset from the foot point: capsules of the foot's radius sharing its
+  mass, mirrored with the leg. The model is dropped to the lowest sole, and
+  the touch box grows to hold every sole. A foot without soles is the sphere
+  as before (leon IV's spec writes the same model).
+- `examples/concept/orun9-biped.json` is the biped's concept, written from
+  its accepted export (`2b9c8268`, revision `605e9bc8`) to the CAD's names
+  (`c_pelvis`, `c_hip_bracket_{l,r}` / `j_roll_*`, `c_thigh_*` / `j_pitch_*`,
+  `c_shin_*` / `j_knee_*`, `c_foot_*`): joint anchors, ranges and the
+  servo's MJCF numbers from the export, each segment's mass from its bodies
+  with their screws, each servo housing an end mass at the next joint, the
+  trunk the pelvis collision box with the battery and roll servos as point
+  masses, implicitfast at 2 ms (ADR-841: Euler blows up on these servos).
+- Both legs are written out, unmirrored. The biped's export gives the pitch
+  and knee axes as +y on both sides with the same ranges; the concept's
+  mirror rule reflects axes and ranges, which moves the same leg but flips
+  the right joints' sign against the CAD's.
+- The concept docstring and README no longer say a concept's sensors come
+  in the export's order: an export orders them by its task's observations
+  (the biped's start with the IMU, leon V's with the joints), so a CAD task
+  bundle does not run on a concept, or on a cut whose bodies were fused,
+  without its ids and sensors being re-laid.
+
+**Evidence** (`~/cadex-projects/orun21-lab/p1-biped-concept/`, CPU):
+- The concept (`e66e290f`) against the biped's cut (`b1e12e2d`),
+  `cadex_cad_vs_concept.py`: **4 of 45 rows flagged**. Mass 0.6458 against
+  0.6459 kg, trunk equal to 0.04 g; hip height, reach, bend and foot x within
+  0.05 mm; every joint anchor within 0.04 mm. Flagged: the pitch load
+  inertia +7.2% and the knee's +6.5% (concept over CAD): the servo housings
+  sit as points at the next joint, where the CAD's lie up to 19 mm off. CoM x is 3.3 mm forward of the CAD's, under the 10 mm flag.
+- `cadex_training_model.py fidelity` against the export (`2b9c8268`): the
+  concept **stands** 10 s at zero action (tilt 0.31°, 3.2 N on each foot,
+  weight carried exactly) and is **5.6 mm** off on the one signal the export
+  is converged on (1 Hz, 0.025 rad), against 5 mm tolerance; the cut is 1.1
+  mm there. The other 11 signals are chaotic on the export itself (its own
+  half-step differs by 3–84 mm) and are not gated: the biped's dynamic
+  fidelity rests on one signal for any model (`sandy-acorn-7218`).
+- The biped export reports armature 0 on every joint, roll, pitch and knee:
+  the servo's rotor inertia is not reaching its MJCF, so the concept carries
+  0 to match, and both understate the reflected inertia of a geared servo.
+
+**Consequences.**
+- The biped is the second robot with a concept written to its CAD's names
+  and compared to its cut; leon V (ADR-843) was the first.
+- `training/test_cadex_concept.py` gains one test: the biped spec's four
+  soles rest on the floor, inside the touch boxes, and carry its weight at
+  zero action.
+- Not done here: a concept training screen on the biped. Its task bundle
+  (`b1_walk`) names body ids, sensor addresses and the battery's mass
+  randomisation from the export, which the concept does not have; running a
+  CAD task on a concept (or on a cut) needs a re-laying step, the next P1
+  unit. The tier decision waits on it.
+
+## ADR-845 — A CAD task bundle re-laid by name onto a concept or a cut (2026-10-29, orun21 P1)
+
+**Context.** ADR-844 left the biped's concept untrained: its CAD task bundle
+(`b1_walk`) speaks in the export's numbers — sensor addresses in the task's
+order, body and actuator ids, qpos rows, and per-body mass randomisation as
+flat indices — and the concept numbers its bodies and sensors differently
+and has no `c_battery` body; a cut fuses that body into the pelvis. P1's
+route needs the CAD's task to train the concept and the cut unchanged, and
+the judge to stay the engine MJCF.
+
+**Decision.** `training/cadex_relay.py TASK.json MODEL.xml --out DIR` writes
+the bundle and the model re-laid by name:
+- the model's own `<sensor>` block and the sites only it used give way to
+  the export's sensors, in the export's order, and the sites they name; a
+  site keeps its pose on the nearest of its export ancestors the model has.
+  Every observation keeps its channels, so **a policy trained on any tier
+  reads the same inputs and plays on the export's own bundle**: the engine's
+  success spec (`cadex evaluate`, `evaluate_runner.py`) judges it unchanged;
+- drives by actuator name (a missing drive refuses); any entry with `body`
+  and `body_id` (reset variation, shoves, scans) by body name, its
+  `qpos_adr`/`qvel_adr` by its joint or the body's own; randomised rows by
+  the name of the body, joint, dof, geom, site or actuator they index;
+  `qpos`/`reset_qpos`/`qvel`/`reset_qvel` rows joint by joint;
+- what the model lacks is dropped and listed in `DIR/relay.json` (a sensor
+  with its observation, a body entry, a randomisation entry); a dropped
+  channel that a reward, termination or foot term reads refuses, as do keys
+  it cannot map by name (`frame_id`, `resting_contacts`, `driver_qpos_adr`).
+Standard library at module scope (ADR-084); `mujoco` inside.
+
+**Evidence** (`~/cadex-projects/orun21-lab/p1-relay/`; export `2b9c8268`,
+bundle from attempt `1793234378369-90c8bf32f897`; each run 8192 envs × 100
+iterations, seed 0, the trainer's defaults, as b1-b1 and d1w-biped):
+- Both re-lays keep all 28 sensors and observations and drop one entry, the
+  battery's mass randomisation (`mass on c_battery`). At the clip's first
+  pose the cut reads the export's observations exactly except the touch
+  channels (unsettled contact); the concept differs by up to 5.1 mm on the
+  feet's CoM and 3.3 mm on the body's, its mass placement (ADR-844).
+- Judged on the **export** with the engine's success spec (10 frozen seeds,
+  8 predicates), at iteration 100:
+
+  | trained on | train s (100 it) | reward/step @99 | on the export | fails |
+  |---|---|---|---|---|
+  | export, b1-b1 (orun9) | — | 11.20 | **10/10** | — |
+  | export, d1w-biped (ADR-837) | ≈249 (373 s / 150 it) | 11.18 | **10/10** | — |
+  | cut, re-laid | 106 | 10.95 | **10/10** | — |
+  | concept, re-laid | 101 | 10.63 | **7/10** | W7 step clearance 0.019 vs 0.020 hip heights, ×3 |
+
+  The concept's policy on the concept itself: 6/10, the same predicate. Its
+  forward speed on the export is 129–136 mm/s (the cut's 172–181, the
+  export's own 151–161; spec 80–240).
+- End to end (launch to exit, compile and closing view included): concept
+  151.5 s, cut 158.5 s, against d1w-biped's 444.6 s for 150 iterations on
+  the export.
+
+**Consequences.**
+- On the biped a CAD task trains on the cut to the export's verdict at
+  2.3× the export's training speed, and on the concept to all but one
+  margin. The tier decision P1 asks for now rests on these runs and leon
+  V's (ADR-841–843); it is the next unit.
+- A concept trained on its re-laid CAD task is judged on the export with no
+  bespoke judge; the concept's own failures (here a 1 mm clearance shortfall)
+  are visible before any CAD-tier training is spent.
+- `training/test_cadex_relay.py` pins the contract on a toy: addresses by
+  sensor name, drives, bodies, dof and body rows by name, the fused
+  battery's sensor, shove and randomisation dropped and listed, and a
+  dropped channel read by a reward refused.
+- Not shown here: leon V. Its tasks are built by its own `t1_bundle.py`,
+  not exported by the engine, so there is no leon V CAD bundle to re-lay
+  yet.
+
+## ADR-846 — The tiers: two written models, a derived cut, one task and one judge (2026-10-29, orun21 P1)
+
+**Context.** P1 asks whether the three tiers (concept, training model,
+engine MJCF) stay separate, merge or change, decided from measurements.
+ADR-841–845 measured each tier and each step between them on leon V and the
+biped. The owner's view to test: production CAD need not mix with training
+until late, provided the stand-in models are faithful and train fast. The
+last step was judged by a lab script, `judge.sh`, that wrote a plan for
+`evaluate_runner.py` by hand, because `cadex evaluate` judged only a policy
+the accepted script declares.
+
+**Evidence** (the numbers are ADR-841–845's and M0's,
+`docs/probes/orun21/ITERATION.md`):
+
+| | concept | training model (cut) | engine MJCF |
+|---|---|---|---|
+| written by | a person or agent (spec) | nobody: `cut` from the export | the CAD script |
+| cost to make | 0.1 s | < 1 s, fidelity check included | leon V: ≥ 1,094 s warm (M0 sinks 1, 3) |
+| MJX env steps/s, 8192 envs | leon V 525 k | leon V 303 k; biped 651 k | leon V 9.4 k; biped 181 k |
+| faithful to the export | geometry yes (leon V reach, hip height, foot x ≤ 0.7 mm); mass no (+7.1% E2, +15.7% D1; 25–31 of 95 rows flagged) | yes: 0 of 95 / 45 rows, path ≤ 1.9 mm | itself |
+| biped b1_walk, 100 it, judged on the export | 7/10 (W7 clearance 0.019 vs 0.020, ×3), 101 s | **10/10**, 106 s | 10/10, ~249 s |
+
+- **The cut and the export are one model for training.** The cut-trained
+  biped gets the export's verdict (10/10) at 2.3× its training speed, and
+  costs nothing to make. Nothing argues for keeping it as a tier anyone
+  writes, versions or maintains.
+- **The concept is not the cut.** It is the only model that exists before
+  the CAD, and the only one cheap enough to sweep geometry on (a leon V CAD
+  variant costs ~18 min of build before any training). But it is not
+  faithful where the CAD moves mass, and on the biped, where it matches the
+  cut on 41 of 45 rows, its policy still misses one margin on the export. It
+  screens design; it does not stand in for the confirming retrain.
+- **The export trains only when it must.** On leon V it is 32× slower than
+  its cut (200 M steps: over 6 h of physics); on the biped 3.6×. Its role
+  is the judge and the source of the task.
+
+**Decision.** The tiers **change**, from three tiers to two written
+models, a derived cut, one task and one judge:
+- **Two written models**: the concept (spec) and the CAD (script). They
+  stay separate because they answer different questions at different costs.
+- **The training model is no longer a tier**: it is the export's cut,
+  regenerated from each accepted export by one command that refuses unless
+  it passes fidelity. Training goes on the cut, not the export, wherever the
+  cut passes.
+- **One task**: once the CAD exists, the export's task bundle is the only
+  task. Concept and cut train on it re-laid by name (`cadex_relay.py`).
+- **One judge**: `cadex evaluate` on the accepted export. It gains
+  `--weights FILE --task NAME --out DIR` to hold a candidate policy, one no
+  script declares, to that task's success spec by the same runner. On the
+  biped's concept and cut policies it reproduces `judge.sh`'s 7/10 and
+  10/10 seed for seed, every predicate value equal, in 23 s each
+  (`~/cadex-projects/orun21-lab/p1-relay/evaluate/`). `judge.sh` is retired.
+- **The owner's view holds, with one condition.** Training need not touch
+  the CAD until the confirming retrain, and that retrain runs on the cut,
+  not the CAD. The concept alone does not suffice: its mass placement must
+  be confirmed on the cut before a policy is believed.
+- `training/RECIPE.md` §R states the route, step by step, with these runs.
+
+**Consequences.**
+- `cli/cadex_cli/evaluate.py` `retained_inputs` takes `weights_file`; the
+  candidate's report has an empty `policy_output` and the file's path as
+  `weights`. `--weights` needs `--task` and `--out`, so `evaluations/`, which
+  the dashboard lists, keeps holding declared policies only. No test is
+  added (ADR-725): the CLI flag is not a pinned contract and the runner it
+  calls is unchanged.
+- `docs/CLI.md` (Evaluate), `training/README.md` and `training/RECIPE.md`
+  carry the route.
+- **Gap: leon V.** Its tasks come from its own `t1_bundle.py`, not from an
+  engine export, so there is no leon V bundle to relay or to judge with
+  `cadex evaluate`. It closes when leon V's script declares its walk with
+  `assembly.task` and a success spec, so the export carries the bundle (in a
+  lab copy, since leon V is read-only to this run).
+- **Gap: a concept's task before any CAD.** Cadex has no command that
+  makes a task bundle for a concept with no CAD project; leon IV and V used
+  their own scripts. RECIPE.md lists it under "What is not proven".
+
+## ADR-847 — leon V through the route: a declared trot, cut-trained 10/10 on the export, concept-trained 0/10 (2026-10-29, orun21 P1)
+
+**Context.** ADR-846 left one gap in P1: leon V's tasks came from its own
+`t1_bundle.py`, not from an engine export, so none of its route had been
+relayed or judged by `cadex evaluate`. It closes when leon V's script
+declares a task with `assembly.task` and a success spec.
+
+**Decision.** No code changes. In the lab copy (`~/cadex-projects/orun21-lab/leon-v`,
+from leon V `4d67e21`; leon V itself is read-only to this run) the script
+gains a trot task: revision 0006's `run_task` (1.5 m/s, trot gait reference,
+spine on the reference, tipped/collapsed terminations, chest mass ×0.9–1.1,
+the six-predicate success spec on seeds 1001–1010), with the stand heights
+re-measured on this body's export (whole-robot CoM 316.2 mm, paw CoM
+27.2 mm). The task is then put through RECIPE.md §R steps 4–9 with Cadex's
+tools only. RECIPE.md §R steps 4, 8 and 9 carry the numbers; "What is not
+proven" drops the leon V gap.
+
+**Evidence** (`~/cadex-projects/orun21-lab/p1-leonv/`; export `41a4e7e0`,
+byte-identical to leon V's frozen CAD, revision `479e53ce`, attempt
+`1793248930377-6c4f325105ef`; each run 8192 envs × 300 iterations, seed 0,
+the trainer's defaults):
+- **Step 4, accept.** Revision 0006's 680 mm stride refused (LF misses its
+  swing target by 9.3 mm, `j_shoulder_l` at a stop); the dynamic-similarity
+  default, 731 mm, refused the same way (6.5 mm); 520 mm with a 60 mm swing
+  accepted. The refused accept took 445 s cold, the second 27 s, the
+  accepted build over 10 min (it outlived a 600 s watch).
+- **Step 6, cut.** `cadex_training_model.py cut --project` in 0.9 s, cut
+  `f6ed66de` (the same as ADR-841's), fidelity passed.
+- **Step 7, relay.** Onto the cut and onto concept E2 (`8eee5da9`, ADR-843's
+  frozen concept): all 54 sensors and observations kept, nothing dropped;
+  the concept lacks the two hock-rod top joints (listed, not refused).
+- **Steps 8–9, retrain and judge** with `cadex evaluate --weights` on the
+  export (10 frozen seeds, 6 predicates; about 220–290 s per verdict):
+
+  | trained on | train s | checkpoint | on the export | binding predicate |
+  |---|---|---|---|---|
+  | cut, re-laid | 316 | 200 | **10/10** | rated ratio 0.83–0.85, speed ratio 1.03 |
+  | cut | | best (218) | **10/10** | rated 0.92–0.94, speed 1.08 |
+  | cut | | 299 | 0/10 | within_rated 1.04–1.05 on every seed |
+  | concept E2, re-laid | 266 | 200 | 0/10 | within_rated 1.29–1.34 |
+  | concept E2 | | best (247) | 0/10 | stands still (speed ratio ≤ 0.03), rated 1.85–2.65 |
+  | concept E2 | | 299 | 0/10 | within_rated 1.21–1.45 |
+
+  Every seed of every run completes and none falls; tilt and heading pass
+  throughout except the concept's best checkpoint (2 seeds over 30° tilt).
+  The cut run came apart after 250 (episode length 5,285 → 92 steps at 267),
+  which is why its last checkpoint fails.
+
+**Consequences.**
+- P1's last bullet holds: leon V and the biped each go through the route
+  with Cadex's tools alone, and on both a cut-trained policy passes on the
+  export with no bespoke judge.
+- ADR-846's tier decision is confirmed on the creature, more sharply than
+  on the biped: the concept trains a trot of the right speed and posture
+  but not one within the CAD's drive ratings, because E2 is 7.1% lighter
+  than the CAD and its legs 8–17% lighter (ADR-843). The confirming retrain
+  on the cut is not optional.
+- Judge more than the last checkpoint; a run that is no longer climbing is
+  stopped, not extended (the cut's 200 and 218 passed, 299 failed).
+- Still not shown: a concept task before any CAD (ADR-846's second gap),
+  and a robot taken through steps 1–9 in order from an empty project.
+
+## ADR-848 — `cadex export` copies the retained accepted attempt; `--rebuild` re-proves it (2026-10-29, orun21 S1)
+
+**Context.** M0 ranked the restore pass first among the sinks
+(`docs/probes/orun21/ITERATION.md` §7): every engine open re-runs the
+accepted script to re-prove its digest (`cadexd.py:567`), 432–447 s on leon V
+warm or cold, and `cadex export` then rebuilt the same script again. The
+restore itself cannot be made cheap from outside the build (re-running the
+script *is* the proof), but export does not need either run: the store
+already retains, under the accepted pin, the attempt whose result carries
+the accepted digest, which is what `cadex smoke` exports from (ADR-352) and
+what `cadex mcp` serves its reads from (ADR-689).
+
+**Decision.** `cadex export` writes from the retained accepted attempt:
+`smoke.retained_display` reads the pin in `script.json`, requires its
+revision to be the accepted and the working one and its `result.json` to
+carry the accepted digest, and checks every staged artifact is a file
+inside the attempt (and its sha256, when one is recorded). The files are
+copied, BREPs converted by FreeCADCmd as before, under the project lock; no
+cadexd starts and no script runs. `--blueprints` opens the engine
+unrestored for the sheets (a read of the store). `--rebuild`, or a store
+with no valid retained attempt, takes the old road (restore, `rebuild`,
+write) and says why in a note. No protocol op changes, so
+`docs/INTEGRATION.md` is untouched; `docs/CLI.md` says the new contract.
+
+**Evidence** (`~/cadex-projects/orun21-lab/m0-build/s1/`, ITERATION.md §8):
+leon V warm export 1,844.5 s before (439 s restore + 1,405 s rebuild) →
+1.2 s (`--format brep`) or 24.5 s (`step,stl`) after, 102 files
+byte-identical, same revision and digest. The biped: 0.2 s, 57 files
+byte-identical to a rebuilding export. A copy with the pinned
+`result.json` removed fell back to restore + rebuild (72 s) and succeeded
+with the note. Both suites green (engine 157 passed, 3 skipped; CLI 53).
+
+**Consequences.**
+- The CAD route's export (RECIPE.md §R) no longer pays a build: an accepted
+  revision is exported in seconds, so the build is paid once, at accept.
+- Export no longer re-accepts. Before, leon V's rebuild re-accepted the same
+  revision under a new digest (`70542856` → `78a948c6`): its build is not
+  byte-reproducible run to run, and each export rewrote the accepted digest.
+- Export no longer re-proves restart determinism on the current engine;
+  that is `--rebuild`'s job, or any restoring command's.
+- What it does not cut: the restore on the other restoring commands
+  (`params`, `render`, `section`, `inventory`, `link`, `asset`, `train`),
+  and the warm rebuild itself (M0 rank 3), which `params`, `script --set`
+  and accept still pay.
+
+## ADR-849 — The trainer compiles its witness and view rollout once, and keeps compiled programs between runs (2026-10-29, orun21 S1)
+
+**Context.** M0 ranked the trainer's fixed cost per run second among the
+sinks (`docs/probes/orun21/ITERATION.md` §2, §7): on a 100-iteration Go1
+screen (8192 envs, 16.4 M steps) `cadex_train.py` spent ~52 s compiling
+before iteration 0, ~20 s training and ~51 s after the last iteration. The
+51 s was two compiles of the same thing: `witness_rollout` (the witness's
+`--unroll` steps on the 32-env witness batch, first compiled by the final or
+best snapshot) and `view_rollout` (ADR-835's `--view-seconds` steps on the
+same batch), ~25 s each. A scan's compile does not depend on its length.
+Nothing persisted a compile between runs, so every screen paid all of it
+again.
+
+**Decision.**
+- One jitted rollout of the witness batch serves both. It scans
+  `max(--unroll, view steps)` steps and returns the first `--unroll`
+  observations (the witness) and every pose (the view). The result is
+  memoised on the weights it was run with, so the final snapshot and the
+  view run it once. The policy is deterministic and the env step takes no
+  key, so the witness is what it was: a 2-iteration CPU run before and after
+  writes the same `view/trace.json` byte for byte, and policy headers that
+  differ only in `wall_time_s` and `trainer_sha256`.
+- jax's persistent compilation cache is on by default in
+  `~/.cache/cadex/jax`, for programs that took ≥ 1 s to compile.
+  `CADEX_JAX_CACHE` moves it or turns it `off`; `JAX_COMPILATION_CACHE_DIR`
+  wins when set. No new dependency: it is jax's own.
+
+**Evidence** (`~/cadex-projects/orun21-lab/go1/s1-fixed/`, the M0 view
+screen's command with `--view-seconds 10`, each `train.log` timestamped from
+launch):
+
+| run | iteration 0 | iteration 99 | end | total |
+|---|---|---|---|---|
+| before (`258e1536`) | 53.3 s | 73.6 s | 51.0 s | **125.1 s** |
+| after, empty cache | 54.1 s | 74.4 s | 27.1 s | **102.0 s** |
+| after, same command, warm cache | 19.5 s | 39.4 s | 8.6 s | **48.5 s** |
+| after, warm, `--learning-rate 1e-4` | 45.0 s | 65.5 s | 8.7 s | **74.2 s** |
+| after, warm, `--learning-rate 1e-4 --seed 2` | 52.4 s | 73.2 s | 26.9 s | **100.6 s** |
+
+**Consequences.**
+- Every run's end is ~24 s shorter, cache or none.
+- A rerun of the same command (a seed already run, an extension's same
+  configuration, a re-screen after a reward-free change) saves another
+  ~54 s on the Go1. The cache hits only on the same program: the learning
+  rate is a constant in the update, and the seed reaches the compiled
+  rollout through the environment's drawn pools, so a changed learning rate
+  recompiles the update (45 s before iteration 0) and a changed seed
+  recompiles the rollout. Making those traced arguments would widen the
+  hit; it is not done here.
+- A mid-run checkpoint now rolls out the view's length (500 steps on the
+  Go1), ~1.0 s each on a warm run with `--checkpoint-every 25`; the first
+  one pays the rollout's compile or cache load (7.2 s warm), as the final
+  snapshot used to.
+- The cache grows on disk (15 MB after the Go1 runs above); deleting the
+  directory is always safe.
+
+## ADR-850 — The part cache is not keyed by the document's object list (2026-10-29, orun21 S1)
+
+**Context.** M0 ranked third a warm rebuild the caches do not make cheap:
+an unchanged leon V rebuilt in 661 s warm against 1,433 s cold, and its
+restore pass took 432 s warm against 447 s cold (`docs/probes/orun21/
+ITERATION.md` §3, §7). The two attempts of one export show why
+(`m0-build/leonv`, the export before ADR-848): the restore attempt's CPU
+ledger spends 261 CPU-s on `chest_frame` and 189 on `skull_frame`, and the
+build attempt after it 265 and 190 — every part built from nothing, both
+times. ADR-782's fingerprint hashed the request's `document_objects`. The
+restore pass sends `[]` (it builds into an empty document) while a build
+sends the document's objects (317 on leon V), so the two passes got two
+fingerprints, and each, opening its folder, deleted the other's as "another
+engine's parts". A project accepted once on a fresh document kept its cache
+(ADR-782's evidence); from the second accept on, every engine-opening
+command alternated restore and build and every part missed. A part rebuilt
+from nothing also re-serializes where it never repeats (`part.offset`,
+approximated skins), so the fit cache's BREP-keyed pairs missed too and
+leon V's rebuild re-accepted the same revision under a new digest
+(`70542856` → `78a948c6`, ADR-848).
+
+**Decision.** The fingerprint no longer hashes `document_objects`. The
+document view (names, labels and type ids) is read only by the script,
+through `doc`; whatever it changes in a part reaches the part through the
+payload, which the part key (`_memo_key`) already hashes. Everything else
+in the fingerprint stays.
+
+**Consequences.** The restore pass and a build share one folder, so a
+reopen replays the accepting build's bytes, and the build after it hits
+every part the restore built. One engine edit (this one included) still
+makes the next build cold once. A part whose payload differs between the
+passes (a script that reads `doc`) misses, as before, never a wrong hit.
+New contract test, for the regression that happened:
+`test_a_reopen_reads_the_part_cache_the_accepting_build_wrote` (two
+accepts, then a reopen keeps the cache's folder and matches an offset's
+digest byte for byte; it fails on the old fingerprint). No protocol, tool
+or published-shape change.
+
+**Evidence** (`~/cadex-projects/orun21-lab/m0-build/s1/rebuild_time.sh`,
+`cadex export --format brep --rebuild` of unchanged leon V `4d67e21`, warm,
+`ITERATION.md` §8): before 435.8 s restore + 607.2 s build = 1,055.7 s
+(M0: 1,093.6 s); after 21.0 s + 195.5 s = 226.3 s, and 230.1 s again. All
+three give digest `78850ab3…` and 102 byte-identical files. `pixi run
+test-engine`: 158 passed, 3 skipped; `pytest cli/tests`: 53 passed.
+
+## ADR-851 — D2's cheap fixes: bare-run checkpoints play, rebuild pins keep triangles, the card reads the page's run (2026-10-29, orun21 D2)
+
+**Context.** D2 asks for a ranked list of every case where the dashboard shows
+an empty, stale or wrong state, with the cheap ones fixed.
+`docs/probes/orun21/DASHBOARD.md` is that list: 14 cases. Six are fixed here
+and eight are listed with their one-line fixes. The fixed ones:
+
+**Decision.**
+- **The trainer rolls out its own checkpoints.** With `--view-seconds` on,
+  each numbered checkpoint gets `<out>.<tag>.rollout-trace.json` beside it.
+  This is the witness rollout the checkpoint's snapshot already ran, its
+  farthest episode as a view trace with a `checkpoint` block (iteration,
+  reward per step, sha256), written without meshes (the run's `view/` has
+  them). `_checkpoint_dir` falls back from `runs/<run>/train/` to the
+  trainer's progress directory (`seed0/`, `stage2/seed0/`). A checkpoint
+  there with no trace is never "pending"; `reason` counts it.
+- **Every CLI rebuild asks for display.** `export --rebuild`, `link`'s
+  refresh and `train` send `rebuild` with `STANDARD_DISPLAY`, as an accept
+  does. Each of them becomes the accepted pin, and a pin with no triangles
+  broke `look`, films and the CAD overlay (`autumn-hawk-8597`).
+- **The card reads the run the page would.** `_newest_run_dir` stamps a run
+  by `run.json`, then `review.json`, then its trainer's `progress.json`, and
+  skips a directory with none of them. `default_run` never opens an `empty`
+  directory. The card's cache key stats the progress file it read.
+- **Agent work is designing.** The stage is `designing` when the newest
+  logged call (ADR-836) is under 10 min old, unless that call was `train`,
+  `walk` or `evaluate`. An in-flight `cadex evaluate`, not only the MCP
+  `evaluate`, makes it `evaluating`.
+- **Episode length is capped at the horizon.** It was `unroll × envs / max(endings, 1)`;
+  a time-out is not an ending, so a batch with no endings read the whole
+  batch (81,920 on leon V). `episode_collapse` already capped it.
+
+**Evidence** (`DASHBOARD.md`).
+- A bare 40-iteration leon V concept run (`runs/d2-ckpt`, 103 s) left three
+  ready checkpoint rollouts. Each plays 301 frames over 6 s, and the page lists
+  them (`d2-checkpoints.png`).
+- `cadex export --rebuild` on a copy of the lab biped pinned an attempt with
+  display (55 tessellations, 55 of 55 parts drawn).
+- Card and page agreed on 380 of 386 projects under `~/cadex-projects`
+  before and 382 of 386 after. Both projects whose card hid a failed run are
+  fixed.
+- `d2-ckpt`'s episode curve peaks at 1000, against 2,155.8 before on the same task.
+- `test_http_api.py`'s hand-started fixture gains a checkpoint trace, and
+  `/api/checkpoints/byhand` must list it ready and playable. With the fallback
+  removed, the pin fails.
+- `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
+  passed. `training/`: 89 passed.
+
+**Consequences.**
+- Under `cadex train`, the watcher (ADR-544) finds the trainer's trace beside
+  each numbered checkpoint and rolls out only what lacks one: the final
+  copy (ADR-790), or every checkpoint of a run with `--view-seconds 0`. Those
+  checkpoint traces are now MJX's on the trained model, not the engine's. They
+  carry placements but no joint or effort channels, so the Activations editor
+  has less to show for them (DASHBOARD.md row 13). The engine stays the judge
+  through `cadex evaluate`.
+- A rebuild through the CLI now tessellates, which costs what an accept's does.
+- The 4 projects where card and page still differ are overlapping runs:
+  the card orders by last write and the page by launch (row 7).
+- Before this, a stage that read `idle` during agent work, or a card that read
+  a judge's output directory, was the dashboard being wrong rather than the
+  project being quiet.
+
+## ADR-852 — The engine places every terrain box; the trainer builds no course (2026-10-29, orun21 T1)
+
+**Context.** T1 asks that one terrain spec compile to geoms in the engine and
+the trainer from a single source, or that a parity test fail when they
+drift. Since ADR-717 the bundle's `terrain.pool` carried each drawn course
+as features and a box count, and `training/cadex_train.py` rebuilt the boxes
+with a hand copy of `CadexDynamics.terrain_boxes`, `terrain_rock_stones`,
+the dome builder and `terrain_box_geoms`: about 150 lines and seven copied
+constants. Its only guard was a box-count check at load. No test had held
+the copy equal since ADR-725, and STATE's `shy-sky-8568` names it. The pool
+held features rather than boxes because the bundle was capped at 1 MB.
+ADR-738 raised that cap to 4 MB.
+
+**Decision.**
+- **The placement is computed once, in the engine.** `terrain_boxes` gives
+  every box record its pose: `centre_mm`, `quat` (`wxyz`) and `half_mm`.
+  Block and ramp records now get it too (`_terrain_box_pose`); before, only
+  stones had one. `terrain_box_geoms` reads those three fields for every
+  shape and no longer branches on block and ramp.
+- **Each pooled course carries its `boxes` and `domes` records** in place of
+  their counts.
+- **The trainer builds no course.** `course_boxes`, `_course_profile_mm`,
+  `course_rock_stones` and `course_domes` are deleted, along with the
+  run-out, ramp, flat and rock constants. `course_geoms` reads the placed
+  records and adds parked slots. A bundle whose pool still carries counts is
+  refused with "re-export the task bundle".
+- **The parity test** is `training/test_terrain_pool.py`. It draws a
+  six-course pool through `CadexDynamics.terrain_grid` with steps, slopes,
+  bumps, platforms and rocks, so block, ramp, stone and dome are all present.
+  It holds the trainer's `terrain_pool` arrays to the engine's
+  `terrain_box_geoms` and `terrain_dome_geoms` on every course. It holds the
+  trainer's numpy height scan to `terrain_box_ground_mm` at 120 points per
+  course. It also pins the three parking constants equal.
+
+**Cost.** The bundle grows. A 32-course pool on an 11 m extent goes from
+78 KB to 482 KB indented, and 584 boxes are carried. The orun7 cat's
+1.02 MB task would reach about 1.5 MB, within the 4 MB cap. Every task on a
+box course changes its terrain bytes and therefore its digest. Plain courses
+change because their records gain a pose; drawn ones because the pool gains
+records. A policy trained on an older bundle of a box course re-verifies
+only against a re-exported bundle. Heightfield and flat tasks are unchanged.
+
+**Evidence.**
+- Against `HEAD`'s engine and trainer, on a 32-course draw of every kind,
+  the result is bit-identical. `terrain_box_geoms` of course 0 matches with
+  `rtol=0, atol=0`. Every `terrain_pool` array is `np.array_equal`. So the
+  MJCF the engine writes and the geoms MJX re-places are unchanged.
+- The parity test fails when either side drifts:
+  - with the trainer's parking depth set to 900 mm;
+  - with the engine's ramp quaternion sign flipped and the trainer left as
+    it is (the scan check catches this).
+- `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
+  passed. `training/`: 90 passed.
+
+**Not in this decision.** The heightfield form (ADR-714) is still built only
+by the engine. The trainer reads its `hfield_data` from the compiled model,
+so that is one source already. Its MJX divergence (`winter-bay-5176`) is
+unchanged. So are T1's new kinds, levels and curriculum.
+
+## ADR-853 — Tile patches and mazes: terrain laid out in x and y (2026-10-29, orun21 T1)
+
+**Context.** T1 asks for terrain that is not laid out only along x: walls
+with a corridor or a small maze, and T2 needs a maze section the points
+steer a robot round. Before this, steps and slopes span the whole width,
+and only bumps, platforms and rock patches stand at a point in y. ADR-852
+made the engine the one terrain builder: a pooled course carries its boxes
+placed, so a kind the engine builds reaches the trainer with no trainer
+code.
+
+**Decision.**
+- **Two feature kinds, box courses only** (`TERRAIN_BOX_ONLY_KINDS`), both
+  built as `block` records by `terrain_boxes`:
+  - `tiles` (`x_mm`, `y_mm`, `length_mm`, `width_mm`, `cell_mm`,
+    `height_mm`): a grid of `round(length/cell)` × `round(width/cell)`
+    blocks filling the footprint, each topped at a seeded
+    `uniform(0.1, 1.0) × height_mm` over the ground
+    (`terrain_tile_blocks`). This is Isaac Lab's "random grid". A patch is
+    at most 64 tiles (`TERRAIN_TILES_MAXIMUM`), because each tile is a box
+    slot.
+  - `maze` (`x_mm`, `y_mm`, `cells_x`, `cells_y` from 1 to 6, `cell_mm`,
+    `height_mm`, `thickness_mm`): square cells opened by a seeded
+    depth-first walk into a spanning tree, so one path joins a door in the
+    -x side to a door in the +x side (`terrain_maze_walls`). Collinear
+    walls merge into one block: a 3 × 3 maze is 8 blocks. `cells_y: 1` is a
+    straight corridor with two side walls.
+  - Both are seeded by their own fields, as rock patches are (ADR-745), and
+    both must stand on flat ground (the same `terrain_rock_off_flat`
+    refusal).
+- **Drawn pools** take `tile_mm` (with `tile_size_mm` 800–1600,
+  `tile_cell_mm` 200–400 and `tiles`) and `wall_mm` (with `maze_cell_mm`
+  700–1000, `maze_cells` [1, 3] and `mazes`). They are drawn after rock
+  patches and placed as rock patches are, with 60 mm walls
+  (`TERRAIN_WALL_THICKNESS_MM`), so a pool without them draws the same
+  geometry it did.
+- **No trainer change, and no dashboard change.** The trainer reads the
+  placed blocks (ADR-852). The dashboard and the film draw any box from its
+  centre, rotation and half-extents.
+- `training/test_terrain_pool.py` now draws two pools that between them
+  give every feature kind, including a corridor and a maze at least two
+  cells each way. It holds the trainer's arrays and its height scan to the
+  engine's, scanning across y as well.
+
+**Cost.** Each tile and each merged wall is a box slot. ADR-747 measured
+about 2.5 s per slot per iteration on the cat at 8192 environments, so a
+pool with two tile patches has a cost: the test's pool has 45 slots.
+`terrain["random"]` gains its new defaults and a longer algorithm string.
+Every drawn box course's descriptor therefore changes, and with it its
+task digest. Its courses' geometry does not: on the dashboard test's
+every-kind pool the descriptor without `random` hashes the same before and
+after.
+
+**Evidence.**
+- MuJoCo's own ray onto the compiled course meets `terrain_box_ground_mm`
+  to 7e-13 mm, at 991 points on the listed course of
+  `docs/probes/orun21/t1_shot.py` and at 5,957 points over the six
+  re-placed courses of its drawn pool. Points within 1 mm of a wall face
+  are skipped.
+- The dashboard's `groundAt` on the engine's `terrain_drawing` matches it
+  to 1e-14 mm at about 1,980 points per course.
+- The courses as the dashboard draws them, on the dark floor:
+  `docs/probes/orun21/t1-maze.png` (a 3 × 3 maze, 450 mm walls),
+  `t1-tiles-corridor.png` (a 1.8 × 1.5 m tile patch and a 4 × 1 corridor)
+  and `t1-drawn-course2.png` (course 2 of the drawn pool: two tile patches
+  and a two-cell corridor).
+- `pixi run test-engine`: 158 passed, 3 skipped. After `pixi run build-engine`,
+  `pytest cli/tests`: 53 passed. `training/`: 90 passed.
+
+**Not in this decision.** Heightfields under MJX (`winter-bay-5176`, R1
+T-3), mesh or heightfield courses from a file, levels and a curriculum,
+and turned walls (every wall runs along x or y) are still open.
+
+## ADR-854 — Heightfields train when only spheres and capsules touch them; a box or mesh on one is refused (2026-10-29, orun21 T1)
+
+**Context.** ADR-715 found MJX non-finite on ADR-714's heightfield course
+under driven motion, ADR-716 trained on placed boxes instead, and the
+heightfield has stayed the default form that no one could train
+(`winter-bay-5176`). R1 (RESEARCH.md §2.3, rows T-3 and C-23) noted that
+Playground's rough Go1 lets only four sphere feet touch its heightfield,
+and that MJX routes a sphere or capsule on a heightfield through its own
+collider (`hfield_sphere`, `hfield_capsule`) but a box or mesh through the
+convex-prism SAT path (`hfield_convex`, `mjx/_src/collision_driver.py:93-96`),
+which is where ADR-715's overflow warning came from. The sphere pair had
+never been tried in Cadex.
+
+**Measured** (`docs/probes/orun21/t1_hfield.py`, MJX 3.10.0; results
+`t1-hfield-cpu.json` with 32 MJX envs and `t1-hfield-gpu.json` with 256,
+each against 8 stock-MuJoCo envs on the same draws). Each rig on the plane,
+the engine's heightfield and the engine's box course:
+- **ADR-714's own rig**, rebuilt by the engine from its deleted test
+  (`git 2594ca4c^`): a box block, a 300 mm arm with no collision, ±0.8 N·m
+  held 10 solver steps, 300 controls. On the heightfield MJX sends
+  **20 of 32 non-finite on the CPU** (from control 65, the base at 7e12 m).
+  On the GPU none go non-finite, but one is **thrown to 1.43 m** and the
+  joint peaks at **252 rad/s**, against 0.01 m and 17.7 rad/s on the plane
+  and on boxes. Stock MuJoCo holds all 8 at 10 mm on all three grounds. The
+  defect is reproduced on this checkout.
+- **The same rig, a sphere colliding** in place of the box: MJX on the
+  heightfield matches the plane and the boxes on both devices (0
+  non-finite; peak 73 / 71 rad/s on CPU, 88 / 86 on GPU).
+- **The Go1** (orun18's feet-only model: four 23 mm sphere feet), started
+  at up to 3 m/s across bumps, 80 mm steps and 15° ramps, with position
+  targets home ±0.6 rad. The heightfield matches the plane: 0 non-finite,
+  peak 64.5 against 61.7 rad/s on the GPU. **With its capsule calves
+  colliding too:** 0 non-finite, peak 57.6 rad/s, so the capsule pair is
+  stable as well.
+- **Training.** run1's exact Go1 command (1,260 iterations × 8,192 envs,
+  206 M steps, seed 1) on a 30 × 30 m heightfield at 100 mm cells with 64
+  bumps and dips of 30–60 mm (118 mm of relief, built by
+  `CadexDynamics.terrain_grid`; `orun21-lab/go1-hfield/`) trained without a
+  diverged iteration. Best reward/step 0.0295 at iteration 1240, against
+  0.0303 flat; the curve is the same (0.0183 / 0.0272 / 0.0285 at
+  iterations 121 / 367 / 737, flat 0.0182 / 0.0278 / 0.0291). orun18's
+  judge on the heightfield gives 0/10 falls at 0.5, 1.0 and 1.5 m/s,
+  tracking 0.481 / 0.953 / 1.431 m/s over the last 2 s, where flat gives
+  0.470 / 0.958 / 1.431.
+- **Cost.** `cadex_train_bench.py`, 8,192 envs: 1.49 M env steps/s on the
+  plane, 0.91 M on the heightfield (0.61×). MJX gives each sphere four
+  heightfield contacts (`mjx_ncon` 16 against 4). The training run took
+  465 s against 325 s, but it shared the CPU with `build-engine` and the
+  CLI suite for part of that time, so the bench is the clean number.
+
+**Decision.**
+- **Heightfields are trainable**, and stay the default form, when only
+  spheres and capsules can touch them. That is Playground's arrangement,
+  and the Go1 shows it trains to the flat result.
+- **A box or mesh that can touch a heightfield is refused when the task is
+  declared.** The pairs `box/hfield` and `hfield/mesh` join the refusal of
+  ADR-281 as `_MJX_UNSTABLE_PAIRS`, with the same reason
+  (`mjx_unsupported_collision_pair`). The message says MJX "is unstable on"
+  the pair, and the correction says a foot on a heightfield is a sphere or
+  a capsule, or the course trains as `form: "boxes"`. Checked on ADR-714's
+  rig: box on heightfield refused; sphere on heightfield, and box or sphere
+  on boxes, accepted. MuJoCo still simulates the pair, so the model still
+  exports and rolls out; only the task is refused.
+- **Boxes stay** for what a heightfield cannot be: sheer steps, platforms,
+  rocks, tile patches and mazes (ADR-745, ADR-853), and any robot whose
+  boxes touch the ground.
+- **Courses from a file are heightfields.** MJX collides a mesh only by its
+  convex hull, so a terrain mesh cannot be a mesh geom in training. A mesh
+  or image course is therefore sampled into the engine's heightfield grid,
+  and so it trains under this decision's rule. Building that kind is
+  T1's next step, not this decision.
+
+**Not changed.** MuJoCo Warp, which Playground runs, is not needed for
+this and stays out of the training venv. Every existing model, bundle and
+digest is unchanged. A task on a heightfield whose box or mesh can touch
+the course was already untrainable; it is now refused when it is declared.
+
+**Evidence.** The probe and its two JSON files are above. Training:
+`orun21-lab/go1-hfield/run1/progress.json` and `run1/judge.json`; bench
+`go1` and `go1-hfield`. `pixi run test-engine`: 158 passed, 3 skipped. After
+`pixi run build-engine`, `pytest cli/tests`: 53 passed.
+
+## ADR-855 — A course from a mesh asset is sampled onto the heightfield grid; the dashboard's heightfield is no longer drawn mirrored in y (2026-10-29, orun21 T1)
+
+**Context.** ADR-854 decided that a course from a file is a heightfield
+sampled from it, because MJX collides a mesh only by its convex hull, but
+built nothing. T1 asks for a course from a heightfield or mesh file, read
+safely inside the script sandbox and drawn by the dashboard.
+
+**Decision.**
+- `assembly.mjcf(..., terrain={"mesh": "<asset>", "x_range_mm",
+  "y_range_mm", "cell_mm"})` names a project mesh asset (STL, OBJ or PLY,
+  stored by `put_asset`). The sandboxed assembly worker
+  (`cadex_assembly_worker._terrain_with_mesh`) reads it from the attempt's
+  staged `assets/` with `mesh.import_file`'s own reader, name check and
+  traversal refusal (`cadex_mesh_worker._import_asset`), and hands the
+  triangles and the file's sha256 to `CadexDynamics.terrain_grid`. A name
+  outside `assets/` or missing is refused at build (`terrain_mesh_unreadable`);
+  a name no worker resolved, `terrain_mesh_unresolved`.
+- `CadexDynamics.terrain_mesh_heights` (pure) gives each grid vertex the
+  highest point of any triangle over it. Every vertex must be covered
+  (`terrain_mesh_gap`); the course is shifted so the ground under the
+  origin is z = 0, rather than refused, since a file's own datum is
+  arbitrary. At most 129 vertices a side (`MAXIMUM_TERRAIN_MESH_VERTICES`)
+  and 500,000 triangles. `features`, `random`, `collides_with` and
+  `form: "boxes"` are refused beside `mesh`.
+- The descriptor carries `heights_mm` and `mesh` (asset, sha256, triangle
+  count), so `course_ground` (bilinear, `terrain_grid_height_mm`),
+  `terrain_drawing` and the MJCF's heightfield are one grid. The trainer
+  needs nothing: it reads `hfield_data` from the model, as for any
+  heightfield.
+- **Image heightmaps are not read.** A mesh is the one file kind. A PNG
+  would add a stored suffix and a decoder for a course any tool can also
+  write as a mesh.
+- **Fixed in passing: `review_server.mjcf_terrain` drew every exported
+  heightfield mirrored in y.** MuJoCo writes an hfield's `elevation` with its
+  first row at +Y and flips it on load (checked on a 2 × 2 field: elevation
+  `0 0 1 1` collides 0.95 at y = −0.9); the reader took the first row as −Y.
+  Found because this course's drawing missed the engine's by 120 mm. Earlier
+  courses mostly vary along x, which a mirror in y hides. Now read from the
+  last row.
+
+**Measured** (`~/cadex-projects/orun21-lab/t1-file`, a free-base sled on
+`hills.stl`, 31,968 triangles of rolling hills, a 400 mm ridge with a pass
+and a hollow, made by its `make_course.py`). The script accepts in 4.8 s
+at 100 mm cells (71 × 51 vertices, relief −209 to 398 mm; sampling ~0.03 s).
+Rays on the exported MJCF in stock MuJoCo are within 1.73 mm of the source
+surface at 1,828 points away from the ridge's one sheer edge (p95 0.68 mm).
+`docs/probes/orun21/t1_file_shot.py` serves the project and lets the
+viewer draw the accepted export's course on its own: the drawn ground
+matches the engine's to 0.0007 mm at all 3,381 interior vertices and to
+15.7 mm at 2,000 random points (bilinear against two triangles across a
+400 mm ridge). Before the reader fix the random-point gap was 120 mm.
+`docs/probes/orun21/t1-file-course.png`.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. After `pixi run build-engine`, `pytest cli/tests`: 53 passed; `training/test_terrain_pool.py`: 2 passed.
+
+**Not changed.** No stored suffix, op or tool changes; every existing
+model, bundle and digest is unchanged (a declaration without `mesh` takes
+the old path). Levels and the curriculum remain T1's open items.
+
+## ADR-856 — Terrain levels, and the game-inspired curriculum on points reached (2026-10-29, orun21 T1)
+
+**Context.** T1's last open item: levels and a curriculum "the way R1 found
+practice does it". R1 (`docs/probes/orun21/RESEARCH.md` §2.1–2.2, C-21,
+C-22): legged_gym and Isaac Lab lay rows of difficulty, scale each terrain
+kind's magnitude by its row's difficulty `d`, and move a robot a row up
+when it went far and down when it covered under half its command, to a
+random row past the top. Cadex's random box pool (ADR-717) drew every course
+from the whole range and dealt courses uniformly.
+
+**Decision.**
+- **Levels come from the one engine source.** `terrain.random.levels` *L*
+  (2 ≤ L, a divisor of `courses`) makes the pool L contiguous blocks:
+  course k is level `k*L // courses` (`CadexDynamics.terrain_course_level`,
+  written on each pooled course as `level`). Level l draws each height range
+  (`TERRAIN_LEVEL_KEYS`: step, grade, bump, platform, rock, tile, wall) from
+  its band `[lo + (hi-lo)·l/L, lo + (hi-lo)·(l+1)/L]`, which is Isaac Lab's
+  `d = (row + U(0,1))/rows` per kind. Sizes, counts and runs stay every
+  level's. The descriptor's algorithm gains `TERRAIN_LEVELS_ALGORITHM`;
+  without `levels` the record, the algorithm string and every pool keep
+  their bytes (checked: both `test_terrain_pool.py` pools are byte-identical
+  before and after).
+- **Held-out courses carry a level.** `terrain_evaluation_course(...,
+  level=)` draws the held-out stream at that level; with none given, seed s
+  plays level `s % L`, so ten seeds span every level. The course says its
+  `level`.
+- **The curriculum is in the trainer.** `cadex_train.py --terrain-curriculum`
+  (needs `--goto` and a leveled pool) starts every environment at level 0 and
+  deals one of its level's courses at each reset. At an episode's end on the
+  go-to-point layer: up a level if it reached `--terrain-promote` points
+  (default 1) without a fall, past the top to a random level; down if it fell
+  or reached none; never under 0. Episodes off the layer keep their level.
+  This is legged_gym's rule with points reached in place of distance, as R1
+  proposed. `progress.json` gains `terrain_levels` and `terrain_levels_curve`
+  (environments per level, every iteration), the log line prints the counts,
+  and the policy header's `training.terrain.curriculum` names the rule.
+- **Contract.** `training/test_terrain_pool.py` holds the engine's levels to
+  the contiguous blocks the trainer deals from, and holds a leveled pool's
+  placement to the engine as before.
+- **Deviations from practice, stated.** Every environment starts at level 0
+  (legged_gym starts on rows 0–5); a course mixes kinds rather than one kind
+  per column; walls are left out of the screen's pool because points do not
+  yet steer round them (T2).
+
+**Measured** (`~/cadex-projects/orun21-lab/go1-levels`, bundle by
+`docs/probes/orun21/t1_levels.py bundle`). The orun18 Go1 on a 64-course,
+8-level pool of steps (10–130 mm), slopes (2–20°), bumps (10–90 mm),
+platforms (10–150 mm), rock patches (10–60 mm) and tile patches (10–80 mm),
+29 box and 4 dome slots, feet-only contact. Course relief rises with level:
+61–91 mm at level 0 to 338–621 mm at level 7. Run1's reference settings
+(1260 × 8192 × 20 = 206.4 M env steps, seed 1, cold) with `--goto
+walk:0.4-0.7,run:1.0-1.5 --goto-share 0.5 --terrain-curriculum`:
+1,361 s wall, against 325 s for the same settings on the plane. The box pool
+costs 4.2× (the slots, not the curriculum). Environments per level, from
+`run1/progress.json`'s `terrain_levels_curve`:
+
+| iteration | mean | L0 | L1 | L2 | L3 | L4 | L5 | L6 | L7 |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | 0.00 | 8192 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 158 | 0.16 | 6914 | 1225 | 53 | 0 | 0 | 0 | 0 | 0 |
+| 315 | 1.25 | 1604 | 3555 | 2446 | 536 | 48 | 3 | 0 | 0 |
+| 631 | 3.46 | 114 | 552 | 1485 | 2086 | 2057 | 1224 | 528 | 146 |
+| 946 | 4.34 | 88 | 288 | 683 | 1361 | 1939 | 1713 | 1373 | 747 |
+| 1259 | 4.53 | 132 | 310 | 611 | 1087 | 1648 | 1775 | 1552 | 1077 |
+
+The batch climbs while the policy learns to reach points, then spreads.
+Demotion holds it there: episodes fall on the harder courses (the
+iterations in which some episode ended, rather than all timing out, rise
+from 34 of iterations 100–199 to 93 of 900–999 as the batch climbs), so the
+top does not fill. Best reward/step 0.0270 at iteration 297.
+No policy from this run has yet been judged on held-out leveled courses;
+that is T2's.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. After
+`pixi run build-engine`, `pytest cli/tests`: 53 passed; `training/`
+tests: 91 passed (`test_terrain_pool.py` 3).
+
+**Not changed.** No op, stored suffix or tool changes; a pool without
+`levels` and a run without `--terrain-curriculum` draw and train exactly as
+before.
+
+## ADR-857 — Terrain laid round the start, so go-to-point points meet it (2026-10-29, orun21 T2)
+
+**Context.** ADR-856's curriculum promotes an environment that reaches a
+go-to-point point without falling. A drawn pool laid its features only past
+`clear_mm` along +x, but `cadex_goto.sequence` puts points ahead, to a side
+and behind. Over 640 train sequences on ADR-856's own pool
+(`docs/probes/orun21/t2_around.py legs`), **80% of first points lay off
+the extent**, and only 23% of first legs (34% of second legs) crossed any
+relief over 10 mm. Most promotions were earned on flat ground, so the level
+signal was mostly not a terrain signal.
+
+**Decision.**
+- `terrain.random.around: true` lays a drawn pool round the origin. The
+  step-and-slope march also runs from `-clear_mm` towards -x. `level` there
+  is the height outward from the origin, and each step or slope is written
+  as the feature that makes it (a step of -d at x, a slope of -g from
+  x - length to x). It stops while one run of `run_mm`'s high end and a
+  step still fit inside x0, and a last step returns the far end to z = 0,
+  so the origin stays on z = 0 as `terrain_moves_start` requires. Every
+  bump, platform, rock patch, tile patch and maze centre is drawn over the
+  whole extent and kept only outside the square
+  `|x|, |y| < clear_mm + half` (a bump gets up to 8 tries, as placed
+  patches do).
+- Recorded only when true. The descriptor's algorithm gains
+  `TERRAIN_AROUND_ALGORITHM`. A pool without it keeps its bytes: ADR-856's
+  pool and both `test_terrain_pool.py` pools hash identically before and
+  after.
+- No trainer or dashboard change. Both read the placed boxes (ADR-852).
+- No new test. The pool's placement contract is held by
+  `test_terrain_pool.py` as before, and the origin rule is an engine refusal.
+
+**Measured.** The pool is `t2_around.py`'s `POOL`: ADR-856's kinds and
+level bands on a 24 m square (it holds the third point of 90% of train
+sequences), runs 1.5–3.0 m, 12 bumps, 2 platforms, 1 rock patch and 1 tile
+patch. It needs 41 box slots and 12 dome slots, against 29 and 4. Course
+relief rises with level, from 48–94 mm at level 0 to 380–677 mm at level 7.
+
+| pool | first point off extent | leg 1 meets relief | leg 2 | leg 3 | leg 4 |
+|---|---|---|---|---|---|
+| ADR-856 (+x only) | 0.798 | 0.234 | 0.342 | 0.411 | 0.427 |
+| ADR-857 (around) | 0.000 | 0.655 | 0.739 | 0.714 | 0.711 |
+
+The draw was stressed with 40 seeds × 5 variants (short runs, steps to
+400 mm and grades to 30°, mazes, a short extent): 200 pools, no refusal,
+and every course's ground at the origin is 0.
+A screen warm from `go1-levels/run1` (`~/cadex-projects/orun21-lab/
+go1-around/run1`, 400 × 8192 × 20 = 65.5 M env steps, the same flags,
+seed 2, `--init-from-task-change`) climbed from level 0 to a mean level of
+0.96 at iteration 100, 1.82 at 200, 2.56 at 300 and 3.17 at 399 (the last
+row is 79/604/1712/2637/2056/861/219/24 environments per level). Reward per
+step fell from 0.030 to 0.027 as the batch climbed. The wall was 667 s,
+1.67 s per iteration against run1's 1.08: the extra slots cost about 1.5×,
+and part of the screen shared the machine with a build and the CLI suite.
+No policy from it has been judged on held-out courses yet.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. After
+`pixi run build-engine`, `pytest cli/tests`: 53 passed. `training/`: 91
+passed.
+
+**Not changed.** Points still do not steer round walls, and the screen's
+pool carries none. A pool without `around` draws exactly as before.
+
+## ADR-858 — Go-to-point judged on held-out courses: `cadex_goto play --course` (2026-10-29, orun21 T2)
+
+**Context.** `cadex_goto play` played a policy on the bundle's model as it
+was. On a pooled bundle that is course 0, a trained course. The judge's fall
+rule also read the base's height above z = 0. A pit or a step therefore read
+as a fall or hid one. ADR-857's screen had not been judged on terrain.
+
+**Decision.**
+- `cadex_goto.py play --course COURSE.json` stands a box course in the bundle's
+  form in the model's `environment/terrain/<i>` and `.../dome/<j>` slots
+  before the episode, using the trainer's pinned `course_geoms` rows. The
+  model is recompiled through `MjSpec`, so stock MuJoCo's static
+  bounding-volume tree is built round the placed boxes, which
+  `place_terrain_course` re-boxes by hand. A fall is the base under half its
+  start height over the ground beneath it (the trainer's `box_tops`, plus the
+  dome caps and the plane). The course's `drawing` goes on the view's trace
+  (`write_view(terrain=)`), where the dashboard already reads it (ADR-734),
+  and `goto.json` names the course. Without `--course` nothing changes.
+- `docs/probes/orun21/g2_judge.py --level L` plays seed s on
+  `CadexDynamics.terrain_evaluation_course(terrain, s, level=L)`, the
+  held-out stream (ADR-718). `--flat` plays an empty course. G2's thresholds
+  are not widened.
+- No new test. The placement was checked once against the bundle's own
+  compiled course 0 (every terrain geom within 5e-5 m) and the ground against
+  `terrain_box_ground_mm` (1e-13 mm at 2,000 points). The trainer's tests still
+  hold the player's contract.
+
+**Measured** (`docs/probes/orun21/T2-JUDGE.md`, 10 held-out sequences per
+row, G2's bar). `go1-around/run1` at iteration 200 passed flat ground 10/10,
+level 0 9/10, level 2 1/10, level 4 0/10 and level 6 0/10. The final
+policy (iteration 399) passed 3, 4, 0, 1 and 0. At level 2 it missed 42 of
+80 points, and on flat ground it stalled on 2 legs, standing still under a
+1.2 m/s command. Every failure on levels 2 and 4 is within 0.5 m of a
+42–92 mm edge, the level's step and platform band. The parent
+`go1-levels/run1` reached every flat point but passed 2/10 on speed.
+
+**Consequence.** T2 has its first number and is not met. The blind actor
+stops at step faces, and the 3.17 mean training level was not a skill
+reading. Flat go-to-point did not regress at iteration 200. It regressed by
+iteration 399.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53 passed.
+`training/`: 91 passed.
+
+## ADR-859 — A warm start may hand the actor a height scan at zero weight; the go-to-point player reads it (2026-10-29, orun21 T2)
+
+**Context.** ADR-858 found the blind Go1 go-to-point actor stopping at 42–92 mm
+step faces, and named the missing height scan as the hypothesis. ADR-748 refused a
+warm start across a scan that becomes the actor's, because the actor's inputs
+move. That left only a cold run to test the hypothesis, which would also lose the
+flat skill the iteration-200 checkpoint has. `cadex_goto.Player` refused scan
+channels, so no scan policy could be judged.
+
+**Decision.**
+- `check_policy_fits`: on a curriculum step that moves `scans`, the actor may gain
+  channels when they are policy scan channels appended after every input the source
+  read, in its order (ADR-748 puts a policy scan last). The step's keys then name
+  `scans.actor`. Anything else that moves the actor's inputs is refused as before. So
+  is a family run.
+- The warm start unpacks the source at its own input width. It then appends zero rows
+  to the first layer for the new inputs, so the warmed actor computes the source's
+  policy exactly. Their normaliser statistics start fresh: mean 0, std 1 and a
+  count of one, through ADR-760's `actor_carried`.
+- `cadex_goto.Player` reads a policy scan as `CadexDynamics.height_scan_values`
+  does: the body's height over the ground at each grid point, turned by heading. The
+  ground is the course `play --course` stood, or else the bundle's own box course
+  (or the plane). `stand_course`'s ground is now `course_ground`.
+- One test in `test_curriculum_warm_start.py` holds the admission and the refusal
+  that remains.
+- ADR-748's refusal is narrowed to this.
+
+**Measured** (`docs/probes/orun21/T2-SCAN.md`). `go1-scan/run1` was warm from
+`go1-around/run1` iteration 200 with a trunk scan: 49.2 M steps in 512 s. Judged at
+G2's bar on ten held-out sequences, it passed level 2 on 6/10 at iteration 200 and
+5/10 at the end, against the blind policy's 1/10. Flat ground and level 0 passed
+10/10 at both checkpoints. Level 4 passed 0 and then 1 of 10, with fewer falls
+(1 against 6) and more stops. The player's scan matched the engine's within 6e-14 mm
+over 300 poses.
+
+**Consequence.** The blind actor was binding at level 2. Level 4 is still open, and
+the curriculum had put only 5% of environments at level 5 or higher when the screen
+ended, still climbing. A task that adds a policy scan can now continue a blind
+policy without retraining it.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
+passed. `training/`: 92 passed.
+
+## ADR-860 — Go-to-point through a maze: `cadex_goto.maze_route`, `play --sequence`, and a body-against-wall reading (2026-10-29, orun21 T2)
+
+**Context.** T2 asks that a held-out sequence pass a wall or maze section with the
+points steering the robot round. The seeded `sequence` draw places points with no
+regard for walls, so no judge could route through a corridor. A course's terrain
+geoms collide only with what the model lets touch the ground (on the Go1, the
+feet), so a wall would stop a foot while a hip passed through it unread.
+
+**Decision.**
+- `cadex_goto.maze_route(maze, walls, seed, split=, bands=)`, pure and standard
+  library. It takes the engine's maze feature and its blocks, as
+  `CadexDynamics.terrain_maze_walls` returns them. It finds the doors and the shortest
+  way over uncovered cell edges. Its points are a lead point outside the nearer door,
+  the cells' centres at the slowest band, a held lead point outside the far door, and
+  the same way back. A turning cell, door cells included, holds 0.3 s (`MAZE`), so the
+  layer arrives within its 0.1 m hold radius and the turn is at the centre. It is
+  seeded by `(split, seed)`. It refuses a maze without one door per side, and an
+  approach that clears no wall by 0.4 m straight or with one corner.
+- `play --sequence SEQ.json` plays a given sequence in place of the seeded draw.
+- A course may list `walls`, its wall slots. `play` then reads every robot geom
+  against each of them at every control step with `mj_geomDistance`. `judge` takes
+  that reading, and any step with a body in a wall fails a new `clear_walls` part of
+  `pass`. A course without `walls` always passes it.
+- `g2_judge.py --level L --maze` turns the pool's walls on (400–500 mm, 2–3 cells) and
+  plays the first ten held-out seeds whose engine-drawn course holds a maze.
+
+**Measured** (`docs/probes/orun21/T2-MAZE.md`). `go1-scan/run2` iteration 300, which
+never trained on walls, passed G2's bar plus `clear_walls` on 10, 9 and 10 of 10 maze
+seeds at levels 0, 1 and 2. Level 1's failure is a fall on a step edge outside the
+maze. A first route without door-cell corners let the hind legs sweep a wall on 4/10
+seeds at every level. One test in `test_cadex_goto.py` holds the door-cell corner. A
+route forced through the walls reads 579 steps with a body inside.
+
+**Consequence.** T2's maze clause is met at levels 0–2. The training layer is
+unchanged: mazes are judged, not trained. The trainer's terrain still lets bodies
+through walls, so a policy trained among walls would learn nothing from touching
+them. That is open if mazes are ever trained.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
+passed. `training/`: 93 passed.
+
+## ADR-861 — A warm start may add a task's `feet` block; T2 closes at level 0 and the maze through level 2 (2026-10-29, orun21 T2)
+
+**Context.** The Go1 go-to-point policy on T1's courses had three attempts at T2's general
+courses: held-out judging (ADR-858), a height scan for the actor (ADR-859) and a warm
+extension. Level 2 passed 6/10 and level 4 1/10. The failing seeds were read from their
+traces (`docs/probes/orun21/T2-SCAN.md`, "What binds"). Five of 13 stop on a walk leg in
+front of a 42–93 mm up-face, and no run leg stalls first. Three level-4 falls are at
+72–92 mm edges, and three falls have no edge near them. The Go1 bundle pays only
+Playground's stateless `feet_clearance` for the swing. It lacks the two stateful terms
+ADR-870 can pay, `feet_air_time` and `feet_height`. Adding them to a warmed policy was
+refused, because `feet` was not among the keys `--init-from-task-change` may move.
+
+**Decision.**
+- **`feet` joins `CURRICULUM_TASK_KEYS`.** ADR-870's block is reward that an expression
+  cannot say, and the trainer alone reads it. It changes the gradient and not what the
+  network reads or emits, so it may move across a warm start, as `reward` may. One line in
+  `test_curriculum_warm_start.py` holds it.
+- **T2 closes at the levels it passes, with G2's bar unwidened.** Those are flat ground,
+  held-out courses at level 0, and the maze at levels 0, 1 and 2, all on one policy
+  (`orun21-lab/go1-scan/run3`). Level 2's general courses (9/10) and level 4 (1/10) are
+  recorded as not passed. They are not counted towards T2.
+
+**Measured** (`T2-SCAN.md`, "Screen"). Two arms were warmed from `go1-scan/run2`
+iteration 300, each for 41.0 M env steps in about 430 s, seed 5. One added the feet
+block, with air time 0.002 per step over a 0.1 s threshold and swing height −0.004 per
+step against 0.12 m, as Playground weights them. The other ran the unchanged task.
+
+| row | control | feet block |
+|---|---|---|
+| flat | 10/10 | 10/10 |
+| level 0 | 10/10 | 10/10 |
+| level 2 | 8/10, 8 points unreached | 9/10, 1 unreached |
+| level 4 | 3/10, 32 unreached | 1/10, 31 unreached |
+| maze, levels 0/1/2 | 9/9/9 (clear_walls) | 10/10/10 |
+
+Level 4 did not move. The block's level-2 gain is one seed, within noise. Both arms beat
+their start at level 2, so more training explains most of that gain.
+
+**Consequence.** T2's general-terrain clause is met at level 0 only. Its maze clause is
+met at levels 0–2. Level 4's 70–90 mm faces stop the Go1 at walk speeds, and neither
+exposure (ADR-859's extension) nor Playground's swing terms move that. A next attempt
+would change the approach rather than a weight: for example, train mazes and faces with
+the bodies colliding, or set a level-gated speed floor. That is parked, and the run goes
+on to G3.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53
+passed. `training/`: 93 passed.
+
+## ADR-862 — G2's task written onto any robot; a fall read from the base's centre of mass (2026-10-29, orun21 G3)
+
+**Context.** G3 asks for G2's task, recipe and judge on leon V and the biped, changing only
+speed bands and drive data. The only G2 task in the tree was orun18's Go1 bundle, written by
+a probe script (`docs/probes/orun18/a2_bundle.py`) around the Go1's own joint names. leon V's
+CAD task is a fixed 1.5 m/s straight trot with a gait reference, not a velocity command.
+
+**Decision.**
+- **`training/cadex_joystick.py TASK.json --out DIR`** writes G2's task onto the model of
+  any `cadex-training-task-v1` bundle: a concept's, a cut's or an export's. That task is
+  Playground's joystick: `cx`/`cy`/`cw` goals, the body-frame actor, home + 0.5 rad actions,
+  Playground's rewards and randomisation, and upside-down termination. The robot's own parts
+  are read from the model: root, drives, ranges, keyframe, feet and floor. The substeps come
+  from the model's own timestep, and a timestep that does not divide 20 ms is refused.
+  `--speeds` bounds the goals. On the Go1 it writes the a2 bundle's reward expressions,
+  randomisation, reset and termination unchanged, channel names apart. It imports only the
+  standard library at module scope (ADR-084). No test was added: no contract changed.
+- **`cadex_goto play` reads a fall from the base's centre of mass** (`xipos`), not its frame.
+  leon V's concept chest frame sits at the floor, so a home height of 0 made any 1 mm dip a
+  fall. The Go1's G2 judgement does not move (`g2-goto-s20` 10/10, 884.14 s).
+
+**Measured** (`docs/probes/orun21/G3-GOTO.md`). leon V's concept at the CAD's mass, on the
+Go1's G2 command (206.4 M steps, 602 s against the Go1's 333 s), judged by `g2_judge.py`
+on held-out seeds 0–9. At iteration 900 it reached all 80 points within 0.253 m, held every
+hold within 0.100 m, and did not fall. It passed 4/10. All the failures are speed on walk
+legs, at 0.80–0.85 of the command. Run legs track at 0.96 or better. A 300-iteration screen
+(226 s) stalls on most legs.
+
+**Consequence.** G3 on leon V's concept is not met. The binding miss is the slow walk, as in
+`kind-ridge-3238`. Next come a hypothesis test (mass-normalised effort terms, or
+`--goto-share 0`), then the cut and the biped through the same writer. A defect found on the
+way stays open: `cadex_relay.py` keeps the export's episode (0.002 s × 10) on a concept that
+steps at 0.0025 s. Every relayed concept run therefore took 25 ms control steps while its
+task said 20 ms.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53 passed.
+`training/test_cadex_goto.py`: 3 passed.
+
+## ADR-863 — The relay keeps the control interval on the model's own step; share 0 does not lift leon V's slow walk (2026-10-29, orun21 G3)
+
+**Context.** ADR-862 left two things open. First, a defect: `cadex_relay.py` copied the
+export's episode (`solver_step_s` 0.002 × 10 substeps) onto a model that steps at its own
+timestep, and the trainer never overrides it. On leon V's 2.5 ms concept that made every
+relayed run control at 25 ms (40 Hz), while its task said 20 ms. Second, a hypothesis for
+G3's slow walk legs: the go-to-point layer's share costs them, as `kind-ridge-3238` measured
+on the Go1.
+
+**Decision.**
+- **`relay_task` sets `solver_step_s` to the model's timestep and `solver_steps_per_action`
+  to the control interval over it** (8 on a 2.5 ms concept). An interval that is not a whole
+  number of the model's steps refuses. `relay.json` records `solver_steps` [export, model].
+  `training/test_cadex_relay.py`'s cut now steps at 2.5 ms and asserts 8 substeps. This is a
+  regression test for a defect that happened: without the fix it fails.
+- **The share hypothesis is refuted on leon V.** A cold run with no go-to-point layer (share
+  0, otherwise G2's command and budget) passes 0/10 at iterations 900, best and final, against
+  share 0.2's 4/10. The recipe keeps `--goto-share 0.2`.
+
+**Measured** (`docs/probes/orun21/G3-GOTO.md`). `runs/s0`: 206.4 M steps, 663.9 s. Judged by
+`g2_judge.py` on held-out seeds 0–9: all 80 points reached and every hold kept, 0 falls. The
+speed ratio ranges over 0.799–0.937 at iteration 900, 0.744–0.943 at best and 0.792–0.936 at
+final, and every seed has a leg below 0.85.
+
+**Consequence.** Runs relayed before this ADR (`wise-moon-5991`'s 10/10, ADR-847's concept
+0/10) were judged at 40 Hz control. They are not re-run here. G3 on leon V's concept stays
+at 4/10. The effort-scale hypothesis (absolute-N·m torque and energy terms on a 2.6×
+heavier robot) is untested. Following the owner's live edit, the next unit is K1's rewrite.
+
+**Evidence.** `pixi run test-engine`: 158 passed, 3 skipped. `pytest cli/tests`: 53 passed.
+`training/test_cadex_relay.py` and `test_cadex_goto.py`: 4 passed. Before the relay fix,
+`test_cadex_relay.py` fails.
+
+## ADR-864 — RECIPE.md is the route a new robot follows (2026-10-29, orun21 K1)
+
+**Context.** K1 asks that `training/RECIPE.md` be rewritten as the route a new
+robot follows: P1's tiers, G2's task, T1's terrain and R1's defaults, each step
+with the run that proved it. Before this, the file opened with §R (the route,
+ADR-846) and one paragraph on go-to-point (ADR-862), and its body was the
+reference-gait recipe of orun8–l3r1. The task the route ends in, its terrain,
+its defaults and its budgets in env steps were only in the probes
+(`G2-GOTO.md`, `T2-*.md`, `RESEARCH.md`).
+
+**Decision.**
+- **Part I is the route**, from what orun21 measured: §R (spec, concept, frozen
+  numbers, CAD, compare, cut, relay with the substep rule of ADR-863,
+  confirming retrain, the export's judge), §G (go-to-point: `cadex_joystick.py`,
+  `--goto walk:0.4-0.7,run:1.0-1.5 --goto-share 0.2`, `g2_judge.py`), §T (a
+  leveled pool laid round the start, the curriculum on points reached, a height
+  scan by warm start, the `feet` block, maze routes, judged by level), §D (the
+  defaults, each tied to RESEARCH.md's row) and §B (budgets in env steps: 206.4 M
+  for a go-to-point run, 49.2 M for a route screen, 40–75 M terrain extensions).
+  A one-screen table of commands opens the file.
+- **Part II keeps §0–§6 under their numbers**, since records cite them (e.g.
+  §5, `lone-peak-2518`). §4 now says it is for reference-gait tasks.
+- **Limits names the open misses**: leon V's slow walk (4/10, share 0 refuted,
+  effort scale untested), the layer's slow-walk cost (`kind-ridge-3238`), the
+  Go1's level 4 (1/10, `cool-valley-2757`), the judge living in a probe script,
+  terrain never carried by a robot other than the Go1, the route never run from
+  an empty project, no concept bundle before CAD, §G not run on a cut or on the
+  biped, and the biped's missing armature.
+- **The share stays 0.2** (ADR-840, ADR-863). The terrain runs used 0.5; the
+  recipe says so rather than claiming 0.2 on terrain.
+
+**Not changed.** No code. K1 stays unticked: its test is the biped taken from
+its CAD to G3 by following RECIPE.md alone, which has not been run.
+
+**Evidence.** Every number in Part I was read from its probe or ADR
+(`docs/probes/orun21/G2-GOTO.md`, `G3-GOTO.md`, `T2-JUDGE.md`, `T2-SCAN.md`,
+`T2-MAZE.md`, `ITERATION.md` §9, `GO1-BASELINE.md`, `RESEARCH.md` §3 and §5,
+ADR-839–863) and the lab launch scripts (`orun21-lab/go1/runs/g2-goto-s20`,
+`go1-scan/run3`, `g3/leonv-concept/runs/g2`). No suite is affected by a
+documentation change.
+
+## ADR-865 — The biped through RECIPE.md alone: speeds scale the writer, a turn in place exits at 30°, the judge plays on the export (2026-10-29, orun21 G3/K1)
+
+**Context.** K1's test is the orun9 biped taken from its CAD to G3 by following
+`training/RECIPE.md` alone, fixing the recipe wherever it is wrong or silent. The biped is
+0.646 kg, top speed 240 mm/s (`W3-speed`), with roll, pitch and knee servos and no hip yaw.
+Its CAD existed, so per §R the route began at the export: cut, relay, `cadex_joystick.py`,
+G2's command on the cut, `g2_judge.py` (`docs/probes/orun21/G3-GOTO.md` §The biped).
+
+**Decision.** Each change writes the Go1's and leon V's tasks, and plays their finished
+sequences, as before.
+- **`cadex_joystick.py`**: (a) a source bundle with no goal is accepted, and a stated
+  `goal_algorithm` is written for it; (b) the ±1 kg trunk payload is capped at ±20% of the
+  trunk's mass, because on the biped's 0.26 kg pelvis it drew a negative mass; (c) Playground's
+  tracking widths (0.25) scale with the square of `--speeds` over the Go1's, and the 0.5 m/s,
+  0.5 rad/s reset kick scales with the ratio. At 0.25 the biped's 0.2 m/s command paid 0.85 for
+  standing, and its 300-iteration screen stood still at every command. The kick tipped it over,
+  and episodes averaged 334 of 1000 steps.
+- **`cadex_goto` layer**: a turn on the spot starts past 60° off (`turn_deg`) and goes on until
+  the point is within 30° (`face_deg`, a new `turning` state). With one edge the biped
+  chattered at 60°: each step-off into the diagonal walk yawed it back out, and it took 226 s
+  to reach its first point. `test_cadex_goto.py` gains a regression test, which fails without
+  the fix.
+- **`cadex_goto play`**: the episode bound is each leg and a half turn at half their speed,
+  plus holds and 10 s. The old bound (full speed plus 10 s) cut off every biped sequence. Play
+  stops a second after the last point, so a finished sequence is judged the same either way.
+  `--other-model` (and `g2_judge.py --other-model`) plays a policy on a model it did not train
+  on, matching channels by name, and `goto.json` records `model_sha256` and `trained_on`. This
+  is how a cut's go-to-point policy is judged on its export.
+- **RECIPE.md** §G.1, §G.2, §G.4 and a new §G.7 (scale the Go1's speeds and bands by the robot's
+  top speed over 1.5 m/s) say all of this, and *Limits* gains the biped's slow walk, the
+  absolute swing height and spacing, and the skipped concept.
+- **Tried and removed**: capping the layer's 0.25 m/s pace floor at a sixth of the forward
+  limit, on the hypothesis that the biped circled points. It moved nothing (5/10 seeds reached
+  every point, against 6/10 without it).
+
+**Measured.** `runs/g2` on the biped's cut: 206.4 M steps, 478.6 s. A 300-iteration screen walked
+but did not turn in place. The full budget turned at ±0.18 rad/s. At iteration 1200 on held-out
+seeds 0–9: cut 0/10 and export (`--other-model`) **2/10**, every point reached (80/80) within
+0.255 m, every hold within 0.100 m, 0 falls. Each seed's slowest straight leg ran at
+0.80–0.86 of its command. Re-judged under the 30° exit, the Go1's `g2-goto-s20` passes 10/10
+(913.2 s, ratios 0.870–0.986), and leon V's iteration 900 passes 3/10 against 4/10, on speed
+alone.
+
+**Consequence.** The biped has been taken through the recipe and does not pass G3: the same slow
+walk as leon V, on a robot a twentieth of the Go1's mass, so absolute effort terms cannot be the
+only cause. K1's walk-through is done and its fixes have landed. Whether K1 is met, given a G3
+miss, is the owner's call. The swing height (0.1 m) and point spacing (2–5 m) stay the Go1's,
+untested.
+
+**Evidence.** `training/` tests: 94 passed (`test_cadex_goto.py` 4). `pixi run test-engine`: 158 passed,
+3 skipped. `pytest cli/tests`: 53 passed. The runs, judges and launch scripts are in
+`orun21-lab/g3/biped/`.

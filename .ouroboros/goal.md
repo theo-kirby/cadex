@@ -286,7 +286,20 @@ Beyond, in order, once the above are met or blocked:
 
 - Resolve reversible choices autonomously, with the smallest measured step
   towards the highest-ranked open criterion. The order is M0, D1, R1, G1, G2,
-  P1, S1, D2, T1, T2, G3, K1, C1.
+  P1, S1, D2, T1, T2, G3 on leon V, then K1's rewrite and C1, then the biped.
+- **Owner, live edit (2026-10-29, after T2 closed):** the 7-day usage window
+  will run out before the 24 h does, so protect the recipe and the report.
+  After G3 on leon V, the next units are:
+  1. **K1's rewrite:** `training/RECIPE.md` rewritten as the route a new robot
+     follows, from what this run proved (P1, G2, T1, T2, R1's defaults), each
+     step with its run. K1 stays unticked until the biped proof below.
+  2. **C1:** `docs/probes/orun21/REPORT.md` written from what is measured so
+     far, then kept current.
+  3. **Then the biped:** G3 on the biped by following RECIPE.md alone, which is
+     also K1's test; fix the recipe wherever it was wrong or silent.
+
+  If usage stops the run before step 3, the recipe and the report are what
+  it leaves.
 - **Diagnose before repeating.** After three failed attempts at the same
   criterion, the next unit is a step back: re-read the evidence, write down
   what is binding and why, and change the approach, not the parameters.

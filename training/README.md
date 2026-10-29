@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-28. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-29. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -91,9 +91,11 @@ them: (a) one machine with a GPU, (b) CPU only, (c) a separate GPU box, and
 *what the trainer is*; that one is *how to run it*. Duplicating the commands
 here is how the two drift.
 
-**`training/RECIPE.md` is how to write a legged task that trains cold**:
-the reference gait, the start inside it, the speed and stand terms, the
-warm-start rules and the budgets, each with the run that showed it.
+**`training/RECIPE.md` is the route a new robot follows** (ADR-864): spec,
+concept, CAD, cut, relay, confirming retrain and the export's judge; the
+go-to-point task, terrain and its curriculum, the defaults and the budgets;
+then the earlier reference-gait lessons. Each step names the run that
+showed it.
 
 The short form: any machine with a CUDA GPU and Python 3.12+ (the pinned
 `numpy==2.5.1` has no wheels below cp312), a venv built from
@@ -182,6 +184,8 @@ Go1 benchmark that Brax learns to trot in under six minutes (docs/MUJOCO.md
 | `--value-weight`, `--reward-scaling` | `0.5`, `1.0` | the value loss's coefficient; a factor on every reward before the loss |
 | `--initial-std` | unset | the exploration width a run starts at; see `action_std` below |
 | `--goal-pool` | `4096` | episodes of goals drawn before training (ADR-462, below) |
+| `--goto`, `--goto-share`, `--goto-goals` | off, `0.2`, `cx,cy,cw` | go-to-point episodes: the layer commands the speed goals on that share (ADR-840, below) |
+| `--terrain-curriculum`, `--terrain-promote` | off, `1` | deal a leveled pool by level and move each environment by points reached (ADR-856, below) |
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
 | `--stop-on-collapse` | off | stop once the mean episode has collapsed (ADR-410, below) |
 | `--progress` | beside `--out` | where to rewrite `progress.json` |
@@ -223,15 +227,16 @@ against the actuator rather than deriving it — ADR-162 carries the numbers.
 | Flag | What it is |
 |---|---|
 | `--init-from POLICY` | start the actor from an existing `.cxpolicy`. It must match this bundle's task and model digests, its observation channels in order, its action table, the `--hidden` shape and the `--activation` it was trained with. The actor's location half, its exploration width (unless `--initial-std` is given, ADR-471) and the observation normaliser are carried, the normaliser with the weight of the samples it rests on (ADR-753). The critic and the optimiser start fresh: the container holds neither. |
-| `--init-from-task-change REASON` | let `--init-from` cross a task change, as a **curriculum**, with a one-line reason written into the policy header. It skips the whole-file task digest and nothing else. Requires `--init-from-parent-task`. |
+| `--init-from-task-change REASON` | let `--init-from` cross a task change, as a **curriculum**, with a one-line reason written into the policy header. It skips the whole-file task digest and nothing else. Requires `--init-from-parent-task`. A step that hands the actor a height scan (`role: policy`) widens the actor's first layer with zero weights for the scan's channels, so the warmed actor starts as the source's policy (ADR-859). |
 | `--init-from-parent-task BUNDLE` | the bundle the source policy was trained on. Its digest must equal the one in that policy's header, so the change can be named key by key. |
 | `--family BUNDLE…` | train **one policy on a family** of built variants of one robot (ADR-759): the bundle is variant 0 and names the run, these are the others. Each must map a body with a `morph` block and share the channels, joints, reward-term count, episode and model sizes. The environments are split into contiguous blocks, one per variant, each its own environment (model, randomisation, reward, terminations, clip, reset, pushes, action box); environment *e* draws `random.Random(seed + e)` whatever its variant. The actor and critic read the variant's `morph.*` constants after the channels, and the header lists the variants under `training.family`. Such a policy is a base, not something the engine plays: `--init-from-base` folds its morph inputs into the bias at the target's own values. |
 | `--init-from-base REASON` | let `--init-from` cross onto **another robot of the family** (ADR-755). Both bundles map a canonical body (`api.task(body=...)`); the digests are not compared, but the family and version, the hidden layers and at least one shared joint slot per leg are, and `--critic-warmup` is required. The actor is remapped by canonical name: matched inputs and actions copy, sign-corrected, with the statistics mapped through each channel's sign, offset and scale; a source input the target lacks folds into the first layer's bias at its rest value; a target input or action the source lacks starts at zero (its box centre) with the default exploration width. The actor's statistics keep the base's sample count on the inputs it shares with the target, and a target input the base lacks starts fresh, set by the target's own first batch (ADR-760). |
 
 The keys that may differ are `CURRICULUM_TASK_KEYS`: `disturbance`,
 `episode` (`episode_seconds` and `max_steps` only, never the control rate),
-`label`, `randomisation`, `reset_variation`, `reward`, `success` (ADR-597)
-and `termination`. None changes what the network reads or emits. Every
+`label`, `randomisation`, `reset_variation`, `reward`, `feet` (ADR-870's
+foot terms, which are reward too: ADR-861), `success` (ADR-597) and
+`termination`. None changes what the network reads or emits. Every
 other key is refused: `observations`, `actions`, `goal`, `reference` and
 the rest. A goal's draw range is the one part of `goal` that may move
 (ADR-791): when its entries differ only in `CURRICULUM_GOAL_KEYS` (`low`,
@@ -286,7 +291,12 @@ a stand is judged on the speeds and the feet, never on a ratio.
 not a weight dump: pull it off the box mid-run, paste its digest into
 `assembly.policy`, rebuild, and watch it. Cost is about one iteration each —
 a rollout for the witness observations plus 32 forward passes — so every
-hundredth of two thousand is 1 %. The first checkpoint also pays one compile
+hundredth of two thousand is 1 %. With `--view-seconds` on, each numbered
+checkpoint also gets `<out>.<tag>.rollout-trace.json` beside it: that same
+witness rollout's farthest episode as a view trace with a `checkpoint` block
+(iteration, reward per step, sha256), which the dashboard's checkpoint picker
+plays on the run's `view/` meshes whoever started the run (ADR-851). A
+`cadex train` watcher finds the trace there and rolls out only what it lacks. The first checkpoint also pays one compile
 of that rollout; later ones reuse it (ADR-576).
 
 The witness is checked on checkpoints too. That error is *relative* and grows
@@ -307,6 +317,27 @@ iteration:
  "checkpoints": [...]}
 ```
 
+**The run record (ADR-837).** The trainer is its own record, so whoever
+starts it (a shell, Ouroboros, an MCP agent, `cadex train`) shows the same in
+the dashboard. The first `progress.json` is written at launch (`state:
+starting`) and the last at the end (`done` or `failed`), and two blocks ride
+in every one, additive under the same schema:
+
+- `run`: `driver` (the `CADEX_RUN_DRIVER` environment variable, else
+  `shell`), `argv`, `pid`, `heartbeat_s` and `ended_at`. A **heartbeat**
+  rewrites the file every `heartbeat_s` (10 s) when nothing else has, so
+  `updated_at` stays fresh through the JIT compile and the closing view; a
+  trainer six beats quiet (at least 60 s) is read as gone.
+- `model`: `tier` (`concept`, `training` or `cad`; `--tier`, else the model's
+  own `<custom><text name="cadex:tier">` mark, which `cadex_concept.py`
+  writes, else read from `--cad-model`; `unstated` when none says), `sha256`,
+  `path`, `cad_sha256` and `bodies`, a map from each body of the model to the
+  CAD bodies it carries. `--cad-model MJCF` names the CAD export the model was
+  cut from: each CAD body is folded into its nearest ancestor the model kept,
+  so a welded part merged away still has a home; with no `--cad-model` each
+  body carries only itself. A Cadex export names each body after its
+  component, so the map is in component names.
+
 `curve` is the whole run's reward so far, as compact
 `[iteration, reward_per_step]` pairs decimated to at most
 `CURVE_POINTS_CAP` (512) points with the first and last always kept —
@@ -316,7 +347,9 @@ below; it is what the dashboard's 2D viewport plots and its Training editor char
 under the project's `runs/<run>/train/`.
 
 `episode_steps` is the row to actually watch (ADR-101): mean episode length,
-steps in the batch over episodes that ended in it. **A reward that climbs
+steps in the batch over episodes that ended in it, at most the horizon (a
+time-out is not an ending, so a batch in which nothing ended used to read the
+whole batch, 81,920 on leon V; ADR-851). **A reward that climbs
 while this falls is a policy failing sooner and being paid more for it** —
 which is what two runs did, unnoticed, before there was a number for it. It
 is additive under the same schema, so a `progress.json` from before ADR-101
@@ -379,14 +412,24 @@ every environment uses environment 0's.
 ## Courses, re-drawn per episode (ADR-717)
 
 A task on a drawn box course carries its pool of courses in the bundle's
-`terrain.pool`. The trainer rebuilds each pooled course's boxes with its
-own copy of the engine's builder (`course_boxes`, `course_geoms`), and at
+`terrain.pool`, each course with its boxes and domes placed by the engine
+(ADR-852): the trainer builds no course, it reads `centre_mm`, `quat` and
+`half_mm` (`course_geoms`), and `test_terrain_pool.py` holds what it places
+to the engine's `terrain_box_geoms` on a pool of every box kind. At
 every reset gives each environment a course by `jax.random.randint` folded
 from the reset key. `place_course` writes that course's geoms into the MJX
 model inside the vmapped step, and the height scan (ADR-715) reads the
-same course. The policy header records `training.terrain`. Train on a box
-course, not a heightfield: MJX's heightfield collider is unstable under
-driven motion (ADR-715, ADR-716), and a heightfield is never re-drawn.
+same course. The policy header records `training.terrain`. A heightfield
+trains only where spheres and capsules touch it (ADR-854) and is never
+re-drawn.
+
+With `--terrain-curriculum` (and `--goto`), a pool that declares
+`random.levels` (ADR-856) is dealt by level: each environment starts at
+level 0 and draws one of its level's courses; an episode on the layer that
+reaches `--terrain-promote` points (default 1) without a fall goes up, past
+the top to a random level, and one that falls or reaches none goes down
+(legged_gym's game rule, on points rather than distance). `progress.json`
+carries `terrain_levels` and `terrain_levels_curve`.
 
 ## Goals, and the one draw this trainer takes from the bundle (ADR-462)
 
@@ -600,22 +643,134 @@ At the end of a run the trainer plays the final policy for `--view-seconds`
 (default 10; 0 disables) on its witness batch, takes the episode that travelled
 farthest forward (along the heading it started with), and writes **`view/`** beside `progress.json`: one binary STL per body,
 tessellated from that body's own geoms (boxes, capsules, spheres, cylinders,
-meshes; group 3 and above left out) in its own frame, in millimetres, and
-`trace.json`, a `cadex-assembly-simulation-trace-v1` placing every body at every
-control step. It is the model the policy trained on, so a concept model shows as
+meshes; group 3 and above left out, unless the robot has nothing else to draw, as
+Playground's Go1 has not: then every visible geom, ADR-839) in its own frame, in millimetres, and
+`trace.json`, a `cadex-assembly-simulation-trace-v1` placing every named body at every
+control step, those with nothing to draw too, since CAD may ride on them (ADR-838). It is the model the policy trained on, so a concept model shows as
 its boxes and capsules and an export's fast training model as its collision
 shapes. Until then, from the run's start, `view/` holds the model standing at
 its keyframe, so the run shows its robot from the first iteration. The view never fails a run: anything that goes wrong is one line on stderr.
+
+The view and the witness are one compiled rollout of the witness batch: its
+first `--unroll` observations are the witness, its poses the view (ADR-849).
+
+## Compiled programs persist between runs (ADR-849)
+
+`cadex_train.py` keeps jax's compiled programs in `~/.cache/cadex/jax`
+(`CADEX_JAX_CACHE=DIR` moves it, `CADEX_JAX_CACHE=off` turns it off, and
+jax's own `JAX_COMPILATION_CACHE_DIR` wins when set). A program loads
+instead of compiling only when it is the same program: same model and task,
+same batch and network, same hyperparameters (the learning rate is a
+constant in the update) and, for the witness and view rollout, the same
+seed. A rerun of a command hits in full; a changed learning rate still
+compiles the update. On the Go1 screen, a hit takes the compile before
+iteration 0 from 53 s to 19.5 s.
 
 `--view POLICY` trains nothing: it replays a finished policy on the bundle it was
 trained on and writes `view/` beside the policy, for a run made before this.
 
 The dashboard reads a directory under the project's `runs/` as a run when it has
 a `run.json` **or** only what a trainer wrote: `train/progress.json`, or the
-newest `*/progress.json` one level down (`seed0/`). Its curves, its policy and
+newest `progress.json` one or two levels down (`seed0/`, `stage2/seed0/`,
+ADR-837). Its curves, its policy and
 its `view/` come from there (ADR-835), so a run started by hand appears beside
-the walks. A run training a further seed beside a finished one charts the live
+the walks. When the run's `model.cad_sha256` (or, for a `cad` run, its own
+digest) is the accepted attempt's MJCF export, the dashboard draws the accepted
+CAD parts on each body from `model.bodies`, with the primitives the policy
+trained on as outlines; a concept run says it is one (ADR-838). A run training a further seed beside a finished one charts the live
 seed and shows the newest seed that has a view, with that seed's policy.
+
+## Go-to-point: one source of point sequences (ADR-839)
+
+`cadex_goto.py` is the go-to-point task's one source, for training and the judge
+alike. `sequence(seed, split=, bands=)` draws a seeded sequence of points on the
+floor (8 by default, at least two behind the leg before and two to a side, 2–5 m
+apart plus 2.5 s at the leg's speed, so a run leg has a straight second to read),
+each with a speed from its band (`walk:0.4-0.7,run:1.0-1.5`, robot by
+robot) and, for at least two, a hold of 1–3 s. The draw is seeded by
+`(split, seed)`, so a `heldout` sequence is never one `train` drew.
+`layer_step(xp, ...)` is route A's scripted layer: from the base's planar pose it
+turns the lit point into a forward, lateral and yaw-rate command (turn in place
+past 60° off and on until within 30°, ADR-865; slow down as it closes; hold by small
+corrections), lights the next
+point on arrival (within 0.25 m, or 0.1 m when the point has a hold) or when the
+hold ends, never on a clock. It is written once with `xp.where`, so it runs in
+numpy and in jitted JAX.
+
+```bash
+python training/cadex_goto.py sequence --seed 0 --split heldout --bands walk:0.4-0.7,run:1.0-1.5
+~/cadex-train-venv/bin/python training/cadex_goto.py play runs/R/seed0/go1.cxpolicy \
+    --task outputs/go1_joystick-task.json --seed 0 --split heldout \
+    --bands walk:0.4-0.7,run:1.0-1.5 --goals cx,cy,cw
+```
+
+`play` runs a velocity-command policy through the layer on stock MuJoCo (CPU, the
+policy's own forward pass checked against its witness), writes the episode as
+`view/` beside the policy with each frame's lit point and hold, so the dashboard
+draws the points (docs/DASHBOARD.md), and writes `goto.json`: per point whether it
+was reached, the closest approach, the worst distance while held and the forward
+speed over its straight stretch, against G2's bar (reach 0.3 m, hold 0.15 m, no
+fall, speed within 15%), and `leg_s`, the time from a point lighting to reaching it.
+`play --other-model` (and `g2_judge.py --other-model`) plays a policy on a model it
+did not train on, its channels matched by name, as a cut's policy is judged on its
+export; `goto.json` then records both digests (`model_sha256`, `trained_on`;
+ADR-865). The play runs to every point or to a bound of each leg and a half turn
+at half their speed, so a slow robot is not cut off.
+
+**On a course (ADR-858).** `play --course COURSE.json` first stands a box course
+(the bundle's terrain form, as `CadexDynamics.terrain_evaluation_course` draws a
+held-out one) in the model's terrain slots, recompiling it so stock MuJoCo
+collides the placed boxes; a fall is then the base's height over the ground
+under it, and the course's `drawing` goes on the view, so the dashboard draws the
+course the episode stood on. `docs/probes/orun21/g2_judge.py --level L` plays ten
+held-out courses at one level; `--flat` an empty one.
+A policy that reads a height scan (`role: policy`) reads it over the course
+stood, or the bundle's own box course without `--course` (ADR-859).
+
+**Through a maze (ADR-860).** `play --sequence SEQ.json` plays a given sequence
+in place of a seeded draw. `cadex_goto.maze_route(maze, walls, seed, split=,
+bands=)` is one: from the engine's maze feature and its walls
+(`CadexDynamics.terrain_maze_walls`), a lead point outside the nearer door, each
+cell's centre on the way to the far door at the slowest band, a held lead point
+outside, and the same way back. A cell where the way turns (the door cells
+included) holds 0.3 s, so the layer arrives within 0.1 m and the robot turns at
+its centre. A course whose `walls` lists its wall slots is read every control
+step for any body of the robot inside one (MuJoCo's `mj_geomDistance`), since a
+course's walls stop only what the model lets touch the ground; any such step
+fails `clear_walls`. `g2_judge.py --level L --maze` plays the first ten held-out
+seeds whose course holds a maze, with the pool's walls turned on.
+
+**Training on it (ADR-840).** `cadex_train.py --goto walk:0.4-0.7,run:1.0-1.5`
+puts that share (`--goto-share`, default 0.2; 0.5 cost the Go1 its slow walk) of episodes on the layer: each
+draws one of 1024 `train`-split sequences, turned to a uniform heading about
+where the base starts, and the speed goals named by `--goto-goals` (forward,
+lateral, yaw rate, each a one-channel `value` in mm/s, m/s, deg/s or rad/s) are
+the layer's command from the base's pose at every step, for the observation and
+the tracking reward alike. The other episodes keep the bundle's drawn goals.
+Without `--goto` the graph and the policy header are unchanged.
+
+**On any robot (ADR-862).** `cadex_joystick.py TASK.json --out DIR` writes the
+task the Go1 passed G2 on (Playground's joystick: `cx`/`cy`/`cw` goals, body-frame
+velocity, gyro, gravity, joint positions and velocities and the last command for
+the actor, home + 0.5 rad actions, Playground's reward terms and randomisation,
+upside-down termination) onto the model of any bundle, a concept's, a cut's or
+an export's. The root, the driven joints, their ranges and keyframe pose, the
+feet (bodies with colliding geoms and none below them) and the floor are read
+from the model; substeps come from the model's own timestep. On the Go1 it
+writes every reward expression, randomisation entry, reset and termination of
+`docs/probes/orun18/a2_bundle.py`'s bundle, channel names apart. `--speeds
+VX,VY,WZ` bounds the goals (the Go1's 1.5, 0.8, 1.2). Slower speeds scale
+Playground's tracking widths (by the square of the speed ratio) and the reset kick
+with them, the ±1 kg trunk payload is capped at ±20% of the trunk's mass, and a
+source bundle with no goal (a fixed-speed engine task) is accepted (ADR-865). At
+the Go1's speeds every one of these writes what it wrote before.
+
+```bash
+~/cadex-train-venv/bin/python training/cadex_joystick.py RELAY/outputs/trot-task.json --out DIR
+```
+
+`play` reads a fall from the base's centre of mass, not its frame, so a root
+frame at the floor (leon V's concept chest) does not read as a fall.
 
 ## Training before the CAD: the concept model (ADR-834)
 
@@ -633,12 +788,20 @@ drives sit — are answered by training on it before any part is designed:
   and legs as chains of segments (`to`, or `length` + `pitch` + `dy`), each
   a capsule with a point mass at its far end for the next drive's housing;
   a passive joint can follow another at a ratio (a parallelogram linkage);
-  `mirror` adds the right leg. Drives are datasheets in the proxy's library
-  format plus the servo's `kp`/`kd`. The module docstring has every field.
+  `mirror` adds the right leg. A foot is a sphere, or capsule `soles` for
+  a flat foot that stands still (ADR-844). Drives are datasheets in the
+  proxy's library format plus the servo's `kp`/`kd`, or raw MJCF numbers.
+  The module docstring has every field.
 - **The model is the export's shape.** Body frames are the world frame at
-  the home pose, actuators are `<joint>/position`, and the sensors are the
-  engine's `obs/N` in its order, so a tool written against an exported
-  model reads a concept by name (`training/test_cadex_concept.py`).
+  the home pose, actuators are `<joint>/position`, and the sensors are
+  `obs/N` with foot `touch` sites, so a tool written against an exported
+  model reads a concept by name (`training/test_cadex_concept.py`). The
+  export lays its sensors out per its task (the biped's start with the
+  IMU), so a CAD task bundle does not run on a concept unchanged.
+- **Two worked specs**, each written from a CAD export to its names:
+  `examples/concept/leon-iv.json` and `examples/concept/orun9-biped.json`
+  (ADR-844; both legs written out, since the biped's pitch axes are +y on
+  both sides and the mirror rule would flip them).
 - **The report** says what the spec implies: each foot's height off the
   floor (the model stands on its lowest foot), each leg's hip height, reach
   and `bend` (a leg near 0 is a straight post and can barely slide its foot
@@ -651,13 +814,96 @@ spec, build the CAD to meet them, then train the detailed model again and
 compare. Like `cadex_train.py` it imports only the standard library at
 module scope.
 
+## From the CAD: the training model (ADR-841)
+
+`cadex_training_model.py` cuts a fast training MJCF from a project's MJCF
+export and checks it moves like the export, which stays the judge:
+
+```bash
+~/cadex-train-venv/bin/python training/cadex_training_model.py cut \
+    --project ~/cadex-projects/leon-v --out runs/cut/train-model.xml --json runs/cut/cut.json
+~/cadex-train-venv/bin/python training/cadex_training_model.py fidelity MODEL.xml [...] --project DIR
+```
+
+- **The cut** keeps the floor touching only the feet (the collision geoms on
+  each `touch` sensor's body) and the fall geoms (those on the root, or on a
+  body carrying more than one foot, once static bodies are merged), turns off
+  self-collision, fuses every joint-free body nothing names into its parent
+  by the parallel-axis sum, and sets a cheap solver. It refuses to write
+  unless mass, nq/nv/nu/neq, the actuator order, the sensors and the mass
+  matrix at qpos0 match the export, and marks the model
+  `cadex:tier = training`.
+- **The check** drives the export and the cut with the same open-loop
+  sinusoids and holds the root's path within 5 mm on every signal where the
+  export agrees with itself at half its step, then stands the cut 10 s at a
+  zero action on its feet alone.
+- **The solver is chosen by the check.** `cut` tries 2 ms Euler 2 / 3 first
+  (leon V: worst 1.88 mm; implicitfast there is 8.5 mm) and falls back to
+  implicitfast at the same step (the biped's stiff servos blow up under
+  explicit Euler damping). The report lists each setting tried.
+
+Pass the export as `--cad-model` to `cadex_train.py` and the dashboard draws
+the CAD on the cut's bodies (ADR-838).
+
+`cadex_train_bench.py` times any MJCF in MJX: env steps/s at a zero action
+from keyframe 0 (20 ms control steps, batched envs, compile timed apart),
+and whether every env stayed finite and upright. `--integrator`,
+`--timestep`, `--iterations` and `--ls-iterations` override the model's own
+options, so one cut can be timed under each setting the cut may pick
+(ADR-842):
+
+```bash
+systemd-run --user --scope -p MemoryMax=30G \
+  ~/cadex-train-venv/bin/python training/cadex_train_bench.py MODEL.xml \
+    [--envs 2048,8192] [--integrator implicitfast] [--json OUT]
+```
+
+`cadex_cad_vs_concept.py` measures one model beside another at the build
+pose and flags each difference over 5%, or 10 mm for a position (ADR-843):
+the total and trunk mass, the centre of mass, each leg's mass, hip height,
+reach, bend and foot x, and each driven joint's anchor, load inertia about
+its axis and armature. It names nothing per robot: the feet are the `touch`
+sites, a leg is rooted at the highest jointed body carrying only its foot,
+and rows match by body and joint name, so a concept spec meant to be
+compared names its bodies and joints as the CAD does. Either side may be a
+concept, an export or a cut; a cut reads as its export to 1e-8.
+
+```bash
+~/cadex-train-venv/bin/python training/cadex_cad_vs_concept.py CONCEPT.xml CAD.xml [--json OUT]
+```
+
+`cadex_relay.py` re-lays a CAD task bundle onto a concept or a cut by name
+(ADR-845), so the task the CAD was trained on trains the other tiers
+unchanged. The model's sensors become the export's, in the export's order
+(a site moves to the nearest kept ancestor of its body), so a policy reads
+the same channels on all three tiers and `cadex evaluate`'s success spec
+judges a concept- or cut-trained policy on the export's own bundle. Drives,
+body entries (reset variation, shoves, scans), randomised rows and
+qpos/qvel rows map by name; what the model lacks (a battery fused into the
+pelvis) is dropped and listed in `relay.json`, and a dropped channel that a
+reward, termination or foot term reads refuses. The control interval stays
+the export's and the substeps follow the model's own timestep (a 2.5 ms
+concept takes 8 per 20 ms action, not the export's 10); an interval that is
+not a whole number of the model's steps refuses (ADR-863).
+
+```bash
+~/cadex-train-venv/bin/python training/cadex_relay.py PROJECT/.../outputs/walk-task.json MODEL.xml --out DIR
+~/cadex-train-venv/bin/python training/cadex_train.py DIR/outputs/walk-task.json --tier concept ...
+./cadex evaluate --project PROJECT --task walk --weights RUN/policy.cxpolicy --out JUDGED
+```
+
+The last line judges the policy on the export with the engine's success
+spec (ADR-846). The whole route, spec to judged policy, is
+`training/RECIPE.md` §R.
+
 ## What the suites do, and do not, prove
 
 No suite trains (ADR-725). The engine and CLI suites hold the boundary
 above and nothing of the learner. The training venv's own tests,
-`training/test_cadex_proxy.py`, `training/test_curriculum_warm_start.py`,
+`training/test_cadex_proxy.py`, `training/test_cadex_training_model.py`,
+`training/test_curriculum_warm_start.py`,
 `training/test_canonical_body.py`, `training/test_terrain_pool.py` and
-`training/test_distill.py`, cover the proxy, the warm-start rules, the base
+`training/test_distill.py`, `training/test_cadex_concept.py` and `training/test_cadex_relay.py`, cover the proxy, the concept's layout and flat feet, the re-laying of a task by name, the training model's cut, the bench's solver override and the comparison's leg discovery, the warm-start rules, the base
 remap, the course pool's height scan (ADR-747) and distillation's routing
 and refusals. A change to the trainer is
 verified by running it: a few iterations on CPU (`SETUP.md` §b), then the

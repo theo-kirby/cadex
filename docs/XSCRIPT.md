@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-27
+Verified against source: 2026-10-29
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -83,35 +83,51 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   a free joint, and the ground it stands on is the environment's plane at
   z = 0 — never a part of the script. A grounded assembly gets no such floor.
   `assembly.mjcf(..., terrain={...})` swaps that plane for a declared course
-  (ADR-714..717, ADR-739, ADR-744, ADR-745); a grounded model is refused.
+  (ADR-714..717, ADR-739, ADR-744, ADR-745, ADR-853); a grounded model is refused.
   - **Features**, which add: `bump` (`x_mm`, `y_mm`, `radius_mm`,
     `height_mm`), `step` (`x_mm`, `height_mm`; negative steps down) and
     `slope` (`from_x_mm`, `to_x_mm`, `grade_deg`), over `x_range_mm` ×
     `y_range_mm`. The ground at the origin stays at z = 0. The course is in
     the file and in every task bundle built on it as `terrain`.
   - **Form.** The default is a heightfield at `cell_mm` (default 20; a step
-    is a one-cell ramp; a task refuses a cylinder or ellipsoid that can
-    touch it). `"form": "boxes"` builds the same features from placed boxes
-    and is **the form to train on**: MJX steps it as stably as the plane,
-    where the heightfield throws a driven rig to non-finite. On boxes a bump
+    is a one-cell ramp). It trains when only spheres and capsules can touch
+    it; a task refuses a cylinder, ellipsoid, box or mesh that can touch it
+    (ADR-854). `"form": "boxes"` builds the same features from placed boxes,
+    which MJX steps as stably as the plane under box, sphere and capsule
+    feet. On boxes a bump
     is a buried sphere no taller than its radius, there are no dips and no
     `cell_mm`, a step down off a slope's high end is refused
     (`terrain_step_off_slope`), and two kinds exist that a heightfield
     refuses (`terrain_kind_needs_boxes`): `platform` (`x_mm`, `y_mm`,
     `length_mm`, `width_mm`, `height_mm`), a walled block to jump onto, and
     `rock` (`x_mm`, `y_mm`, `radius_mm`, `height_mm` ≤ radius/4), a patch of
-    up to nine tilted stones. Every level runs out 50 m past the extent, so
+    up to nine tilted stones. Two more lay out in x and y (ADR-853):
+    `tiles` (`x_mm`, `y_mm`, `length_mm`, `width_mm`, `cell_mm`,
+    `height_mm`), a grid of at most 64 blocks of seeded heights, and `maze`
+    (`x_mm`, `y_mm`, `cells_x`, `cells_y` ≤ 6, `cell_mm`, `height_mm`,
+    `thickness_mm`), walls round a seeded single path from a door on its -x
+    side to one on its +x side; `cells_y: 1` is a corridor. Rock patches,
+    tile patches and mazes sit on flat ground. Every level runs out 50 m past the extent, so
     leaving a course is flat ground, not a fall.
+  - **From a mesh** (ADR-855): `"mesh": "<asset>.stl"` (or `.obj`, `.ply`)
+    in place of `features` samples a project mesh asset's top surface onto
+    the heightfield grid, at most 129 vertices a side, covering every
+    vertex, shifted so the origin's ground is z = 0.
   - **Drawn courses.** `"random": {"seed", "courses", "step_mm",
     "grade_deg", "bump_mm", ...}` in place of `features` draws steps, slopes
     and bumps from magnitude ranges behind a flat `clear_mm` (default 500),
     a flat `run_mm` before each, each signed back towards z = 0;
     `platform_mm` (with `platform_size_mm`, `platforms`) and `rock_mm` (with
-    `rock_radius_mm`, `rocks`) add platforms and rock patches, kept 100 mm
-    clear of the bumps and of each other, a patch only on flat ground. Course
+    `rock_radius_mm`, `rocks`) add platforms and rock patches, `tile_mm`
+    (with `tile_size_mm`, `tile_cell_mm`, `tiles`) tile patches and
+    `wall_mm` (with `maze_cell_mm`, `maze_cells`, `mazes`) mazes, kept 100 mm
+    clear of the bumps and of each other, all but platforms on flat ground. Course
     0 is the one the model carries; `terrain.pool` holds all `courses`
     (default 32, at most 64), the model has a box slot per box of the
     fullest, and the trainer gives each episode a pooled course.
+    `"levels": L` (ADR-856) makes the pool L difficulty levels of
+    `courses / L` courses each, every height range banded by level, for
+    the trainer's `--terrain-curriculum`.
   - `"collides_with": [group, ...]` makes the boxes touch only those
     collision groups, normally the feet's, which spares MJX the costly
     box–box and capsule–box pairs.

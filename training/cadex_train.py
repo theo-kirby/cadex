@@ -57,7 +57,9 @@ import math
 from pathlib import Path
 import platform
 import random
+import os
 import sys
+import threading
 import time
 from typing import Any, Sequence
 from xml.etree import ElementTree
@@ -95,6 +97,67 @@ PROGRESS_SCHEMA = "cadex-training-progress-v1"
 CURVE_POINTS_CAP = 512
 
 
+#: How often a live run rewrites ``progress.json`` when nothing else has,
+#: so a reader can tell a long compile from a dead process (ADR-837).
+HEARTBEAT_S = 10.0
+
+#: The tiers a run's model may be (ADR-837): a concept's boxes and capsules
+#: (ADR-834), a fast model cut from a CAD export, or the export itself.
+MODEL_TIERS = ("concept", "training", "cad")
+
+
+def _model_tier_mark(root: ElementTree.Element) -> str | None:
+    """The tier a model says it is: ``<custom><text name="cadex:tier" data=...>``."""
+
+    for text in root.iter("text"):
+        if text.get("name") == "cadex:tier" and text.get("data") in MODEL_TIERS:
+            return str(text.get("data"))
+    return None
+
+
+def model_identity(model_xml: bytes, *, cad_xml: bytes | None = None,
+                   tier: str | None = None) -> dict[str, Any]:
+    """What the dashboard needs to draw a run's model (ADR-837).
+
+    ``tier`` is the one stated, else the model's own ``cadex:tier`` mark,
+    else, given the CAD export it came from, ``cad`` when the two are the
+    same bytes and ``training`` when not; with neither it is ``unstated``
+    and a reader matches ``sha256`` against the CAD it knows. ``bodies``
+    maps each body of the model to the CAD bodies it carries -- a Cadex
+    export names each body after its component -- folding every CAD body
+    the model dropped (a welded part merged into its parent) into its
+    nearest ancestor the model kept. Without the CAD export, each body
+    carries itself. Standard library only.
+    """
+
+    root = ElementTree.fromstring(model_xml)
+    kept = [str(body.get("name")) for body in root.iter("body") if body.get("name")]
+    digest = hashlib.sha256(model_xml).hexdigest()
+    cad_digest = hashlib.sha256(cad_xml).hexdigest() if cad_xml is not None else None
+    tier = tier or _model_tier_mark(root) or (
+        None if cad_digest is None else "cad" if cad_digest == digest else "training")
+    bodies: dict[str, list[str]] = {name: [] for name in kept}
+    if cad_xml is None:
+        for name in kept:
+            bodies[name].append(name)
+    else:
+        wanted = set(kept)
+
+        def fold(element: ElementTree.Element, owner: str | None) -> None:
+            for body in element.findall("body"):
+                name = str(body.get("name") or "")
+                here = name if name in wanted else owner
+                if here is not None and name:
+                    bodies[here].append(name)
+                fold(body, here)
+
+        world = ElementTree.fromstring(cad_xml).find("worldbody")
+        if world is not None:
+            fold(world, None)
+    return {"sha256": digest, "tier": tier or "unstated", "cad_sha256": cad_digest,
+            "bodies": bodies}
+
+
 def decimated_curve(curve, cap=CURVE_POINTS_CAP, key="reward_per_step"):
     """A metric history as ``[[iteration, value], ...]``, capped.
 
@@ -105,7 +168,9 @@ def decimated_curve(curve, cap=CURVE_POINTS_CAP, key="reward_per_step"):
     """
 
     points = [
-        [int(entry["iteration"]), float(entry[key])]
+        [int(entry["iteration"]),
+         # ADR-856: a per-level count is a list, kept whole.
+         [float(v) for v in entry[key]] if isinstance(entry[key], list) else float(entry[key])]
         for entry in curve if entry.get(key) is not None
     ]
     if cap < 2 or len(points) <= cap:
@@ -330,6 +395,8 @@ def unflatten_parameters(np: Any, weights: Sequence[float], shapes):
 #:   observations -- a shove reaches the policy only through the state it
 #:   produces, which is the same 39 numbers either way.
 #: * ``reward`` does not. It changes the gradient, which is the point.
+#:   Nor does ``feet`` (ADR-861): ADR-870's stateful foot terms are reward
+#:   that an expression cannot say, read by the trainer only.
 #: * ``episode`` does not, for the horizon, and the engine says so in its own
 #:   words (ADR-136): "the policy cannot see it, because an observation is
 #:   sensor channels and carries no clock."
@@ -351,6 +418,7 @@ CURRICULUM_TASK_KEYS = frozenset({
     "randomisation",
     "reset_variation",
     "reward",
+    "feet",
     "success",
     "termination",
     # ADR-755: the canonical body names what the network reads and drives;
@@ -1106,7 +1174,17 @@ def check_policy_fits(
         refuse("the model digest", bundle["model_sha256"], model.get("sha256"))
     # ADR-759: a family run's actor reads its morph constants after them.
     wanted_channels = actor_channels(bundle["task"]) + family_morph_names(bundle)
-    if list(header.get("observations") or []) != wanted_channels:
+    read = list(header.get("observations") or [])
+    # ADR-859: a curriculum step that hands the actor a height scan appends
+    # the scan's channels after every input the source read (ADR-748 puts a
+    # policy scan last), and the warm start gives them zero weights.
+    gained = wanted_channels[len(read):]
+    if (curriculum is not None and "scans" in curriculum and gained
+            and wanted_channels[:len(read)] == read and not family_morph_names(bundle)
+            and set(gained) <= set(scan_channels(bundle["task"], policy_only=True))):
+        curriculum = curriculum + ["scans.actor"]
+        wanted_channels = read
+    if read != wanted_channels:
         refuse(
             "the observation channels, in order",
             wanted_channels,
@@ -1559,11 +1637,10 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
 
 # ---------------------------------------------------------------------------
 # A course re-drawn per episode (ADR-717). The bundle's terrain carries a
-# pool of courses as features; each environment is given one at every reset
-# and the model's terrain geoms are placed there. The box builder below is
-# ``CadexDynamics.terrain_boxes`` and ``terrain_box_geoms`` written out again,
-# because this file cannot import the engine. No test holds the two equal
-# since ADR-725: change them together.
+# pool of courses, each with its boxes and domes as the engine placed them
+# (ADR-852); each environment is given one at every reset and the model's
+# terrain geoms are placed there. This file builds no course: the engine's
+# ``terrain_boxes`` is the one source.
 # ---------------------------------------------------------------------------
 
 #: How this trainer gives an environment its course: drawn on device, on the
@@ -1575,178 +1652,27 @@ TERRAIN_POOL_ALGORITHM = (
     "drawn by the engine (terrain.random.algorithm)"
 )
 
-#: ``CadexDynamics`` constants the builder needs, copied and pinned equal.
+#: ``CadexDynamics`` constants for parking an empty slot, copied and pinned
+#: equal (``test_terrain_pool.py``).
 TERRAIN_BASE_MM = 50.0
-TERRAIN_FLAT_MM = 0.1
-TERRAIN_RAMP_HALF_THICKNESS_MM = 10.0
 TERRAIN_PARKED_DEPTH_MM = 1000.0
 TERRAIN_PARKED_HALF_MM = 1.0
-TERRAIN_RUNOUT_MM = 50000.0
-TERRAIN_ROCK_CELLS = 3
-TERRAIN_ROCK_TILT_DEG = (10.0, 25.0)
-TERRAIN_ROCK_EMPTY = 0.3
-
-
-def course_domes(features: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
-    """A validated course's dome records (``CadexDynamics.terrain_boxes``'
-    ``domes``, ADR-744): each bump a sphere whose cap is the bump."""
-
-    domes = []
-    for feature in features:
-        if feature["kind"] != "bump":
-            continue
-        foot, rise = feature["radius_mm"], feature["height_mm"]
-        domes.append({"x_mm": float(feature["x_mm"]), "y_mm": float(feature["y_mm"]),
-                      "top_mm": _course_profile_mm(features, feature["x_mm"]) + rise,
-                      "radius_mm": (foot * foot + rise * rise) / (2.0 * rise)})
-    return domes
-
-
-def _course_profile_mm(features: Sequence[dict[str, Any]], x_mm: float) -> float:
-    height = 0.0
-    for feature in features:
-        if feature["kind"] == "step":
-            if x_mm >= feature["x_mm"]:
-                height += feature["height_mm"]
-        elif feature["kind"] == "slope":
-            run = min(max(x_mm, feature["from_x_mm"]), feature["to_x_mm"]) - feature["from_x_mm"]
-            height += run * math.tan(math.radians(feature["grade_deg"]))
-    return height
-
-
-def course_boxes(features: Sequence[dict[str, Any]], x_range_mm: Sequence[float],
-                 y_range_mm: Sequence[float]) -> list[dict[str, Any]]:
-    """A validated course's box records (``CadexDynamics.terrain_boxes``,
-    without its refusals: the engine made them when it drew the pool); its
-    bumps are :func:`course_domes`."""
-
-    x0, x1 = (float(value) for value in x_range_mm)
-    y0, y1 = (float(value) for value in y_range_mm)
-    cuts = {x0, x1}
-    for feature in features:
-        if feature["kind"] not in ("step", "slope"):
-            continue
-        for key in ("x_mm",) if feature["kind"] == "step" else ("from_x_mm", "to_x_mm"):
-            if x0 < feature[key] < x1:
-                cuts.add(float(feature[key]))
-    edges = sorted(cuts)
-    segments = []
-    for a, b in zip(edges, edges[1:]):
-        rise = sum(
-            math.tan(math.radians(feature["grade_deg"]))
-            for feature in features
-            if feature["kind"] == "slope"
-            and feature["from_x_mm"] <= a and feature["to_x_mm"] >= b
-        )
-        za = _course_profile_mm(features, a)
-        segments.append((a, b, za, za + rise * (b - a)))
-    lowest = min(0.0, *(min(za, zb) for _, _, za, zb in segments))
-    boxes: list[dict[str, Any]] = []
-
-    def box(shape, xs, ys, tops):
-        boxes.append({"shape": shape, "x_range_mm": [float(v) for v in xs],
-                      "y_range_mm": [float(v) for v in ys],
-                      "top_mm": [float(v) for v in tops]})
-
-    # ADR-745: the first and last level run on past the extent, and every
-    # segment across it, so the ground has no edge an episode reaches.
-    a, b, za, zb = segments[0]
-    if abs(zb - za) <= TERRAIN_FLAT_MM:
-        segments[0] = (x0 - TERRAIN_RUNOUT_MM, b, za, zb)
-    else:
-        segments.insert(0, (x0 - TERRAIN_RUNOUT_MM, x0, za, za))
-    a, b, za, zb = segments[-1]
-    if abs(zb - za) <= TERRAIN_FLAT_MM:
-        segments[-1] = (a, x1 + TERRAIN_RUNOUT_MM, za, zb)
-    else:
-        segments.append((x1, x1 + TERRAIN_RUNOUT_MM, zb, zb))
-    across = (y0 - TERRAIN_RUNOUT_MM, y1 + TERRAIN_RUNOUT_MM)
-    for a, b, za, zb in segments:
-        low = min(za, zb)
-        if low > lowest + TERRAIN_FLAT_MM:
-            box("block", (a, b), across, (low, low))
-        if abs(zb - za) > TERRAIN_FLAT_MM:
-            box("ramp", (a, b), across, (za, zb))
-    for feature in features:
-        if feature["kind"] == "platform":
-            top = _course_profile_mm(features, feature["x_mm"]) + feature["height_mm"]
-            box("block", (feature["x_mm"] - feature["length_mm"] / 2.0,
-                          feature["x_mm"] + feature["length_mm"] / 2.0),
-                (feature["y_mm"] - feature["width_mm"] / 2.0,
-                 feature["y_mm"] + feature["width_mm"] / 2.0), (top, top))
-        elif feature["kind"] == "rock":
-            boxes.extend(course_rock_stones(feature, _course_profile_mm(features, feature["x_mm"])))
-    return boxes
-
-
-def course_rock_stones(rock: dict[str, Any], ground_mm: float) -> list[dict[str, Any]]:
-    """A rock patch's stones (``CadexDynamics.terrain_rock_stones``, ADR-745)."""
-
-    import random
-
-    x, y, radius, height = (float(rock[key]) for key in ("x_mm", "y_mm", "radius_mm", "height_mm"))
-    rng = random.Random(f"cadex-rock:{x!r}:{y!r}:{radius!r}:{height!r}")
-    cell = 2.0 * radius / TERRAIN_ROCK_CELLS
-    room = cell / 2.0
-    stones = []
-    for i in range(TERRAIN_ROCK_CELLS):
-        for j in range(TERRAIN_ROCK_CELLS):
-            centre_cell = (i, j) == (TERRAIN_ROCK_CELLS // 2, TERRAIN_ROCK_CELLS // 2)
-            if not centre_cell and rng.random() < TERRAIN_ROCK_EMPTY:
-                continue
-            about = rng.choice(("x", "y"))
-            tilt = math.radians(rng.uniform(*TERRAIN_ROCK_TILT_DEG)) * rng.choice((-1.0, 1.0))
-            sine, cosine = abs(math.sin(tilt)), math.cos(tilt)
-            turned = (rng.uniform(0.55, 0.95) * room - height * sine) / cosine
-            across = rng.uniform(0.55, 0.95) * room
-            reach = turned * cosine + height * sine
-            rise = turned * sine + height * cosine
-            if about == "y":
-                half, plan = [turned, across, height], (reach, across)
-                quat = [math.cos(tilt / 2.0), 0.0, math.sin(tilt / 2.0), 0.0]
-            else:
-                half, plan = [across, turned, height], (across, reach)
-                quat = [math.cos(tilt / 2.0), math.sin(tilt / 2.0), 0.0, 0.0]
-            cx = x - radius + (i + 0.5) * cell + rng.uniform(-1.0, 1.0) * (room - plan[0])
-            cy = y - radius + (j + 0.5) * cell + rng.uniform(-1.0, 1.0) * (room - plan[1])
-            peak = float(ground_mm) + rng.uniform(0.4, 1.0) * height
-            stones.append({"shape": "stone", "centre_mm": [cx, cy, peak - rise],
-                           "quat": quat, "half_mm": half, "top_mm": peak})
-    return stones
 
 
 def course_geoms(boxes: Sequence[dict[str, Any]], lowest_mm: float, slots: int,
                  scale: float) -> dict[str, Any]:
     """Where each of ``slots`` box geoms stands for one course, in metres
-    (``CadexDynamics.terrain_box_geoms``): the course's boxes, then parked
+    (``CadexDynamics.terrain_box_geoms``): the course's boxes as the engine
+    placed them (``centre_mm``, ``quat``, ``half_mm``; ADR-852), then parked
     cubes under the plane. ``scale`` is the bundle's metres per millimetre
     (``terrain.scale``)."""
 
     lowest = float(lowest_mm)
     pos, quat, size = [], [], []
     for record in boxes:
-        if record["shape"] == "stone":
-            pos.append([value * scale for value in record["centre_mm"]])
-            quat.append([float(value) for value in record["quat"]])
-            size.append([value * scale for value in record["half_mm"]])
-            continue
-        (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
-        za, zb = record["top_mm"]
-        if record["shape"] == "block":
-            bottom = lowest - TERRAIN_BASE_MM
-            centre = [(xa + xb) / 2.0, (ya + yb) / 2.0, (za + bottom) / 2.0]
-            half = [(xb - xa) / 2.0, (yb - ya) / 2.0, (za - bottom) / 2.0]
-            turn = [1.0, 0.0, 0.0, 0.0]
-        else:
-            grade = math.atan2(zb - za, xb - xa)
-            thick = TERRAIN_RAMP_HALF_THICKNESS_MM
-            centre = [(xa + xb) / 2.0 + thick * math.sin(grade), (ya + yb) / 2.0,
-                      (za + zb) / 2.0 - thick * math.cos(grade)]
-            half = [math.hypot(xb - xa, zb - za) / 2.0, (yb - ya) / 2.0, thick]
-            turn = [math.cos(grade / 2.0), 0.0, -math.sin(grade / 2.0), 0.0]
-        pos.append([value * scale for value in centre])
-        quat.append(turn)
-        size.append([value * scale for value in half])
+        pos.append([value * scale for value in record["centre_mm"]])
+        quat.append([float(value) for value in record["quat"]])
+        size.append([value * scale for value in record["half_mm"]])
     parked = lowest - TERRAIN_BASE_MM - TERRAIN_PARKED_DEPTH_MM
     for _ in range(int(slots) - len(boxes)):
         pos.append([0.0, 0.0, parked * scale])
@@ -1816,12 +1742,11 @@ def terrain_pool(np: Any, terrain: dict[str, Any]) -> dict[str, Any]:
         "plane_z", "pos", "quat", "size", "scan", "lowest", "dome_pos", "dome_size",
         "dome_scan")}
     for course in terrain["pool"]:
-        boxes = course_boxes(course["features"], terrain["x_range_mm"], terrain["y_range_mm"])
-        if len(boxes) != int(course["boxes"]):
+        boxes, domes = course["boxes"], course.get("domes") or []
+        if not isinstance(boxes, list) or not isinstance(domes, list):
             raise SystemExit(
-                f"a pooled course builds {len(boxes)} boxes here and "
-                f"{course['boxes']} in the engine, so this trainer's box "
-                "builder is not the engine's")
+                "this bundle's terrain pool counts its courses' boxes rather than "
+                "carrying them (before ADR-852); re-export the task bundle")
         placed = course_geoms(boxes, course["lowest_mm"], slots, float(terrain["scale"]))
         lowest = float(course["lowest_mm"])
         columns["plane_z"].append(placed["plane_z_m"])
@@ -1830,12 +1755,6 @@ def terrain_pool(np: Any, terrain: dict[str, Any]) -> dict[str, Any]:
         columns["size"].append(placed["size_m"])
         columns["lowest"].append(lowest)
         columns["scan"].append(box_scan_rows(course_geoms(boxes, lowest, slots, 1.0)))
-        domes = course_domes(course["features"])
-        if len(domes) != int(course.get("domes", 0)):
-            raise SystemExit(
-                f"a pooled course builds {len(domes)} domes here and "
-                f"{course.get('domes', 0)} in the engine, so this trainer's dome "
-                "builder is not the engine's")
         parked = lowest - TERRAIN_BASE_MM - TERRAIN_PARKED_DEPTH_MM
         rows = ([[d["x_mm"], d["y_mm"], d["top_mm"] - d["radius_mm"], d["radius_mm"]] for d in domes]
                 + [[0.0, 0.0, parked, 0.0]] * (dome_slots - len(domes)))
@@ -2815,6 +2734,59 @@ def feet_step(xp: Any, terms: dict[str, Any], memory: Sequence[Any], contact: An
     return pay, (air * (1.0 - down), contact, peak * (1.0 - down))
 
 
+#: ADR-840: the train-split go-to-point sequences one run draws its episodes from.
+GOTO_PLANS = 1024
+#: A goal's unit against the layer's m/s and rad/s.
+GOTO_UNITS = {"mm/s": 1000.0, "m/s": 1.0, "deg/s": math.degrees(1.0), "rad/s": 1.0}
+
+
+def goto_training(task: dict[str, Any], host: Any, options: argparse.Namespace,
+                  seed: int, np: Any) -> dict[str, Any]:
+    """What ``--goto`` trains under (ADR-840): the layer, its plans and where it writes.
+
+    ``cadex_goto`` (ADR-839) is the one sequence source and layer; this reads
+    which goal columns it commands (``--goto-goals``, forward, lateral, yaw
+    rate), their units and ranges, and the base's free joint, and stacks
+    :data:`GOTO_PLANS` ``train``-split sequences seeded from ``seed``. No
+    held-out sequence is ever among them.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import cadex_goto
+
+    entries = list(task.get("goal") or ())
+    if any(entry["kind"] == "waypoint" for entry in entries):
+        raise SystemExit("--goto drives speed goals; this task's waypoint goal is a second target")
+    wanted = str(options.goto_goals).split(",")
+    offsets, cursor = {}, 0
+    for entry in entries:
+        offsets[str(entry["name"])] = (cursor, entry)
+        cursor += len(entry["channels"])
+    if len(wanted) != 3 or any(name not in offsets for name in wanted):
+        raise SystemExit(f"--goto-goals names the forward, lateral and yaw-rate goals; "
+                         f"this task declares {sorted(offsets)}")
+    columns, scales, limits = [], [], {}
+    for axis, name in zip(("vx", "vy", "wz"), wanted):
+        at, entry = offsets[name]
+        if entry["kind"] != "value" or len(entry["channels"]) != 1 or entry.get("unit") not in GOTO_UNITS:
+            raise SystemExit(f"--goto-goals: {name!r} is not a one-channel speed or rate value")
+        scale = GOTO_UNITS[entry["unit"]]
+        columns.append(at)
+        scales.append(scale)
+        limits[axis] = [float(entry["low"]) / scale, float(entry["high"]) / scale]
+    free = [j for j in range(host.njnt) if int(host.jnt_type[j]) == 0]
+    if not free:
+        raise SystemExit("--goto needs a floating base; this model has no free joint")
+    if not 0.0 < float(options.goto_share) <= 1.0:
+        raise SystemExit("--goto-share is the share of episodes on the layer, in (0, 1]")
+    bands = cadex_goto.parse_bands(options.goto)
+    plans = cadex_goto.stack(np, [cadex_goto.sequence(int(seed) * GOTO_PLANS + i, split="train", bands=bands)
+                                  for i in range(GOTO_PLANS)])
+    return {"module": cadex_goto, "plans": plans, "columns": np.asarray(columns, dtype=np.int32),
+            "scales": np.asarray(scales, dtype=np.float32), "limits": limits,
+            "qpos": int(host.jnt_qposadr[free[0]]), "share": float(options.goto_share)}
+
+
 def resolved_reward_floor(options) -> float | None:
     """ADR-700's per-step reward floor, resolved once, or ``None`` for none.
 
@@ -3091,6 +3063,42 @@ def build_environment(
                 f"{len(dome_geoms)} environment/terrain/dome/<j>")
         pool_device = {key: jnp.asarray(value, dtype=jnp.float32)
                        for key, value in pool.items()}
+    # ADR-856: the game-inspired curriculum on points reached. A PYTHON bool,
+    # so a run without --terrain-curriculum draws its courses as before.
+    leveled = bool(getattr(options, "terrain_curriculum", False))
+    levels = 0
+    if leveled:
+        levels = int(((task.get("terrain") or {}).get("random") or {}).get("levels") or 0)
+        if not redrawing or not levels:
+            raise SystemExit("--terrain-curriculum moves episodes between a pool's levels; "
+                             "this bundle's terrain declares no random.levels (ADR-856)")
+        if not getattr(options, "goto", None):
+            raise SystemExit("--terrain-curriculum promotes on points reached; give --goto")
+        per_level = pool_size // levels
+        promote_at = int(getattr(options, "terrain_promote", 1))
+        if promote_at < 1:
+            raise SystemExit("--terrain-promote is the points an episode reaches to go up, from 1")
+
+    def draw_course(key, level):
+        """Each environment's course: any pooled one, or one of its level's (ADR-856)."""
+
+        if leveled:
+            return level * per_level + jax.random.randint(key, (envs,), 0, per_level)
+        return jax.random.randint(key, (envs,), 0, pool_size)
+
+    def moved_level(key, level, goto_state, done, fell):
+        """legged_gym's game rule on points reached (ADR-856): an episode on the
+        layer that ended with ``promote_at`` points reached and no fall goes up
+        a level, past the top to a random one; one that fell or reached none
+        goes down, never under 0. Every other episode keeps its level."""
+
+        reached = goto_state["index"]
+        counted = done & goto_state["on"]
+        up = counted & ~fell & (reached >= promote_at)
+        down = counted & (fell | (reached < 1))
+        higher = level + 1
+        higher = jnp.where(higher >= levels, jax.random.randint(key, (envs,), 0, levels), higher)
+        return jnp.where(up, higher, jnp.where(down, jnp.maximum(level - 1, 0), level))
 
     def placed(m, course):
         return place_course(m, pool_device, slot_geoms, plane_geom, course, dome_geoms)
@@ -3157,6 +3165,56 @@ def build_environment(
     goal_pool_size = int(goal_tables[0].shape[0]) if goaled else 0
     # ADR-751: a PYTHON bool, so a task with no waypoint traces as before.
     waypointed = any(entry["kind"] == "waypoint" for entry in goal_entries)
+    # ADR-840: route A's go-to-point layer commands a share of the episodes.
+    # A PYTHON bool, so a run without --goto traces as before.
+    going = bool(getattr(options, "goto", None))
+    if going:
+        if not goaled:
+            raise SystemExit("--goto commands a task's speed goals; this task states none")
+        goto = goto_training(task, host, options, seed, np)
+        goto_plans = {key: jnp.asarray(value) for key, value in goto["plans"].items()}
+        goto_columns = jnp.asarray(goto["columns"])
+        goto_scales = jnp.asarray(goto["scales"])
+        goto_dt = float(episode["control_interval_s"])
+
+    def goto_advance(key, state, data, done):
+        """The layer one step on, from the pose ``data`` holds (ADR-840).
+
+        Where ``done``, the episode is fresh: a plan from the pool, turned by
+        a uniform heading about where the base now stands (C-13: the first
+        point is at any bearing), on the layer with chance ``--goto-share``,
+        and the first point lit. ``told`` is the command in the goal's units.
+        """
+
+        layer = goto["module"]
+        count = goto_plans["speeds"].shape[0]
+        k_pick, k_turn, k_on = jax.random.split(key, 3)
+        pick = jnp.where(done, jax.random.randint(k_pick, (envs,), 0, count), state["pick"])
+        turn = jnp.where(done, jax.random.uniform(k_turn, (envs,), minval=-math.pi, maxval=math.pi),
+                         state["turn"])
+        on = jnp.where(done, jax.random.uniform(k_on, (envs,)) < goto["share"], state["on"])
+        base = data.qpos[:, goto["qpos"]:goto["qpos"] + 7]
+        start = jnp.where(done[:, None], base[:, :2], state["start"])
+        fresh = layer.layer_start(jnp, (envs,))
+        moved = {name: jnp.where(done, fresh[name], state[name]) for name in fresh}
+        c, s = jnp.cos(turn)[:, None], jnp.sin(turn)[:, None]
+        points = goto_plans["points"][pick]
+        plan = {"points": jnp.stack([c * points[..., 0] - s * points[..., 1] + start[:, :1],
+                                     s * points[..., 0] + c * points[..., 1] + start[:, 1:]], axis=-1),
+                "speeds": goto_plans["speeds"][pick], "holds": goto_plans["holds"][pick]}
+        w, x, y, z = (base[:, 3 + i] for i in range(4))
+        yaw = jnp.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+        moved, command = layer.layer_step(jnp, plan, moved, base[:, 0], base[:, 1], yaw,
+                                          goto_dt, goto["limits"])
+        told = jnp.stack([command[a] for a in ("vx", "vy", "wz")], axis=-1) * goto_scales
+        return {"pick": pick, "turn": turn, "on": on, "start": start, **moved,
+                "told": told.astype(jnp.float32)}
+
+    def goto_told(told, state):
+        """The episode's drawn goals, with the layer's command where it is on."""
+
+        return told.at[:, goto_columns].set(
+            jnp.where(state["on"][:, None], state["told"], told[:, goto_columns]))
 
     def goals_at(picks, steps):
         """Each environment's goal channels at its own episode step.
@@ -3557,7 +3615,7 @@ def build_environment(
     scale_out = jnp.asarray(output_scale, dtype=jnp.float32)
     bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
 
-    def sensed(key, data, picks, steps, origin, carry, course=None, turned=None):
+    def sensed(key, data, picks, steps, origin, carry, course=None, turned=None, going_state=None):
         """The observation the policy acts on, in the state ``data`` holds.
 
         What the policy acts on carries its sensors' noise; the reward and
@@ -3577,6 +3635,8 @@ def build_environment(
         told = None
         if goaled:
             told = goals_at(picks, steps)
+            if going:
+                told = goto_told(told, going_state)
             if waypointed:
                 # ADR-751: the point read from where the base is.
                 told = waypoint_vector(jnp, task, told, data.xipos, data.xmat)
@@ -3632,8 +3692,9 @@ def build_environment(
         pick_key, forces, starts = drawn_pushes(start_key)
         # ADR-717: folded from the start key, like ADR-709's origin, so a
         # task on one course draws the stream it always did.
-        course = (jax.random.randint(jax.random.fold_in(start_key, 717), (envs,),
-                                     0, pool_size) if redrawing else None)
+        level = jnp.zeros((envs,), dtype=jnp.int32) if leveled else None
+        course = (draw_course(jax.random.fold_in(start_key, 717), level)
+                  if redrawing else None)
         course_args = (course,) if redrawing else ()
         data = batched_forward(model, make.replace(qpos=qpos, qvel=qvel), *course_args)
         steps = jnp.zeros((envs,), dtype=jnp.int32)
@@ -3652,6 +3713,8 @@ def build_environment(
             info["origin"] = origin
         if redrawing:
             info["course"] = course
+        if leveled:
+            info["level"] = level
         turned = jnp.zeros((envs,), dtype=jnp.float32) if cadenced else None
         if cadenced:
             info["turned"] = turned
@@ -3670,7 +3733,16 @@ def build_environment(
             info["feet"] = (jnp.zeros((envs, count), dtype=jnp.float32),
                             jnp.zeros((envs, count), dtype=jnp.bool_),
                             jnp.zeros((envs, count), dtype=jnp.float32))
-        key, vector = sensed(key, data, picks, steps, origin, carry, course, turned)
+        if going:
+            # ADR-840: every environment starts a fresh go-to-point episode.
+            blank = {"pick": jnp.zeros((envs,), jnp.int32), "turn": jnp.zeros((envs,), jnp.float32),
+                     "on": jnp.zeros((envs,), bool), "start": jnp.zeros((envs, 2), jnp.float32),
+                     **goto["module"].layer_start(jnp, (envs,)),
+                     "told": jnp.zeros((envs, 3), jnp.float32)}
+            info["goto"] = goto_advance(jax.random.fold_in(start_key, 840), blank, data,
+                                        jnp.ones((envs,), bool))
+        key, vector = sensed(key, data, picks, steps, origin, carry, course, turned,
+                             info.get("goto"))
         info["key"] = key
         return State(pipeline_state=data, obs=observation(vector),
                      reward=jnp.zeros((envs,), dtype=jnp.float32),
@@ -3702,6 +3774,9 @@ def build_environment(
         carry = info["carry"]
         surface = action * scale_out + bias_out
         told = goals_at(picks, steps) if goaled else None
+        if going:
+            # ADR-840: the command the layer gave from where this step starts.
+            told = goto_told(told, info["goto"])
         goal_args = ((course,) if redrawing else ()) + ((told,) if goaled else ())
         turned = None
         if cadenced:
@@ -3772,8 +3847,12 @@ def build_environment(
         _unused, fresh_forces, fresh_starts = drawn_pushes(push_key)
         if redrawing:
             # ADR-717: an episode that ended starts its next on a fresh course.
-            course = jnp.where(done, jax.random.randint(
-                jax.random.fold_in(reset_key, 717), (envs,), 0, pool_size), course)
+            if leveled:
+                info = {**info, "level": moved_level(
+                    jax.random.fold_in(reset_key, 856), info["level"], info["goto"],
+                    done, terminated)}
+            course = jnp.where(done, draw_course(
+                jax.random.fold_in(reset_key, 717), info.get("level")), course)
         course_args = (course,) if redrawing else ()
 
         def where_done(new, old):
@@ -3825,7 +3904,11 @@ def build_environment(
             # because unlike the filter's memory these are observed.
             carry = (jnp.where(done[:, None], reset_command[None, :], issued),
                      jnp.where(done[:, None], reset_command[None, :], replaced))
-        key, vector = sensed(key, data, picks, steps, origin, carry, course, turned)
+        if going:
+            # ADR-840: from where the step landed, or the fresh episode's pose.
+            info["goto"] = goto_advance(jax.random.fold_in(reset_key, 840), info["goto"], data, done)
+        key, vector = sensed(key, data, picks, steps, origin, carry, course, turned,
+                             info.get("goto"))
         info.update(key=key, forces=forces, starts=starts, elapsed=elapsed,
                     steps=steps, carry=carry,
                     truncation=truncation.astype(jnp.float32),
@@ -3855,6 +3938,7 @@ def build_environment(
             self.output_scale = output_scale
             self.output_bias = output_bias
             self.horizon = horizon
+            self.levels = levels
             self.action_size = len(actions)
             self.observation_size = {"state": (len(actor_names),),
                                      "privileged_state": (len(names),)}
@@ -3898,6 +3982,31 @@ def softplus_inverse(value: float) -> float:
     if value > 30.0:
         return value
     return math.log(math.expm1(value))
+
+
+def compilation_cache_dir() -> str:
+    """Where compiled programs persist between runs, or "" for nowhere (ADR-849).
+
+    ``CADEX_JAX_CACHE`` names the directory (``off`` turns it off); jax's
+    own ``JAX_COMPILATION_CACHE_DIR`` wins when set. Keyed by jax on the
+    program, its shapes and the backend, so a rerun on the same model and
+    batch loads instead of compiling, and anything else compiles as before."""
+
+    if os.environ.get("JAX_COMPILATION_CACHE_DIR"):
+        return os.environ["JAX_COMPILATION_CACHE_DIR"]
+    chosen = os.environ.get("CADEX_JAX_CACHE", "")
+    if chosen.lower() == "off":
+        return ""
+    return chosen or str(Path.home() / ".cache" / "cadex" / "jax")
+
+
+def use_compilation_cache(jax: Any) -> None:
+    directory = compilation_cache_dir()
+    if not directory:
+        return
+    jax.config.update("jax_compilation_cache_dir", directory)
+    # Only programs that took a second to compile: the rest load no faster.
+    jax.config.update("jax_persistent_cache_min_compile_time_secs", 1.0)
 
 
 def train(
@@ -3945,6 +4054,7 @@ def train(
     from brax.training.agents.ppo import networks as ppo_networks
 
     match_engine_actuator_derivative(mujoco, jax, jnp)
+    use_compilation_cache(jax)
     emit = emit or (lambda tag, iteration, reward, trained: None)
     progress = progress or (lambda **fields: None)
 
@@ -4126,7 +4236,25 @@ def train(
                 f"{trained_with!r} activation and this run trains "
                 f"{activation_name!r}. Weights do not carry across an "
                 f"activation; pass --activation {trained_with} to continue it.")
-        restored = unflatten_parameters(np, decoded["weights"], shapes)
+        gained = (len(env.actor_names) - len(source_header.get("observations") or ())
+                  if "scans.actor" in (curriculum_keys or ()) else 0)
+        restored = unflatten_parameters(
+            np, decoded["weights"], [(shapes[0][0] - gained, shapes[0][1])] + list(shapes[1:]))
+        if gained:
+            # ADR-859: the scan's inputs join with zero weights, so the warmed
+            # actor plays the source's policy until training moves them, and
+            # their statistics start fresh (mean 0, std 1, one sample).
+            first, bias = restored[0]
+            restored[0] = (np.concatenate([np.asarray(first), np.zeros(
+                (gained, first.shape[1]), dtype=np.float32)]), bias)
+            stats = source_header.get("normaliser") or {}
+            source_header = {**source_header, "normaliser": {
+                **stats, "mean": list(stats["mean"]) + [0.0] * gained,
+                "std": list(stats["std"]) + [1.0] * gained}}
+            actor_carried = [True] * (shapes[0][0] - gained) + [False] * gained
+            if not options.quiet:
+                print(f"init-from  the actor gains {gained} height-scan inputs at zero weight",
+                      flush=True)
         layers = dict(params.policy["params"])
         for index, (weight, bias) in enumerate(restored):
             name = f"hidden_{index}"
@@ -4304,10 +4432,12 @@ def train(
             functools.partial(sgd_step, data=data, normaliser=normaliser, train_actor=train_actor),
             (optimizer_state, params, sgd_key), (), length=epochs)
         endings = jnp.sum(1.0 - data.discount)
-        # Steps taken in this batch over episodes that ended in it; with
-        # nothing ending it reads the whole batch, which cannot be an episode
-        # length and is meant to be read as "nothing is resetting" (ADR-101).
-        episode_steps = jnp.float32(unroll * envs) / jnp.maximum(endings, 1.0)
+        # Steps taken in this batch over episodes that ended in it, at most
+        # the horizon: a time-out is not an ending, so with nothing ending the
+        # ratio reads the whole batch (81,920 on leon V), where the episodes
+        # in fact ran to the horizon (ADR-101, ADR-851).
+        episode_steps = jnp.minimum(jnp.float32(unroll * envs) / jnp.maximum(endings, 1.0),
+                                    jnp.float32(env.horizon))
         report = {
             "reward_per_step": jnp.mean(data.reward),
             "loss": jnp.mean(metrics["total_loss"][-1]),
@@ -4318,41 +4448,46 @@ def train(
         if teachers:
             report["distill_loss"] = jnp.mean(metrics["distill_loss"][-1])
             report["taught"] = jnp.mean(metrics["taught"][-1])
+        if env.levels:
+            # ADR-856: how many environments stand on each level now.
+            report["levels"] = jnp.bincount(env_state.info["level"], length=env.levels)
         return optimizer_state, params, normaliser, env_state, key, report
-
-    @jax.jit
-    def witness_rollout(normaliser, policy_params, key):
-        """The deterministic policy on the witness batch: what it reads."""
-
-        policy = make_policy((normaliser, policy_params, None), deterministic=True)
-
-        def one(state, step_key):
-            action, _ = policy(state.obs, step_key)
-            return witness_env.step(state, action), state.obs["state"]
-
-        state = witness_env.reset(key)
-        _state, seen = jax.lax.scan(one, state, jax.random.split(key, unroll))
-        return seen
 
     view_steps = 0
     if getattr(options, "view_seconds", 0) and not bundle.get("family"):
         interval = float(bundle["task"]["episode"]["control_interval_s"])
         view_steps = max(1, round(float(options.view_seconds) / interval))
+    rollout_steps = max(unroll, view_steps)
 
     @jax.jit
-    def view_rollout(normaliser, policy_params, key):
-        """The deterministic policy on the witness batch, every pose (ADR-835)."""
+    def witness_rollout(normaliser, policy_params, key):
+        """The deterministic policy on the witness batch: what it reads, every pose.
+
+        One compiled rollout serves the witness (its first ``--unroll``
+        observations) and the closing view (its poses, ADR-835): compiled
+        twice, they cost the run's end ~25 s each (ADR-849)."""
 
         policy = make_policy((normaliser, policy_params, None), deterministic=True)
 
         def one(state, step_key):
             action, _ = policy(state.obs, step_key)
-            state = witness_env.step(state, action)
-            return state, state.pipeline_state.qpos
+            after = witness_env.step(state, action)
+            return after, (state.obs["state"], after.pipeline_state.qpos)
 
         state = witness_env.reset(key)
-        _state, poses = jax.lax.scan(one, state, jax.random.split(key, view_steps))
-        return jnp.concatenate([state.pipeline_state.qpos[None], poses])
+        _state, (seen, poses) = jax.lax.scan(
+            one, state, jax.random.split(key, rollout_steps))
+        return seen[:unroll], jnp.concatenate([state.pipeline_state.qpos[None], poses])
+
+    rolled = {}
+
+    def rollout(params, normaliser):
+        """The witness rollout of these weights, run once however often it is asked."""
+
+        if rolled.get("params") is not params or rolled.get("normaliser") is not normaliser:
+            rolled.update(params=params, normaliser=normaliser,
+                          result=witness_rollout(normaliser, params.policy, witness_key))
+        return rolled["result"]
 
     def view_poses(params, normaliser):
         """[step, qpos] of the witness episode that travelled farthest forward, or None.
@@ -4362,7 +4497,7 @@ def train(
         if not view_steps:
             return None
         try:
-            poses = np.asarray(view_rollout(normaliser, params.policy, witness_key),
+            poses = np.asarray(rollout(params, normaliser)[1][:view_steps + 1],
                                dtype=np.float64)
             host = mujoco.MjModel.from_xml_string(bundle["model_xml"].decode("utf-8"))
         except Exception as error:  # noqa: BLE001
@@ -4379,7 +4514,7 @@ def train(
         return poses[:, pick, :]
 
     def snapshot(params, normaliser, curve, wall):
-        seen = np.asarray(witness_rollout(normaliser, params.policy, witness_key)
+        seen = np.asarray(rollout(params, normaliser)[0]
                           ).reshape((-1, len(env.actor_names)))
         if seen.shape[0] >= WITNESS_SAMPLES:
             picks = np.linspace(0, seen.shape[0] - 1, WITNESS_SAMPLES).astype(int)
@@ -4476,7 +4611,9 @@ def train(
         (optimizer_state, params, normaliser, env_state, key,
          report) = iterate(optimizer_state, params, normaliser, env_state, key, train_actor)
         entry = {"iteration": iteration,
-                 **{name: float(value) for name, value in report.items()}}
+                 **{name: (float(value) if jnp.ndim(value) == 0
+                           else [int(count) for count in np.asarray(value)])
+                    for name, value in report.items()}}
         curve.append(entry)
         if not collapsed:
             collapsed = episode_collapse(curve, env.horizon)
@@ -4495,7 +4632,8 @@ def train(
                 f"  episode {entry['episode_steps']:.1f}"
                 f"  sigma {entry['action_std']:.4f}"
                 + (f"  distill {entry['distill_loss']:.4g} on {entry['taught']:.2f}"
-                   if teachers else ""),
+                   if teachers else "")
+                + (f"  levels {entry['levels']}" if "levels" in entry else ""),
                 file=sys.stderr,
             )
         # Stop at the first non-finite number: diverged parameters do not
@@ -4524,8 +4662,11 @@ def train(
                         normaliser=normaliser)
         due = every and (iteration + 1) % every == 0
         if due and iteration + 1 < total_iterations:
-            emit(f"{iteration + 1:06d}", iteration, entry["reward_per_step"],
-                 snapshot(params, normaliser, curve, elapsed_wall))
+            numbered = snapshot(params, normaliser, curve, elapsed_wall)
+            # Its rollout is the witness's, already run: the dashboard plays
+            # it on the checkpoint scrubber, whoever started the run (ADR-851).
+            numbered["view_qpos"] = view_poses(params, normaliser)
+            emit(f"{iteration + 1:06d}", iteration, entry["reward_per_step"], numbered)
             if best["written"] != best["iteration"]:
                 emit("best", best["iteration"], best["reward_per_step"],
                      snapshot(best["params"], best["normaliser"],
@@ -4741,6 +4882,8 @@ def policy_header(
                 # no goal, and leaving it out there keeps such a policy's
                 # header the one it always was (ADR-462).
                 and (key != "goal_pool" or task.get("goal"))
+                # ADR-840: only a run on the go-to-point layer names it.
+                and (not key.startswith("goto") or options.goto)
             },
             "init_from": trained.get("init_from"),
             # The iterations this policy actually saw, which for a
@@ -4803,6 +4946,14 @@ def policy_header(
                         "bundle_algorithm": str(
                             (task["terrain"].get("random") or {}).get("algorithm") or ""),
                         "courses": len(task["terrain"]["pool"]),
+                        # ADR-856: the curriculum the courses were dealt by.
+                        **({"curriculum": {
+                            "rule": "game rule on points reached: up a level at "
+                                    "--terrain-promote points without a fall, past the "
+                                    "top to a random level; down at a fall or no point",
+                            "levels": int(task["terrain"]["random"]["levels"]),
+                            "promote": int(options.terrain_promote)}}
+                           if getattr(options, "terrain_curriculum", False) else {}),
                     }
                 }
                 if (task.get("terrain") or {}).get("pool") else {}
@@ -4964,6 +5115,29 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "each reset. Ignored by a task that states no goal.",
     )
     parser.add_argument(
+        "--goto", default=None, metavar="BANDS",
+        help="train a share of the episodes on go-to-point (ADR-840): the "
+             "speed goals come from cadex_goto's layer walking a train-split "
+             "sequence turned to a uniform heading, e.g. "
+             "walk:0.4-0.7,run:1.0-1.5 in m/s. Off by default.")
+    parser.add_argument(
+        "--goto-share", type=float, default=0.2,
+        help="the share of episodes on the layer under --goto; the rest keep "
+             "the bundle's drawn goals. 0.5 lost slow walking on the Go1 (ADR-840)")
+    parser.add_argument(
+        "--terrain-curriculum", action="store_true",
+        help="move each environment between its pool's terrain levels "
+             "(random.levels) by legged_gym's game rule on points reached "
+             "(ADR-856); needs --goto, and only episodes on the layer move")
+    parser.add_argument(
+        "--terrain-promote", type=int, default=1,
+        help="points an episode on the layer reaches, without falling, to go up "
+             "a level under --terrain-curriculum; one that falls or reaches none "
+             "goes down")
+    parser.add_argument(
+        "--goto-goals", default="cx,cy,cw",
+        help="the task's forward, lateral and yaw-rate goals the layer commands")
+    parser.add_argument(
         "--action-filter-alpha", type=float, default=1.0,
         help="low-pass the command before it reaches the actuators: "
              "a[t] = A*clamped[t] + (1-A)*a[t-1], per environment, reset with "
@@ -5123,6 +5297,15 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         "--view", default="", metavar="POLICY",
         help=("train nothing: replay POLICY (trained on this bundle) and write its view/ "
               "beside it, for a run made before ADR-835"))
+    parser.add_argument(
+        "--tier", choices=MODEL_TIERS, default=None,
+        help=("what the model is (ADR-837): concept, training (cut from a CAD export) or "
+              "cad (the export); by default the model's own cadex:tier mark, else read "
+              "from --cad-model"))
+    parser.add_argument(
+        "--cad-model", default="", metavar="MJCF",
+        help=("the CAD export this model was cut from: progress.json then maps each body "
+              "to the CAD bodies it carries, so the dashboard draws the CAD on it (ADR-837)"))
     options = parser.parse_args(list(argv))
     if not options.out and not options.view:
         parser.error("--out is required (or --view POLICY)")
@@ -5199,13 +5382,32 @@ def binary_stl(np, triangles) -> bytes:
 
 
 def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
-               *, source: str) -> Path:
+               *, source: str, goto: dict[str, Any] | None = None,
+               checkpoint: dict[str, Any] | None = None, trace_name: str = "trace.json",
+               terrain: dict[str, Any] | None = None) -> Path:
     """``view/``: a mesh per body from its geoms and a trace of ``poses`` (ADR-835).
 
     Each body's mesh is in the body's own frame, named as the body is, and each
-    trace frame places every body as the model's kinematics put it, so the
+    trace frame places every named body (meshless ones too, ADR-838) as the
+    model's kinematics put it, so the
     dashboard plays the run on the very model it trained on, primitives and all.
-    Geoms in group 3 and above (point masses, helpers) and invisible ones are left out.
+    Geoms in group 3 and above (point masses, helpers) and invisible ones are left out,
+    unless the robot has no other geometry (Playground's Go1 keeps every geom
+    in group 3): then every visible geom is drawn (ADR-839).
+
+    ``goto`` is a go-to-point episode (``cadex_goto.py``): its ``sequence``
+    goes on the trace and each of its ``frames`` (one per pose: the lit
+    point's index, whether it is held, the hold's filled share) on its frame.
+
+    ``checkpoint`` (``iteration``, ``reward_per_step``, ``sha256``) makes it a
+    numbered checkpoint's rollout instead (ADR-851): only the trace, named
+    ``trace_name`` (``<out>.<tag>.rollout-trace.json`` beside the policy, the
+    name the dashboard's scrubber and ``cadex_cli.checkpoints`` read); the
+    meshes are the closing view's.
+
+    ``terrain`` is the course the episode stood on, as
+    ``CadexDynamics.terrain_drawing`` writes it, so the dashboard draws that
+    course rather than the model's own (ADR-858).
     """
 
     import mujoco
@@ -5215,17 +5417,23 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
     data = mujoco.MjData(model)
     directory.mkdir(parents=True, exist_ok=True)
     bodies = []
+    visible = [g for g in range(model.ngeom) if int(model.geom_bodyid[g]) > 0
+               and float(model.geom_rgba[g][3]) > 0.0]
+    drawn = [g for g in visible if int(model.geom_group[g]) < 3] or visible
     for body in range(1, model.nbody):
-        parts = [geom_triangles(mujoco, np, model, g) for g in range(model.ngeom)
-                 if int(model.geom_bodyid[g]) == body and int(model.geom_group[g]) < 3
-                 and float(model.geom_rgba[g][3]) > 0.0]
+        mine = [g for g in drawn if int(model.geom_bodyid[g]) == body]
+        parts = [geom_triangles(mujoco, np, model, g) for g in mine] if checkpoint is None else []
         parts = [p for p in parts if p is not None and len(p)]
-        if not parts:
-            continue
         name = model.body(body).name or f"body{body}"
-        write_atomically(directory / f"{name}.stl", binary_stl(np, np.concatenate(parts)))
+        # A body with nothing to draw is still placed: the CAD it carries
+        # rides on it (ADR-838).
+        if parts:
+            write_atomically(directory / f"{name}.stl", binary_stl(np, np.concatenate(parts)))
+        elif not model.body(body).name and not (checkpoint is not None and mine):
+            continue
         bodies.append((body, name))
     frames = []
+    states = (goto or {}).get("frames") or []
     for step, qpos in enumerate(np.asarray(poses, dtype=np.float64)):
         data.qpos[:] = qpos
         mujoco.mj_kinematics(model, data)
@@ -5234,13 +5442,21 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
                    "rotation_xyzw": [round(float(v), 6)
                                      for v in (*data.xquat[i][1:], data.xquat[i][0])]}
             for i, name in bodies}})
+        if step < len(states):
+            frames[-1]["goto"] = states[step]
     actuators = [{"actuator": model.actuator(a).name, "unit": "rad",
                   "low": float(model.actuator_ctrlrange[a][0]),
                   "high": float(model.actuator_ctrlrange[a][1])} for a in range(model.nu)]
     trace = {"schema": VIEW_TRACE_SCHEMA, "source": source,
              "parameters": {"frames_per_second": round(1.0 / interval_s, 2)},
              "actuator_channels": actuators, "frames": frames}
-    path = directory / "trace.json"
+    if goto:
+        trace["goto"] = goto["sequence"]
+    if checkpoint is not None:
+        trace["checkpoint"] = checkpoint
+    if terrain is not None:
+        trace["terrain"] = terrain
+    path = directory / trace_name
     write_atomically(path, json.dumps(trace, separators=(",", ":")).encode("utf-8"))
     return path
 
@@ -5292,6 +5508,24 @@ def main(argv: Sequence[str]) -> int:
     )
     started_at = time.time()
     written: list[dict[str, Any]] = []
+    # ADR-837: what the run is, written at launch so every reader has it
+    # without a driver's record: who started it, its model's tier and the
+    # CAD bodies each of its bodies carries.
+    try:
+        identity = model_identity(
+            bundle["model_xml"], tier=options.tier,
+            cad_xml=Path(options.cad_model).read_bytes() if options.cad_model else None)
+    except (OSError, ElementTree.ParseError) as error:
+        raise SystemExit(f"--cad-model: {error}") from error
+    identity["path"] = bundle["model_path"]
+    run_block = {
+        "driver": os.environ.get("CADEX_RUN_DRIVER", "") or "shell",
+        "argv": [str(item) for item in argv[1:]],
+        "pid": os.getpid(),
+        "heartbeat_s": HEARTBEAT_S,
+        "ended_at": None,
+    }
+    lock = threading.Lock()
 
     def emit(tag: str, iteration: int, reward: float,
              trained: dict[str, Any]) -> None:
@@ -5323,6 +5557,17 @@ def main(argv: Sequence[str]) -> int:
         if not options.quiet:
             print(f"checkpoint {path.name}  ({written[-1]['sha256'][:12]})",
                   file=sys.stderr)
+        if trained.get("view_qpos") is not None:
+            try:
+                write_view(path.parent, bundle["model_xml"], trained["view_qpos"],
+                           float(bundle["task"]["episode"]["control_interval_s"]),
+                           source=f"cadex_train's witness batch, {path.name}",
+                           checkpoint={key: written[-1][key]
+                                       for key in ("iteration", "reward_per_step", "sha256")},
+                           trace_name=path.name.removesuffix(".cxpolicy") + ".rollout-trace.json")
+            except Exception as error:  # noqa: BLE001 -- the view never fails a run
+                print(f"view: {path.name} not rolled out ({type(error).__name__}: {error})",
+                      file=sys.stderr)
 
     last_report: dict[str, Any] = {}
 
@@ -5337,7 +5582,13 @@ def main(argv: Sequence[str]) -> int:
         write into.
         """
 
+        with lock:
+            _report(fields)
+
+    def _report(fields: dict[str, Any]) -> None:
         last_report.update(fields)
+        if fields.get("state") in ("done", "failed"):
+            run_block["ended_at"] = time.time()
         if "curve" in fields:
             last_report["curve"] = list(fields["curve"])
         if "best" in fields:
@@ -5398,6 +5649,11 @@ def main(argv: Sequence[str]) -> int:
             # history, so the dashboard's Status charts it beside reward,
             # loss and episode length rather than only its last value.
             "action_std_curve": decimated_curve(curve, key="action_std"),
+            # Additive (ADR-856): under --terrain-curriculum, how many
+            # environments stand on each terrain level, now and per iteration.
+            **({"terrain_levels": list(curve[-1]["levels"]),
+                "terrain_levels_curve": decimated_curve(curve, key="levels")}
+               if curve and "levels" in curve[-1] else {}),
             "best_reward_per_step": (
                 None if not best or best.get("iteration", -1) < 0
                 else float(best["reward_per_step"])
@@ -5410,6 +5666,10 @@ def main(argv: Sequence[str]) -> int:
             # Additive under the same schema (ADR-410): the collapse the run
             # has detected, readable while it is still going.
             "warning": str(fields.get("warning", "")),
+            # Additive under the same schema (ADR-837): the run's own record
+            # and its model's identity, so no driver has to write them.
+            "run": dict(run_block),
+            "model": identity,
         }
         write_atomically(
             progress_path,
@@ -5418,6 +5678,17 @@ def main(argv: Sequence[str]) -> int:
 
     report(state="starting", iteration=-1, total=int(options.iterations),
            curve=[], best={}, wall=0.0, device="")
+    ended = threading.Event()
+
+    def heartbeat() -> None:
+        # ADR-837: the snapshot stays fresh through the compile and any long
+        # iteration; it stops before the run's last word is written.
+        while not ended.wait(HEARTBEAT_S):
+            with lock:
+                if not ended.is_set():
+                    _report({})
+
+    threading.Thread(target=heartbeat, name="progress-heartbeat", daemon=True).start()
     if getattr(options, "view_seconds", 0):
         # The model at rest until the rollout replaces it, so a run shows its
         # robot from its first iteration (ADR-835).
@@ -5459,6 +5730,7 @@ def main(argv: Sequence[str]) -> int:
             )
 
         write_atomically(target, blob)
+        ended.set()
         curve = trained["reward_curve"]
         best_row = max(curve, key=lambda row: row["reward_per_step"]) if curve else None
         report(
@@ -5486,6 +5758,7 @@ def main(argv: Sequence[str]) -> int:
         # so observers do not remain on "training". The exception is re-raised
         # unchanged: this adds a line to an artifact, it does not handle
         # anything.
+        ended.set()
         report(state="failed", wall=time.time() - started_at,
                error=f"{type(error).__name__}: {error}")
         raise

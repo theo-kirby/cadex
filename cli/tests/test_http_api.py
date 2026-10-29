@@ -12,11 +12,13 @@ fixture biped that reaches every route in each of its shapes, the way
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 from pathlib import Path
 import re
 import shutil
+import time
 
 import pytest
 
@@ -149,9 +151,40 @@ def biped(tmp_path):
     (seed / "progress.json").write_text(json.dumps({
         "schema": "cadex-training-progress-v1", "state": "done", "iteration": 9, "total": 10,
         "started_at": 1.7e9, "updated_at": 1.7e9, "out": "byhand.cxpolicy", "checkpoints": [],
-        "curve": [[0, 0.1], [9, 0.2]], "loss_curve": [], "episode_steps_curve": [], "error": ""}))
-    (seed / "view" / "torso.stl").write_text(_cube_stl(20.0))
-    (seed / "view" / "trace.json").write_text(_trace({"torso": [0.0, 0.0, 0.0]}))
+        "curve": [[0, 0.1], [9, 0.2]], "loss_curve": [], "episode_steps_curve": [], "error": "",
+        # The trainer's own run record and model identity (ADR-837).
+        "run": {"driver": "shell", "argv": [], "pid": 1, "heartbeat_s": 10.0, "ended_at": 1.7e9},
+        # Cut from the accepted export: the CAD goes on its body (ADR-838).
+        "model": {"tier": "training", "sha256": "a" * 64,
+                  "cad_sha256": hashlib.sha256((staging / "outputs" / "rig-model.xml").read_bytes()).hexdigest(),
+                  "path": "outputs/m.xml", "bodies": {"body": ["body", "shin"]}}}))
+    (seed / "view" / "body.stl").write_text(_cube_stl(20.0))
+    # Its closing view is a go-to-point episode: two points, the first held (ADR-839).
+    (seed / "view" / "trace.json").write_text(json.dumps({
+        **json.loads(_trace({"body": [0.0, 0.0, 0.0]})),
+        "goto": {"points": [{"xy_m": [1.0, 0.0], "speed_mps": 0.5, "hold_s": 2.0, "band": "walk"},
+                            {"xy_m": [1.0, 2.0], "speed_mps": 1.5, "hold_s": 0.0, "band": "run"}]},
+        "frames": [{"nominal_time_s": t, "goto": {"index": 0, "arrived": t > 0, "hold": t / 2.0},
+                    "component_placements": {"body": {"position_mm": [t * 500.0, 0.0, 0.0],
+                                                      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}}}
+                   for t in (0.0, 1.0)]}))
+    # The trainer rolls each numbered checkpoint out beside it (ADR-851).
+    write_policy(seed / "byhand.000005.cxpolicy")
+    (seed / "byhand.000005.rollout-trace.json").write_text(json.dumps({
+        **json.loads(_trace({"body": [0.0, 0.0, 0.0]})),
+        "frames": [{"nominal_time_s": t, "component_placements": {"body": {
+            "position_mm": [t * 100.0, 0.0, 0.0], "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}}} for t in (0.0, 1.0)],
+        "checkpoint": {"iteration": 4, "reward_per_step": 0.15, "sha256": "b" * 64}}))
+    # A staged run whose trainer stopped beating two minutes ago, under
+    # runs/<name>/<stage>/<seed>/ (ADR-837).
+    stage = root / "runs" / "staged" / "s2" / "seed0"
+    stage.mkdir(parents=True)
+    (stage / "progress.json").write_text(json.dumps({
+        "schema": "cadex-training-progress-v1", "state": "starting", "iteration": -1, "total": 10,
+        "started_at": time.time() - 300, "updated_at": time.time() - 120, "checkpoints": [],
+        "curve": [], "loss_curve": [], "episode_steps_curve": [], "error": "",
+        "run": {"driver": "ouroboros", "heartbeat_s": 10.0, "ended_at": None},
+        "model": {"tier": "concept", "sha256": "c" * 64, "bodies": {}}}))
     return root
 
 
@@ -159,7 +192,7 @@ def biped(tmp_path):
 PROBES = {
     "project": (["api/project"], []),
     "run/<run>": (["api/run/first", "api/run/broken", "api/run/escaped", f"api/run/{RUN}", "api/run/killed",
-                   "api/run/byhand"],
+                   "api/run/byhand", "api/run/staged"],
                   ["api/run/nope"]),
     "policy-origin/<run>": (["api/policy-origin/first", "api/policy-origin/escaped"],
                             ["api/policy-origin/nope"]),
@@ -170,7 +203,7 @@ PROBES = {
     "model/run/<run>": (["api/model/run/first", "api/model/run/broken", f"api/model/run/{RUN}",
                          "api/model/run/borrowing", "api/model/run/byhand"],
                         ["api/model/run/nope"]),
-    "playback/run/<run>": (["api/playback/run/second", "api/playback/run/broken"], ["api/playback/run/nope"]),
+    "playback/run/<run>": (["api/playback/run/second", "api/playback/run/broken", "api/playback/run/byhand"], ["api/playback/run/nope"]),
     "playback/checkpoint/<run>/<stem>": (
         [f"api/playback/checkpoint/{RUN}/walk.000040", f"api/playback/checkpoint/{RUN}/walk.000060"],
         [f"api/playback/checkpoint/{RUN}/walk.000080", "api/playback/checkpoint/nope/walk.000040"]),
@@ -221,8 +254,23 @@ def test_every_reply_carries_its_documented_keys_and_nothing_else(biped, tmp_pat
         assert _json(server.url + "api/run/killed")["recorded_status"] == "running"
         byhand = _json(server.url + "api/run/byhand")
         assert byhand["status"] == "ok" and byhand["telemetry"]["state"] == "done"
+        assert byhand["telemetry"]["driver"] == "shell" and byhand["model"]["tier"] == "training"
+        assert byhand["telemetry"]["model"]["bodies"] == {"body": ["body", "shin"]}
+        staged = _json(server.url + "api/run/staged")
+        assert staged["status"] == "failed" and "stopped writing s2/seed0/progress.json" in staged["error"]
+        assert staged["telemetry"]["driver"] == "ouroboros" and staged["model"]["tier"] == "concept"
+        rolled = _json(server.url + "api/checkpoints/byhand")["items"]
+        assert [(i["stem"], i["state"], i["iteration"]) for i in rolled] == [("byhand.000005", "ready", 4)]
+        assert _json(server.url + rolled[0]["url"])["available"]
+        goto = _json(server.url + "api/playback/run/byhand")["goto"]
+        assert [p["band"] for p in goto["points"]] == ["walk", "run"]
+        assert goto["frames"] == [{"index": 0, "arrived": False, "hold": 0.0}, {"index": 0, "arrived": True, "hold": 0.5}]
         drawn = _json(server.url + "api/model/run/byhand")
         assert drawn["available"] and [c["mesh_status"] for c in drawn["components"]] == ["retained"]
+        # The accepted part on the body it was cut into, its primitive outlined (ADR-838).
+        assert drawn["tier"]["cad"] and drawn["tier"]["revision"] == REVISION_B
+        assert [p["mesh"] for p in drawn["components"][0]["cad"]] == ["mesh/accepted/torso.stl"]
+        assert drawn["components"][0]["outline"] is True
     finally:
         server.shutdown()
         server.server_close()

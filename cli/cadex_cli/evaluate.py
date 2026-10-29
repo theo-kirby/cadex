@@ -96,7 +96,8 @@ def _retained_file(staging: Path, item: Mapping[str, Any]) -> Path:
     return path
 
 
-def retained_inputs(root: Path, *, task_name: str = "", policy_name: str = "") -> dict[str, Any]:
+def retained_inputs(root: Path, *, task_name: str = "", policy_name: str = "",
+                    weights_file: Path | None = None) -> dict[str, Any]:
     """What the accepted revision retained for one evaluation.
 
     The policy is the one the accepted script declared and the engine
@@ -105,6 +106,12 @@ def retained_inputs(root: Path, *, task_name: str = "", policy_name: str = "") -
     (the output's name) or ``--task``; exactly one must remain. The weights
     are read from the attempt's own staged assets and must hash to what the
     receipt recorded, so the file evaluated is the file verified.
+
+    ``weights_file`` is a candidate instead (ADR-846): a policy file no
+    script declares -- trained on a concept or a cut, on the export's task
+    re-laid by ``training/cadex_relay.py`` -- held to the accepted
+    revision's own task bundle and model, named by ``task_name``. Nothing
+    verified it, so its report names no policy output.
     """
 
     try:
@@ -114,6 +121,20 @@ def retained_inputs(root: Path, *, task_name: str = "", policy_name: str = "") -
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise EvaluateRefused(f"cannot read the retained accepted attempt: {exc}") from exc
     items = {str(item["name"]): item for item in result["outputs"]}
+    if weights_file is not None:
+        task_item = items.get(task_name)
+        if task_item is None or task_item.get("artifact_kind") != TASK_KIND:
+            listing = ", ".join(name for name, item in items.items()
+                                if item.get("artifact_kind") == TASK_KIND)
+            raise EvaluateRefused(
+                f"--weights needs --task naming one of the accepted revision's task outputs: {listing}.")
+        weights = Path(weights_file).expanduser().resolve()
+        if not weights.is_file():
+            raise EvaluateRefused(f"--weights {weights_file} is not a file")
+        policy_sha256 = _sha256(weights)
+        return _task_inputs(state, staging, items, task_item, policy_output="",
+                            policy=weights, policy_sha256=policy_sha256,
+                            weights=str(weights), trained_task_sha256="")
     policies = [item for item in items.values() if item.get("artifact_kind") == POLICY_KIND]
     if not policies:
         raise EvaluateRefused(
@@ -136,6 +157,23 @@ def retained_inputs(root: Path, *, task_name: str = "", policy_name: str = "") -
     task_item = items.get(str(receipt.get("task_output")))
     if task_item is None or task_item.get("artifact_kind") != TASK_KIND:
         raise EvaluateError(f"policy {chosen[0]} names no retained task bundle")
+    weights = (staging / "assets" / str(receipt.get("weights") or "")).resolve()
+    if weights.parent != staging / "assets" or not weights.is_file():
+        raise EvaluateError(f"policy {chosen[0]} has no staged weights {receipt.get('weights')!r}")
+    if _sha256(weights) != str(receipt.get("policy_sha256")):
+        raise EvaluateError(
+            f"the staged weights {weights.name} are not the file policy {chosen[0]} was verified with"
+        )
+    return _task_inputs(state, staging, items, task_item, policy_output=chosen[0],
+                        policy=weights, policy_sha256=str(receipt["policy_sha256"]),
+                        weights=str(receipt["weights"]),
+                        trained_task_sha256=str(receipt.get("task_sha256") or ""))
+
+
+def _task_inputs(state: Mapping[str, Any], staging: Path, items: Mapping[str, Any],
+                 task_item: Mapping[str, Any], **policy: Any) -> dict[str, Any]:
+    """The retained task bundle, its success spec and its model, with ``policy``."""
+
     task_path = _retained_file(staging, task_item)
     task = json.loads(task_path.read_text(encoding="utf-8"))
     if not isinstance(task.get("success"), Mapping):
@@ -147,23 +185,12 @@ def retained_inputs(root: Path, *, task_name: str = "", policy_name: str = "") -
     model_item = items.get(str((task.get("model") or {}).get("output")))
     if model_item is None or model_item.get("artifact_kind") != MJCF_KIND:
         raise EvaluateError(f"task {task_item['name']} names no retained MJCF model")
-    weights = (staging / "assets" / str(receipt.get("weights") or "")).resolve()
-    if weights.parent != staging / "assets" or not weights.is_file():
-        raise EvaluateError(f"policy {chosen[0]} has no staged weights {receipt.get('weights')!r}")
-    if _sha256(weights) != str(receipt.get("policy_sha256")):
-        raise EvaluateError(
-            f"the staged weights {weights.name} are not the file policy {chosen[0]} was verified with"
-        )
     return {
         "accepted_revision": str(state["accepted_revision"]),
         "accepted_digest": str(state.get("accepted_digest") or ""),
-        "policy_output": chosen[0],
+        **policy,
         "task_output": str(task_item["name"]),
         "model_output": str(model_item["name"]),
-        "policy": weights,
-        "policy_sha256": str(receipt["policy_sha256"]),
-        "weights": str(receipt["weights"]),
-        "trained_task_sha256": str(receipt.get("task_sha256") or ""),
         "task": task_path,
         "model": _retained_file(staging, model_item),
         "components": [str(name) for name in

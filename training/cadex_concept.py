@@ -7,7 +7,7 @@ A legged design's first questions -- link lengths, stance angles, which way a
 knee bends, joint limits, where the drives sit -- are answered by training a
 policy, and a full CAD build is the dearest place to ask them. This writes a
 crude model straight from a spec (``cadex-concept-v1`` JSON): trunk boxes,
-capsule segments, sphere feet, the drives' gains, limits and rotor inertia.
+capsule segments, sphere or capsule-sole feet, the drives' gains, limits and rotor inertia.
 It changes in seconds, so a sweep can train each variant; the numbers that
 pass are frozen into the spec, the CAD is built to meet them, and the detailed
 model is trained again to confirm the concept was close enough.
@@ -16,11 +16,12 @@ The model is written the way the engine writes ``assembly.mjcf`` (and the way a
 training model is cut from it): every body frame is the world frame at the home
 pose, so the home pose is the zero of every joint and the ``solved`` keyframe;
 the floor touches only feet and the trunk's fall geoms; each drive is a
-position actuator ``<joint>/position``; and the sensors are the export's, in
-its order (``obs/N``: each actuated joint's position, velocity and force, then
+position actuator ``<joint>/position``; and the sensors are named as the
+export's (``obs/N``: each actuated joint's position, velocity and force, then
 the IMU's orientation and rate, the root's centre of mass and velocity, and
-each foot's centre of mass and touch). A tool that reads an engine export by
-name reads a concept model the same way.
+each foot's centre of mass and touch, on a ``obs/N/contact`` site). A tool that
+reads an engine export by name reads a concept model the same way. An export
+orders its sensors by its task's observations, so the order may differ.
 
 The spec, all lengths in metres, masses in kilograms, angles in degrees:
 
@@ -46,7 +47,9 @@ The spec, all lengths in metres, masses in kilograms, angles in degrees:
   the next joint: ``to`` [dx, dy, dz], or ``length`` with ``pitch`` (from
   straight down, positive toward +x) and ``dy``. The segment carries ``mass``
   as a capsule of ``radius`` and ``end_mass`` at its far end. ``foot``:
-  ``body``, ``radius``, ``mass``.
+  ``body``, ``radius``, ``mass``: a sphere at the chain's end; or, with
+  ``soles`` (each ``from``/``to`` offsets from that point), capsules of
+  ``radius`` sharing ``mass``, a flat foot that can stand still (the biped's).
 * ``options``: ``timestep``, ``iterations``, ``ls_iterations``,
   ``integrator``, ``solref``.
 
@@ -55,7 +58,7 @@ negates and swaps, so a joint angle on the right is the mirror of the same
 angle on the left, as the export writes it.
 
 The model stands on its feet: the whole spec is moved in z so the lowest foot
-sphere rests on the floor, and the report gives every other foot's height off
+sphere or sole rests on the floor, and the report gives every other foot's height off
 it (a sweep that lengthens one leg lifts the others). It also says what the spec
 implies -- each leg's hip height (its first pitch joint's), its reach from there, and
 its ``bend`` (one less the hip-to-foot distance over the summed segments: a leg near 0 is straight and
@@ -155,11 +158,19 @@ def expand_legs(spec: Mapping[str, Any]) -> list[dict]:
                     "limited": "range" in joint})
                 point = _add(point, seg)
             foot = leg["foot"]
+            soles = [(_add(point, flip(s["from"])), _add(point, flip(s["to"])))
+                     for s in foot.get("soles", [])]
             entry = {"mount": leg["mount"], "joints": joints,
-                     "foot": {"body": name(foot["body"]), "at": point,
+                     "foot": {"body": name(foot["body"]), "at": point, "soles": soles,
                               "radius": float(foot["radius"]), "mass": float(foot["mass"])}}
             (right if side == "r" else left).append(entry)
     return left + right
+
+
+def _lowest(foot: Mapping[str, Any]) -> float:
+    """The z of a foot's lowest surface point: its sphere's, or its lowest sole's."""
+    ends = [p for sole in foot["soles"] for p in sole] or [foot["at"]]
+    return min(p[2] for p in ends) - foot["radius"]
 
 
 def _fmt(v: Sequence[float] | float) -> str:
@@ -199,7 +210,7 @@ def build(spec: Mapping[str, Any]) -> tuple[str, dict]:
     legs = expand_legs(spec)
     if not legs:
         raise ConceptError("a concept needs at least one leg")
-    dz = min(leg["foot"]["at"][2] - leg["foot"]["radius"] for leg in legs)
+    dz = min(_lowest(leg["foot"]) for leg in legs)
     opts = {**DEFAULT_OPTIONS, **spec.get("options", {})}
     solref = _fmt(opts["solref"])
 
@@ -210,6 +221,8 @@ def build(spec: Mapping[str, Any]) -> tuple[str, dict]:
                            ls_iterations=str(opts["ls_iterations"]))
     ET.SubElement(option, "flag", island="disable", eulerdamp="disable")
     ET.SubElement(root, "size", nkey="1")
+    # ADR-837: the model says it is a concept, so a run on it says so too.
+    ET.SubElement(ET.SubElement(root, "custom"), "text", name="cadex:tier", data="concept")
     world = ET.SubElement(root, "worldbody")
     ET.SubElement(world, "geom", name="environment/floor", size="0 0 0.1", type="plane",
                   solref=solref, contype="1", conaffinity="0")
@@ -296,9 +309,15 @@ def build(spec: Mapping[str, Any]) -> tuple[str, dict]:
             parent = body
         foot = leg["foot"]
         body = ET.SubElement(parent, "body", name=foot["body"])
-        ET.SubElement(body, "geom", name=f"{foot['body']}/collision0", type="sphere",
-                      size=_fmt(foot["radius"]), pos=_fmt(_drop(foot["at"], dz)),
-                      mass=_fmt(foot["mass"]), solref=solref, contype="0", conaffinity="1")
+        for k, (a, b) in enumerate(foot["soles"]):
+            ET.SubElement(body, "geom", name=f"{foot['body']}/collision{k}", type="capsule",
+                          fromto=_fmt(_drop(a, dz) + _drop(b, dz)), size=_fmt(foot["radius"]),
+                          mass=_fmt(foot["mass"] / len(foot["soles"])), solref=solref,
+                          contype="0", conaffinity="1")
+        if not foot["soles"]:
+            ET.SubElement(body, "geom", name=f"{foot['body']}/collision0", type="sphere",
+                          size=_fmt(foot["radius"]), pos=_fmt(_drop(foot["at"], dz)),
+                          mass=_fmt(foot["mass"]), solref=solref, contype="0", conaffinity="1")
         feet.append((foot, body))
 
     actuated += trunk_actuated
@@ -336,9 +355,11 @@ def build(spec: Mapping[str, Any]) -> tuple[str, dict]:
     add("subtreelinvel", body=trunk[0]["name"])
     for foot, body in feet:
         add("subtreecom", body=foot["body"])
-        r = _fmt(foot["radius"])
+        # The touch box holds the whole foot: its sphere, or every sole about the foot point.
+        half = [foot["radius"] + max([abs(p[i] - foot["at"][i]) for sole in foot["soles"]
+                                      for p in sole] or [0.0]) for i in range(3)]
         ET.SubElement(body, "site", name=f"obs/{index}/contact", type="box",
-                      pos=_fmt(_drop(foot["at"], dz)), size=f"{r} {r} {r}", rgba="0 0 0 0")
+                      pos=_fmt(_drop(foot["at"], dz)), size=_fmt(half), rgba="0 0 0 0")
         add("touch", site=f"obs/{index}/contact")
 
     keyframe = ET.SubElement(root, "keyframe")
@@ -357,7 +378,7 @@ def _report(spec, legs, dz, drives) -> dict:
         chain = leg["joints"][leg["joints"].index(first):]
         rows.append({
             "foot": foot["body"],
-            "off_floor_m": round(foot["at"][2] - foot["radius"] - dz, 4),
+            "off_floor_m": round(_lowest(foot) - dz, 4),
             "hip_height_m": round(first["at"][2] - dz, 4),
             "bend": round(1.0 - math.dist(first["at"], foot["at"])
                           / sum(math.dist(j["at"], j["end"]) for j in chain), 4),

@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-27
+Verified against source: 2026-10-29
 
 Rigid-body dynamics on MuJoCo is part of the engine (ADR-102), and it runs
 to its end: an agent takes a robot from an idea, through a designed
@@ -213,14 +213,38 @@ grid, lowest and highest, the validated features) in place of
 `environment.floor`, and `task_records` copies it into the bundle as
 `terrain`, a semantic field: another course is another task.
 
-**Train on the box course.** Under driven motion MJX is not stable on the
-heightfield: on ADR-714's block-and-arm rig under random ±0.8 N·m torques,
-3 of 32 MJX environments went non-finite on the heightfield and 0 of 32 on
-boxes, and on the cat's rig (27 actuators, random targets, 24 starts on
-features at up to 3 m/s) the heightfield peaked at 179 rad/s joint speed
-against 39–48 on the plane and the boxes. The box course is also cheaper in
-MJX (134 s against 338 s for one cat run; 82 s on the plane). MJX has no
-hfield contact for a cylinder or an ellipsoid (hazard 20).
+**A course from a mesh (ADR-855).** `terrain={"mesh": "hills.stl",
+"x_range_mm": [...], "y_range_mm": [...], "cell_mm": 100}` samples a
+project mesh asset (STL, OBJ or PLY, in mm, put with `put_asset`) onto the
+heightfield grid: each vertex takes the highest point of any triangle over
+it, every vertex must be covered (`terrain_mesh_gap`), and the course is
+raised or lowered so the ground under the origin is z = 0. The sandboxed
+assembly worker reads the file from the attempt's staged `assets/` by
+`mesh.import_file`'s own reader and name check, so nothing outside the
+staging directory is read. It is at most 129 vertices a side and 500,000
+triangles, and takes no `features`, `random` or `collides_with`. The
+descriptor carries the sampled `heights_mm` and `mesh` (asset, sha256,
+triangle count), so the bundle's ground (`course_ground`), the trace's
+drawing and the MJCF's heightfield are one grid. On a 7 × 5 m
+rolling-hills STL at 100 mm cells, MuJoCo's ground is within 1.7 mm of
+the source surface away from its one sheer edge, and the dashboard's
+drawing matches the engine's at every vertex
+(`docs/probes/orun21/t1_file_shot.py`, `t1-file-course.png`). An image
+heightmap is not read: a mesh is the one file kind.
+
+**What trains on which form (ADR-854).** MJX trains on the heightfield
+when only spheres and capsules can touch it, which is Playground's
+arrangement. orun18's Go1, with four sphere feet, trained on a 30 × 30 m
+course of 30–60 mm bumps and dips to its flat result: 0/10 falls, tracking
+within about 2% of flat at every command (0.481 against 0.470 m/s at
+0.5 m/s, the widest). It ran at 0.61× the plane's env
+steps/s. A box or a mesh on a heightfield goes through MJX's convex-prism
+collider, which is unstable. On ADR-714's block rig it sent 20 of 32
+environments non-finite on the CPU, and on the GPU threw one to 1.43 m at
+252 rad/s. A task whose box or mesh can touch a heightfield is therefore
+refused (below). Train such a robot, or a course with sheer steps,
+platforms, rocks, tiles or mazes, on the box course. MJX has no hfield
+contact for a cylinder or an ellipsoid at all (hazard 20).
 
 **Box course (ADR-716, 2026-10-16).** `terrain={"form": "boxes", ...}` builds
 the same features from placed boxes: the plane, lowered to the course's
@@ -237,7 +261,15 @@ them `radius_mm` from it, so a mogul is round; one taller than its radius
 steps and slopes at its centre, and a `rock` patch a 3 × 3 grid of cells
 each holding a stone (or, but the centre, left empty), a box tilted about x
 or y by 10–25° and buried so its peak stands up to `height_mm` proud, in
-the box slots as `shape: "stone"` (ADR-745). Every level of a course runs
+the box slots as `shape: "stone"` (ADR-745). Two kinds lay out in x and y
+(ADR-853), both blocks on flat ground: a `tiles` patch (`x_mm`, `y_mm`,
+`length_mm`, `width_mm`, `cell_mm`, `height_mm`) is a grid of
+`round(length/cell)` × `round(width/cell)` blocks, at most 64, each standing
+a seeded 0.1–1.0 of `height_mm`; a `maze` (`x_mm`, `y_mm`, `cells_x`,
+`cells_y` ≤ 6, `cell_mm`, `height_mm`, `thickness_mm`) is a grid of cells
+opened by a seeded depth-first walk into one path between a door in its
+-x side and one in its +x side, its walls merged where collinear. One row
+of cells is a corridor. Every level of a course runs
 out 50 m past its extent (`TERRAIN_RUNOUT_MM`), so there is no cliff an
 episode reaches. A dip is
 refused (`terrain_dip_needs_heightfield`), as is a step down off a slope's
@@ -258,19 +290,25 @@ and at most `bumps`). Course *k* is drawn by
 `random.Random('cadex-terrain:<seed>:<k>')` (`TERRAIN_RANDOM_ALGORITHM`):
 steps and slopes along x until the extent ends, each signed down while the
 course is above z = 0 and up while below, so a long course climbs and
-descends; then one to `bumps` bumps. Every course is validated like a listed
+descends; then one to `bumps` bumps; then platforms and rock patches
+(ADR-745); then, with `tile_mm` (and `tile_size_mm`, `tile_cell_mm`,
+`tiles`), tile patches, and with `wall_mm` (and `maze_cell_mm`,
+`maze_cells`, `mazes`), mazes of 60 mm walls, each placed on flat ground
+clear of the rest (ADR-853). Every course is validated like a listed
 one. Course 0 is what the descriptor's `features` and `boxes` describe and
 what the model and `rollout_policy` stand on; evaluation draws its own
 (ADR-718, below).
 The descriptor's `pool` carries every course as features, its lowest and
-highest point and its box count, and `slots` the fullest course's count: the
-model has that many `environment/terrain/<i>` boxes, the ones course 0 does
-not fill parked as 1 mm cubes a metre under the plane. Features, not boxes,
-because the bundle is written indented under a 1 MB cap the 30-joint cat's
-already fills to 700 KB, and a box is about 3.5 times a feature's bytes
-(about 2.5 KB a course on a 13 m course). The trainer rebuilds each
-course's boxes with its own copy of the builder (`course_boxes`,
-`course_geoms`, held equal to the engine's on every pooled course), and at
+highest point, and its boxes and domes placed (ADR-852): every box record,
+block and ramp as well as stone, carries `centre_mm`, `quat` and `half_mm`,
+computed once in `terrain_boxes`. `slots` is the fullest course's box count:
+the model has that many `environment/terrain/<i>` boxes, the ones course 0
+does not fill parked as 1 mm cubes a metre under the plane. Placed boxes
+cost about six times the features' bytes (a 32-course pool on an 11 m
+course, 78 KB to 482 KB indented) inside the 4 MB bundle cap (ADR-738). The
+trainer builds no course: it reads each course's placed boxes
+(`course_geoms`), `training/test_terrain_pool.py` holds what it places and
+scans to the engine's on two pools that draw every feature kind, and at
 every reset gives each environment a course by `jax.random.randint` folded
 with 717; `place_course` writes that course's positions, turns, sizes and
 derived bounds into the MJX model's terrain geoms inside the vmapped step,
@@ -286,6 +324,41 @@ ADR-717 checked each course by compiling it as a listed course and
 comparing geoms. A build's rollout stands on course 0; evaluation seeds
 stand on held-out courses (ADR-718), and every trace carries the course it
 stood on (ADR-734).
+
+**Levels and the curriculum (ADR-856).** `random.levels` *L* (from 2, a
+divisor of `courses`) splits the pool into *L* contiguous blocks: course *k*
+is level `k*L // courses` (`terrain_course_level`, written on each pooled
+course as `level`), and level *l* draws every height range (`step_mm`,
+`grade_deg`, `bump_mm`, `platform_mm`, `rock_mm`, `tile_mm`, `wall_mm`) from
+its band `[lo + (hi-lo)*l/L, lo + (hi-lo)*(l+1)/L]`, as Isaac Lab's terrain
+generator scales a sub-terrain by its row's difficulty; sizes, counts and
+runs are every level's. The descriptor's `random.algorithm` gains
+`TERRAIN_LEVELS_ALGORITHM`; a pool without `levels` keeps its bytes.
+Evaluation seed *s* plays a held-out course at level `s % L`
+(`terrain_evaluation_course(..., level=)` names another), so ten seeds span
+every level, and the course says its `level`. `cadex_train.py
+--terrain-curriculum` (with `--goto`) deals each environment a course of its
+own level, starting at 0, and moves it by legged_gym's game rule on points
+reached: an episode on the go-to-point layer that reaches `--terrain-promote`
+points (default 1) without falling goes up a level, past the top to a random
+one; one that falls or reaches none goes down. Episodes off the layer keep
+their level. `progress.json` carries `terrain_levels` and
+`terrain_levels_curve` (environments per level, per iteration), and the
+policy header's `training.terrain.curriculum` names the rule.
+
+**Terrain round the start (ADR-857).** `random.around: true` lays a drawn
+pool round the origin rather than ahead of it, for go-to-point, whose points
+lie ahead, to a side and behind. The step-and-slope march also runs from
+`-clear_mm` towards -x, each feature written as the one that makes the
+course's height outward from the origin, with a last step back to z = 0
+beyond it so the origin stays on z = 0. Every bump, platform, rock, tile
+patch and maze centre is drawn over the whole extent and kept outside the
+square `|x|, |y| < clear_mm + half`. The descriptor's algorithm gains
+`TERRAIN_AROUND_ALGORITHM`, and a pool without `around` keeps its bytes.
+On ADR-856's pool, 80% of first go-to-point points lay off the extent and
+23% of first legs crossed any relief. On the 24 m square round pool of
+`docs/probes/orun21/t2_around.py` (41 slots), no first point lies off the
+extent and 66% of first legs cross relief.
 
 ### Commands and success predicates
 
@@ -680,7 +753,9 @@ keeps the numbering, and the full record is in the history file.
     ran. Stock MuJoCo simulates that contact; the limit is the JAX
     backend's. The six are **box/cylinder, cylinder/mesh, box/ellipsoid,
     ellipsoid/mesh**, and on a heightfield course **cylinder/hfield and
-    ellipsoid/hfield** (ADR-714). `assembly.task` now refuses them by name
+    ellipsoid/hfield** (ADR-714). Two pairs MJX builds but does not step
+    stably join them: **box/hfield and mesh/hfield** (ADR-854). `assembly.task`
+    refuses all eight by name
     (`mjx_unsupported_collision_pair`), because a task is only ever read by
     the trainer and the author is still there when it is declared; nothing
     else is refused, and a cylinder stays legal on a model nobody trains.
@@ -1332,9 +1407,9 @@ The trainer's flags are `training/README.md`'s; this is what each is for.
 
 - **Train on boxes.** Declare the course `terrain={"form": "boxes",
   "random": {...}}`: a pool of seeded courses the trainer re-draws per
-  episode (ADR-717). A heightfield is the default form and builds, but MJX
-  is unstable on it under driven motion (§2, ADR-714), so it is for smooth
-  hills on a model nobody trains.
+  episode (ADR-717). A heightfield is the default form and trains when
+  only sphere or capsule feet can touch it (§2, ADR-854). A box or mesh
+  that can touch it is refused, so such a robot trains on boxes.
 - **Let the critic see the ground.** A privileged `height_scan` on the
   trunk (ADR-715). The actor never reads it.
 - **Command the turn.** A `speed` goal and a `yaw_rate` goal, resampled in

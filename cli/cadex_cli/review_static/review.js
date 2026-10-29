@@ -280,7 +280,7 @@
     if (modelAbort) modelAbort.abort();
     var controller = modelAbort = new AbortController(), signal = controller.signal;
     status.dataset.state = 'loading'; status.textContent = 'loading model…';
-    stopPlayback(); playback = null; looping = false; ckpt.shown = null; $('playback').hidden = true; state.activations.setPlayback(null); refreshTrail();
+    stopPlayback(); playback = null; looping = false; ckpt.shown = null; $('playback').hidden = true; state.activations.setPlayback(null); refreshTrail(); if (state.viewer) state.viewer.setTargets(null); $('play-goto').hidden = true;
     return fetchRetry(path, signal, 2).then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.json();
@@ -312,8 +312,10 @@
       }).then(function () {
         if (ticket !== modelLoad) return;
         modelFailures = 0;
+        // A trainer's run says what its model is (ADR-838): a concept, or CAD on its bodies.
         status.dataset.state = 'loaded';
-        status.textContent = '';
+        status.textContent = manifest.tier && manifest.tier.label ? manifest.tier.label : '';
+        status.dataset.tier = manifest.tier ? manifest.tier.name : '';
         // A run with checkpoint rollouts plays them, its own rollout last.
         if (checkpointItems().items.length) { renderCheckpoints(); return null; }
         // A reference loops from the start, as soon as it is in.
@@ -475,6 +477,9 @@
   function showPlayback(served) {
     playback = served;
     state.viewer.setTerrain(served.terrain || modelTerrain());
+    // A go-to-point episode's points (ADR-839), lit as the episode lit them.
+    state.viewer.setTargets(served.goto ? served.goto.points : null);
+    $('play-goto').hidden = !served.goto;
     var slider = $('play-time'), times = served.times_s;
     slider.min = String(times[0]); slider.max = String(times[times.length - 1]);
     $('playback').hidden = false;
@@ -564,8 +569,17 @@
     if (trailCourse.served === playback) state.viewer.showTrail(playT);
     state.viewer.setPoses(blend(playback.frames[lo], playback.frames[hi], f));
     state.activations.setFrame(lo, hi, f);
+    if (playback.goto) showGoto(playback.goto, playback.goto.frames[lo]);
     $('play-time').value = String(playT);
     $('play-clock').textContent = playT.toFixed(2) + ' s';
+  }
+  // The lit point in words beside the clock: which, its band and speed, and how far its hold has run.
+  function showGoto(goto, at) {
+    state.viewer.showTargets(at);
+    var n = goto.points.length, i = at ? at.index : 0, p = goto.points[Math.min(i, n - 1)];
+    $('play-goto').textContent = !at ? '' : i >= n ? 'all ' + n + ' points done'
+      : 'point ' + (i + 1) + '/' + n + ' · ' + (p.band ? p.band + ' ' : '') + p.speed_mps.toFixed(2) + ' m/s'
+        + (p.hold_s > 0 ? ' · hold ' + p.hold_s.toFixed(1) + ' s' + (at.arrived ? ' ' + Math.round(at.hold * 100) + '%' : '') : '');
   }
   function stopPlayback() {
     if (playing) cancelAnimationFrame(playing);
@@ -684,7 +698,7 @@
   }
   function showCheckpoint(item, key) {
     var ticket = modelLoad;
-    stopPlayback(); playback = null; ckpt.playing = null; state.activations.setPlayback(null); refreshTrail();
+    stopPlayback(); playback = null; ckpt.playing = null; state.activations.setPlayback(null); refreshTrail(); if (state.viewer) state.viewer.setTargets(null); $('play-goto').hidden = true;
     if (item.state !== 'ready') {
       $('playback').hidden = true;
       state.viewer.setPoses(restPoses()); state.viewer.setTerrain(modelTerrain());
@@ -1304,7 +1318,8 @@
     setSheet: setSheet,
     sheets: function () { return sheet.list.map(function (item) { return { key: item.key, group: item.group, kind: item.kind, label: item.label }; }); },
     playback: function () { return playback && { times_s: playback.times_s, t: playT, playing: !!playing, looping: looping, checkpoint: ckpt.playing,
-                                                  reference: playback.reference ? playback.task : null }; },
+                                                  reference: playback.reference ? playback.task : null,
+                                                  goto: playback.goto ? { points: playback.goto.points.length, label: $('play-goto').textContent } : null }; },
     checkpoints: function () {
       return { items: ckpt.items.map(function (item) { return { stem: item.stem, state: item.state, iteration: item.iteration, reward_per_step: item.reward_per_step }; }),
                pending: ckpt.pending, pinned: ckpt.pinned, playing: ckpt.playing, source: source };
