@@ -164,7 +164,10 @@ In order, smallest first:
    "Step back"): the policy misses by a near-absolute 0.01–0.08 m/s with or
    without the layer, which fails only at the band floor, where the tracking
    kernel (√σ = 0.5 m/s, biped 0.08) pays 0.985 at the judge's tolerance.
-   Test a narrower σ on leon V's concept first.
+   σ/4 on leon V's concept confirmed the kernel: every walk leg read
+   0.96–0.99, but the policy stood still above 1.1 m/s (1/10, G3-GOTO.md
+   "σ/4"). Next, a kernel shaped like the judge's relative tolerance (a wide
+   plus a narrow kernel, or a width proportional to the command).
 2. **leon V's go-to-point on its cut** (G3's second half, X1), judged on the
    export with `g2_judge.py --other-model`.
 3. **The CAD accept**: profile the fits a whole-robot edit re-runs

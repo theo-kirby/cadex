@@ -607,12 +607,26 @@ What this recipe is known to miss, and what no run has shown yet.
   under 0.85 is in the bottom sixth of its walk band. The tracking kernel's
   absolute width (√σ = 0.5 m/s, biped 0.08) pays 0.985 at the judge's 15%
   tolerance at the band floor, so the reward hardly resists the miss there.
-  The next test is a narrower σ; no run has tried it.
+  σ/4 (0.0625) on leon V's concept confirmed it, and showed why it cannot
+  simply be narrowed (G3-GOTO.md, "σ/4"): every walk leg read 0.96–0.99
+  (bottom-third deficit 0.007–0.025 m/s), but above 1.1 m/s the policy stood
+  still, since a narrow kernel pays nearly nothing on the way to a run speed.
+  1/10, and nine seeds never reached their first run point. The writer keeps
+  0.25. The next test is a kernel shaped like the judge's tolerance: a wide
+  plus a narrow kernel, or a width proportional to the command.
+- **A slow-turning robot's run legs are not read for speed.** The judge
+  reads a leg's speed only on its straight (bearing within 10°). At the
+  biped's 0.192 rad/s yaw limit, the layer alternates a turn in place (to
+  30°) and a diagonal walk that drifts back to 60°. 32 of the biped's 37 run
+  legs are never straight, so its speed result rests on its walk legs alone
+  (G3-GOTO.md, "Step back"). This is stated here, not fixed: a judge that
+  read a run leg's speed off the straight would be judging a different bar.
 - **leon V's slow walk.** On §G leon V's concept passes 4/10 (3/10 under
   the 30° turn exit of ADR-865), and every
   failure is a walk leg at 0.80–0.85 of a 0.5 m/s command (constant
   0.5 m/s gives 0.433). Share 0 did not lift it (0/10, ADR-863). The
-  untested hypothesis is the effort scale: Playground's torque and energy
+  effort-scale hypothesis is not needed (σ/4 lifted every walk leg to ≥ 0.96
+  with the effort terms unchanged, above); the earlier hypothesis was the effort scale: Playground's torque and energy
   weights are in absolute N·m, and leon V weighs 2.6× the Go1, against a
   tracking kernel that pays 0.96 for a 0.1 m/s miss (`kind-ridge-3238`).
   A heavier robot than the Go1 may need mass-normalised effort terms;

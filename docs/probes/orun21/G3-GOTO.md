@@ -247,3 +247,47 @@ biped's yaw limit (0.192 rad/s, the Go1's 1.2 × 0.16) means the layer leaves a 
 at 30°, walks diagonally with vy clamped at −0.128, drifts back to 60° and turns again. It
 reaches the point, but never on a straight. The 30° exit (ADR-865) closed the loop the layer
 was stuck in, but at that yaw rate it still never lines up.
+
+## σ/4 on leon V's concept: the walk passes, the run is lost
+
+The test the step back named. `orun21-lab/g3/leonv-sig4` is `leonv-concept`'s bundle with one
+change: `tracking_lin_vel`'s width 0.25 → 0.0625 (m/s)², so √σ = 0.25 m/s and a 0.06 m/s miss
+pays 0.94 instead of 0.986. The model, other 12 terms, command, seed and budget are `runs/g2`'s
+(1260 iterations, 206.4 M steps, `wall_time_s` 660.7, best reward/step 0.0225 at 1234).
+The judge was `g2_judge.py` at the same held-out seeds 0–9, after the 30° exit. **Expected
+beforehand:** the bottom third of the walk band (0.4–0.5 m/s) at a mean deficit ≤ 0.03 m/s,
+every walk leg ≥ 0.85, every run leg ≥ 0.95.
+
+| policy | pass | reach | hold | falls | walk legs read, min / mean | walk bottom-third deficit m/s | run legs read, under 0.85 |
+|---|---|---|---|---|---|---|---|
+| `runs/g2` it 900 (σ 0.25, baseline) | 3/10 | 10 | 10 | 0 | 43, 0.801 / 0.894 | 0.070 (15 legs) | 37, 0 |
+| σ/4 it 900 | 0/10 | 0 | 10 | 0 | 9, 0.945 / 0.953 | 0.025 (2) | 12, 10 |
+| σ/4 it 1200 | 1/10 | 1 | 10 | 0 | 13, 0.985 / 0.990 | 0.007 (2) | 16, 9 |
+| σ/4 best (1234) | 1/10 | 1 | 10 | 0 | 13, 0.962 / 0.972 | 0.017 (2) | 17, 9 |
+| σ/4 final (1259) | 1/10 | 1 | 10 | 0 | 13, 0.961 / 0.968 | 0.018 (2) | 15, 9 |
+
+(The deficit column is `speed × (1 − ratio)` over walk legs commanded below 0.5 m/s, read from
+each seed's `goto.json`. The baseline is the same policy and judge as the 3/10 row above.)
+
+At a constant command (`g3_slowwalk.py --hold-vx`, it 1200, mean after 10 s):
+
+| command m/s | 0.4 | 0.7 | 1.0 | 1.1 | 1.2 | 1.25 | 1.5 |
+|---|---|---|---|---|---|---|---|
+| σ/4 forward | 0.393 (0.98) | 0.693 (0.99) | 0.987 (0.99) | 1.089 (0.99) | **0.000** | **0.000** | **0.000** |
+| σ 0.25 (it 900) | 0.318 (0.79) | 0.663 (0.95) | 0.979 (0.98) | | | | 1.446 (0.96) |
+
+**Read.** The walk half of the expectation held, and better than expected: every walk leg is at
+0.96–0.99 and the bottom-third deficit is 0.007–0.025 m/s. So the kernel's width is what set the
+slow-walk miss (`kind-ridge-3238`), not effort or gait quantisation. The run half failed. Above
+1.1 m/s the policy stands still. Standing at 1.5 pays `exp(-1.5²/0.0625)` ≈ 2e-16, and
+running at 1.0 pays `exp(-0.5²/0.0625)` = 0.018, so a policy that has not yet learned to run
+gets almost no gradient towards it. The first run point of nine seeds out of ten is never
+reached (closest 6.8–7.9 m), and the sequence stops there. One fixed absolute width cannot
+serve both: a wide one leaves the walk floor unresolved, a narrow one leaves the run top
+unreachable.
+
+**Not put into the writer.** The pass rule was not met, so `cadex_joystick.py` keeps σ 0.25 and
+no ADR is written. The next test follows from the read: give the kernel the judge's own shape,
+relative to the command. Either sum a wide and a narrow kernel (the wide one keeps the run's
+gradient and the narrow one resolves the floor), or use a width proportional to `|c|`. The
+expectation for either: walk legs stay ≥ 0.95 as here and run legs return to ≥ 0.95 as at σ 0.25.
