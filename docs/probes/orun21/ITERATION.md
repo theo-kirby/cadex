@@ -268,3 +268,29 @@ By time saved per unit of work, from §1–§6.
 leon V together they are the whole 1,094 s of a warm export. Rank 2 is on
 every training run, on every robot. Rank 4 is P1's work; rank 5 is next if
 S1 finishes early.
+
+## 8. S1's cuts, before and after
+
+Each on the same input, re-timed after the cut.
+
+**Rank 1, the restore pass: export reads the retained attempt (ADR-848).**
+`cadex export` no longer opens the engine: it copies the attempt the store
+retained under the accepted pin, after checking its result carries the
+accepted digest. Timed with `m0-build/s1/export_time.sh` on `m0-build/leonv`
+(leon V `4d67e21`, warm caches), one after the other, `times.txt` there:
+
+| export of leon V, warm | open (restore) | command | total |
+|---|---|---|---|
+| before (`e69cab16`, `--format brep`) | 439 s | 1,405 s rebuild | **1,844.5 s** |
+| after, `--format brep` | — | copy | **1.2 s** |
+| after, `--format step,stl` | — | FreeCADCmd conversion of 101 BREPs | **24.5 s** |
+
+The after run's 102 files are byte-identical to the before run's; same
+revision `67b2a28c`, same digest. The biped (`m0-build/biped`): 0.2 s, 57
+files byte-identical to M0's warm rebuild export (56.1 s). The 1,405 s
+rebuild is 2.1× M0's 661 s on the same copy: the before run re-accepted the
+same revision under a new digest (`70542856` → `78a948c6`), so leon V's
+build is not byte-reproducible run to run and every rebuilding export
+re-accepted it. `--rebuild` keeps that road; the restore still runs on
+every other restoring command (`params`, `render`, `section`, `inventory`,
+`link`, `asset`, `train`).

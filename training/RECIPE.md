@@ -40,6 +40,9 @@ names the run that showed it.
    legs cannot reach refuses at accept, naming the leg and the stop (leon V:
    a 680 mm trot stride, then the 731 mm dynamic-similarity default, both
    out of the re-legged fore leg's reach; 520 mm accepted, ADR-847).
+   `cadex export --out DIR` then copies the accepted attempt in seconds
+   (leon V 1.2 s, against 1,844 s when it rebuilt; ADR-848): the build is
+   paid once, at accept.
 5. **Compare.** `cadex_cad_vs_concept.py concept.xml EXPORT.xml`: geometry
    should agree (leon V: hip heights, reach and foot x within 0.7 mm) and the
    flagged rows say what the CAD moved, usually mass (leon V +7.1% against

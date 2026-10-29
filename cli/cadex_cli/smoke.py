@@ -207,6 +207,33 @@ def retained_attempt(root: Path) -> tuple[dict, Path, dict]:
     return state, staging, result
 
 
+def retained_display(root: Path) -> tuple[dict, dict]:
+    """The accepted attempt's outputs as a ``display`` block, read in place.
+
+    What ``cadex export`` writes from (ADR-848): every staged artifact must be
+    a file inside the attempt and match its recorded sha256 when one is
+    recorded. Only when the working script is the accepted one, so the files
+    are what a rebuild of the stored script was proved to make.
+    """
+    import hashlib
+
+    state, staging, result = retained_attempt(root)
+    if state.get("working_revision") != state["accepted_revision"]:
+        raise SmokeError("the working script is not the accepted one")
+    display = {}
+    for item in result["outputs"]:
+        path = None
+        if item.get("artifact_path"):
+            source = (staging / item["artifact_path"]).resolve()
+            if not source.is_relative_to(staging) or not source.is_file():
+                raise SmokeError(f"missing or escaping retained artifact: {item['name']}")
+            if item.get("artifact_sha256") and hashlib.sha256(source.read_bytes()).hexdigest() != item["artifact_sha256"]:
+                raise SmokeError(f"retained artifact digest mismatch: {item['name']}")
+            path = str(source)
+        display[item["name"]] = {"artifact_kind": item.get("artifact_kind"), "artifact_path": path}
+    return state, display
+
+
 def _retained_bundle(root: Path, destination: Path) -> tuple[dict, dict, dict]:
     """Copy digest-checked accepted artifacts without restoring or accepting."""
     import hashlib

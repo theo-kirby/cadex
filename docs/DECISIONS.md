@@ -47141,3 +47141,48 @@ the trainer's defaults):
   stopped, not extended (the cut's 200 and 218 passed, 299 failed).
 - Still not shown: a concept task before any CAD (ADR-846's second gap),
   and a robot taken through steps 1–9 in order from an empty project.
+
+## ADR-848 — `cadex export` copies the retained accepted attempt; `--rebuild` re-proves it (2026-10-29, orun21 S1)
+
+**Context.** M0 ranked the restore pass first among the sinks
+(`docs/probes/orun21/ITERATION.md` §7): every engine open re-runs the
+accepted script to re-prove its digest (`cadexd.py:567`), 432–447 s on leon V
+warm or cold, and `cadex export` then rebuilt the same script again. The
+restore itself cannot be made cheap from outside the build (re-running the
+script *is* the proof), but export does not need either run: the store
+already retains, under the accepted pin, the attempt whose result carries
+the accepted digest, which is what `cadex smoke` exports from (ADR-352) and
+what `cadex mcp` serves its reads from (ADR-689).
+
+**Decision.** `cadex export` writes from the retained accepted attempt:
+`smoke.retained_display` reads the pin in `script.json`, requires its
+revision to be the accepted and the working one and its `result.json` to
+carry the accepted digest, and checks every staged artifact is a file
+inside the attempt (and its sha256, when one is recorded). The files are
+copied, BREPs converted by FreeCADCmd as before, under the project lock; no
+cadexd starts and no script runs. `--blueprints` opens the engine
+unrestored for the sheets (a read of the store). `--rebuild`, or a store
+with no valid retained attempt, takes the old road (restore, `rebuild`,
+write) and says why in a note. No protocol op changes, so
+`docs/INTEGRATION.md` is untouched; `docs/CLI.md` says the new contract.
+
+**Evidence** (`~/cadex-projects/orun21-lab/m0-build/s1/`, ITERATION.md §8):
+leon V warm export 1,844.5 s before (439 s restore + 1,405 s rebuild) →
+1.2 s (`--format brep`) or 24.5 s (`step,stl`) after, 102 files
+byte-identical, same revision and digest. The biped: 0.2 s, 57 files
+byte-identical to a rebuilding export. A copy with the pinned
+`result.json` removed fell back to restore + rebuild (72 s) and succeeded
+with the note. Both suites green (engine 157 passed, 3 skipped; CLI 53).
+
+**Consequences.**
+- The CAD route's export (RECIPE.md §R) no longer pays a build: an accepted
+  revision is exported in seconds, so the build is paid once, at accept.
+- Export no longer re-accepts. Before, leon V's rebuild re-accepted the same
+  revision under a new digest (`70542856` → `78a948c6`): its build is not
+  byte-reproducible run to run, and each export rewrote the accepted digest.
+- Export no longer re-proves restart determinism on the current engine;
+  that is `--rebuild`'s job, or any restoring command's.
+- What it does not cut: the restore on the other restoring commands
+  (`params`, `render`, `section`, `inventory`, `link`, `asset`, `train`),
+  and the warm rebuild itself (M0 rank 3), which `params`, `script --set`
+  and accept still pay.

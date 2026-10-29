@@ -159,6 +159,7 @@ from .smoke import (
     find_optional_task,
     run_smoke,
     retained_bundle,
+    retained_display,
     check_geometry,
     smoke_cell,
     smoke_command,
@@ -277,7 +278,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     export_parser = subparsers.add_parser(
-        "export", help="Rebuild the accepted script and write its outputs."
+        "export", help="Write the accepted revision's outputs, copied from the "
+        "attempt the store retained (ADR-848); --rebuild re-runs the script."
+    )
+    export_parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        default=False,
+        help="Restore and rebuild the accepted script on this engine before "
+        "writing, as export did before ADR-848.",
     )
     export_parser.add_argument(
         "--blueprints",
@@ -1378,11 +1387,46 @@ def command_params(args: argparse.Namespace, report: RunReport) -> int:
 
 
 def command_export(args: argparse.Namespace, report: RunReport) -> int:
-    """Rebuild the accepted script and write its outputs."""
+    """Write the accepted revision's outputs: copied as retained, or rebuilt.
+
+    The attempt the store retained under the accepted pin is the accepted
+    model, its result carrying the accepted digest, so its files are copied
+    and no script runs (ADR-848). Before, the engine's open re-ran the whole
+    script to re-prove the digest and the rebuild ran it again: 1,094 s for an
+    unchanged leon V. ``--rebuild``, or a store with no valid retained
+    attempt, takes that road: restore, rebuild, write.
+    """
 
     if not args.out:
         report.error = "export needs --out."
         return EXIT_USAGE
+    retained = None
+    if not args.rebuild:
+        project_root = Path(args.project).expanduser()
+        with project_lock(project_root, wait=bool(args.wait)):
+            report.project_root = str(project_root.resolve())
+            try:
+                retained = retained_display(project_root.resolve())
+            except (SmokeError, OSError, ValueError, KeyError, TypeError) as exc:
+                report.notes.append(f"no retained accepted attempt to copy ({exc}); rebuilding.")
+            else:
+                state, display = retained
+                engine = resolve_engine(args.engine or None)
+                report.engine = engine.describe()
+                report.accepted_revision = report.revision = state["accepted_revision"]
+                report.digest = state["accepted_digest"]
+                report.params = params_from_script({"params": {
+                    "specs": state.get("param_specs") or [],
+                    "values": state.get("param_values") or {}}})
+                _progress(" · retained attempt")
+                _finish(args, report, engine, display)
+    if retained is not None:
+        if getattr(args, "blueprints", False):
+            # Blueprints are a read of the store, so the engine opens unrestored.
+            with _engine_session(args, report, restore=False) as (_engine, client):
+                _export_blueprints(args, client, report)
+        report.ok = True
+        return EXIT_OK
     with _engine_session(args, report) as (engine, client):
         _progress(" · rebuild")
         reply = client.request("rebuild")
@@ -1394,15 +1438,19 @@ def command_export(args: argparse.Namespace, report: RunReport) -> int:
             return EXIT_REJECTED
         _finish(args, report, engine, reply.get("display"))
         if getattr(args, "blueprints", False):
-            copied = export_blueprints(client, args.out)
-            report.notes.append(
-                "blueprints: copied {:d} sheet(s) into {:s}.".format(
-                    len(copied), str(Path(args.out).expanduser()))
-                if copied else
-                "blueprints: the project has none stored."
-            )
+            _export_blueprints(args, client, report)
         report.ok = True
         return EXIT_OK
+
+
+def _export_blueprints(args: argparse.Namespace, client: CadexdClient, report: RunReport) -> None:
+    copied = export_blueprints(client, args.out)
+    report.notes.append(
+        "blueprints: copied {:d} sheet(s) into {:s}.".format(
+            len(copied), str(Path(args.out).expanduser()))
+        if copied else
+        "blueprints: the project has none stored."
+    )
 
 
 def command_render(args: argparse.Namespace, report: RunReport) -> int:
