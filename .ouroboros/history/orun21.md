@@ -6,13 +6,13 @@ ended: 2026-10-29T15:37:04+00:00
 hours: 17.4
 state: killed
 iterations: 39
-commits: 56
+commits: 57
 criteria_ticked: 8
 criteria_closed: 8
 criteria_total: 13
 criteria_unknown: 0
 criteria_source: run-local memory snapshot
-merged: no
+merged: 78abb71faa850ae74ad54dff6b11ecaf8993e672
 branch: ouroboros/orun21
 memory: governor
 actor: claude:claude-opus-5-5
@@ -20,14 +20,14 @@ actor: claude:claude-opus-5-5
 
 # Run orun21
 
-39 iterations in 17.4h on `sb1x`, killed (-). Branch `ouroboros/orun21`, not merged.
+39 iterations in 17.4h on `sb1x`, killed (-). Branch `ouroboros/orun21`, merged as `78abb71f`.
 
 ## The numbers
 
 | | |
 |---|---|
 | iterations | 39 (changed 39, recorded 0) |
-| commits | 56 — 98 files changed, 12228 insertions(+), 526 deletions(-) |
+| commits | 57 — 100 files changed, 12301 insertions(+), 527 deletions(-) |
 | criteria | **this run completed 8**; 8 of 13 verified met; 0 unknown (run-local memory snapshot) |
 | reverts | 0 |
 | verdicts | continue 39 |
@@ -68,4 +68,6 @@ actor: claude:claude-opus-5-5
 
 ## What this taught
 
-(unwritten)
+- A Cadex-wide charter with a fixed reference (the Go1) and an ordered criterion list ran 39 iterations with no reject and no loop firing: the first run in this repo to keep every unit accepted. The diagnose-after-three-failures rule earned its place twice (T2 level 4, G3's slow walk), each time ending in a controlled test rather than knob-turning.
+- The usage window, not the clock, bounded the run: 84% → 98% of the 7-day window in 17.4 h. The owner's mid-run edit moving the recipe and report ahead of the biped is why both exist; on a nearly full window, put the write-ups before the last experiments in the charter from the start.
+- The concept tier ranks geometry but does not transfer a policy (leon V: concept-trained 0/10, cut-trained 10/10 on the export). Go-to-point generalises across bodies in reach and hold but not in speed: both new robots walk at 0.8–0.86 of the command where the tracking kernel is flat. The untested wide-plus-narrow kernel is `runs/orun21/unfinished-adr866-fine-kernel.patch` (machine-local).
