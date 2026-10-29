@@ -47079,3 +47079,65 @@ models, a derived cut, one task and one judge:
 - **Gap: a concept's task before any CAD.** Cadex has no command that
   makes a task bundle for a concept with no CAD project; leon IV and V used
   their own scripts. RECIPE.md lists it under "What is not proven".
+
+## ADR-847 — leon V through the route: a declared trot, cut-trained 10/10 on the export, concept-trained 0/10 (2026-10-29, orun21 P1)
+
+**Context.** ADR-846 left one gap in P1: leon V's tasks came from its own
+`t1_bundle.py`, not from an engine export, so none of its route had been
+relayed or judged by `cadex evaluate`. It closes when leon V's script
+declares a task with `assembly.task` and a success spec.
+
+**Decision.** No code changes. In the lab copy (`~/cadex-projects/orun21-lab/leon-v`,
+from leon V `4d67e21`; leon V itself is read-only to this run) the script
+gains a trot task: revision 0006's `run_task` (1.5 m/s, trot gait reference,
+spine on the reference, tipped/collapsed terminations, chest mass ×0.9–1.1,
+the six-predicate success spec on seeds 1001–1010), with the stand heights
+re-measured on this body's export (whole-robot CoM 316.2 mm, paw CoM
+27.2 mm). The task is then put through RECIPE.md §R steps 4–9 with Cadex's
+tools only. RECIPE.md §R steps 4, 8 and 9 carry the numbers; "What is not
+proven" drops the leon V gap.
+
+**Evidence** (`~/cadex-projects/orun21-lab/p1-leonv/`; export `41a4e7e0`,
+byte-identical to leon V's frozen CAD, revision `479e53ce`, attempt
+`1793248930377-6c4f325105ef`; each run 8192 envs × 300 iterations, seed 0,
+the trainer's defaults):
+- **Step 4, accept.** Revision 0006's 680 mm stride refused (LF misses its
+  swing target by 9.3 mm, `j_shoulder_l` at a stop); the dynamic-similarity
+  default, 731 mm, refused the same way (6.5 mm); 520 mm with a 60 mm swing
+  accepted. The refused accept took 445 s cold, the second 27 s, the
+  accepted build over 10 min (it outlived a 600 s watch).
+- **Step 6, cut.** `cadex_training_model.py cut --project` in 0.9 s, cut
+  `f6ed66de` (the same as ADR-841's), fidelity passed.
+- **Step 7, relay.** Onto the cut and onto concept E2 (`8eee5da9`, ADR-843's
+  frozen concept): all 54 sensors and observations kept, nothing dropped;
+  the concept lacks the two hock-rod top joints (listed, not refused).
+- **Steps 8–9, retrain and judge** with `cadex evaluate --weights` on the
+  export (10 frozen seeds, 6 predicates; about 220–290 s per verdict):
+
+  | trained on | train s | checkpoint | on the export | binding predicate |
+  |---|---|---|---|---|
+  | cut, re-laid | 316 | 200 | **10/10** | rated ratio 0.83–0.85, speed ratio 1.03 |
+  | cut | | best (218) | **10/10** | rated 0.92–0.94, speed 1.08 |
+  | cut | | 299 | 0/10 | within_rated 1.04–1.05 on every seed |
+  | concept E2, re-laid | 266 | 200 | 0/10 | within_rated 1.29–1.34 |
+  | concept E2 | | best (247) | 0/10 | stands still (speed ratio ≤ 0.03), rated 1.85–2.65 |
+  | concept E2 | | 299 | 0/10 | within_rated 1.21–1.45 |
+
+  Every seed of every run completes and none falls; tilt and heading pass
+  throughout except the concept's best checkpoint (2 seeds over 30° tilt).
+  The cut run came apart after 250 (episode length 5,285 → 92 steps at 267),
+  which is why its last checkpoint fails.
+
+**Consequences.**
+- P1's last bullet holds: leon V and the biped each go through the route
+  with Cadex's tools alone, and on both a cut-trained policy passes on the
+  export with no bespoke judge.
+- ADR-846's tier decision is confirmed on the creature, more sharply than
+  on the biped: the concept trains a trot of the right speed and posture
+  but not one within the CAD's drive ratings, because E2 is 7.1% lighter
+  than the CAD and its legs 8–17% lighter (ADR-843). The confirming retrain
+  on the cut is not optional.
+- Judge more than the last checkpoint; a run that is no longer climbing is
+  stopped, not extended (the cut's 200 and 218 passed, 299 failed).
+- Still not shown: a concept task before any CAD (ADR-846's second gap),
+  and a robot taken through steps 1–9 in order from an empty project.

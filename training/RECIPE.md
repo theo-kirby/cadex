@@ -36,7 +36,10 @@ names the run that showed it.
    CAD is built to.
 4. **CAD.** Build the robot in its project and declare its task with
    `assembly.task` and a success spec, so the export carries the task bundle
-   that every later tier trains on and is judged by.
+   that every later tier trains on and is judged by. A gait reference the
+   legs cannot reach refuses at accept, naming the leg and the stop (leon V:
+   a 680 mm trot stride, then the 731 mm dynamic-similarity default, both
+   out of the re-legged fore leg's reach; 520 mm accepted, ADR-847).
 5. **Compare.** `cadex_cad_vs_concept.py concept.xml EXPORT.xml`: geometry
    should agree (leon V: hip heights, reach and foot x within 0.7 mm) and the
    flagged rows say what the CAD moved, usually mass (leon V +7.1% against
@@ -52,12 +55,18 @@ names the run that showed it.
    (ADR-845).
 8. **Confirming retrain** on the cut: `cadex_train.py DIR/outputs/TASK.json
    --cad-model EXPORT.xml`, at the concept's budget. The biped: 100
-   iterations in 106 s, against ~249 s on the export (ADR-845).
+   iterations in 106 s, against ~249 s on the export (ADR-845). leon V's
+   trot: 300 iterations in 316 s (ADR-847). Judge the checkpoints, not only
+   the last: leon V's cut run passed at 200 and at its best (218) and failed
+   at 299, where the run had begun to come apart (episode length 5,285 →
+   92 steps at 267).
 9. **Judged on the export.** `cadex evaluate --project DIR --task TASK
    --weights RUN/policy.cxpolicy --out JUDGED`: the engine's success spec on
    its frozen seeds, as for a declared policy (ADR-846). The biped: cut-trained
    10/10 (as the export-trained runs), concept-trained 7/10, every failure
-   step clearance 0.019 against 0.020 hip heights. A pass is then declared
+   step clearance 0.019 against 0.020 hip heights. leon V's trot: cut-trained
+   10/10, concept-trained 0/10, every seed over its drives' rating
+   (1.21–1.34×), the concept being 7.1% lighter than the CAD (ADR-847). A pass is then declared
    with `cadex train --put` and `assembly.policy` as any policy is.
 
 Skip the concept only when the CAD already exists and no geometry is in
@@ -323,11 +332,10 @@ feature with its probe in `docs/probes/l3r1/`:
 
 These are what no run has shown yet.
 
-- **The route end to end on a creature.** Only the biped has gone spec →
-  concept → cut → relay → retrain → `cadex evaluate`, and its CAD came
-  first. leon V has a concept, a cut and a comparison, but its tasks come
-  from its own `t1_bundle.py`, not from an engine export, so nothing of its
-  route has been relayed or judged by `cadex evaluate` (ADR-846).
+- **The route from an empty project.** The biped and leon V have each gone
+  concept → CAD task → cut → relay → retrain → `cadex evaluate` (ADR-845,
+  ADR-847), but both CADs existed before their task was declared; no robot
+  has yet been taken through steps 1–9 in order.
 - **A concept's task before any CAD.** Step R.2 trains a concept on a task
   written for it; Cadex has no command that makes that bundle without a
   CAD project. Every concept run so far used a robot's own script.
