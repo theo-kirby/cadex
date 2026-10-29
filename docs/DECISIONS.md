@@ -47186,3 +47186,59 @@ with the note. Both suites green (engine 157 passed, 3 skipped; CLI 53).
   (`params`, `render`, `section`, `inventory`, `link`, `asset`, `train`),
   and the warm rebuild itself (M0 rank 3), which `params`, `script --set`
   and accept still pay.
+
+## ADR-849 — The trainer compiles its witness and view rollout once, and keeps compiled programs between runs (2026-10-29, orun21 S1)
+
+**Context.** M0 ranked the trainer's fixed cost per run second among the
+sinks (`docs/probes/orun21/ITERATION.md` §2, §7): on a 100-iteration Go1
+screen (8192 envs, 16.4 M steps) `cadex_train.py` spent ~52 s compiling
+before iteration 0, ~20 s training and ~51 s after the last iteration. The
+51 s was two compiles of the same thing: `witness_rollout` (the witness's
+`--unroll` steps on the 32-env witness batch, first compiled by the final or
+best snapshot) and `view_rollout` (ADR-835's `--view-seconds` steps on the
+same batch), ~25 s each. A scan's compile does not depend on its length.
+Nothing persisted a compile between runs, so every screen paid all of it
+again.
+
+**Decision.**
+- One jitted rollout of the witness batch serves both. It scans
+  `max(--unroll, view steps)` steps and returns the first `--unroll`
+  observations (the witness) and every pose (the view). The result is
+  memoised on the weights it was run with, so the final snapshot and the
+  view run it once. The policy is deterministic and the env step takes no
+  key, so the witness is what it was: a 2-iteration CPU run before and after
+  writes the same `view/trace.json` byte for byte, and policy headers that
+  differ only in `wall_time_s` and `trainer_sha256`.
+- jax's persistent compilation cache is on by default in
+  `~/.cache/cadex/jax`, for programs that took ≥ 1 s to compile.
+  `CADEX_JAX_CACHE` moves it or turns it `off`; `JAX_COMPILATION_CACHE_DIR`
+  wins when set. No new dependency: it is jax's own.
+
+**Evidence** (`~/cadex-projects/orun21-lab/go1/s1-fixed/`, the M0 view
+screen's command with `--view-seconds 10`, each `train.log` timestamped from
+launch):
+
+| run | iteration 0 | iteration 99 | end | total |
+|---|---|---|---|---|
+| before (`258e1536`) | 53.3 s | 73.6 s | 51.0 s | **125.1 s** |
+| after, empty cache | 54.1 s | 74.4 s | 27.1 s | **102.0 s** |
+| after, same command, warm cache | 19.5 s | 39.4 s | 8.6 s | **48.5 s** |
+| after, warm, `--learning-rate 1e-4` | 45.0 s | 65.5 s | 8.7 s | **74.2 s** |
+| after, warm, `--learning-rate 1e-4 --seed 2` | 52.4 s | 73.2 s | 26.9 s | **100.6 s** |
+
+**Consequences.**
+- Every run's end is ~24 s shorter, cache or none.
+- A rerun of the same command (a seed already run, an extension's same
+  configuration, a re-screen after a reward-free change) saves another
+  ~54 s on the Go1. The cache hits only on the same program: the learning
+  rate is a constant in the update, and the seed reaches the compiled
+  rollout through the environment's drawn pools, so a changed learning rate
+  recompiles the update (45 s before iteration 0) and a changed seed
+  recompiles the rollout. Making those traced arguments would widen the
+  hit; it is not done here.
+- A mid-run checkpoint now rolls out the view's length (500 steps on the
+  Go1), ~1.0 s each on a warm run with `--checkpoint-every 25`; the first
+  one pays the rollout's compile or cache load (7.2 s warm), as the final
+  snapshot used to.
+- The cache grows on disk (15 MB after the Go1 runs above); deleting the
+  directory is always safe.

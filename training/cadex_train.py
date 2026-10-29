@@ -4084,6 +4084,31 @@ def softplus_inverse(value: float) -> float:
     return math.log(math.expm1(value))
 
 
+def compilation_cache_dir() -> str:
+    """Where compiled programs persist between runs, or "" for nowhere (ADR-849).
+
+    ``CADEX_JAX_CACHE`` names the directory (``off`` turns it off); jax's
+    own ``JAX_COMPILATION_CACHE_DIR`` wins when set. Keyed by jax on the
+    program, its shapes and the backend, so a rerun on the same model and
+    batch loads instead of compiling, and anything else compiles as before."""
+
+    if os.environ.get("JAX_COMPILATION_CACHE_DIR"):
+        return os.environ["JAX_COMPILATION_CACHE_DIR"]
+    chosen = os.environ.get("CADEX_JAX_CACHE", "")
+    if chosen.lower() == "off":
+        return ""
+    return chosen or str(Path.home() / ".cache" / "cadex" / "jax")
+
+
+def use_compilation_cache(jax: Any) -> None:
+    directory = compilation_cache_dir()
+    if not directory:
+        return
+    jax.config.update("jax_compilation_cache_dir", directory)
+    # Only programs that took a second to compile: the rest load no faster.
+    jax.config.update("jax_persistent_cache_min_compile_time_secs", 1.0)
+
+
 def train(
     bundle: dict[str, Any],
     options: argparse.Namespace,
@@ -4129,6 +4154,7 @@ def train(
     from brax.training.agents.ppo import networks as ppo_networks
 
     match_engine_actuator_derivative(mujoco, jax, jnp)
+    use_compilation_cache(jax)
     emit = emit or (lambda tag, iteration, reward, trained: None)
     progress = progress or (lambda **fields: None)
 
@@ -4504,39 +4530,41 @@ def train(
             report["taught"] = jnp.mean(metrics["taught"][-1])
         return optimizer_state, params, normaliser, env_state, key, report
 
-    @jax.jit
-    def witness_rollout(normaliser, policy_params, key):
-        """The deterministic policy on the witness batch: what it reads."""
-
-        policy = make_policy((normaliser, policy_params, None), deterministic=True)
-
-        def one(state, step_key):
-            action, _ = policy(state.obs, step_key)
-            return witness_env.step(state, action), state.obs["state"]
-
-        state = witness_env.reset(key)
-        _state, seen = jax.lax.scan(one, state, jax.random.split(key, unroll))
-        return seen
-
     view_steps = 0
     if getattr(options, "view_seconds", 0) and not bundle.get("family"):
         interval = float(bundle["task"]["episode"]["control_interval_s"])
         view_steps = max(1, round(float(options.view_seconds) / interval))
+    rollout_steps = max(unroll, view_steps)
 
     @jax.jit
-    def view_rollout(normaliser, policy_params, key):
-        """The deterministic policy on the witness batch, every pose (ADR-835)."""
+    def witness_rollout(normaliser, policy_params, key):
+        """The deterministic policy on the witness batch: what it reads, every pose.
+
+        One compiled rollout serves the witness (its first ``--unroll``
+        observations) and the closing view (its poses, ADR-835): compiled
+        twice, they cost the run's end ~25 s each (ADR-849)."""
 
         policy = make_policy((normaliser, policy_params, None), deterministic=True)
 
         def one(state, step_key):
             action, _ = policy(state.obs, step_key)
-            state = witness_env.step(state, action)
-            return state, state.pipeline_state.qpos
+            after = witness_env.step(state, action)
+            return after, (state.obs["state"], after.pipeline_state.qpos)
 
         state = witness_env.reset(key)
-        _state, poses = jax.lax.scan(one, state, jax.random.split(key, view_steps))
-        return jnp.concatenate([state.pipeline_state.qpos[None], poses])
+        _state, (seen, poses) = jax.lax.scan(
+            one, state, jax.random.split(key, rollout_steps))
+        return seen[:unroll], jnp.concatenate([state.pipeline_state.qpos[None], poses])
+
+    rolled = {}
+
+    def rollout(params, normaliser):
+        """The witness rollout of these weights, run once however often it is asked."""
+
+        if rolled.get("params") is not params or rolled.get("normaliser") is not normaliser:
+            rolled.update(params=params, normaliser=normaliser,
+                          result=witness_rollout(normaliser, params.policy, witness_key))
+        return rolled["result"]
 
     def view_poses(params, normaliser):
         """[step, qpos] of the witness episode that travelled farthest forward, or None.
@@ -4546,7 +4574,7 @@ def train(
         if not view_steps:
             return None
         try:
-            poses = np.asarray(view_rollout(normaliser, params.policy, witness_key),
+            poses = np.asarray(rollout(params, normaliser)[1][:view_steps + 1],
                                dtype=np.float64)
             host = mujoco.MjModel.from_xml_string(bundle["model_xml"].decode("utf-8"))
         except Exception as error:  # noqa: BLE001
@@ -4563,7 +4591,7 @@ def train(
         return poses[:, pick, :]
 
     def snapshot(params, normaliser, curve, wall):
-        seen = np.asarray(witness_rollout(normaliser, params.policy, witness_key)
+        seen = np.asarray(rollout(params, normaliser)[0]
                           ).reshape((-1, len(env.actor_names)))
         if seen.shape[0] >= WITNESS_SAMPLES:
             picks = np.linspace(0, seen.shape[0] - 1, WITNESS_SAMPLES).astype(int)

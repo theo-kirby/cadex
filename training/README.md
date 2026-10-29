@@ -630,6 +630,21 @@ its boxes and capsules and an export's fast training model as its collision
 shapes. Until then, from the run's start, `view/` holds the model standing at
 its keyframe, so the run shows its robot from the first iteration. The view never fails a run: anything that goes wrong is one line on stderr.
 
+The view and the witness are one compiled rollout of the witness batch: its
+first `--unroll` observations are the witness, its poses the view (ADR-849).
+
+## Compiled programs persist between runs (ADR-849)
+
+`cadex_train.py` keeps jax's compiled programs in `~/.cache/cadex/jax`
+(`CADEX_JAX_CACHE=DIR` moves it, `CADEX_JAX_CACHE=off` turns it off, and
+jax's own `JAX_COMPILATION_CACHE_DIR` wins when set). A program loads
+instead of compiling only when it is the same program: same model and task,
+same batch and network, same hyperparameters (the learning rate is a
+constant in the update) and, for the witness and view rollout, the same
+seed. A rerun of a command hits in full; a changed learning rate still
+compiles the update. On the Go1 screen, a hit takes the compile before
+iteration 0 from 53 s to 19.5 s.
+
 `--view POLICY` trains nothing: it replays a finished policy on the bundle it was
 trained on and writes `view/` beside the policy, for a run made before this.
 

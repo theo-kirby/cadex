@@ -294,3 +294,23 @@ build is not byte-reproducible run to run and every rebuilding export
 re-accepted it. `--rebuild` keeps that road; the restore still runs on
 every other restoring command (`params`, `render`, `section`, `inventory`,
 `link`, `asset`, `train`).
+
+**Rank 2, the trainer's fixed cost per run (ADR-849).** The run's end compiled
+the same witness-batch rollout twice (witness and closing view, ~25 s each);
+now once. jax's persistent compilation cache keeps every compile between runs.
+The M0 view screen's command (`go1/s1-fixed/screen.sh`, `--view-seconds 10`),
+seconds from launch:
+
+| run | iteration 0 | iteration 99 | end | total |
+|---|---|---|---|---|
+| before (`258e1536`) | 53.3 | 73.6 | 51.0 | **125.1** |
+| after, empty cache | 54.1 | 74.4 | 27.1 | **102.0** |
+| after, same command, warm cache | 19.5 | 39.4 | 8.6 | **48.5** |
+| after, warm, `--learning-rate 1e-4` | 45.0 | 65.5 | 8.7 | **74.2** |
+| after, warm, `--learning-rate 1e-4 --seed 2` | 52.4 | 73.2 | 26.9 | **100.6** |
+
+The end's cut holds on every run. The cache hits only on the same program:
+the learning rate is a constant in the compiled update and the seed reaches the
+rollout through the drawn pools, so a hyperparameter screen still compiles its
+update. The 19.5 s left before iteration 0 on a full hit is imports, the
+environment's build and loading the cached programs; not split.
