@@ -86,6 +86,16 @@ _TINY = 1.0e-12
 #: those as equal; every absolute one below a nanometre sees both as zero.
 INERTIAL_ZERO_TOLERANCE_MM = 1.0e-6
 
+#: The chordal deflection a solid is tessellated at when its BREP mass
+#: properties are non-physical (ADR-950). Fixed rather than scaled to the
+#: part, because the fallback feeds the MJCF and its digest: a deflection that
+#: moved with the bounding box would make the mass a function of an unrelated
+#: dimension. Measured on leon VI's ``pnl_neck_side_l`` (a 2 mm skin panel
+#: whose BREP integrates to a negative moment), the enclosed volume is flat
+#: within 0.1% from 0.2 mm down to this value; finer deflections re-mesh its
+#: defective faces and move it by 3%.
+MASS_TESSELLATION_DEFLECTION_MM = 0.05
+
 #: How far a claimed rigid placement may drift from orthonormal before it is
 #: refused. FreeCAD placements are built from unit quaternions, so real ones
 #: land many orders of magnitude inside this; a mirrored or scaled
@@ -743,6 +753,197 @@ def _parallel_axis_mm5(volume_mm3: float, offset_mm: Sequence[float]) -> list[fl
     ]
 
 
+def inertia_reading_defect(reading: Mapping[str, Any]) -> str | None:
+    """Why one solid's mass properties are non-physical, or ``None``.
+
+    ``reading`` is one entry of the worker's ``_solid_inertia_readings``: a
+    volume in mm³ and a unit-density tensor about the solid's own centre of
+    mass in mm⁵. No real solid has a non-positive volume, a non-positive
+    principal moment, or principal moments that break ``A + B >= C``; OCCT's
+    volume integration produces all three on a solid whose faces it cannot
+    integrate, while ``isValid()`` still passes (ADR-950). The triangle test
+    carries the same relative tolerance as :func:`body_inertial`'s, so a thin
+    plate on the boundary is not called defective here and then accepted there.
+    """
+
+    volume = float(reading["volume_mm3"])
+    if not math.isfinite(volume) or volume <= 0.0:
+        return f"volume {volume:.6g} mm³"
+    tensor = [float(item) for item in reading["inertia_mm5_about_com"]]
+    if not all(math.isfinite(item) for item in tensor):
+        return "a non-finite inertia tensor"
+    principal = _symmetric_eigenvalues(tensor)
+    if principal[0] <= 0.0:
+        return f"principal moment {principal[0]:.6g} mm⁵ at unit density"
+    if principal[0] + principal[1] - principal[2] < -1.0e-9 * principal[2]:
+        return "principal moments that violate the triangle inequality"
+    return None
+
+
+def mesh_open_edge_count(triangles: Sequence[int]) -> int:
+    """Directed edges of an indexed mesh with no single reversed twin.
+
+    Zero means the mesh is closed and consistently wound: every edge is shared
+    by exactly two triangles that traverse it in opposite directions. That is
+    the precondition for the divergence theorem in :func:`mesh_mass_properties`
+    to measure the enclosed solid rather than a number that depends on where
+    the origin is. It reads indices, not positions, so it needs a mesh whose
+    faces share their seam vertices -- ``TopoShape.tessellate`` on a whole
+    solid, not ``cadex_tessellation.tessellate_shape``'s face-by-face buffers.
+    """
+
+    counts: dict[tuple[int, int], int] = {}
+    for index in range(0, len(triangles) - 2, 3):
+        a, b, c = (int(triangles[index + corner]) for corner in range(3))
+        for edge in ((a, b), (b, c), (c, a)):
+            counts[edge] = counts.get(edge, 0) + 1
+    return sum(
+        1
+        for (start, end), count in counts.items()
+        if count != 1 or counts.get((end, start), 0) != 1
+    )
+
+
+def mesh_mass_properties(
+    vertices_mm: Sequence[float], triangles: Sequence[int]
+) -> dict[str, Any]:
+    """Volume, centre of mass and unit-density inertia of a closed mesh.
+
+    The same reading :func:`body_inertial` takes from OCCT, computed instead
+    from outward-wound triangles: each triangle and the origin span a signed
+    tetrahedron, and for one with edge vectors ``a``, ``b``, ``c`` and
+    ``d = a·(b×c)`` the second moment is
+    ``d/120 · (a·aᵀ + b·bᵀ + c·cᵀ + s·sᵀ)`` with ``s = a + b + c``. Summed,
+    the signs cancel outside the solid. The tensor is then shifted to the
+    centre of mass, so the origin should be near it -- the worker passes a
+    copy already centred on the BREP's centre -- to keep the shift from
+    cancelling digits.
+    """
+
+    volume_terms: list[float] = []
+    first_terms: list[list[float]] = [[], [], []]
+    second_terms: list[list[float]] = [[] for _ in range(9)]
+    for index in range(0, len(triangles) - 2, 3):
+        corners = [
+            [float(vertices_mm[3 * int(triangles[index + corner]) + axis]) for axis in range(3)]
+            for corner in range(3)
+        ]
+        a, b, c = corners
+        det = (
+            a[0] * (b[1] * c[2] - b[2] * c[1])
+            + a[1] * (b[2] * c[0] - b[0] * c[2])
+            + a[2] * (b[0] * c[1] - b[1] * c[0])
+        )
+        volume_terms.append(det / 6.0)
+        total = [a[axis] + b[axis] + c[axis] for axis in range(3)]
+        for axis in range(3):
+            first_terms[axis].append(det * total[axis] / 24.0)
+        for row in range(3):
+            for column in range(3):
+                second_terms[row * 3 + column].append(
+                    det
+                    / 120.0
+                    * (
+                        a[row] * a[column]
+                        + b[row] * b[column]
+                        + c[row] * c[column]
+                        + total[row] * total[column]
+                    )
+                )
+    volume = math.fsum(volume_terms)
+    if not math.isfinite(volume) or volume <= 0.0:
+        return {
+            "volume_mm3": volume,
+            "center_of_mass_mm": [0.0, 0.0, 0.0],
+            "inertia_mm5_about_com": [0.0] * 9,
+        }
+    centre = [math.fsum(first_terms[axis]) / volume for axis in range(3)]
+    second = [math.fsum(terms) for terms in second_terms]
+    about_centre = [
+        second[row * 3 + column] - volume * centre[row] * centre[column]
+        for row in range(3)
+        for column in range(3)
+    ]
+    trace = about_centre[0] + about_centre[4] + about_centre[8]
+    inertia = [
+        (trace if row == column else 0.0) - about_centre[row * 3 + column]
+        for row in range(3)
+        for column in range(3)
+    ]
+    return {
+        "volume_mm3": volume,
+        "center_of_mass_mm": centre,
+        "inertia_mm5_about_com": inertia,
+    }
+
+
+def tessellated_solid_reading(
+    brep_reading: Mapping[str, Any],
+    vertices_mm: Sequence[float],
+    triangles: Sequence[int],
+    *,
+    origin_mm: Sequence[float],
+    deflection_mm: float,
+    defect: str,
+    context: str,
+    solid_index: int,
+) -> dict[str, Any]:
+    """A non-physical BREP reading replaced by its solid's tessellation.
+
+    ``vertices_mm`` are in a frame whose origin sits at ``origin_mm`` of the
+    component frame (the worker tessellates a copy translated by
+    ``-origin_mm``); the returned centre is put back in the component frame.
+    The mesh must be closed (:func:`mesh_open_edge_count`) and its own
+    reading physical, or the body is refused as before -- the fallback never
+    turns one wrong number into another (ADR-950). The reading carries
+    ``source`` and the ``warning`` that names the body and both volumes.
+    """
+
+    open_edges = mesh_open_edge_count(triangles)
+    measured = mesh_mass_properties(vertices_mm, triangles)
+    mesh_defect = (
+        f"{open_edges} open or inconsistently wound edges"
+        if open_edges
+        else inertia_reading_defect(measured)
+    )
+    if mesh_defect is not None:
+        raise DynamicsError(
+            f"{context} solid {solid_index} has non-physical BREP mass "
+            f"properties ({defect}), and its tessellation at "
+            f"{float(deflection_mm):g} mm cannot replace them ({mesh_defect}).",
+            reason="degenerate_inertia",
+            correction=(
+                "The solid's faces neither integrate nor tessellate to a closed "
+                "volume. Check for a zero-thickness, self-intersecting or "
+                "duplicated solid in the source part."
+            ),
+            observed={
+                "context": context,
+                "solid_index": solid_index,
+                "brep_defect": defect,
+                "mesh_defect": mesh_defect,
+            },
+        )
+    centre = [
+        float(origin_mm[axis]) + measured["center_of_mass_mm"][axis] for axis in range(3)
+    ]
+    triangle_count = len(triangles) // 3
+    warning = (
+        f"{context} solid {solid_index}: BREP mass properties are non-physical "
+        f"({defect}); taken from a closed tessellation at "
+        f"{float(deflection_mm):g} mm ({triangle_count} triangles), volume "
+        f"{measured['volume_mm3']:.6g} mm³ against the BREP's "
+        f"{float(brep_reading['volume_mm3']):.6g} mm³ (ADR-950)."
+    )
+    return {
+        "volume_mm3": measured["volume_mm3"],
+        "center_of_mass_mm": centre,
+        "inertia_mm5_about_com": measured["inertia_mm5_about_com"],
+        "source": "tessellation",
+        "warning": warning,
+    }
+
+
 def body_inertial(
     readings: Sequence[Mapping[str, Any]],
     density_kg_m3: float,
@@ -788,6 +989,7 @@ def body_inertial(
             observed={"context": context},
         )
     entries: list[tuple[float, list[float], list[float]]] = []
+    warnings: list[str] = []
     for index, reading in enumerate(readings):
         volume = float(reading["volume_mm3"])
         if not math.isfinite(volume) or volume <= 0.0:
@@ -809,6 +1011,8 @@ def body_inertial(
             context=f"{context} solid {index} inertia",
         )
         entries.append((volume, centre, tensor))
+        if reading.get("warning"):
+            warnings.append(str(reading["warning"]))
 
     total_volume = math.fsum(volume for volume, _centre, _tensor in entries)
     # Snapped, so a coordinate that is zero by symmetry is zero rather than
@@ -896,6 +1100,10 @@ def body_inertial(
         "inertia_kg_m2": tensor_kg_m2,
         "principal_inertia_kg_m2": principal,
         "solid_count": len(entries),
+        # "brep" unless a solid's OCCT reading was non-physical and its
+        # tessellation stood in for it (ADR-950); the warnings name them.
+        "mass_properties_source": "tessellation" if warnings else "brep",
+        "mass_properties_warnings": warnings,
     }
 
 
@@ -7813,6 +8021,12 @@ def model_evidence(
                     component["inertial"]["principal_inertia_kg_m2"]
                 ),
                 "solid_count": int(component["inertial"]["solid_count"]),
+                "mass_properties_source": str(
+                    component["inertial"].get("mass_properties_source", "brep")
+                ),
+                "mass_properties_warnings": list(
+                    component["inertial"].get("mass_properties_warnings", [])
+                ),
             }
             for component in components
         ],

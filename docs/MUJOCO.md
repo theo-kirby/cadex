@@ -857,7 +857,10 @@ over NDJSON) the first machines were driven with.
 
 4. **Measure before sizing anything.** `measure.py` reads
    `model_evidence.inertials`, so mass and inertia come from OCCT, not from a
-   tessellation and not from a guess. It reports total mass, the standing
+   tessellation and not from a guess. The one exception is a solid OCCT
+   integrates to a non-physical tensor: its entry reads
+   `mass_properties_source: "tessellation"` and names it in
+   `mass_properties_warnings` (ADR-950). It reports total mass, the standing
    centre of mass, each joint's height, and the mass hung below it. Every
    number the next two steps use comes from here — hazard 9's baselines
    included, which are **measured at the exported keyframe** and not read off

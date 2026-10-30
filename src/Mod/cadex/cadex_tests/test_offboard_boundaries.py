@@ -293,6 +293,10 @@ _ALLOWED_DEFERRED = _ALLOWED_TOP_LEVEL | {
     # ADR-840: the go-to-point source beside it in training/, standard
     # library at module scope; a sibling file, not a dependency.
     "cadex_goto",
+    # ADR-957: a named gait guide's stride, from the engine's procedural
+    # reference when the repository is beside the trainer (it imports no
+    # mujoco of its own); without it the trainer asks for a clip JSON.
+    "CadexGait",
 }
 
 

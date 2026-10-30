@@ -48416,3 +48416,435 @@ done keep ADR-839's strengths. `#play-goto` reads `gate 3/12 · last leg
 **Consequences.** A gate course's per-leg speeds are read in the readout,
 not the colours. The trainer's own gate telemetry in `progress.json`
 (`gate_ceiling_mps`, `gate_progress_mps`, `gates_per_s`) is not drawn yet.
+
+## ADR-950 — A non-physical BREP inertia falls back to a closed tessellation (2026-10-30)
+
+**Context.** leon VI's MJCF export was refused: `mjcf body 'c_pnl_neck_side_l'
+has a non-positive principal moment of inertia (-6.02383e-08 kg·m²)`. The
+panel is a 2 mm skin solid that `isValid()` accepts but OCCT's BOP check
+does not (`TooSmallEdge` twice). `GProp` integrates it to 2129.6 mm³ and a
+negative third moment; its mirror integrates normally (3303.6 mm³). The
+geometry is the owner's and is not repaired; the engine was the thing
+reading it wrong.
+
+**Decision.** `cadex_assembly_worker._solid_inertia_readings` checks each
+solid's OCCT reading with `CadexDynamics.inertia_reading_defect`: a
+non-positive or non-finite volume, a non-positive principal moment, or
+moments that break `A + B >= C` (the tolerance `body_inertial` uses). Such a
+solid is tessellated whole with `TopoShape.tessellate` at the fixed
+`MASS_TESSELLATION_DEFLECTION_MM = 0.05`, on the copy already centred on the
+BREP centre of mass. `mesh_open_edge_count` must be zero (every directed edge
+has exactly one reversed twin), and `mesh_mass_properties` takes volume,
+centre and unit-density tensor from signed tetrahedra. If the mesh is open or
+its own reading is non-physical, the body is refused as before
+(`degenerate_inertia`, both defects named). Otherwise the reading carries
+`source: "tessellation"` and a warning naming the body, the defect, the
+deflection, the triangle count and both volumes. `body_inertial` returns
+`mass_properties_source` (`brep` or `tessellation`) and
+`mass_properties_warnings`, and `model_evidence.inertials` publishes both.
+
+- **Not the BOP check as the trigger.** `TooSmallEdge` is common on solids
+  whose mass properties are right; switching them to a mesh would lose the
+  exact BREP figures (a 5 mm pin is 1.6% short at the collision default), and
+  `Shape.check` prints progress to stdout. The trigger is the physical test.
+- **Not `cadex_tessellation.tessellate_shape`.** It meshes face by face with
+  unshared seam vertices, so the mesh is not indexed-closed: on the same panel
+  it read 539 of 8,011 directed edges unmatched and an enclosed volume of
+  −237,172 mm³. The whole-solid tessellation read 0 unmatched.
+- **A fixed deflection.** The mass feeds the MJCF and its digest. On
+  `pnl_neck_side_l` the enclosed volume is 2989.1, 2986.6, 2986.7 and 2989.5
+  mm³ at 0.2, 0.1, 0.05 and 0.02 mm; at 0.01 and 0.005 mm the defective faces
+  re-mesh and it reads 3064.6 and 3081.5 mm³.
+
+**Evidence.** leon VI's scratch copy (revision `b6369ac2`, 80 bodies), built
+with this tree's `Mod/cadex` over the 0.2.0 payload: accepted, MJCF written
+(sha256 `cc097e17…`, 27,967 bytes). Exactly one body fell back:
+`c_pnl_neck_side_l`, 2986.74 mm³ from 2,964 triangles against the BREP's
+2129.58 mm³, 3.02 g, principal moments (1.67e-07, 1.11e-06, 1.23e-06)
+kg·m². Every other body reads `brep`. MuJoCo loads the file: 5.1707 kg.
+
+**Tests.** `cadex_tests/test_mass_properties_fallback.py`: a closed box mesh
+measures exactly; a degenerate reading is named and refused by
+`body_inertial`; its tessellation stands in with the warning; an untouched
+body reads `brep`; an open mesh is refused. `pixi run test-engine`: 167
+passed with `CADEX_ENGINE_ROOT` at the overlaid payload (138 passed, 29
+skipped without). `pytest cli/tests`: 52 passed, 2 skipped.
+
+**Consequences.** A body that used to be refused now exports, with its
+warning in the evidence; nothing that integrated physically changes, so no
+existing MJCF digest moves. `docs/MUJOCO.md` §7 step 4 notes the exception.
+
+## ADR-951 — The training cut keeps the bodies that hold its floor geoms (2026-10-30)
+
+**Context.** leon VI's cut (`cadex_training_model.py cut`, ADR-841) from its
+export (MJCF `af9792e7…`, 81 bodies) failed fidelity on every setting of the
+ladder: worst gated root error 20.8 mm (Euler) and 35.6 mm (implicitfast)
+against 5 mm. It failed even with the export's own solver (implicitfast, 100
+and 50 iterations): 5.65 mm on the 2 Hz, 0.05 rad signal, where the export
+differs from itself at half its step by 0.94 mm. Taking the cut's changes one
+at a time, the floor-only contacts and dropped excludes changed nothing
+(0.000 mm) and `fuse_static` alone gave the 5.65 mm. The fused model's
+dynamics are exact: the joint-space mass matrix and bias forces agree to
+2.3e-9 and 6.3e-9 at the build pose and at two random poses. The paths
+nonetheless split at the first contact step. MuJoCo softens each constraint
+by its bodies' `body_invweight0`. Each paw is a joint-free body holding the
+foot sphere (`c_fl_paw`, invweight0 10.89), and fusion moved the sphere into
+the forearm (3.45). Each floor contact became about three times stiffer. With
+the four paw bodies kept, every gated signal matched the export at 0.000 mm.
+The cut's stand check also could not see leon VI's feet: the export carries
+no touch sensor yet (that comes with its task), so `stand` found no foot
+bodies even with `--feet` given, and failed `on_feet_only`.
+
+**Decision.** `fuse_static(root, keep=...)` never fuses a body in `keep`.
+`derive` passes the bodies that hold a foot geom or a named `--fall-geoms`
+geom. Any other joint-free body still fuses. `stand`, `judge` and the
+`fidelity` command take the foot geoms (`--feet`, now on both commands).
+`cut` passes the feet it kept. Without them, the feet are still the bodies
+that hold touch sites.
+
+- **Not a stiffer `solref` on the fused foot.** The softening depends on the
+  whole contact's invweight, so no constant `solref` reproduces the export at
+  every pose. Keeping the body is exact and costs one body per foot: leon VI's
+  cut has 24 bodies, not 20.
+- **The ladder is unchanged.** After this fix, leon VI passes at Euler with 3
+  and 4 iterations (1.80 mm), but not at the ladder's 2 and 3 (10.6 mm Euler,
+  11.9 mm implicitfast). The setting is named on its command line, as the
+  module allows.
+
+**Evidence.** leon VI, project revision `ba993447`, export `af9792e7…`.
+`cut --feet <four paw spheres> --integrator Euler --iterations 3
+--ls-iterations 4 --timestep 0.002` wrote cut `8ff718b1…`. Fidelity: worst
+gated 1.799 mm (5 of 12 signals gated). Stand: 10 s, finite, tilt 0.231°,
+drift 0.97 mm, the four paws carrying 50.7 N of 50.7 N. Solver sweep with this
+fix, worst gated: Euler 2/3 10.635, 3/4 1.799, 4/6 1.704, 10/10 1.99 mm;
+implicitfast 2/3 11.894, 3/4 6.393, 4/6 2.738, 6/8 0.325, 100/50 0.000 mm.
+`cadex_train_bench.py --envs 8192` on the RTX 5090: Euler 3/4 343,522, Euler
+4/6 332,421, implicitfast 4/6 289,401, implicitfast 6/8 281,924 env steps/s.
+
+**Tests.** `training/test_cadex_training_model.py::
+test_a_foot_body_is_kept_so_its_contact_is_as_soft_as_the_export`: the toy's
+foot bodies survive the cut. At the export's solver, the cut's root path
+matches the export's to 1e-6 m (it fails on the previous code). A
+touch-free export stands on its named feet. `pytest training/`: 108 passed.
+
+**Consequences.** Re-cutting a robot whose foot geom sits on a joint-free
+body changes the cut's digest and moves it closer to its export. No export
+changes.
+
+## ADR-952 — The go-to-point judge reads each drive's RMS torque (2026-10-30)
+
+**Context.** A go-to-point policy must hold its motors' continuous rating, not
+only reach its points: leon V's concept-trained trot failed its export 0/10 on
+drive ratings (ADR-847), and leon VI's charter (l6r1 G1) bars any drive whose
+RMS over an episode exceeds rated. `cadex_goto.py play` and
+`docs/probes/orun21/g2_judge.py` read reach, hold, speed and falls, and no
+torque, so the rating had to be checked by a second, separate replay.
+
+**Decision.** `cadex_goto.DriveMeter` accumulates every actuator's
+`actuator_force` (after its `forcerange` clamp) at every solver step, not only
+control steps. `play` writes `drives` into `goto.json`: each actuator's RMS and
+peak, the worst actuator and its RMS. `g2_judge.py` copies each seed's RMS
+table and worst into `summary.json` and adds `drive_rms_worst` (N·m, drive,
+seed) over all seeds. The bar itself is unchanged: the rating is the robot's,
+so the comparison against it stays with the caller.
+
+**Evidence.** leon VI's 49.2 M route screen (cut `445cd40c…`, task
+`bd7a2592…`), judged on its export's task `439e3c9d…` with `--other-model`
+and bands `walk:0.187-0.327,run:0.467-0.7`: its best checkpoint (iteration
+286, `a658bf65…`) passes G2's bar 10/10, while the hind knee's RMS is
+2.268 N·m against the ROB05's 1.6 N·m rating (1.42×) and the spine pitch's
+2.073 N·m (1.30×). 62,130 solver steps in seed 7's 124.26 s episode.
+
+**Tests.** `training/test_cadex_goto.py::
+test_the_drive_meter_reads_a_held_arm_at_its_static_torque`: a 0.5 kg point
+held level 0.2 m out reads m·g·l = 0.981 N·m within 1e-3; a drive clamped at
+0.3 N·m reads its clamp. `pytest training/`: 109 passed.
+
+**Consequences.** `goto.json` and `summary.json` gain keys; nothing that read
+them before changes. Judging a policy's torque no longer needs a second replay.
+
+## ADR-953 — The go-to-point player plays the action filter a policy was trained with (2026-10-30)
+
+**Context.** ADR-160's trainer filter (`--action-filter-alpha`) is written
+into every `.cxpolicy` header as `training.action_filter_alpha`, so that an
+evaluator plays a policy under the filter it was trained under. The
+go-to-point player (`cadex_goto.Player`, which `cadex_goto.py play` and
+`docs/probes/orun21/g2_judge.py` use) refused any filtered policy. leon VI's
+G1 stall review (its ADR-022) found every over-rated drive's load in the
+targets' fluctuation above 4–6 Hz, and its next experiment trains with a
+first-order 4 Hz filter that must be judged on the export with the same
+filter, not a judge flag that could be forgotten or disagree.
+
+**Decision.** The filter is one module-level function,
+`cadex_train.filtered_command(xp, clamped, previous, first, alpha)`:
+`a[t] = alpha*clamped[t] + (1-alpha)*a[t-1]`, the episode's first command
+through unfiltered. The trainer's step calls it with `jax.numpy` (the same
+operations it inlined before, so the traced graph and alpha 1.0's no-filter
+graph are unchanged); `Player` calls it with numpy, after the clamp, reset with
+the episode. The only source of alpha is the policy header
+(`cadex_goto.played_filter_alpha`); there is no player or judge flag.
+`goto.json` and `g2_judge.py`'s `summary.json` carry the `action_filter_alpha`
+played. A command slew (ADR-162) is still refused by this player. The corner
+is `-ln(1-alpha)/(2π dt)`: alpha 0.395 at 50 Hz is 4 Hz.
+
+**Hardware.** A policy trained with a filter is a policy *plus* that filter:
+the robot's controller must apply the same first-order filter, at the same
+control rate, after the same clamp, reset at start-up with the first command
+passed through. Played without it, it is not the policy that was judged.
+
+**Evidence.** leon VI's screen2 best (`3f7d87cb…`, unfiltered) replayed on
+its export's task `439e3c9d…`, held-out seed 7, after this change: 119.82 s,
+passes, every drive's RMS identical to the ADR-952 judge's (worst 2.181 N·m),
+`action_filter_alpha` 1.0.
+
+**Tests.** `training/test_cadex_goto.py::
+test_the_player_filters_the_command_as_the_trainer_does`: from one raw
+command stream (out of box, so the clamp binds) over two episodes, the
+trainer's jitted `filtered_command` under jax and `Player.control` issue the
+same commands within 1e-4 and the closed-form recurrence within 1e-9, the
+first of each episode unfiltered; `build_environment` is checked to call the
+shared function. `test_an_unfiltered_policy_plays_its_clamped_command_and_a_slew_is_refused`.
+Disabling the player's filter fails the first. `pytest training/`: 111 passed;
+`pixi run test-engine`: 138 passed, 29 skipped.
+
+**Consequences.** Filtered go-to-point policies can be judged; unfiltered ones
+play exactly as before. `TRAINER_SHA256` changes with the trainer's file.
+
+## ADR-954 — A course's own contact pairs are the ground's, not the robot's (2026-10-30)
+
+**Context.** A warm start across a course change (ADR-161, ADR-859) is
+admitted only while the robot is unchanged: `cadex_train.robot_xml` compares
+the parent's and the new bundle's models less every `geom` and `hfield` named
+under `environment/`. RECIPE §T.4 collides a box course with the feet only
+(ADR-739), by giving the boxes `conaffinity` of the feet's contact group. A
+training cut (`cadex_training_model.py cut`) gives its feet and its fall geoms
+the same bits (contype 0, conaffinity 1), so no bit picks out the feet on a
+cut: a box on the feet's group touches nothing, and moving the feet's bits
+moves the robot, which the warm start refuses. leon VI's U1 step (its ADR-028)
+warm-starts its counted flat policy onto a leveled box pool on its cut. Boxes
+on the cut floor's own bits (contype 1) touched its eight box fall geoms too,
+and MJX's box-box pairs ran that run at about 45 s per 8192 × 20 iteration
+(3,600 env steps/s, against the flat cut's 169,800).
+
+**Decision.** `robot_xml` also drops a `<pair>` named under `environment/`,
+and a `<contact>` that dropping them leaves empty, its tail passed to the
+element before it so the text reads as if it had never been written. A
+course that must touch a cut's feet alone sets its boxes' bits to 0 and names
+one pair per foot and slot (`environment/pair/<foot>/<slot>`), carrying the
+contact a dynamic one would get by MuJoCo's mixing of the two geoms (a pair
+does not inherit it: left unset its solref is 0.02). A pair not named for the
+ground still moves the robot.
+
+**Evidence.** leon VI's U1 cut bundle (`tools/terrain_course.py bundle` in
+that project; 55 box and 12 dome slots, 268 pairs, model `bd5dbe29…`):
+`robot_xml` equals its parent's (`s4/joy-cut-ar10`); `--init-from` across
+`--init-from-task-change` is admitted, naming `label`, `model` and `terrain`.
+A paw stood 0.5 mm into a box at the keyframe makes the same contact on the
+cut (by pair) as on the export (by bits): dim 3, friction 1, 1, 0.005, 1e-4,
+1e-4, solref 0.004 1, solimp 0.9 0.95 0.001 0.5 2. The warm start then ran at
+about 9.2 s per iteration (17,800 env steps/s), 4.9× the box-box bits' rate.
+
+**Tests.** `training/test_robot_xml.py`: ground pairs drop and the robot is
+the same; a pair not named for the ground still differs; the robot's own
+`<contact>` (an exclude) survives beside the ground's pairs; an indented
+contact section of ground pairs leaves no trace. `pytest training/`: 115
+passed; `pixi run test-engine`: 138 passed, 29 skipped.
+
+**Consequences.** A cut can take a feet-only course by pairs without a recut
+and without losing its warm start. `TRAINER_SHA256` changes with the trainer's
+file. The pairs are computed every step whatever the course's placement, so a
+pool's cost scales with feet × slots.
+
+## ADR-955 — Gate racing: the policy sees the gates and is paid for speed made good (2026-10-30)
+
+**Context.** Route A (ADR-839, ADR-840) drives a joystick policy through a
+scripted layer: each point carries a commanded speed and a hold, and the
+policy never sees a point. leon VI's owner wants gate racing instead, end to
+end (the charter's E1, Rudin et al. 2022): each point is a gate, a circle on
+the floor; entering it scores and lights the next at once; no holds, no
+commanded speed; go as fast as possible, toward 5 m/s once bigger drives
+come. The gait is the policy's to find.
+
+**Decision.** Gate racing is a second task beside route A, which is unchanged.
+- **Courses.** `cadex_goto.gate_course(seed, split=)` draws gates as
+  `sequence` draws points (12 by default, at least 2 behind and 3 to a
+  side of the leg before, 1–4 m apart, no lead), seeded by `(split, seed)`
+  under its own name, so the splits never meet and no course is a
+  sequence's points. The radius (`radius_m`, default 0.25 m) is route A's
+  own `arrive_m`, the target route A arrived on: 0.5 m across, about one
+  trunk length of leon VI (neck collar to rump 0.45 m) and of a cat. It
+  must be under half the shortest leg, so gates never overlap and one step
+  enters at most one. `gate_step` (entry lights the next in the same step;
+  nothing past the last), `gate_view` and `gate_speed` are written once with
+  `xp.where` and run in jitted JAX and in numpy.
+- **The trainer (`cadex_train.py --gates`).** `gate_task` rewrites the
+  bundle's task at load: its goals (the commanded speeds) leave the
+  observation, every reward term that reads one is dropped (on the joystick
+  task, `tracking_lin_vel` and `tracking_ang_vel`) and named in the header,
+  and every other term is kept as the race's regulariser (torques, energy,
+  action rate, pose, orientation, slip, clearance, limits). A termination,
+  feet block or bundle gait reference that reads a goal, `--goto`,
+  `--family`, `--teacher` and `--terrain-curriculum` are refused.
+  Every episode is one of 256 `train` courses of 48 gates (about 120 m, so a
+  20 s episode runs out of course only above 6 m/s), turned to a uniform
+  heading about where the base starts, as ADR-840's sequences are.
+- **Observation.** The actor gains `gate<k>_x`, `gate<k>_y` for the next
+  `--gate-ahead` gates (default 2, the lit one first): forward and left of the
+  base in its heading frame, in metres, each clipped at 8 m; past the
+  course's last gate they read the last. They are last in every vector
+  (`gate_channels`), after a height scan. Nothing privileged is added to the
+  actor: no speed, time or ceiling.
+- **Reward,** per step, on top of the kept terms:
+  `progress·dt·min(v_made, ceiling) + entry·[entered] − time·dt`. `v_made`
+  is the base's world planar velocity projected on the line to the lit
+  gate's centre (negative going away; uncapped below), measured where the
+  step landed against the gate lit when it was taken. `--gate-weights`
+  default `1,0.5,0.1`: progress on the scale of a joystick task's
+  `tracking_lin_vel` (1.0 × dt), a gate worth half a second of progress at
+  1 m/s, and a small cost of time. The time cost is kept small because a
+  training course never runs out: a flat cost per step only makes ending
+  the episode pay (ADR-410). `--reward-floor` clamps the whole sum, the race
+  included. Episodes end on the task's terminations, as before.
+- **Speed curriculum.** The rewarded speed is capped at a ceiling that
+  starts at 0.5 m/s and rises by 0.25 m/s after any iteration in which the
+  population's mean rewarded speed (every environment's every step) reached
+  0.7 of it, up to 6 m/s; it never falls (`--gate-ceiling
+  START,STEP,MAX,PROMOTE`, `gate_ceiling_next`). The train loop holds it and
+  writes it into the batch's state before each iteration, a value, not a
+  shape, so the compiled iteration is reused. `progress.json` carries
+  `gate_ceiling_mps`, `gate_progress_mps` and `gates_per_s` and their
+  `*_curve`s; the iteration line prints them.
+- **Header.** `training.gates` records the weights, the ceiling rule, the
+  radius, the courses, the channels and the dropped terms; the `gate*`
+  hyperparameters appear only on a race, so every other header is unchanged.
+- **The judge (`cadex_goto.py race POLICY --task EXPORT-TASK --other-model
+  --seed S --rated-nm 1.6`).** `Player` reads a racer's gate channels from
+  its header and is given them each step. A race runs on stock MuJoCo to the
+  last gate (and a second), a fall, 30 s with no gate entered (`stall_s`:
+  the longest leg under 0.14 m/s), or the course at 0.25 m/s plus 10 s.
+  `gates.json`: per gate its leg, time entered, leg time and speed and the
+  closest the base came while it was lit; gates passed (in order by
+  construction), the course time and mean speed (centre line to the last
+  gate passed over its time), falls; each drive's RMS over the episode
+  against `--rated-nm` and its peak instant against the model's force clamp
+  (`drive_load`, from ADR-952's every-solver-step `DriveMeter`); each foot's
+  slip, its centre of mass's mean horizontal speed while it touches the
+  ground. `view/` carries the course in ADR-839's `goto` shape, which the
+  dashboard draws unchanged: the gates are its `points`, each with
+  `radius_m` and with `speed_mps` the speed made on its leg (0 when not
+  passed), so the dashboard's speed ramp colours the legs run; no `hold_s`;
+  each frame's `goto` is `{"index"}` alone. The dashboard draws its fixed
+  0.3 m reach ring, not `radius_m`. `gates SEED` prints a course.
+
+**Torque limits (checked).** The trainer clamps the policy's *position
+command* to its box and nothing else; torque is limited only by MuJoCo's
+actuator `forcerange`, which on leon VI's cut and export is ±5.5 N·m on all
+14 drives, the ROB05's peak. ADR-465's derivative patch only mirrors that
+clamp. There is no per-instant clamp at the 1.6 N·m rating anywhere; the
+rating enters only the `torques` penalty and the judge's RMS ratio.
+
+**Evidence.** `runs/gates-smoke` in leon-vi-runlab: screen4's recipe and cut
+bundle (task `9ee1f1eb…`, 4 Hz filter, floor 0) with `--gates`, 30
+iterations × 4096 × 20 (2.46 M steps, 127 s on the RTX 5090). Mean rewarded
+speed made good rose from −0.034 to 0.190 m/s, gates 0.002/s, no falls
+(episodes at the 1000-step horizon), the ceiling still 0.5 m/s. Raced on the
+export's task (`439e3c9d…`, `--other-model`, witness 5e-6) on held-out
+courses 0 and 1: 0/12 gates each, stopped stalled at 30 s, no fall, the
+base 2.07 and 2.13 m from gate 0 at its closest (2.12 and 2.15 m at the
+start); worst drive RMS 1.02× and 1.25× rated (`j_fr_abd`), peaks at the
+clamp; slip under 1 mm/s. A smoke, not a policy.
+
+**Tests.** `training/test_gate_race.py`: courses seeded, splits disjoint over
+200 seeds, shape kept, no speed or hold; entry lights the next, never out of
+order, nothing past the last; the heading-frame view, its clip and its end;
+speed made good; `gate_task` drops the tracking terms and keeps the rest,
+refusals; the ceiling rule; a built environment (a floating box, CPU) pays
+`progress·dt·0.5 − time·dt` at 2 m/s under a 0.5 m/s ceiling, `entry −
+time·dt` on entry, shows the next gate in the observation, and pays the full
+speed once the ceiling is raised; `judge_race`; `drive_load`. `pytest
+training/`: 129 passed; `pixi run test-engine`: 138 passed, 29 skipped.
+
+**Consequences.** A race policy is judged by `race`, not `play`; it reads no
+speed goal, so `cadex evaluate` and the engine's rollout cannot play it until
+the engine learns its channels. The dashboard's Status does not chart the
+ceiling (its telemetry is a fixed list); `progress.json` has it.
+`TRAINER_SHA256` changes with the trainer's file.
+
+## ADR-956 — A trainer's and a judge's view carry what the motors did (2026-10-30)
+
+**Context.** The dashboard's Activations editor (ADR-727) reads each frame's
+`joint_positions`, `joint_velocities` and `actuator_efforts` in the trace's
+`actuator_channels` order, as an engine rollout writes them (ADR-694). The
+trainer's `write_view` (its closing view and checkpoint rollouts, ADR-835,
+ADR-851) and `cadex_goto`'s films wrote placements only, so a run's or a
+judge's episode showed no motors, and the channels' `low`/`high` were the
+actuators' `ctrlrange` in radians (0, 0 on leon VI, which sets none).
+
+**Decision.** `write_view` writes every frame's `joint_positions` from its
+pose and, given them, `joint_velocities` from `velocities` (`qvel` per pose)
+and `actuator_efforts` from `efforts` (`actuator_force` per pose, after the
+clamp): degrees, degrees per second and N·mm (mm, mm/s and N on a slide),
+ADR-694's units. Each channel names its `joint`, `joint_unit`,
+`effort_unit`, `effort_low`/`effort_high` (the force clamp × gear, null when
+unlimited) and `effort_rated` (`rated_nm`, null when not given), and its
+`low`/`high` become the joint's range in that unit. The trainer's witness
+rollout returns `qvel` and `actuator_force` beside `qpos` (one compiled
+rollout still, ADR-849) and passes the picked episode's rows to every view
+it writes; `cadex_goto.py race` records them each kept frame and passes
+`--rated-nm`. A model with a drive on anything but one hinge or slide joint
+writes no motion rows.
+
+**Evidence.** `runs/gates-smoke`: `api/playback/run/gates-smoke`,
+`api/playback/checkpoint/gates-smoke/leon6.000020` and
+`api/playback/film/gates-smoke/judge-export%2Ffinal%2Fs0` all carry
+`joints`, `velocities` and `efforts` (751 frames on the film, 14 channels,
+`effort_rated` 1600 N·mm).
+
+**Tests.** `test_gate_race.py::test_a_view_carries_what_the_motors_did_in_the_engine_rollouts_units`:
+units, order, channel fields, positions only without the rollout's rows;
+`::test_the_dashboard_reads_a_race_trace_as_a_goto_episode_with_motors`.
+
+**Consequences.** Views are larger by three rows of 14 numbers a frame. A
+view written before this plays as before, with no motors.
+
+## ADR-957 — An optional gait guide that fades: the nearest stride sample, no clock (2026-10-30)
+
+**Context.** The owner wants the race's policy to find its gait itself, with
+an optional gallop reference as a guide that fades. ADR-706's gait tracking
+gives the actor a clock: a policy that learned under it reads it for life.
+
+**Decision.** `cadex_train.py --gait-reference GAIT|CLIP.json
+--reference-weight W --reference-fade ITERS` (off by default; W 0.5 per
+second, ITERS 0 never fades). A name is generated at `--reference-speed`
+(default 1.5 m/s) on the bundle's own model by `CadexGait.generate` from the
+repository beside the trainer, with the feet from `--reference-legs` or the
+task's contact rows (`fl`/`fr`/`hl`/`hr`); `gallop` is `rotary_gallop`
+(Hildebrand 1977: the cat's), and `transverse_gallop`, `bound`,
+`half_bound`, `canter`, `trot` are CadexGait's too. A clip JSON
+(`cadex-gait-clip-v1`) works without the repository. The guide pays
+`w(i)·dt·exp(−min_k e_k)`: `e_k` is the actuated joints' mean squared
+distance from stride sample `k` over (0.3 rad)² plus their rates' over
+(6 rad/s)², rates by the stride's periodic central difference. The nearest
+sample stands in for a clock, so nothing enters the actor, and the rate
+term keeps the stride's direction. `w(i)` falls in a straight line from W
+at iteration 0 to 0 at ITERS, written into the batch's state each
+iteration; `progress.json` and the iteration line carry it, and the header
+records the clip's gait, speed, period and samples.
+
+**Evidence.** On leon VI's cut, CadexGait generates `rotary_gallop` at 0.7
+and 1.5 m/s (17 samples, period 0.348 s, stride 0.522 m at 1.5) and
+refuses it at 3 m/s (the fore elbow at its stop); `transverse_gallop`,
+`bound` and `trot` are refused at 1.5 m/s. A 3-iteration GPU run with
+`--gates --gait-reference gallop --reference-fade 2` ran, its weight 0.5,
+0.25, 0. No training result yet.
+
+**Tests.** `test_gate_race.py::test_the_gallop_guide_pays_the_nearest_stride_sample_in_pose_and_rate`:
+on a four-sample clip, a joint still at a sample pays the full weight, the
+same pose turning at a rate no sample has pays less, and the rates are the
+periodic central difference; the fade's line.
+`test_offboard_boundaries.py` admits `CadexGait` as the trainer's one new
+deferred import, a sibling of `CadexDynamics` in the repository, not a
+dependency.
+
+**Consequences.** The guide shapes, it does not prescribe phase. Its pose
+and rate scales are constants (`REFERENCE_SCALE`), not tuned on any run.

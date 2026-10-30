@@ -93,6 +93,23 @@ def test_the_cut_keeps_the_dynamics_and_only_floor_pairs():
     assert {dims[g] for g in kept["fall_geoms"]} == {1} and {dims[g] for g in kept["feet"]} == {3}
 
 
+def test_a_foot_body_is_kept_so_its_contact_is_as_soft_as_the_export():
+    """ADR-951: fusing a foot into its shank changes the contact's ``invweight0`` softening; the cut keeps it."""
+
+    options = {"timestep": 0.002, "iterations": 100, "ls_iterations": 50, "integrator": "implicitfast"}
+    xml, kept = T.derive(EXPORT, **options)
+    bodies = {b.get("name") for b in ET.fromstring(xml).iter("body")}
+    assert {"c_foot_l", "c_foot_r"} <= bodies and "c_drum_l" not in bodies
+    ctrl = T.controls(2, 0.1, 2.0, seconds=0.5)
+    assert T.max_error(T.root_path(xml, ctrl), T.root_path(EXPORT, ctrl)) < 1e-6
+    # The stand reads its feet from the named geoms when the export has no touch site.
+    bare = EXPORT.replace('<touch site="obs/3/contact" name="obs/3"/>', "").replace(
+        '<touch site="obs/4/contact" name="obs/4"/>', "")
+    xml, _ = T.derive(bare, **options, feet=kept["feet"])
+    assert T.stand(xml, 0.2, feet=kept["feet"])["on_feet_only"]
+    assert not T.stand(xml, 0.2)["on_feet_only"]
+
+
 def test_a_moved_inertia_or_a_framed_static_body_is_refused():
     xml, _ = T.derive(EXPORT, **T.DEFAULTS)
     root = ET.fromstring(xml)
@@ -119,7 +136,7 @@ def test_the_bench_times_the_setting_the_cut_writes():
 
 
 def test_the_comparison_finds_the_legs_and_the_cut_unchanged(tmp_path):
-    """``cadex_cad_vs_concept`` finds each leg from its touch site and reads a cut, its feet fused, as its export."""
+    """``cadex_cad_vs_concept`` finds each leg from its touch site and reads a cut as its export."""
 
     import cadex_cad_vs_concept as C
 

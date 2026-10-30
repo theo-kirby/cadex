@@ -186,6 +186,10 @@ Go1 benchmark that Brax learns to trot in under six minutes (docs/MUJOCO.md
 | `--goal-pool` | `4096` | episodes of goals drawn before training (ADR-462, below) |
 | `--goto`, `--goto-share`, `--goto-goals` | off, `0.2`, `cx,cy,cw` | go-to-point episodes: the layer commands the speed goals on that share (ADR-840, below) |
 | `--terrain-curriculum`, `--terrain-promote` | off, `1` | deal a leveled pool by level and move each environment by points reached (ADR-856, below) |
+| `--gates`, `--gate-ahead`, `--gate-radius` | off, `2`, `0.25` | race through gates: the policy sees the next K gates instead of speed goals (ADR-955, below) |
+| `--gate-weights`, `--gate-ceiling` | `1,0.5,0.1`, `0.5,0.25,6,0.7` | the race's progress, entry and time weights; the speed curriculum's START,STEP,MAX,PROMOTE (ADR-955) |
+| `--gait-reference`, `--reference-weight`, `--reference-fade` | off, `0.5`, `0` | a gait guide that fades: a CadexGait name (`gallop`) or a clip JSON (ADR-957, below) |
+| `--reference-speed`, `--reference-legs` | `1.5`, the task's feet | a named guide's speed and feet |
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
 | `--stop-on-collapse` | off | stop once the mean episode has collapsed (ADR-410, below) |
 | `--progress` | beside `--out` | where to rewrite `progress.json` |
@@ -653,6 +657,12 @@ its keyframe, so the run shows its robot from the first iteration. The view neve
 
 The view and the witness are one compiled rollout of the witness batch: its
 first `--unroll` observations are the witness, its poses the view (ADR-849).
+Every frame of a view (the closing one and each checkpoint's) carries what the
+motors did, as an engine rollout's does (ADR-694): `joint_positions` from its
+pose, `joint_velocities` and `actuator_efforts` from the rollout's `qvel` and
+`actuator_force`, in `actuator_channels` order, in degrees, degrees per second
+and N·mm, each channel naming its joint, units, force clamp and joint range, so
+the dashboard's Activations editor reads it (ADR-956).
 
 ## Compiled programs persist between runs (ADR-849)
 
@@ -748,6 +758,47 @@ lateral, yaw rate, each a one-channel `value` in mm/s, m/s, deg/s or rad/s) are
 the layer's command from the base's pose at every step, for the observation and
 the tracking reward alike. The other episodes keep the bundle's drawn goals.
 Without `--goto` the graph and the policy header are unchanged.
+
+**Gate racing, end to end (ADR-955).** `cadex_train.py --gates` trains the
+policy to race through gates rather than follow a layer's commands. A gate is a
+circle (`--gate-radius`, 0.25 m: route A's `arrive_m`, about a trunk length
+across); entering it lights the next at once; nothing is held and no speed is
+commanded. `cadex_goto.gate_course(seed, split=)` draws the courses as
+`sequence` draws points (12 gates, at least 2 behind and 3 to a side, 1–4 m
+apart), seeded under its own name so the splits never meet. Training plays 256
+`train` courses of 48 gates, each turned to a uniform heading about the start.
+The task's speed goals leave the observation, and so do the reward terms that
+read them (its tracking terms); the rest stay as regularisers. The actor reads
+`gate0_x, gate0_y, gate1_x, gate1_y` (`--gate-ahead`): the next gates forward
+and left of the base in its heading frame, metres, clipped at 8 m. Each step
+pays `progress·dt·min(v_made, ceiling) + entry·[entered] − time·dt`
+(`--gate-weights 1,0.5,0.1`), `v_made` the base's velocity toward the lit gate.
+The ceiling is the speed curriculum: from 0.5 m/s, up 0.25 after any iteration
+whose mean rewarded speed reached 0.7 of it, to 6 m/s, never down
+(`--gate-ceiling`); `progress.json` reports `gate_ceiling_mps`,
+`gate_progress_mps`, `gates_per_s` and their curves.
+
+```bash
+python training/cadex_goto.py gates --seed 0 --split heldout
+~/cadex-train-venv/bin/python training/cadex_goto.py race runs/R/leon6.cxpolicy \
+    --task s4/joy-export/outputs/goto-task.json --other-model --seed 0 --rated-nm 1.6
+```
+
+`race` judges a racer on stock MuJoCo (here the export's bundle, by channel
+name): it runs to the last gate, a fall, 30 s with no gate, or the course at
+0.25 m/s plus 10 s, and writes `view/` (the gates in the `goto` shape the
+dashboard draws, each gate's `speed_mps` the speed made on its leg; the motors'
+rows, ADR-956) and `gates.json`: per gate its time, leg time and speed and
+closest approach; gates passed, course time and mean speed; falls; each drive's
+RMS against `--rated-nm` and peak against the model's clamp; each foot's slip.
+
+**A gait guide that fades (ADR-957).** `--gait-reference gallop
+--reference-weight 0.5 --reference-fade 300` pays, per second, the joints'
+nearness in pose and rate to the nearest sample of one stride, with no clock in
+the policy, falling to nothing at iteration 300. `gallop` is CadexGait's
+`rotary_gallop`, generated at `--reference-speed` (1.5 m/s) on the bundle's
+model; any CadexGait gait name or a `cadex-gait-clip-v1` JSON works. Off by
+default.
 
 **On any robot (ADR-862).** `cadex_joystick.py TASK.json --out DIR` writes the
 task the Go1 passed G2 on (Playground's joystick: `cx`/`cy`/`cw` goals, body-frame

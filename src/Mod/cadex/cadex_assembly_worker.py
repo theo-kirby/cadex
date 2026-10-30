@@ -3658,8 +3658,8 @@ def _mujoco_model_inputs(
     for name, component in components.items():
         context = f"{operation} body {name!r}"
         shape = _component_local_shape(component, context=context)
-        readings = _solid_inertia_readings(shape, context=context)
         try:
+            readings = _solid_inertia_readings(shape, context=context)
             inertial = CadexDynamics.body_inertial(
                 readings, densities[name], context=context
             )
@@ -6061,7 +6061,9 @@ def _solid_inertia_readings(shape: Any, *, context: str) -> list[dict[str, Any]]
 
     A pure FreeCAD read: no unit conversion, no density, no tensor algebra.
     Everything numeric happens in :func:`CadexDynamics.body_inertial`, which
-    is the half that can be tested without a kernel.
+    is the half that can be tested without a kernel. The one exception is a
+    solid whose reading is non-physical: it is re-read from a tessellation by
+    :func:`_tessellated_solid_reading` and carries a warning (ADR-950).
 
     **The tensor is read from a copy translated so its centre of mass sits
     at the origin.** Measured under this build, ``Shape.MatrixOfInertia`` is
@@ -6094,25 +6096,73 @@ def _solid_inertia_readings(shape: Any, *, context: str) -> list[dict[str, Any]]
                 ),
             },
         )
+    import CadexDynamics
+
     readings: list[dict[str, Any]] = []
     for index, solid in enumerate(solids):
         centre = solid.CenterOfMass
         centred = solid.copy()
         centred.translate(App.Vector(-centre.x, -centre.y, -centre.z))
-        readings.append(
-            {
-                "volume_mm3": float(solid.Volume),
-                "center_of_mass_mm": [
-                    float(centre.x),
-                    float(centre.y),
-                    float(centre.z),
-                ],
-                "inertia_mm5_about_com": _matrix_of_inertia_rows(
-                    centred.MatrixOfInertia
-                ),
-            }
-        )
+        reading = {
+            "volume_mm3": float(solid.Volume),
+            "center_of_mass_mm": [
+                float(centre.x),
+                float(centre.y),
+                float(centre.z),
+            ],
+            "inertia_mm5_about_com": _matrix_of_inertia_rows(
+                centred.MatrixOfInertia
+            ),
+        }
+        defect = CadexDynamics.inertia_reading_defect(reading)
+        if defect is not None:
+            reading = _tessellated_solid_reading(
+                centred, reading, defect, context=context, solid_index=index
+            )
+        readings.append(reading)
     return readings
+
+
+def _tessellated_solid_reading(
+    centred: Any,
+    brep_reading: dict[str, Any],
+    defect: str,
+    *,
+    context: str,
+    solid_index: int,
+) -> dict[str, Any]:
+    """Mass properties from a closed tessellation, for a non-physical BREP.
+
+    OCCT's volume integration can return a negative principal moment for a
+    solid that ``isValid()`` accepts (leon VI's ``pnl_neck_side_l``: two
+    ``TooSmallEdge`` faults, 2130 mm³ integrated against about 2990 mm³
+    enclosed). ``TopoShape.tessellate`` on the whole solid shares seam
+    vertices between faces, so the mesh is indexed-closed and the divergence
+    theorem measures what the faces enclose; the face-by-face display
+    tessellator does not and is not used here. ``centred`` is the copy already
+    translated to the BREP centre of mass, which keeps the tensor shift short.
+    All the arithmetic, the closure check and the warning are
+    :func:`CadexDynamics.tessellated_solid_reading` (ADR-950).
+    """
+
+    import CadexDynamics
+
+    deflection = CadexDynamics.MASS_TESSELLATION_DEFLECTION_MM
+    points, facets = centred.tessellate(deflection)
+    vertices: list[float] = []
+    for point in points:
+        vertices.extend((float(point.x), float(point.y), float(point.z)))
+    triangles = [int(item) for facet in facets for item in facet]
+    return CadexDynamics.tessellated_solid_reading(
+        brep_reading,
+        vertices,
+        triangles,
+        origin_mm=brep_reading["center_of_mass_mm"],
+        deflection_mm=deflection,
+        defect=defect,
+        context=context,
+        solid_index=solid_index,
+    )
 
 
 def _collision_mesh_reading(
