@@ -48325,3 +48325,60 @@ five edits and a check take ~3,200 s against ~6,700 s.
   asks for `fit: true` there.
 - The parts themselves are now the cost of an edit (469 s on leon V), and
   mostly skin planning (§9). Two smaller cuts are named there and not taken.
+
+## ADR-950 — A non-physical BREP inertia falls back to a closed tessellation (2026-10-30)
+
+**Context.** leon VI's MJCF export was refused: `mjcf body 'c_pnl_neck_side_l'
+has a non-positive principal moment of inertia (-6.02383e-08 kg·m²)`. The
+panel is a 2 mm skin solid that `isValid()` accepts but OCCT's BOP check
+does not (`TooSmallEdge` twice). `GProp` integrates it to 2129.6 mm³ and a
+negative third moment; its mirror integrates normally (3303.6 mm³). The
+geometry is the owner's and is not repaired; the engine was the thing
+reading it wrong.
+
+**Decision.** `cadex_assembly_worker._solid_inertia_readings` checks each
+solid's OCCT reading with `CadexDynamics.inertia_reading_defect`: a
+non-positive or non-finite volume, a non-positive principal moment, or
+moments that break `A + B >= C` (the tolerance `body_inertial` uses). Such a
+solid is tessellated whole with `TopoShape.tessellate` at the fixed
+`MASS_TESSELLATION_DEFLECTION_MM = 0.05`, on the copy already centred on the
+BREP centre of mass. `mesh_open_edge_count` must be zero (every directed edge
+has exactly one reversed twin), and `mesh_mass_properties` takes volume,
+centre and unit-density tensor from signed tetrahedra. If the mesh is open or
+its own reading is non-physical, the body is refused as before
+(`degenerate_inertia`, both defects named). Otherwise the reading carries
+`source: "tessellation"` and a warning naming the body, the defect, the
+deflection, the triangle count and both volumes. `body_inertial` returns
+`mass_properties_source` (`brep` or `tessellation`) and
+`mass_properties_warnings`, and `model_evidence.inertials` publishes both.
+
+- **Not the BOP check as the trigger.** `TooSmallEdge` is common on solids
+  whose mass properties are right; switching them to a mesh would lose the
+  exact BREP figures (a 5 mm pin is 1.6% short at the collision default), and
+  `Shape.check` prints progress to stdout. The trigger is the physical test.
+- **Not `cadex_tessellation.tessellate_shape`.** It meshes face by face with
+  unshared seam vertices, so the mesh is not indexed-closed: on the same panel
+  it read 539 of 8,011 directed edges unmatched and an enclosed volume of
+  −237,172 mm³. The whole-solid tessellation read 0 unmatched.
+- **A fixed deflection.** The mass feeds the MJCF and its digest. On
+  `pnl_neck_side_l` the enclosed volume is 2989.1, 2986.6, 2986.7 and 2989.5
+  mm³ at 0.2, 0.1, 0.05 and 0.02 mm; at 0.01 and 0.005 mm the defective faces
+  re-mesh and it reads 3064.6 and 3081.5 mm³.
+
+**Evidence.** leon VI's scratch copy (revision `b6369ac2`, 80 bodies), built
+with this tree's `Mod/cadex` over the 0.2.0 payload: accepted, MJCF written
+(sha256 `cc097e17…`, 27,967 bytes). Exactly one body fell back:
+`c_pnl_neck_side_l`, 2986.74 mm³ from 2,964 triangles against the BREP's
+2129.58 mm³, 3.02 g, principal moments (1.67e-07, 1.11e-06, 1.23e-06)
+kg·m². Every other body reads `brep`. MuJoCo loads the file: 5.1707 kg.
+
+**Tests.** `cadex_tests/test_mass_properties_fallback.py`: a closed box mesh
+measures exactly; a degenerate reading is named and refused by
+`body_inertial`; its tessellation stands in with the warning; an untouched
+body reads `brep`; an open mesh is refused. `pixi run test-engine`: 167
+passed with `CADEX_ENGINE_ROOT` at the overlaid payload (138 passed, 29
+skipped without). `pytest cli/tests`: 52 passed, 2 skipped.
+
+**Consequences.** A body that used to be refused now exports, with its
+warning in the evidence; nothing that integrated physically changes, so no
+existing MJCF digest moves. `docs/MUJOCO.md` §7 step 4 notes the exception.
