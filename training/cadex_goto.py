@@ -353,6 +353,22 @@ def layer_step(xp: Any, plan: Mapping[str, Any], state: Mapping[str, Any], x: An
     return new, command
 
 
+def played_filter_alpha(header: Mapping[str, Any]) -> float:
+    """The action filter a policy was trained with, from its header (ADR-160, ADR-953).
+
+    1.0 is no filter. A command slew (ADR-162) is refused: this player does not
+    play one, and a policy trained under one would be judged without it.
+    """
+
+    training = header.get("training") or {}
+    if float(training.get("command_slew_deg", 0.0) or 0.0):
+        raise SystemExit("this player plays no command slew")
+    alpha = float(training.get("action_filter_alpha", 1.0))
+    if not 0.0 < alpha <= 1.0:
+        raise SystemExit(f"action_filter_alpha {alpha!r} is outside (0, 1]")
+    return alpha
+
+
 class Player:
     """A ``.cxpolicy`` played on its bundle's model as the engine plays one, in numpy.
 
@@ -389,9 +405,8 @@ class Player:
         self.trained_on = str(header["model"]["sha256"])
         if hashlib.sha256(xml).hexdigest() != self.trained_on and not other_model:
             raise SystemExit("the policy was not trained on this bundle's model (--other-model plays it by name)")
-        training = header.get("training") or {}
-        if float(training.get("action_filter_alpha", 1.0)) != 1.0 or float(training.get("command_slew_deg", 0.0)):
-            raise SystemExit("this player plays no action filter or command slew")
+        self.filter_alpha = played_filter_alpha(header)
+        self.filtered_command = cadex_train.filtered_command
         self.task, self.model_xml = task, xml
         self.model = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
         episode = task["episode"]
@@ -474,6 +489,7 @@ class Player:
     def reset(self) -> None:
         self.issued = self.reset_command.copy()
         self.before = self.reset_command.copy()
+        self.first = True
 
     def control(self, data: Any, command: Sequence[float]) -> Any:
         goal = {name: float(value) * scale for name, value, scale in zip(self.goals, command, self.goal_scale)}
@@ -502,6 +518,11 @@ class Player:
                 i = self.command_names[channel[:-5]]
                 values.append((self.issued[i] - self.before[i]) / self.dt)
         surface = self.np.clip(self._act(self.np.array(values)), self.low, self.high)
+        if self.filter_alpha < 1.0:
+            # ADR-953: the trainer's own filter, after the clamp, the episode's
+            # first command through unfiltered.
+            surface = self.filtered_command(self.np, surface, self.issued, self.first, self.filter_alpha)
+        self.first = False
         self.before, self.issued = self.issued, surface
         ctrl = data.ctrl.copy()
         ctrl[self.ctrl_index] = surface * self.ctrl_scale
@@ -815,7 +836,8 @@ def play(options: argparse.Namespace) -> int:
                   "highest_mm": course["highest_mm"], "boxes": len(course["boxes"]),
                   "domes": len(course.get("domes") or ())},
               "limits": player.limits, "layer": dict(LAYER), "seconds": round(len(record["index"]) * player.dt, 2),
-              "witness_error": player.witness_error, "view": str(trace),
+              "witness_error": player.witness_error, "action_filter_alpha": player.filter_alpha,
+              "view": str(trace),
               "model_sha256": hashlib.sha256(player.model_xml).hexdigest(), "trained_on": player.trained_on,
               "drives": drives.reading(), **readings}
     (out.parent / "goto.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")

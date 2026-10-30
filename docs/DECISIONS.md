@@ -48471,3 +48471,50 @@ held level 0.2 m out reads m·g·l = 0.981 N·m within 1e-3; a drive clamped at
 
 **Consequences.** `goto.json` and `summary.json` gain keys; nothing that read
 them before changes. Judging a policy's torque no longer needs a second replay.
+
+## ADR-953 — The go-to-point player plays the action filter a policy was trained with (2026-10-30)
+
+**Context.** ADR-160's trainer filter (`--action-filter-alpha`) is written
+into every `.cxpolicy` header as `training.action_filter_alpha`, so that an
+evaluator plays a policy under the filter it was trained under. The
+go-to-point player (`cadex_goto.Player`, which `cadex_goto.py play` and
+`docs/probes/orun21/g2_judge.py` use) refused any filtered policy. leon VI's
+G1 stall review (its ADR-022) found every over-rated drive's load in the
+targets' fluctuation above 4–6 Hz, and its next experiment trains with a
+first-order 4 Hz filter that must be judged on the export with the same
+filter, not a judge flag that could be forgotten or disagree.
+
+**Decision.** The filter is one module-level function,
+`cadex_train.filtered_command(xp, clamped, previous, first, alpha)`:
+`a[t] = alpha*clamped[t] + (1-alpha)*a[t-1]`, the episode's first command
+through unfiltered. The trainer's step calls it with `jax.numpy` (the same
+operations it inlined before, so the traced graph and alpha 1.0's no-filter
+graph are unchanged); `Player` calls it with numpy, after the clamp, reset with
+the episode. The only source of alpha is the policy header
+(`cadex_goto.played_filter_alpha`); there is no player or judge flag.
+`goto.json` and `g2_judge.py`'s `summary.json` carry the `action_filter_alpha`
+played. A command slew (ADR-162) is still refused by this player. The corner
+is `-ln(1-alpha)/(2π dt)`: alpha 0.395 at 50 Hz is 4 Hz.
+
+**Hardware.** A policy trained with a filter is a policy *plus* that filter:
+the robot's controller must apply the same first-order filter, at the same
+control rate, after the same clamp, reset at start-up with the first command
+passed through. Played without it, it is not the policy that was judged.
+
+**Evidence.** leon VI's screen2 best (`3f7d87cb…`, unfiltered) replayed on
+its export's task `439e3c9d…`, held-out seed 7, after this change: 119.82 s,
+passes, every drive's RMS identical to the ADR-952 judge's (worst 2.181 N·m),
+`action_filter_alpha` 1.0.
+
+**Tests.** `training/test_cadex_goto.py::
+test_the_player_filters_the_command_as_the_trainer_does`: from one raw
+command stream (out of box, so the clamp binds) over two episodes, the
+trainer's jitted `filtered_command` under jax and `Player.control` issue the
+same commands within 1e-4 and the closed-form recurrence within 1e-9, the
+first of each episode unfiltered; `build_environment` is checked to call the
+shared function. `test_an_unfiltered_policy_plays_its_clamped_command_and_a_slew_is_refused`.
+Disabling the player's filter fails the first. `pytest training/`: 111 passed;
+`pixi run test-engine`: 138 passed, 29 skipped.
+
+**Consequences.** Filtered go-to-point policies can be judged; unfiltered ones
+play exactly as before. `TRAINER_SHA256` changes with the trainer's file.

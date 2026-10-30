@@ -2636,6 +2636,20 @@ def match_engine_actuator_derivative(mujoco: Any, jax: Any, jnp: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
+def filtered_command(xp: Any, clamped: Any, previous: Any, first: Any, alpha: float) -> Any:
+    """ADR-160's action filter on one clamped command, for the trainer and every player (ADR-953).
+
+    ``a[t] = alpha*clamped[t] + (1-alpha)*a[t-1]``, with the episode's first
+    command (``first`` true) passed through unfiltered. ``xp`` is ``jax.numpy``
+    in the trainer's step and ``numpy`` in ``cadex_goto.Player``, so a policy
+    is judged under the filter it was trained under by the same arithmetic,
+    not a second spelling of it. Its corner is ``-ln(1-alpha) / (2 pi dt)``:
+    alpha 0.395 at 50 Hz is 4 Hz. Hardware must run the same filter.
+    """
+
+    return xp.where(first, clamped, alpha * clamped + (1.0 - alpha) * previous)
+
+
 def resolved_command_slew_deg(options) -> float:
     """ADR-162's limit in degrees, resolved once.
 
@@ -3518,10 +3532,8 @@ def build_environment(
             # inside the reset drop.
             previous, first = filter_state
             if filtering:
-                clamped = jnp.where(
-                    first, clamped,
-                    action_filter_alpha * clamped
-                    + (1.0 - action_filter_alpha) * previous)
+                clamped = filtered_command(jnp, clamped, previous, first,
+                                           action_filter_alpha)
             if slewing:
                 # AFTER the EMA, so the two compose in the same order the
                 # harness composes them (`harness/_policy.py`): the rate limit

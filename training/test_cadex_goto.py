@@ -119,3 +119,80 @@ def test_the_drive_meter_reads_a_held_arm_at_its_static_torque() -> None:
     assert abs(reading["rms_nm"]["held"] - 0.5 * 9.81 * 0.2) < 1e-3
     assert abs(reading["rms_nm"]["weak"] - 0.3) < 1e-6 and reading["peak_nm"]["weak"] <= 0.3 + 1e-9
     assert reading["worst"] == "held" and reading["worst_rms_nm"] == reading["rms_nm"]["held"]
+
+
+def _stub_player(alpha: float, raw: list) -> "object":
+    # A Player with no policy file: its network replays ``raw`` in order and it
+    # reads only its issued commands, so ``control`` exercises the clamp and the
+    # filter and nothing else.
+    import cadex_train
+    from cadex_goto import Player
+
+    player = Player.__new__(Player)
+    player.np, player.dt = np, 0.02
+    player.goals, player.goal_scale, player.scans, player.sensor = ["vx", "vy", "wz"], [1.0] * 3, [], {}
+    player.channels, player.command_names = ["q0", "q1"], {"q0": 0, "q1": 1}
+    player.low, player.high = np.array([-25.0, -10.0]), np.array([25.0, 40.0])
+    player.ctrl_scale, player.ctrl_index = np.full(2, math.pi / 180.0), np.array([0, 1])
+    player.reset_command = np.array([3.0, -2.0])
+    player.filter_alpha, player.filtered_command = alpha, cadex_train.filtered_command
+    stream = iter(raw)
+    player._act = lambda values: np.array(next(stream), dtype=np.float64)
+    return player
+
+
+class _Data:
+    def __init__(self) -> None:
+        self.ctrl = np.zeros(2)
+
+
+def test_the_player_filters_the_command_as_the_trainer_does() -> None:
+    # ADR-953: a policy trained with ADR-160's filter is played under it, by the
+    # trainer's own function, from its header. The trainer's step (jax) and the
+    # player (numpy) issue the same commands from the same raw stream, the first
+    # of each episode unfiltered and every one clamped before it is filtered.
+    import inspect
+
+    import cadex_train
+    import jax
+    import jax.numpy as jnp
+
+    source = inspect.getsource(cadex_train.build_environment)
+    assert "filtered_command(jnp, clamped, previous, first," in source
+    alpha = 1.0 - math.exp(-2.0 * math.pi * 4.0 * 0.02)  # 4 Hz at 50 Hz: 0.395
+    rng = np.random.default_rng(7)
+    raw = rng.uniform(-60.0, 60.0, size=(40, 2)).tolist()
+    low, high = np.array([-25.0, -10.0]), np.array([25.0, 40.0])
+    player = _stub_player(alpha, raw + raw)
+    step = jax.jit(lambda c, p, f: cadex_train.filtered_command(jnp, c, p, f, alpha))
+    for _ in range(2):  # two episodes: reset restarts the filter
+        player.reset()
+        previous = jnp.zeros(2, dtype=jnp.float32)
+        expected = None
+        for t, command in enumerate(raw):
+            clamped = np.clip(command, low, high)
+            ctrl = player.control(_Data(), [0.0, 0.0, 0.0])
+            previous = step(jnp.asarray(clamped, jnp.float32), previous, jnp.asarray(t == 0))
+            expected = clamped if t == 0 else alpha * clamped + (1.0 - alpha) * expected
+            assert np.allclose(player.issued, np.asarray(previous), atol=1e-4)
+            assert np.allclose(player.issued, expected, atol=1e-9)
+            assert np.allclose(ctrl, expected * math.pi / 180.0, atol=1e-9)
+            assert np.all(player.issued >= low) and np.all(player.issued <= high)
+
+
+def test_an_unfiltered_policy_plays_its_clamped_command_and_a_slew_is_refused() -> None:
+    import pytest
+
+    from cadex_goto import played_filter_alpha
+
+    raw = [[40.0, 5.0], [-40.0, 50.0], [1.0, 2.0]]
+    player = _stub_player(1.0, raw)
+    player.reset()
+    for command in raw:
+        player.control(_Data(), [0.0, 0.0, 0.0])
+        assert np.array_equal(player.issued, np.clip(command, [-25.0, -10.0], [25.0, 40.0]))
+    assert played_filter_alpha({}) == 1.0
+    assert played_filter_alpha({"training": {"action_filter_alpha": 0.395}}) == 0.395
+    for training in ({"command_slew_deg": 3.0}, {"action_filter_alpha": 0.0}, {"action_filter_alpha": 1.2}):
+        with pytest.raises(SystemExit):
+            played_filter_alpha({"training": training})

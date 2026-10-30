@@ -119,6 +119,7 @@ def main() -> int:
                       "read_legs": {band: [sum("speed_ratio" in r for r in rows if r["band"] == band),
                                            sum(r["band"] == band for r in rows)] for band in ("walk", "run")},
                       "fell": result["fell"], "pass": result["pass"], "walls": result.get("walls"),
+                      "action_filter_alpha": result.get("action_filter_alpha"),
                       "drive_rms_nm": (result.get("drives") or {}).get("rms_nm"),
                       "drive_worst": (result.get("drives") or {}).get("worst"),
                       "drive_worst_rms_nm": (result.get("drives") or {}).get("worst_rms_nm"),
@@ -132,6 +133,8 @@ def main() -> int:
             by.setdefault(f"{leg['band']}/{leg['bearing']}", []).append(leg["leg_s"])
     ratios = [s for row in seeds for s in row["speed_ratios"]]
     summary = {"policy": options.policy, "level": options.level, "flat": options.flat,
+               # ADR-953: the filter the policy was played under, from its header.
+               "action_filter_alpha": seeds[0]["action_filter_alpha"] if seeds else None,
                "maze": options.maze, "seeds": seeds,
                "pass_parts": {part: sum(row["pass"][part] for row in seeds)
                               for part in ("reach", "hold", "speed", "no_fall", "clear_walls")},
