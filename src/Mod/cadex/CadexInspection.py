@@ -18,6 +18,13 @@ _PREVIEW_BYTES = 1024
 _PROPERTY_SEQUENCE_LIMIT = 256
 _HEAVY_PROPERTIES = frozenset({"Mesh", "Points", "Proxy", "Shape", "ViewObject"})
 
+#: Why a deferred fit reads empty (ADR-876), said wherever it is read.
+FIT_DEFERRED_REASON = (
+    "The fit was deferred: this revision was built with fit=false, so no pair, "
+    "joint sweep or panel was measured. Rebuild with the fit on (the rebuild "
+    "op, or `cadex clearance`) to check it."
+)
+
 
 def _surface_summary(resolution: Any) -> dict[str, Any]:
     result = {
@@ -1409,6 +1416,17 @@ def _join_inventory(captured: Mapping[str, Any]) -> Any:
             "revision": revision,
             "assembly": assembly,
             **anatomy_summary(by_name.get(assembly, {}).get("anatomy"), components),
+        }
+    if captured.get("kind") == "clearance" and by_name.get(assembly, {}).get("fit_deferred"):
+        # Built with fit=false (ADR-876): nothing was measured, on purpose.
+        return {
+            "revision": revision, "assembly": assembly,
+            "available": False, "deferred": True, "pairs": [],
+            "pose": "initial solved pose (not swept motion)",
+            "reason": FIT_DEFERRED_REASON,
+            "clearance_sweep": {"status": "deferred", "joints": [],
+                                "reason": FIT_DEFERRED_REASON},
+            "components": components,
         }
     if captured.get("kind") == "clearance":
         measurements = by_name.get(assembly, {}).get("clearance")

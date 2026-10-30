@@ -549,6 +549,8 @@ def test_a_tool_call_reaches_the_engine_with_the_injected_revision() -> None:
         "source": "x",
         "expected_revision": "rev-1",
         "display": {"quality": "standard", "edges": False},
+        # An edit defers the fit unless the model asks for it (ADR-876).
+        "fit": False,
     }
     # …and the guard that was used is visible to the model, not merely absent.
     payload = json.loads(reply["result"]["content"][0]["text"])

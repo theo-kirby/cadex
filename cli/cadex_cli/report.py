@@ -270,8 +270,8 @@ def human_lines(report: RunReport) -> list[str]:
                 lines.append(f"  file {name:<13s} {path}")
     if report.fit:
         verdict = str(report.fit.get("verdict") or "")
-        if verdict == "unavailable":
-            lines.append("fit    unavailable: " + str(
+        if verdict in {"unavailable", "deferred"}:
+            lines.append(f"fit    {verdict}: " + str(
                 report.fit.get("error") or report.fit.get("note") or ""))
         else:
             lines.append("fit    {:s}  {:d} failing of {:d} pair(s)".format(

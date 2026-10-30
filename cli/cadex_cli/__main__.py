@@ -69,6 +69,7 @@ from .clearance import (
     MAXIMUM_COMMON_VOLUME_MM3,
     MINIMUM_CLEARANCE_MM,
     bounds_agreement,
+    fit_deferred,
     read_fit,
     read_fit_or_unavailable,
     verdict_brief,
@@ -210,6 +211,11 @@ def _progress(message: str) -> None:
     sys.stderr.flush()
 
 
+#: ``--fit`` on the commands that edit the design (ADR-876).
+FIT_FLAG_HELP = ("Measure the fit (component pairs, joint sweeps, panels) on this build. "
+                 "Without it the build skips them; `cadex clearance` checks later.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cadex",
@@ -276,6 +282,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="NAME=VALUE",
         help="Repeatable. Values are clamped to each parameter's range.",
     )
+    params_parser.add_argument("--fit", action="store_true", help=FIT_FLAG_HELP)
 
     export_parser = subparsers.add_parser(
         "export", help="Write the accepted revision's outputs, copied from the "
@@ -380,7 +387,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     clearance_parser = subparsers.add_parser(
-        "clearance", help="Check accepted assembly pairs; write docs/clearance.md.",
+        "clearance", help="Check accepted assembly pairs; write docs/clearance.md. "
+        "Rebuilds with the fit on first when the accepted build deferred it.",
     )
     _common(clearance_parser, inherit=True)
     clearance_parser.add_argument("--sweep", action="store_true",
@@ -406,6 +414,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Allow the new script to drop outputs the accepted revision "
         "declares.",
     )
+    script_parser.add_argument("--fit", action="store_true", help=FIT_FLAG_HELP)
 
     link_parser = subparsers.add_parser(
         "link",
@@ -1369,10 +1378,11 @@ def command_params(args: argparse.Namespace, report: RunReport) -> int:
         _progress(f" · set_params  {', '.join(sorted(values))}")
         # Retain triangles in this accepted attempt so a following walk can
         # freeze its assembled training view without rebuilding the revision.
-        reply = client.request(
-            "set_params", {"values": values, "expected_revision": revision,
-                           "display": {"quality": "standard", "edges": False}}
-        )
+        request: dict[str, Any] = {"values": values, "expected_revision": revision,
+                                   "display": {"quality": "standard", "edges": False}}
+        if not args.fit:
+            request["fit"] = False
+        reply = client.request("set_params", request)
         apply_modeling_reply(report, reply)
         if reply.get("ok") is not True:
             report.error = str(
@@ -1561,6 +1571,15 @@ def command_section(args: argparse.Namespace, report: RunReport) -> int:
 
 def command_clearance(args: argparse.Namespace, report: RunReport) -> int:
     with _engine_session(args, report, restore=False) as (_engine, client):
+        if not args.sweep and fit_deferred(client):
+            # The check a deferred build left for later (ADR-876): the same
+            # revision with the fit on, its parts from the part cache.
+            _progress(" · rebuild with the fit (the accepted build deferred it)")
+            reply = client.request("rebuild", {"display": dict(STANDARD_DISPLAY)})
+            apply_modeling_reply(report, reply)
+            if reply.get("ok") is not True:
+                report.error = str(reply.get("error") or reply.get("failure_code") or "rebuild failed")
+                return EXIT_REJECTED
         path, value = write_clearance(
             client, report.project_root, target=args.assembly,
             minimum=args.min_clearance_mm, maximum_volume=args.max_common_volume_mm3,
@@ -1668,6 +1687,8 @@ def command_script(args: argparse.Namespace, report: RunReport) -> int:
         }
         if args.replace:
             request["replace"] = True
+        if not args.fit:
+            request["fit"] = False
         reply = client.request("write_script", request)
         apply_modeling_reply(report, reply)
         if reply.get("ok") is not True:

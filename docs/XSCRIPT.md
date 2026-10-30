@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-29
+Verified against source: 2026-10-30
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -2935,3 +2935,13 @@ The static pass finishes before sweeps and acceptance.
 The checker uses copied solids, never changes live placements, never
 rebuilds historical scripts, and needs no dynamics declaration or MuJoCo
 run. A sweep failure never rejects acceptance.
+
+**A build may defer the fit (ADR-876).** `write_script`, `edit_script`,
+`set_params` and `rebuild` take `fit=false`, which skips the static pass,
+the sweeps, the panel checks and the form containment. None of them is
+digest material, so the revision, digest and outputs are the same; the
+assembly publishes `fit_deferred` and `inspect scope=clearance` answers
+`deferred: true` with no pairs, which the fit block reads as verdict
+`deferred`. The agent's edits and `cadex script --set` / `cadex params`
+defer by default; `rebuild` (and `cadex clearance`, which rebuilds when it
+finds a deferred fit) measures it.
