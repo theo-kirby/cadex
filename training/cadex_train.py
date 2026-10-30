@@ -788,6 +788,8 @@ def body_layout(task: dict[str, Any]) -> dict[str, Any] | None:
             name, gain, centre = f"clock.{channel}", 1.0, 0.0
         elif channel in command_channels(task, policy_only=True):
             name, gain, centre = f"command.{channel}", 1.0, 0.0
+        elif channel in gate_channels(task):
+            name, gain, centre = f"gate.{channel}", 1.0, 0.0
         else:
             grid = name = None
             for record in task.get("scans") or ():
@@ -1532,6 +1534,17 @@ def scan_channels(task: dict[str, Any], *, policy_only: bool = False) -> list[st
             for channel in record["channels"]]
 
 
+def gate_channels(task: dict[str, Any]) -> list[str]:
+    """The next gates' channels under ``--gates`` (ADR-955), after every other.
+
+    ``gate<k>_x``, ``gate<k>_y``: gate ``k`` ahead of the lit one in the
+    base's heading frame, forward and left, in metres (``cadex_goto.gate_view``).
+    The policy reads them all; a task without a ``gates`` block has none.
+    """
+
+    return [str(channel) for channel in (task.get("gates") or {}).get("channels") or ()]
+
+
 def waypoint_vector(xp: Any, task: dict[str, Any], told: Any, xipos: Any,
                     xmat: Any) -> Any:
     """The goal channels with each waypoint read from the base (ADR-751).
@@ -1931,7 +1944,8 @@ def tracking_vector(xp: Any, task: dict[str, Any], steps: Any, origin: Any = Non
 
 def channels(task: dict[str, Any]) -> list[str]:
     """Every name an expression may use: sensor, goal, command, acceleration,
-    tracking, then height-scan channels (ADR-699, ADR-706, ADR-715).
+    tracking, then height-scan channels (ADR-699, ADR-706, ADR-715), then a
+    gate race's (ADR-955).
 
     The engine's ``CadexDynamics._task_channels`` is the same rule. The
     sensor channels come out of ``sensordata``; the goal channels are what
@@ -1945,7 +1959,7 @@ def channels(task: dict[str, Any]) -> list[str]:
         for record in task["observations"]
         for channel in record["channels"]
     ] + (goal_channels(task) + command_channels(task) + acceleration_channels(task)
-         + tracking_channels(task) + scan_channels(task))
+         + tracking_channels(task) + scan_channels(task) + gate_channels(task))
 
 
 def actor_channels(task: dict[str, Any]) -> list[str]:
@@ -1961,7 +1975,8 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
     Every goal channel follows (ADR-462): a goal is what the robot is told
     to do, so the policy always reads it. Then the policy's command channels
     (ADR-696), then a gait reference's clock (ADR-706), then a height scan
-    marked ``role: policy`` (ADR-748).
+    marked ``role: policy`` (ADR-748), then the next gates under ``--gates``
+    (ADR-955).
     """
 
     return [
@@ -1971,7 +1986,7 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
         for channel in record["channels"]
     ] + (goal_channels(task) + command_channels(task, policy_only=True)
          + tracking_channels(task, policy_only=True)
-         + scan_channels(task, policy_only=True))
+         + scan_channels(task, policy_only=True) + gate_channels(task))
 
 
 def tracker_reading(xp: Any, true_mm: Any, tracker: dict[str, Any],
@@ -2088,7 +2103,7 @@ def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
                 floor.append(0.25)
     return floor + [0.0] * (len(goal_channels(task)) + len(command_channels(task))
                             + len(acceleration_channels(task)) + len(tracking_channels(task))
-                            + len(scan_channels(task)))
+                            + len(scan_channels(task)) + len(gate_channels(task)))
 
 
 def sensor_noise_std(task: dict[str, Any]) -> list[float]:
@@ -2821,6 +2836,229 @@ def goto_training(task: dict[str, Any], host: Any, options: argparse.Namespace,
             "qpos": int(host.jnt_qposadr[free[0]]), "share": float(options.goto_share)}
 
 
+#: How many train-split gate courses a ``--gates`` run stacks, and how many
+#: gates each holds (ADR-955). 48 gates of 1-4 m are ~120 m: a 20 s episode
+#: runs out of course only above 6 m/s, past the ceiling's default top.
+GATE_COURSES = 256
+GATE_TRAIN_GATES = 48
+
+#: The gate race's reward, per second of the episode unless named otherwise
+#: (ADR-955), multiplied by the control interval into each step: ``progress``
+#: per m/s made good toward the lit gate, capped at the curriculum's ceiling;
+#: ``entry`` per gate entered (once, not per second); ``time`` the cost of a
+#: second. At 1.0 per m/s, progress is on the scale of a joystick task's
+#: ``tracking_lin_vel`` (Playground's 1.0 x dt); a gate's 0.5 is half a
+#: second of progress at 1 m/s, so passing pays without drowning the slope
+#: toward it; 0.1 per second is a small push to be quick, a tenth of
+#: progress at 1 m/s. It is kept small because the course never runs out in
+#: training: a flat cost per step only makes ending the episode pay (ADR-410).
+GATE_WEIGHTS = (1.0, 0.5, 0.1)
+
+#: The speed curriculum (ADR-955): the ceiling on the rewarded speed starts at
+#: ``start`` m/s and rises by ``step`` after any iteration in which the
+#: population's mean rewarded speed (capped, every environment's every step)
+#: reached ``promote`` of it, up to ``max``. It never falls.
+GATE_CEILING = {"start": 0.5, "step": 0.25, "max": 6.0, "promote": 0.7}
+
+#: The gallop guide's imitation scale (ADR-957): a step's pose is
+#: ``pose_rad`` RMS from a reference sample, and its joint rates
+#: ``rate_rad_s``, for ``exp(-1)`` of the reward.
+REFERENCE_SCALE = {"pose_rad": 0.3, "rate_rad_s": 6.0}
+
+#: ``--gait-reference``'s shorthand: a cat's (and a cheetah's) gallop is the
+#: rotary one (Hildebrand 1977).
+REFERENCE_ALIASES = {"gallop": "rotary_gallop"}
+
+
+def gate_task(task: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]:
+    """The bundle's task as a gate race under ``--gates`` (ADR-955), else as it is.
+
+    The policy is told gates, not speeds: the task's goals (a joystick's
+    commanded speeds) leave the observation, and so does every reward term
+    that reads one (its tracking terms); every other term (torque, action
+    rate, pose, slip...) is kept as the race's regulariser. A ``gates`` block
+    names the next ``--gate-ahead`` gates' channels, which every vector ends
+    with (:func:`gate_channels`). A termination, a feet block or a gait
+    reference that reads a goal is refused, as are the flags that need one.
+    """
+
+    if not getattr(options, "gates", False):
+        return task
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import cadex_goto
+
+    for flag in ("goto", "family", "teacher", "terrain_curriculum"):
+        if getattr(options, flag, None):
+            raise SystemExit(f"--gates trains without speed goals; --{flag.replace('_', '-')} needs them")
+    goals = goal_channels(task)
+
+    def reads_goal(expression: Any) -> bool:
+        names = {node.id for node in ast.walk(ast.parse(str(expression), mode="eval"))
+                 if isinstance(node, ast.Name)}
+        return bool(names & set(goals))
+
+    if any(reads_goal(rule["expression"]) for rule in task["termination"]):
+        raise SystemExit("--gates: a termination reads a speed goal, which a race has none of")
+    if task.get("tracking"):
+        raise SystemExit("--gates: the bundle's gait reference is clocked by its goals; "
+                         "use --gait-reference for a guide that fades")
+    feet = task.get("feet") or {}
+    if feet.get("active") and reads_goal(feet["active"]):
+        raise SystemExit("--gates: the feet block's 'active' reads a speed goal")
+    ahead = int(options.gate_ahead)
+    if ahead < 1:
+        raise SystemExit("--gate-ahead is how many gates the policy sees, from 1")
+    return {**task, "goal": [],
+            "reward": [term for term in task["reward"] if not reads_goal(term["expression"])],
+            "gates": {"ahead": ahead, "unit": "m", "radius_m": float(options.gate_radius),
+                      "channels": cadex_goto.gate_channel_names(ahead),
+                      "dropped_reward": [str(term["label"]) for term in task["reward"]
+                                         if reads_goal(term["expression"])]}}
+
+
+def parse_floats(text: str, count: int, flag: str) -> tuple[float, ...]:
+    """``A,B,C`` as ``count`` finite floats, or a refusal naming ``flag``."""
+
+    try:
+        values = tuple(float(item) for item in str(text).split(","))
+    except ValueError:
+        values = ()
+    if len(values) != count or not all(math.isfinite(v) for v in values):
+        raise SystemExit(f"{flag}: {text!r} is not {count} comma-separated numbers")
+    return values
+
+
+def gate_rule(options: argparse.Namespace) -> dict[str, Any]:
+    """``--gate-weights`` and ``--gate-ceiling`` resolved (ADR-955), once, for the
+    environment, the curriculum and the policy header alike."""
+
+    progress, entry, cost = parse_floats(options.gate_weights, 3, "--gate-weights")
+    start, step, top, promote = parse_floats(options.gate_ceiling, 4, "--gate-ceiling")
+    if not 0.0 < start <= top or step < 0.0 or not 0.0 < promote <= 1.0:
+        raise SystemExit("--gate-ceiling is START,STEP,MAX,PROMOTE with 0 < START <= MAX, "
+                         "STEP >= 0 and PROMOTE in (0, 1]")
+    return {"weights": {"progress": progress, "entry": entry, "time": cost},
+            "ceiling": {"start": start, "step": step, "max": top, "promote": promote},
+            "radius_m": float(options.gate_radius), "ahead": int(options.gate_ahead),
+            "courses": GATE_COURSES, "gates": GATE_TRAIN_GATES}
+
+
+def gate_ceiling_next(ceiling: float, progress_mps: float, rule: dict[str, Any]) -> float:
+    """The speed ceiling after an iteration (ADR-955): up a ``step`` when the
+    population's mean rewarded speed reached ``promote`` of it, never past
+    ``max``, never down."""
+
+    if math.isfinite(progress_mps) and progress_mps >= rule["promote"] * ceiling:
+        return min(rule["max"], ceiling + rule["step"])
+    return ceiling
+
+
+def reference_weight_at(iteration: int, weight: float, fade: int) -> float:
+    """The gallop guide's weight at ``iteration`` (ADR-957): ``weight`` falling
+    in a straight line to 0 at ``fade`` iterations; ``fade`` 0 never fades."""
+
+    if fade <= 0:
+        return float(weight)
+    return float(weight) * max(0.0, 1.0 - iteration / float(fade))
+
+
+def gate_training(task: dict[str, Any], host: Any, options: argparse.Namespace,
+                  seed: int, np: Any) -> dict[str, Any]:
+    """What ``--gates`` trains under (ADR-955): the courses, the base's free
+    joint and the rule. :data:`GATE_COURSES` ``train``-split courses of
+    :data:`GATE_TRAIN_GATES` gates, seeded from ``seed``; no held-out course
+    is ever among them."""
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import cadex_goto
+
+    free = [j for j in range(host.njnt) if int(host.jnt_type[j]) == 0]
+    if not free:
+        raise SystemExit("--gates needs a floating base; this model has no free joint")
+    rule = gate_rule(options)
+    plans = cadex_goto.gate_stack(np, [
+        cadex_goto.gate_course(int(seed) * GATE_COURSES + i, split="train",
+                               gates=GATE_TRAIN_GATES, radius_m=rule["radius_m"])
+        for i in range(GATE_COURSES)])
+    return {"module": cadex_goto, "plans": plans, "rule": rule,
+            "qpos": int(host.jnt_qposadr[free[0]]), "dof": int(host.jnt_dofadr[free[0]])}
+
+
+def reference_legs(task: dict[str, Any], text: str) -> dict[str, str]:
+    """``--reference-legs`` (``LF=body,RF=...``), or the feet the task's contact
+    rows name, labelled by ``fl``/``fr``/``hl``/``hr`` in their body names."""
+
+    if text:
+        legs = dict(item.split("=", 1) for item in str(text).split(",") if "=" in item)
+    else:
+        legs = {}
+        for row in task["observations"]:
+            body = str((row.get("contact") or {}).get("body") or "")
+            for tag, foot in (("fl", "LF"), ("fr", "RF"), ("hl", "LH"), ("hr", "RH")):
+                if f"_{tag}_" in f"_{body}_".replace("-", "_"):
+                    legs[foot] = body
+    if sorted(legs) != ["LF", "LH", "RF", "RH"]:
+        raise SystemExit(f"--gait-reference needs four feet LF, RF, LH, RH; found {legs}. "
+                         "Name them with --reference-legs LF=BODY,RF=BODY,LH=BODY,RH=BODY")
+    return legs
+
+
+def reference_guide(model_xml: bytes, task: dict[str, Any], options: argparse.Namespace,
+                    mujoco: Any, np: Any) -> dict[str, Any]:
+    """The gallop guide's stride (ADR-957): each actuated joint's angle and
+    rate at every sample of one stride, with their ``qpos``/``qvel`` addresses.
+
+    ``--gait-reference`` is a clip JSON (``cadex-gait-clip-v1``, made by
+    ``assembly.gait`` or ``CadexGait.generate``) or a name in
+    ``CadexGait.GAITS`` (``gallop`` is ``rotary_gallop``), generated here at
+    ``--reference-speed`` on the bundle's own model from the repository's
+    ``src/Mod/cadex/CadexGait.py``. Rates are the stride's periodic central
+    difference. Joints the clip does not pose are left out.
+    """
+
+    source = str(options.gait_reference)
+    host = mujoco.MjModel.from_xml_string(model_xml.decode("utf-8"))
+    if source.endswith(".json"):
+        clip = json.loads(Path(source).expanduser().read_text(encoding="utf-8"))
+    else:
+        engine = Path(__file__).resolve().parent.parent / "src" / "Mod" / "cadex"
+        sys.path.insert(0, str(engine))
+        try:
+            import CadexGait
+        except ImportError as error:
+            raise SystemExit(f"--gait-reference {source}: CadexGait is not beside this trainer "
+                             f"({error}); pass a clip JSON instead") from error
+        gait = REFERENCE_ALIASES.get(source, source)
+        if gait not in CadexGait.GAITS:
+            raise SystemExit(f"--gait-reference {source!r} is not one of "
+                             f"{sorted(CadexGait.GAITS) + sorted(REFERENCE_ALIASES)} or a clip JSON")
+        try:
+            clip = CadexGait.generate(
+                host, reference_legs(task, options.reference_legs), gait,
+                float(options.reference_speed), mujoco=mujoco,
+                sample_hz=1.0 / float(task["episode"]["control_interval_s"]))
+        except CadexGait.GaitError as error:
+            raise SystemExit(f"--gait-reference {source} at {options.reference_speed:g} m/s: {error}") from error
+    if clip.get("schema") != "cadex-gait-clip-v1":
+        raise SystemExit(f"--gait-reference {source}: not a cadex-gait-clip-v1")
+    names = [str(n) for n in clip["joints"]]
+    angles = np.asarray(clip["joint_angles_rad"], dtype=np.float64)
+    dt = float(clip["sample_dt_s"])
+    rates = (np.roll(angles, -1, axis=0) - np.roll(angles, 1, axis=0)) / (2.0 * dt)
+    picked = [names.index(str(a["joint"])) for a in task["actions"] if str(a.get("joint")) in names]
+    joints = [mujoco.mj_name2id(host, mujoco.mjtObj.mjOBJ_JOINT, names[k]) for k in picked]
+    if not picked:
+        raise SystemExit(f"--gait-reference {source}: the clip poses none of the actuated joints")
+    params = clip.get("parameters") or {}
+    return {"q": angles[:, picked].astype(np.float32), "dq": rates[:, picked].astype(np.float32),
+            "qpos": np.asarray([host.jnt_qposadr[j] for j in joints], dtype=np.int32),
+            "dof": np.asarray([host.jnt_dofadr[j] for j in joints], dtype=np.int32),
+            "joints": [names[k] for k in picked],
+            "summary": {"gait": clip.get("gait"), "speed_m_s": params.get("speed_m_s"),
+                        "period_s": params.get("period_s"), "samples": int(angles.shape[0]),
+                        "stride_length_m": params.get("stride_length_m")}}
+
+
 def resolved_reward_floor(options) -> float | None:
     """ADR-700's per-step reward floor, resolved once, or ``None`` for none.
 
@@ -3210,6 +3448,79 @@ def build_environment(
         goto_columns = jnp.asarray(goto["columns"])
         goto_scales = jnp.asarray(goto["scales"])
         goto_dt = float(episode["control_interval_s"])
+    # ADR-955: a gate race. A PYTHON bool, so a run without --gates traces
+    # as before.
+    gating = bool(task.get("gates"))
+    if gating:
+        if going:
+            raise SystemExit("--gates and --goto are two tasks; give one")
+        race = gate_training(task, host, options, seed, np)
+        gate_plans = {key: jnp.asarray(value) for key, value in race["plans"].items()}
+        gate_ahead = int(task["gates"]["ahead"])
+        gate_pay = race["rule"]["weights"]
+        gate_dt = float(episode["control_interval_s"])
+    # ADR-957: the gallop guide, a PYTHON bool on the same terms.
+    referencing = bool(getattr(options, "gait_reference", None))
+    if referencing:
+        guide = reference_guide(bundle["model_xml"], task, options, mujoco, np)
+        guide_q, guide_dq = jnp.asarray(guide["q"]), jnp.asarray(guide["dq"])
+        guide_qpos, guide_dof = jnp.asarray(guide["qpos"]), jnp.asarray(guide["dof"])
+    paying = gating or referencing
+
+    def gate_plan(state):
+        """Each environment's course, turned by its heading about where its
+        episode started (the first gate at any bearing, as ADR-840's points)."""
+
+        c, s = jnp.cos(state["turn"])[:, None], jnp.sin(state["turn"])[:, None]
+        gates = gate_plans["gates"][state["pick"]]
+        return {"gates": jnp.stack([c * gates[..., 0] - s * gates[..., 1] + state["start"][:, :1],
+                                    s * gates[..., 0] + c * gates[..., 1] + state["start"][:, 1:]],
+                                   axis=-1),
+                "radius": gate_plans["radius"][state["pick"]]}
+
+    def gate_pose(data):
+        """The base's planar position, heading and world planar velocity."""
+
+        base = data.qpos[:, race["qpos"]:race["qpos"] + 7]
+        w, x, y, z = (base[:, 3 + i] for i in range(4))
+        yaw = jnp.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+        velocity = data.qvel[:, race["dof"]:race["dof"] + 2]
+        return base[:, 0], base[:, 1], yaw, velocity[:, 0], velocity[:, 1]
+
+    def gate_fresh(key, state, data, done):
+        """Where ``done``, a fresh race: a course from the pool, turned by a
+        uniform heading about where the base now stands, its first gate lit."""
+
+        k_pick, k_turn = jax.random.split(key)
+        count = gate_plans["gates"].shape[0]
+        x, y, _yaw, _vx, _vy = gate_pose(data)
+        return {"pick": jnp.where(done, jax.random.randint(k_pick, (envs,), 0, count), state["pick"]),
+                "turn": jnp.where(done, jax.random.uniform(k_turn, (envs,), minval=-math.pi,
+                                                           maxval=math.pi), state["turn"]),
+                "start": jnp.where(done[:, None], jnp.stack([x, y], axis=-1), state["start"]),
+                "index": jnp.where(done, 0, state["index"])}
+
+    def gate_reading(state, data):
+        """``gate_channels``: the next gates in the base's heading frame (m)."""
+
+        x, y, yaw, _vx, _vy = gate_pose(data)
+        return race["module"].gate_view(jnp, gate_plan(state), state["index"], x, y, yaw,
+                                        gate_ahead)
+
+    def reference_pay(data):
+        """ADR-957: how near the stride's nearest sample the joints are, in
+        pose and rate, with no clock: ``exp(-min_k e_k)``, ``e_k`` the mean
+        squared pose error over ``pose_rad``^2 plus the rate's over
+        ``rate_rad_s``^2. Rate keeps the order: a pose matched while moving
+        backward through the stride pays little."""
+
+        q = data.qpos[:, guide_qpos][:, None, :]
+        dq = data.qvel[:, guide_dof][:, None, :]
+        error = (jnp.mean(jnp.square(q - guide_q[None]), axis=-1)
+                 / REFERENCE_SCALE["pose_rad"] ** 2
+                 + jnp.mean(jnp.square(dq - guide_dq[None]), axis=-1)
+                 / REFERENCE_SCALE["rate_rad_s"] ** 2)
+        return jnp.exp(-jnp.min(error, axis=-1))
 
     def goto_advance(key, state, data, done):
         """The layer one step on, from the pose ``data`` holds (ADR-840).
@@ -3323,8 +3634,9 @@ def build_environment(
         for weight, code in reward_terms:
             total = total + weight * eval(code, table, dict(values))
         # ADR-870: with a feet block the floor is applied in ``step``, after
-        # the foot terms join the sum, as Playground clips the whole sum.
-        if reward_floor is not None and feet is None:
+        # the foot terms join the sum, as Playground clips the whole sum; and
+        # so with a gate race's pay or a guide's (ADR-955, ADR-957).
+        if reward_floor is not None and feet is None and not paying:
             total = jnp.maximum(total, jnp.float32(reward_floor))
         return total
 
@@ -3647,7 +3959,8 @@ def build_environment(
     scale_out = jnp.asarray(output_scale, dtype=jnp.float32)
     bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
 
-    def sensed(key, data, picks, steps, origin, carry, course=None, turned=None, going_state=None):
+    def sensed(key, data, picks, steps, origin, carry, course=None, turned=None, going_state=None,
+               gate_state=None):
         """The observation the policy acts on, in the state ``data`` holds.
 
         What the policy acts on carries its sensors' noise; the reward and
@@ -3690,6 +4003,9 @@ def build_environment(
             vector = jnp.concatenate([vector, height_scan_vector(
                 jnp, task, data.xpos, data.xmat, scan_elevation,
                 scanned_course(course) if redrawing else None)], axis=-1)
+        if gating:
+            # ADR-955: the gates the policy races to, last in every vector.
+            vector = jnp.concatenate([vector, gate_reading(gate_state, data)], axis=-1)
         return key, vector
 
     def observation(vector):
@@ -3773,8 +4089,21 @@ def build_environment(
                      "told": jnp.zeros((envs, 3), jnp.float32)}
             info["goto"] = goto_advance(jax.random.fold_in(start_key, 840), blank, data,
                                         jnp.ones((envs,), bool))
+        if gating:
+            # ADR-955: every environment starts a race; the curriculum's
+            # ceiling is the train loop's, written into the state each iteration.
+            blank = {"pick": jnp.zeros((envs,), jnp.int32), "turn": jnp.zeros((envs,), jnp.float32),
+                     "start": jnp.zeros((envs, 2), jnp.float32), "index": jnp.zeros((envs,), jnp.int32)}
+            info["gates"] = gate_fresh(jax.random.fold_in(start_key, 955), blank, data,
+                                       jnp.ones((envs,), bool))
+            info["gate_ceiling"] = jnp.full((envs,), race["rule"]["ceiling"]["start"], jnp.float32)
+            info["gate_entered"] = jnp.zeros((envs,), jnp.float32)
+            info["gate_speed"] = jnp.zeros((envs,), jnp.float32)
+        if referencing:
+            # ADR-957: the guide's weight, faded by the train loop.
+            info["reference_weight"] = jnp.full((envs,), float(options.reference_weight), jnp.float32)
         key, vector = sensed(key, data, picks, steps, origin, carry, course, turned,
-                             info.get("goto"))
+                             info.get("goto"), info.get("gates"))
         info["key"] = key
         return State(pipeline_state=data, obs=observation(vector),
                      reward=jnp.zeros((envs,), dtype=jnp.float32),
@@ -3848,8 +4177,22 @@ def build_environment(
             pay, feet_memory = feet_step(jnp, feet, info["feet"], contact, height,
                                          active, control_interval)
             reward = reward + pay
-            if reward_floor is not None:
-                reward = jnp.maximum(reward, jnp.float32(reward_floor))
+        if gating:
+            # ADR-955: the race, scored where the step landed against the gate
+            # lit when it was taken: speed made good toward it up to the
+            # curriculum's ceiling, a gate entered, the second spent.
+            plan = gate_plan(info["gates"])
+            x, y, _yaw, vx, vy = gate_pose(data)
+            made = race["module"].gate_speed(jnp, plan, info["gates"]["index"], x, y, vx, vy)
+            rewarded = jnp.minimum(made, info["gate_ceiling"])
+            raced, entered = race["module"].gate_step(jnp, plan, info["gates"], x, y)
+            reward = reward + (gate_pay["progress"] * gate_dt * rewarded
+                               + gate_pay["entry"] * entered.astype(jnp.float32)
+                               - gate_pay["time"] * gate_dt)
+        if referencing:
+            reward = reward + info["reference_weight"] * control_interval * reference_pay(data)
+        if reward_floor is not None and (feet or paying):
+            reward = jnp.maximum(reward, jnp.float32(reward_floor))
         blown = jnp.logical_not(
             jnp.isfinite(data.qpos).all(axis=-1) & jnp.isfinite(data.qvel).all(axis=-1)
             & jnp.isfinite(landed).all(axis=-1) & jnp.isfinite(reward))
@@ -3939,8 +4282,15 @@ def build_environment(
         if going:
             # ADR-840: from where the step landed, or the fresh episode's pose.
             info["goto"] = goto_advance(jax.random.fold_in(reset_key, 840), info["goto"], data, done)
+        if gating:
+            # ADR-955: the next gate lit, or a fresh race where one ended. The
+            # iteration's report reads the step's gates and rewarded speed.
+            info["gates"] = gate_fresh(jax.random.fold_in(reset_key, 955),
+                                       {**info["gates"], **raced}, data, done)
+            info["gate_entered"] = jnp.where(blown, 0.0, entered.astype(jnp.float32))
+            info["gate_speed"] = jnp.where(blown, 0.0, rewarded).astype(jnp.float32)
         key, vector = sensed(key, data, picks, steps, origin, carry, course, turned,
-                             info.get("goto"))
+                             info.get("goto"), info.get("gates"))
         info.update(key=key, forces=forces, starts=starts, elapsed=elapsed,
                     steps=steps, carry=carry,
                     truncation=truncation.astype(jnp.float32),
@@ -3971,6 +4321,9 @@ def build_environment(
             self.output_bias = output_bias
             self.horizon = horizon
             self.levels = levels
+            # ADR-955, ADR-957: what the train loop moves between iterations.
+            self.race = race["rule"] if gating else None
+            self.guide = guide["summary"] if referencing else None
             self.action_size = len(actions)
             self.observation_size = {"state": (len(actor_names),),
                                      "privileged_state": (len(names),)}
@@ -4113,6 +4466,9 @@ def train(
     environment = (functools.partial(family_environment, bundle["family"])
                    if bundle.get("family") else functools.partial(build_environment, bundle))
     env = environment(options, count=envs, seed=int(options.seed), **modules)
+    # ADR-955, ADR-957: a race's rule and a guide's stride, or None (a
+    # family's batch has neither).
+    race_rule, guided = getattr(env, "race", None), getattr(env, "guide", None)
     # The witness batch is drawn from the run's own seed, so the goals it
     # shows the policy are rows of the pool the run trained on.
     witness_env = environment(options, count=WITNESS_ENVS,
@@ -4456,7 +4812,8 @@ def train(
         policy = make_policy((normaliser, params.policy, params.value))
         env_state, data = acting.generate_unroll(
             env, env_state, policy, unroll_key, unroll,
-            extra_fields=("truncation", "terminated"))
+            extra_fields=("truncation", "terminated")
+            + (("gate_entered", "gate_speed") if race_rule else ()))
         # [unroll, envs] -> [envs, unroll]: a minibatch is whole unrolls.
         data = jax.tree.map(lambda x: jnp.swapaxes(x, 0, 1), data)
         normaliser = floored(update_normaliser(normaliser, data.observation))
@@ -4483,6 +4840,14 @@ def train(
         if env.levels:
             # ADR-856: how many environments stand on each level now.
             report["levels"] = jnp.bincount(env_state.info["level"], length=env.levels)
+        if race_rule:
+            # ADR-955: the race this iteration, every environment's every step:
+            # the rewarded speed made good (m/s, under the ceiling in force) and
+            # gates entered per second of simulated time.
+            extras = data.extras["state_extras"]
+            report["gate_progress_mps"] = jnp.mean(extras["gate_speed"])
+            report["gates_per_s"] = jnp.sum(extras["gate_entered"]) / jnp.float32(
+                unroll * envs * float(bundle["task"]["episode"]["control_interval_s"]))
         return optimizer_state, params, normaliser, env_state, key, report
 
     view_steps = 0
@@ -4504,14 +4869,22 @@ def train(
         def one(state, step_key):
             action, _ = policy(state.obs, step_key)
             after = witness_env.step(state, action)
-            return after, (state.obs["state"], after.pipeline_state.qpos)
+            # ADR-956: the joint rates and the drives' delivered force beside
+            # each pose, for the view's Activations rows.
+            moved = after.pipeline_state
+            return after, (state.obs["state"], moved.qpos, moved.qvel, moved.actuator_force)
 
         state = witness_env.reset(key)
-        _state, (seen, poses) = jax.lax.scan(
+        _state, (seen, poses, rates, forces) = jax.lax.scan(
             one, state, jax.random.split(key, rollout_steps))
-        return seen[:unroll], jnp.concatenate([state.pipeline_state.qpos[None], poses])
+        first = state.pipeline_state
+        return (seen[:unroll], jnp.concatenate([first.qpos[None], poses]),
+                jnp.concatenate([first.qvel[None], rates]),
+                jnp.concatenate([first.actuator_force[None], forces]))
 
     rolled = {}
+    # ADR-956: the last view's joint rates and drive forces, beside its poses.
+    view_motion: dict[str, Any] = {}
 
     def rollout(params, normaliser):
         """The witness rollout of these weights, run once however often it is asked."""
@@ -4524,13 +4897,17 @@ def train(
     def view_poses(params, normaliser):
         """[step, qpos] of the witness episode that travelled farthest forward, or None.
 
-        The view is for watching; it never fails a run."""
+        Its ``qvel`` and ``actuator_force`` rows go in ``view_motion`` beside
+        it (ADR-956). The view is for watching; it never fails a run."""
 
+        view_motion.clear()
         if not view_steps:
             return None
         try:
-            poses = np.asarray(rollout(params, normaliser)[1][:view_steps + 1],
-                               dtype=np.float64)
+            _seen, poses, rates, forces = rollout(params, normaliser)
+            poses = np.asarray(poses[:view_steps + 1], dtype=np.float64)
+            rates = np.asarray(rates[:view_steps + 1], dtype=np.float64)
+            forces = np.asarray(forces[:view_steps + 1], dtype=np.float64)
             host = mujoco.MjModel.from_xml_string(bundle["model_xml"].decode("utf-8"))
         except Exception as error:  # noqa: BLE001
             print(f"view: not written ({type(error).__name__}: {error})", file=sys.stderr)
@@ -4543,6 +4920,7 @@ def train(
             yaw = np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
             moved = poses[-1, :, :2] - poses[0, :, :2]
             pick = int(np.argmax(moved[:, 0] * np.cos(yaw) + moved[:, 1] * np.sin(yaw)))
+        view_motion.update(velocities=rates[:, pick, :], efforts=forces[:, pick, :])
         return poses[:, pick, :]
 
     def snapshot(params, normaliser, curve, wall):
@@ -4614,6 +4992,7 @@ def train(
             "wall_time_s": float(wall),
             "init_from": init_from_provenance,
             "distill": distill,
+            "guide": guided,
             "backend": jax.default_backend(),
             "devices": [str(device) for device in jax.devices()],
             "versions": {
@@ -4638,14 +5017,35 @@ def train(
             "params": None, "normaliser": None, "written": -1}
     collapsed = ""
     critic_warmup = int(getattr(options, "critic_warmup", 0) or 0) if source_header is not None else 0
+    # ADR-955: the race's speed ceiling, and ADR-957's guide weight, held here
+    # and written into the batch's state before each iteration: values, not
+    # shapes, so the compiled iteration is reused.
+    ceiling = race_rule["ceiling"]["start"] if race_rule else None
+    guide_weight = float(getattr(options, "reference_weight", 0.0) or 0.0)
+    guide_fade = int(getattr(options, "reference_fade", 0) or 0)
+    if guided and not options.quiet:
+        print(f"gait reference  {guided}", flush=True)
     for iteration in range(total_iterations):
         train_actor = jnp.float32(0.0 if iteration < critic_warmup else 1.0)
+        moved = {}
+        if race_rule:
+            moved["gate_ceiling"] = jnp.full((envs,), ceiling, jnp.float32)
+        if guided:
+            moved["reference_weight"] = jnp.full(
+                (envs,), reference_weight_at(iteration, guide_weight, guide_fade), jnp.float32)
+        if moved:
+            env_state = env_state.replace(info={**env_state.info, **moved})
         (optimizer_state, params, normaliser, env_state, key,
          report) = iterate(optimizer_state, params, normaliser, env_state, key, train_actor)
         entry = {"iteration": iteration,
                  **{name: (float(value) if jnp.ndim(value) == 0
                            else [int(count) for count in np.asarray(value)])
                     for name, value in report.items()}}
+        if race_rule:
+            entry["gate_ceiling_mps"] = float(ceiling)
+            ceiling = gate_ceiling_next(ceiling, entry["gate_progress_mps"], race_rule["ceiling"])
+        if guided:
+            entry["reference_weight"] = reference_weight_at(iteration, guide_weight, guide_fade)
         curve.append(entry)
         if not collapsed:
             collapsed = episode_collapse(curve, env.horizon)
@@ -4665,7 +5065,10 @@ def train(
                 f"  sigma {entry['action_std']:.4f}"
                 + (f"  distill {entry['distill_loss']:.4g} on {entry['taught']:.2f}"
                    if teachers else "")
-                + (f"  levels {entry['levels']}" if "levels" in entry else ""),
+                + (f"  levels {entry['levels']}" if "levels" in entry else "")
+                + (f"  gates {entry['gates_per_s']:.3f}/s at {entry['gate_progress_mps']:.3f}"
+                   f" of {entry['gate_ceiling_mps']:.2f} m/s" if "gates_per_s" in entry else "")
+                + (f"  guide {entry['reference_weight']:.3g}" if "reference_weight" in entry else ""),
                 file=sys.stderr,
             )
         # Stop at the first non-finite number: diverged parameters do not
@@ -4698,6 +5101,7 @@ def train(
             # Its rollout is the witness's, already run: the dashboard plays
             # it on the checkpoint scrubber, whoever started the run (ADR-851).
             numbered["view_qpos"] = view_poses(params, normaliser)
+            numbered["view_motion"] = dict(view_motion)
             emit(f"{iteration + 1:06d}", iteration, entry["reward_per_step"], numbered)
             if best["written"] != best["iteration"]:
                 emit("best", best["iteration"], best["reward_per_step"],
@@ -4721,6 +5125,7 @@ def train(
              snapshot(best["params"], best["normaliser"], curve, wall))
     final = snapshot(params, normaliser, curve, wall)
     final["view_qpos"] = view_poses(params, normaliser)
+    final["view_motion"] = dict(view_motion)
     return final
 
 
@@ -4916,6 +5321,12 @@ def policy_header(
                 and (key != "goal_pool" or task.get("goal"))
                 # ADR-840: only a run on the go-to-point layer names it.
                 and (not key.startswith("goto") or options.goto)
+                # ADR-955, ADR-957: only a race names its gates, and only a
+                # guided run its guide, so other headers are unchanged.
+                and (not key.startswith("gate") or getattr(options, "gates", False))
+                and (not key.startswith("reference")
+                     or getattr(options, "gait_reference", None))
+                and (key != "gait_reference" or getattr(options, "gait_reference", None))
             },
             "init_from": trained.get("init_from"),
             # The iterations this policy actually saw, which for a
@@ -5004,6 +5415,20 @@ def policy_header(
                 }
                 if bundle.get("family") else {}
             ),
+            # ADR-955: the race the policy was trained on, so a judge reads
+            # its gate channels and a reader its reward and curriculum.
+            **({"gates": {**gate_rule(options), "channels": gate_channels(task),
+                          "dropped_reward": list(task["gates"]["dropped_reward"]),
+                          "curriculum": "the ceiling on the rewarded speed rises by STEP "
+                                        "after an iteration whose mean rewarded speed "
+                                        "reached PROMOTE of it, up to MAX; it never falls"}}
+               if task.get("gates") else {}),
+            # ADR-957: the guide, and how it faded.
+            **({"gait_reference": {"source": str(options.gait_reference),
+                                   "weight": float(options.reference_weight),
+                                   "fade_iterations": int(options.reference_fade),
+                                   **(trained.get("guide") or {})}}
+               if getattr(options, "gait_reference", None) else {}),
             "cadex_importable": cadex_importable,
         },
         "evaluation": {
@@ -5169,6 +5594,55 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--goto-goals", default="cx,cy,cw",
         help="the task's forward, lateral and yaw-rate goals the layer commands")
+    parser.add_argument(
+        "--gates", action="store_true",
+        help="race through gates (ADR-955): every episode is a train-split gate "
+             "course turned to a uniform heading; the policy reads the next "
+             "--gate-ahead gates in its heading frame instead of the task's speed "
+             "goals, and is paid for speed made good toward the lit gate (capped "
+             "by a curriculum's ceiling), each gate entered, and less for time. "
+             "Reward terms that read a speed goal are dropped. Off by default")
+    parser.add_argument(
+        "--gate-ahead", type=int, default=2, metavar="K",
+        help="how many gates, the lit one first, the policy sees under --gates")
+    parser.add_argument(
+        "--gate-radius", type=float, default=0.25, metavar="M",
+        help="a gate's radius under --gates, m: route A's arrive_m, about one "
+             "trunk length across on leon VI (ADR-955)")
+    parser.add_argument(
+        "--gate-weights", default=",".join(f"{v:g}" for v in GATE_WEIGHTS),
+        metavar="PROGRESS,ENTRY,TIME",
+        help="the race's reward: per m/s made good toward the lit gate per "
+             "second, per gate entered, and the cost of a second (ADR-955)")
+    parser.add_argument(
+        "--gate-ceiling",
+        default=",".join(f"{GATE_CEILING[k]:g}" for k in ("start", "step", "max", "promote")),
+        metavar="START,STEP,MAX,PROMOTE",
+        help="the speed curriculum (ADR-955): the rewarded speed is capped at a "
+             "ceiling that starts at START m/s and rises by STEP after any "
+             "iteration whose mean rewarded speed reached PROMOTE of it, up to MAX")
+    parser.add_argument(
+        "--gait-reference", default=None, metavar="GAIT|CLIP.json",
+        help="a gait guide (ADR-957): a cadex-gait-clip-v1 JSON, or a CadexGait gait "
+             "name (gallop = rotary_gallop, transverse_gallop, bound, half_bound, "
+             "trot, ...) generated on the bundle's model at --reference-speed. Pays "
+             "--reference-weight per second for the joints' nearness, in pose and "
+             "rate, to the stride's nearest sample, with no clock in the policy. "
+             "Off by default")
+    parser.add_argument(
+        "--reference-weight", type=float, default=0.5,
+        help="the guide's reward per second at full weight (ADR-957)")
+    parser.add_argument(
+        "--reference-fade", type=int, default=0, metavar="ITERS",
+        help="the guide's weight falls in a straight line to 0 at this iteration; "
+             "0 never fades (ADR-957)")
+    parser.add_argument(
+        "--reference-speed", type=float, default=1.5, metavar="M_S",
+        help="the speed a named --gait-reference's stride is generated at")
+    parser.add_argument(
+        "--reference-legs", default="", metavar="LF=BODY,RF=BODY,LH=BODY,RH=BODY",
+        help="the feet a named --gait-reference strides on; default the task's "
+             "contact rows, labelled by fl/fr/hl/hr in their body names")
     parser.add_argument(
         "--action-filter-alpha", type=float, default=1.0,
         help="low-pass the command before it reaches the actuators: "
@@ -5416,7 +5890,8 @@ def binary_stl(np, triangles) -> bytes:
 def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
                *, source: str, goto: dict[str, Any] | None = None,
                checkpoint: dict[str, Any] | None = None, trace_name: str = "trace.json",
-               terrain: dict[str, Any] | None = None) -> Path:
+               terrain: dict[str, Any] | None = None, velocities: Any = None,
+               efforts: Any = None, rated_nm: float | None = None) -> Path:
     """``view/``: a mesh per body from its geoms and a trace of ``poses`` (ADR-835).
 
     Each body's mesh is in the body's own frame, named as the body is, and each
@@ -5440,6 +5915,18 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
     ``terrain`` is the course the episode stood on, as
     ``CadexDynamics.terrain_drawing`` writes it, so the dashboard draws that
     course rather than the model's own (ADR-858).
+
+    What the motors did (ADR-956), per actuator in ``actuator_channels``
+    order and in the units of an engine rollout (ADR-694): every frame's
+    ``joint_positions`` (degrees, millimetres on a slide) read from its pose;
+    with ``velocities`` (``qvel`` per pose) its ``joint_velocities`` per
+    second; with ``efforts`` (``actuator_force`` per pose, after the model's
+    clamp) its ``actuator_efforts`` in N·mm (N on a slide). Each channel names
+    its joint, units, the model's force clamp as ``effort_low``/``effort_high``
+    and ``rated_nm`` as ``effort_rated`` (null when not given), and its
+    ``low``/``high`` are the joint's range in its unit, so the dashboard's
+    Activations editor reads the episode as it reads an engine rollout. A
+    drive whose transmission is not one joint is given none of these rows.
     """
 
     import mujoco
@@ -5466,6 +5953,22 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
         bodies.append((body, name))
     frames = []
     states = (goto or {}).get("frames") or []
+    # ADR-956: each drive's joint, and the factor from MuJoCo's SI to the
+    # channel's unit (rad to deg, m to mm); a drive on anything but one hinge
+    # or slide joint is left out of the motion rows.
+    driven = []
+    for a in range(model.nu):
+        joint = int(model.actuator_trnid[a][0])
+        if int(model.actuator_trntype[a]) != int(mujoco.mjtTrn.mjTRN_JOINT) or \
+                int(model.jnt_type[joint]) not in (int(mujoco.mjtJoint.mjJNT_HINGE),
+                                                   int(mujoco.mjtJoint.mjJNT_SLIDE)):
+            driven = []
+            break
+        rotary = int(model.jnt_type[joint]) == int(mujoco.mjtJoint.mjJNT_HINGE)
+        driven.append((int(model.jnt_qposadr[joint]), int(model.jnt_dofadr[joint]),
+                       math.degrees(1.0) if rotary else 1000.0, rotary, joint, a))
+    rows_qvel = None if velocities is None else np.asarray(velocities, dtype=np.float64)
+    rows_force = None if efforts is None else np.asarray(efforts, dtype=np.float64)
     for step, qpos in enumerate(np.asarray(poses, dtype=np.float64)):
         data.qpos[:] = qpos
         mujoco.mj_kinematics(model, data)
@@ -5474,11 +5977,32 @@ def write_view(directory: Path, model_xml: bytes, poses: Any, interval_s: float,
                    "rotation_xyzw": [round(float(v), 6)
                                      for v in (*data.xquat[i][1:], data.xquat[i][0])]}
             for i, name in bodies}})
+        if driven:
+            frames[-1]["joint_positions"] = [round(float(qpos[q]) * unit, 4)
+                                             for q, _d, unit, _r, _j, _a in driven]
+            if rows_qvel is not None and step < len(rows_qvel):
+                frames[-1]["joint_velocities"] = [round(float(rows_qvel[step][d]) * unit, 3)
+                                                  for _q, d, unit, _r, _j, _a in driven]
+            if rows_force is not None and step < len(rows_force):
+                frames[-1]["actuator_efforts"] = [
+                    round(float(rows_force[step][a]) * float(model.actuator_gear[a][0]) * 1000.0, 2)
+                    for _q, _d, _u, _r, _j, a in driven]
         if step < len(states):
             frames[-1]["goto"] = states[step]
     actuators = [{"actuator": model.actuator(a).name, "unit": "rad",
                   "low": float(model.actuator_ctrlrange[a][0]),
                   "high": float(model.actuator_ctrlrange[a][1])} for a in range(model.nu)]
+    for (_q, _d, unit, rotary, joint, a), channel in zip(driven, actuators):
+        limited = bool(model.jnt_limited[joint])
+        clamp = ([float(v) * float(model.actuator_gear[a][0]) * 1000.0
+                  for v in model.actuator_forcerange[a]] if model.actuator_forcelimited[a] else [None, None])
+        channel.update(
+            joint=model.joint(joint).name, kind="position", motion_type="angular" if rotary else "linear",
+            unit="deg" if rotary else "mm", joint_unit="deg" if rotary else "mm",
+            low=float(model.jnt_range[joint][0]) * unit if limited else -180.0 if rotary else -1000.0,
+            high=float(model.jnt_range[joint][1]) * unit if limited else 180.0 if rotary else 1000.0,
+            effort_unit="N·mm" if rotary else "N", effort_low=clamp[0], effort_high=clamp[1],
+            effort_rated=None if rated_nm is None or not rotary else float(rated_nm) * 1000.0)
     trace = {"schema": VIEW_TRACE_SCHEMA, "source": source,
              "parameters": {"frames_per_second": round(1.0 / interval_s, 2)},
              "actuator_channels": actuators, "frames": frames}
@@ -5507,7 +6031,8 @@ def view_only(options: argparse.Namespace, bundle: dict[str, Any]) -> int:
         raise SystemExit("--view: the replay produced no poses (see above)")
     path = write_view(policy.parent / "view", bundle["model_xml"], trained["view_qpos"],
                       float(bundle["task"]["episode"]["control_interval_s"]),
-                      source=f"cadex_train --view {policy.name}")
+                      source=f"cadex_train --view {policy.name}",
+                      **(trained.get("view_motion") or {}))
     print(json.dumps({"view": str(path), "frames": len(trained["view_qpos"])}))
     return 0
 
@@ -5525,6 +6050,8 @@ def main(argv: Sequence[str]) -> int:
     import jax.numpy as jnp
 
     bundle = load_bundle(options.bundle, globals_for(jnp))
+    # ADR-955: a race is the bundle's task told gates instead of speeds.
+    bundle["task"] = gate_task(bundle["task"], options)
     if options.family:
         # ADR-759: the bundle is variant 0; its digests name the run.
         bundle["family"] = [bundle] + [load_bundle(path, globals_for(jnp))
@@ -5596,7 +6123,8 @@ def main(argv: Sequence[str]) -> int:
                            source=f"cadex_train's witness batch, {path.name}",
                            checkpoint={key: written[-1][key]
                                        for key in ("iteration", "reward_per_step", "sha256")},
-                           trace_name=path.name.removesuffix(".cxpolicy") + ".rollout-trace.json")
+                           trace_name=path.name.removesuffix(".cxpolicy") + ".rollout-trace.json",
+                           **(trained.get("view_motion") or {}))
             except Exception as error:  # noqa: BLE001 -- the view never fails a run
                 print(f"view: {path.name} not rolled out ({type(error).__name__}: {error})",
                       file=sys.stderr)
@@ -5686,6 +6214,20 @@ def main(argv: Sequence[str]) -> int:
             **({"terrain_levels": list(curve[-1]["levels"]),
                 "terrain_levels_curve": decimated_curve(curve, key="levels")}
                if curve and "levels" in curve[-1] else {}),
+            # Additive (ADR-955): under --gates, the speed curriculum's
+            # ceiling in force, the rewarded speed made good toward the lit
+            # gate and gates entered per second, now and per iteration.
+            **({"gate_ceiling_mps": curve[-1]["gate_ceiling_mps"],
+                "gate_progress_mps": curve[-1]["gate_progress_mps"],
+                "gates_per_s": curve[-1]["gates_per_s"],
+                "gate_ceiling_curve": decimated_curve(curve, key="gate_ceiling_mps"),
+                "gate_progress_curve": decimated_curve(curve, key="gate_progress_mps"),
+                "gates_per_s_curve": decimated_curve(curve, key="gates_per_s")}
+               if curve and "gate_ceiling_mps" in curve[-1] else {}),
+            # Additive (ADR-957): the gallop guide's weight as it fades.
+            **({"reference_weight": curve[-1]["reference_weight"],
+                "reference_weight_curve": decimated_curve(curve, key="reference_weight")}
+               if curve and "reference_weight" in curve[-1] else {}),
             "best_reward_per_step": (
                 None if not best or best.get("iteration", -1) < 0
                 else float(best["reward_per_step"])
@@ -5781,7 +6323,8 @@ def main(argv: Sequence[str]) -> int:
                 write_view(progress_path.parent / "view", bundle["model_xml"],
                            trained["view_qpos"],
                            float(bundle["task"]["episode"]["control_interval_s"]),
-                           source=f"cadex_train's witness batch, {target.name}")
+                           source=f"cadex_train's witness batch, {target.name}",
+                           **(trained.get("view_motion") or {}))
             except Exception as error:  # noqa: BLE001 -- the view never fails a run
                 print(f"view: not written ({type(error).__name__}: {error})", file=sys.stderr)
 

@@ -24,6 +24,7 @@ did not pass G3's bar (*Limits*).
 | task | `cadex_joystick.py TASK.json --out DIR` | ADR-862 |
 | train | `cadex_train.py ... --goto walk:...,run:... --goto-share 0.2` | ADR-840, G2-GOTO.md |
 | judge go-to-point | `docs/probes/orun21/g2_judge.py POLICY TASK OUT` (`--other-model` on the export) | ADR-839, ADR-858, ADR-865 |
+| or race gates | `cadex_train.py ... --gates`; `cadex_goto.py race POLICY --task EXPORT-TASK --other-model` | ADR-955–957 |
 | freeze, CAD | the project's script, with `assembly.task` | ADR-846, ADR-847 |
 | export | `cadex export --out DIR` (copies the accepted attempt) | ADR-848 |
 | compare | `cadex_cad_vs_concept.py concept.xml EXPORT.xml` | ADR-843 |
@@ -210,6 +211,18 @@ ends, not on a clock. This replaces separate stand, sprint and turn tasks.
    (49.2 M) walked, and did not turn in place, so a robot with no hip yaw
    (the biped's legs are roll, pitch and knee) needs the full budget to
    learn a stepping turn.
+
+8. **Or race gates, end to end (ADR-955).** `--gates` in place of
+   `--goto`: every episode is a gate course; the policy sees the next two
+   gates in its heading frame and no commanded speed, and is paid for speed
+   made good toward the lit gate under a ceiling that rises as the
+   population reaches it, for each gate, and a little less for time. The
+   joystick task's tracking terms are dropped; its regularisers stay. Judge
+   with `cadex_goto.py race` on the export (`--rated-nm` for the drives' RMS
+   ratio). `--gait-reference gallop --reference-fade N` adds a clock-free
+   guide that fades (ADR-957). **No run behind it yet:** a 30-iteration
+   smoke on leon VI's cut (2.46 M steps) reached 0.19 m/s made good and no
+   gate on the export (ADR-955).
 
 ## T. Terrain (ADR-852–861)
 

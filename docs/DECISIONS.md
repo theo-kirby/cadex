@@ -48563,3 +48563,197 @@ passed; `pixi run test-engine`: 138 passed, 29 skipped.
 and without losing its warm start. `TRAINER_SHA256` changes with the trainer's
 file. The pairs are computed every step whatever the course's placement, so a
 pool's cost scales with feet × slots.
+
+## ADR-955 — Gate racing: the policy sees the gates and is paid for speed made good (2026-10-30)
+
+**Context.** Route A (ADR-839, ADR-840) drives a joystick policy through a
+scripted layer: each point carries a commanded speed and a hold, and the
+policy never sees a point. leon VI's owner wants gate racing instead, end to
+end (the charter's E1, Rudin et al. 2022): each point is a gate, a circle on
+the floor; entering it scores and lights the next at once; no holds, no
+commanded speed; go as fast as possible, toward 5 m/s once bigger drives
+come. The gait is the policy's to find.
+
+**Decision.** Gate racing is a second task beside route A, which is unchanged.
+- **Courses.** `cadex_goto.gate_course(seed, split=)` draws gates as
+  `sequence` draws points (12 by default, at least 2 behind and 3 to a
+  side of the leg before, 1–4 m apart, no lead), seeded by `(split, seed)`
+  under its own name, so the splits never meet and no course is a
+  sequence's points. The radius (`radius_m`, default 0.25 m) is route A's
+  own `arrive_m`, the target route A arrived on: 0.5 m across, about one
+  trunk length of leon VI (neck collar to rump 0.45 m) and of a cat. It
+  must be under half the shortest leg, so gates never overlap and one step
+  enters at most one. `gate_step` (entry lights the next in the same step;
+  nothing past the last), `gate_view` and `gate_speed` are written once with
+  `xp.where` and run in jitted JAX and in numpy.
+- **The trainer (`cadex_train.py --gates`).** `gate_task` rewrites the
+  bundle's task at load: its goals (the commanded speeds) leave the
+  observation, every reward term that reads one is dropped (on the joystick
+  task, `tracking_lin_vel` and `tracking_ang_vel`) and named in the header,
+  and every other term is kept as the race's regulariser (torques, energy,
+  action rate, pose, orientation, slip, clearance, limits). A termination,
+  feet block or bundle gait reference that reads a goal, `--goto`,
+  `--family`, `--teacher` and `--terrain-curriculum` are refused.
+  Every episode is one of 256 `train` courses of 48 gates (about 120 m, so a
+  20 s episode runs out of course only above 6 m/s), turned to a uniform
+  heading about where the base starts, as ADR-840's sequences are.
+- **Observation.** The actor gains `gate<k>_x`, `gate<k>_y` for the next
+  `--gate-ahead` gates (default 2, the lit one first): forward and left of the
+  base in its heading frame, in metres, each clipped at 8 m; past the
+  course's last gate they read the last. They are last in every vector
+  (`gate_channels`), after a height scan. Nothing privileged is added to the
+  actor: no speed, time or ceiling.
+- **Reward,** per step, on top of the kept terms:
+  `progress·dt·min(v_made, ceiling) + entry·[entered] − time·dt`. `v_made`
+  is the base's world planar velocity projected on the line to the lit
+  gate's centre (negative going away; uncapped below), measured where the
+  step landed against the gate lit when it was taken. `--gate-weights`
+  default `1,0.5,0.1`: progress on the scale of a joystick task's
+  `tracking_lin_vel` (1.0 × dt), a gate worth half a second of progress at
+  1 m/s, and a small cost of time. The time cost is kept small because a
+  training course never runs out: a flat cost per step only makes ending
+  the episode pay (ADR-410). `--reward-floor` clamps the whole sum, the race
+  included. Episodes end on the task's terminations, as before.
+- **Speed curriculum.** The rewarded speed is capped at a ceiling that
+  starts at 0.5 m/s and rises by 0.25 m/s after any iteration in which the
+  population's mean rewarded speed (every environment's every step) reached
+  0.7 of it, up to 6 m/s; it never falls (`--gate-ceiling
+  START,STEP,MAX,PROMOTE`, `gate_ceiling_next`). The train loop holds it and
+  writes it into the batch's state before each iteration, a value, not a
+  shape, so the compiled iteration is reused. `progress.json` carries
+  `gate_ceiling_mps`, `gate_progress_mps` and `gates_per_s` and their
+  `*_curve`s; the iteration line prints them.
+- **Header.** `training.gates` records the weights, the ceiling rule, the
+  radius, the courses, the channels and the dropped terms; the `gate*`
+  hyperparameters appear only on a race, so every other header is unchanged.
+- **The judge (`cadex_goto.py race POLICY --task EXPORT-TASK --other-model
+  --seed S --rated-nm 1.6`).** `Player` reads a racer's gate channels from
+  its header and is given them each step. A race runs on stock MuJoCo to the
+  last gate (and a second), a fall, 30 s with no gate entered (`stall_s`:
+  the longest leg under 0.14 m/s), or the course at 0.25 m/s plus 10 s.
+  `gates.json`: per gate its leg, time entered, leg time and speed and the
+  closest the base came while it was lit; gates passed (in order by
+  construction), the course time and mean speed (centre line to the last
+  gate passed over its time), falls; each drive's RMS over the episode
+  against `--rated-nm` and its peak instant against the model's force clamp
+  (`drive_load`, from ADR-952's every-solver-step `DriveMeter`); each foot's
+  slip, its centre of mass's mean horizontal speed while it touches the
+  ground. `view/` carries the course in ADR-839's `goto` shape, which the
+  dashboard draws unchanged: the gates are its `points`, each with
+  `radius_m` and with `speed_mps` the speed made on its leg (0 when not
+  passed), so the dashboard's speed ramp colours the legs run; no `hold_s`;
+  each frame's `goto` is `{"index"}` alone. The dashboard draws its fixed
+  0.3 m reach ring, not `radius_m`. `gates SEED` prints a course.
+
+**Torque limits (checked).** The trainer clamps the policy's *position
+command* to its box and nothing else; torque is limited only by MuJoCo's
+actuator `forcerange`, which on leon VI's cut and export is ±5.5 N·m on all
+14 drives, the ROB05's peak. ADR-465's derivative patch only mirrors that
+clamp. There is no per-instant clamp at the 1.6 N·m rating anywhere; the
+rating enters only the `torques` penalty and the judge's RMS ratio.
+
+**Evidence.** `runs/gates-smoke` in leon-vi-runlab: screen4's recipe and cut
+bundle (task `9ee1f1eb…`, 4 Hz filter, floor 0) with `--gates`, 30
+iterations × 4096 × 20 (2.46 M steps, 127 s on the RTX 5090). Mean rewarded
+speed made good rose from −0.034 to 0.190 m/s, gates 0.002/s, no falls
+(episodes at the 1000-step horizon), the ceiling still 0.5 m/s. Raced on the
+export's task (`439e3c9d…`, `--other-model`, witness 5e-6) on held-out
+courses 0 and 1: 0/12 gates each, stopped stalled at 30 s, no fall, the
+base 2.07 and 2.13 m from gate 0 at its closest (2.12 and 2.15 m at the
+start); worst drive RMS 1.02× and 1.25× rated (`j_fr_abd`), peaks at the
+clamp; slip under 1 mm/s. A smoke, not a policy.
+
+**Tests.** `training/test_gate_race.py`: courses seeded, splits disjoint over
+200 seeds, shape kept, no speed or hold; entry lights the next, never out of
+order, nothing past the last; the heading-frame view, its clip and its end;
+speed made good; `gate_task` drops the tracking terms and keeps the rest,
+refusals; the ceiling rule; a built environment (a floating box, CPU) pays
+`progress·dt·0.5 − time·dt` at 2 m/s under a 0.5 m/s ceiling, `entry −
+time·dt` on entry, shows the next gate in the observation, and pays the full
+speed once the ceiling is raised; `judge_race`; `drive_load`. `pytest
+training/`: 129 passed; `pixi run test-engine`: 138 passed, 29 skipped.
+
+**Consequences.** A race policy is judged by `race`, not `play`; it reads no
+speed goal, so `cadex evaluate` and the engine's rollout cannot play it until
+the engine learns its channels. The dashboard's Status does not chart the
+ceiling (its telemetry is a fixed list); `progress.json` has it.
+`TRAINER_SHA256` changes with the trainer's file.
+
+## ADR-956 — A trainer's and a judge's view carry what the motors did (2026-10-30)
+
+**Context.** The dashboard's Activations editor (ADR-727) reads each frame's
+`joint_positions`, `joint_velocities` and `actuator_efforts` in the trace's
+`actuator_channels` order, as an engine rollout writes them (ADR-694). The
+trainer's `write_view` (its closing view and checkpoint rollouts, ADR-835,
+ADR-851) and `cadex_goto`'s films wrote placements only, so a run's or a
+judge's episode showed no motors, and the channels' `low`/`high` were the
+actuators' `ctrlrange` in radians (0, 0 on leon VI, which sets none).
+
+**Decision.** `write_view` writes every frame's `joint_positions` from its
+pose and, given them, `joint_velocities` from `velocities` (`qvel` per pose)
+and `actuator_efforts` from `efforts` (`actuator_force` per pose, after the
+clamp): degrees, degrees per second and N·mm (mm, mm/s and N on a slide),
+ADR-694's units. Each channel names its `joint`, `joint_unit`,
+`effort_unit`, `effort_low`/`effort_high` (the force clamp × gear, null when
+unlimited) and `effort_rated` (`rated_nm`, null when not given), and its
+`low`/`high` become the joint's range in that unit. The trainer's witness
+rollout returns `qvel` and `actuator_force` beside `qpos` (one compiled
+rollout still, ADR-849) and passes the picked episode's rows to every view
+it writes; `cadex_goto.py race` records them each kept frame and passes
+`--rated-nm`. A model with a drive on anything but one hinge or slide joint
+writes no motion rows.
+
+**Evidence.** `runs/gates-smoke`: `api/playback/run/gates-smoke`,
+`api/playback/checkpoint/gates-smoke/leon6.000020` and
+`api/playback/film/gates-smoke/judge-export%2Ffinal%2Fs0` all carry
+`joints`, `velocities` and `efforts` (751 frames on the film, 14 channels,
+`effort_rated` 1600 N·mm).
+
+**Tests.** `test_gate_race.py::test_a_view_carries_what_the_motors_did_in_the_engine_rollouts_units`:
+units, order, channel fields, positions only without the rollout's rows;
+`::test_the_dashboard_reads_a_race_trace_as_a_goto_episode_with_motors`.
+
+**Consequences.** Views are larger by three rows of 14 numbers a frame. A
+view written before this plays as before, with no motors.
+
+## ADR-957 — An optional gait guide that fades: the nearest stride sample, no clock (2026-10-30)
+
+**Context.** The owner wants the race's policy to find its gait itself, with
+an optional gallop reference as a guide that fades. ADR-706's gait tracking
+gives the actor a clock: a policy that learned under it reads it for life.
+
+**Decision.** `cadex_train.py --gait-reference GAIT|CLIP.json
+--reference-weight W --reference-fade ITERS` (off by default; W 0.5 per
+second, ITERS 0 never fades). A name is generated at `--reference-speed`
+(default 1.5 m/s) on the bundle's own model by `CadexGait.generate` from the
+repository beside the trainer, with the feet from `--reference-legs` or the
+task's contact rows (`fl`/`fr`/`hl`/`hr`); `gallop` is `rotary_gallop`
+(Hildebrand 1977: the cat's), and `transverse_gallop`, `bound`,
+`half_bound`, `canter`, `trot` are CadexGait's too. A clip JSON
+(`cadex-gait-clip-v1`) works without the repository. The guide pays
+`w(i)·dt·exp(−min_k e_k)`: `e_k` is the actuated joints' mean squared
+distance from stride sample `k` over (0.3 rad)² plus their rates' over
+(6 rad/s)², rates by the stride's periodic central difference. The nearest
+sample stands in for a clock, so nothing enters the actor, and the rate
+term keeps the stride's direction. `w(i)` falls in a straight line from W
+at iteration 0 to 0 at ITERS, written into the batch's state each
+iteration; `progress.json` and the iteration line carry it, and the header
+records the clip's gait, speed, period and samples.
+
+**Evidence.** On leon VI's cut, CadexGait generates `rotary_gallop` at 0.7
+and 1.5 m/s (17 samples, period 0.348 s, stride 0.522 m at 1.5) and
+refuses it at 3 m/s (the fore elbow at its stop); `transverse_gallop`,
+`bound` and `trot` are refused at 1.5 m/s. A 3-iteration GPU run with
+`--gates --gait-reference gallop --reference-fade 2` ran, its weight 0.5,
+0.25, 0. No training result yet.
+
+**Tests.** `test_gate_race.py::test_the_gallop_guide_pays_the_nearest_stride_sample_in_pose_and_rate`:
+on a four-sample clip, a joint still at a sample pays the full weight, the
+same pose turning at a rate no sample has pays less, and the rates are the
+periodic central difference; the fade's line.
+`test_offboard_boundaries.py` admits `CadexGait` as the trainer's one new
+deferred import, a sibling of `CadexDynamics` in the repository, not a
+dependency.
+
+**Consequences.** The guide shapes, it does not prescribe phase. Its pose
+and rate scales are constants (`REFERENCE_SCALE`), not tuned on any run.

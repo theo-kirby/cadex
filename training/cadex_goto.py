@@ -35,6 +35,15 @@ its wall slots is judged on whether any body of the robot entered one (ADR-860).
 with each frame's goto state, so the dashboard plays it with its points drawn.
 It also writes ``goto.json``, the episode's readings against G2's thresholds.
 
+Gate racing (ADR-955) is the end-to-end task beside route A: a seeded source
+of gate courses (:func:`gate_course`), the race's logic (:func:`gate_step`,
+:func:`gate_view`, :func:`gate_speed`) that ``cadex_train.py --gates`` steps
+in JAX, and its judge, which races a policy that sees the gates through a
+held-out course and writes ``view/`` and ``gates.json``:
+
+    python training/cadex_goto.py gates --seed 0 --split heldout
+    python training/cadex_goto.py race POLICY --task outputs/T-task.json --seed 0 --rated-nm 1.6
+
 Standard library at module scope (ADR-084); numpy and mujoco only inside ``play``.
 """
 
@@ -74,6 +83,21 @@ LAYER = {"arrive_m": 0.25, "hold_arrive_m": 0.1, "turn_deg": 60.0, "face_deg": 3
 JUDGE = {"reach_m": 0.3, "hold_m": 0.15, "speed_tolerance": 0.15,
          "straight_deg": 10.0, "straight_settle_s": 0.5, "straight_min_s": 1.0,
          "fall_up_z": 0.5, "fall_height_share": 0.5}
+
+GATE_SCHEMA = "cadex-gate-course-v1"
+GATE_EPISODE_SCHEMA = "cadex-gate-episode-v1"
+#: A gate course's shape when the caller names none (ADR-955). ``radius_m`` is
+#: route A's own ``arrive_m``, so a gate is the target route A arrived on:
+#: 0.5 m across, about one trunk length of leon VI (neck collar to rump,
+#: 0.45 m) and of a cat. ``distance_m`` is the leg from the gate before, with
+#: no lead: nothing is held and no speed is commanded, so a leg has nothing to
+#: settle into. ``behind`` and ``side`` are at least that many gates against the
+#: leg before, as :func:`sequence` places points.
+GATES = {"gates": 12, "behind": 2, "side": 3, "distance_m": (1.0, 4.0), "radius_m": 0.25}
+#: How far a gate the policy is shown may be, each axis (m): past it the
+#: reading is clipped, so a far gate reads as a direction, not a number the
+#: normaliser has never seen.
+GATE_VIEW_M = 8.0
 
 
 def parse_bands(text: str) -> list[dict[str, Any]]:
@@ -353,6 +377,142 @@ def layer_step(xp: Any, plan: Mapping[str, Any], state: Mapping[str, Any], x: An
     return new, command
 
 
+def gate_course(seed: int, *, split: str, **shape: Any) -> dict[str, Any]:
+    """One seeded gate course (ADR-955), the same on every machine.
+
+    A gate is a circle of ``radius_m`` on the floor; the robot races through
+    them in order, and entering one lights the next at once. Nothing is held
+    and no speed is commanded. Gates are placed as :func:`sequence` places
+    points, from the origin facing +x: each against the direction of the leg
+    before it, ahead, to a side or behind (:data:`BEARINGS`), at least
+    ``behind`` behind and ``side`` to a side, at a distance in
+    ``distance_m``. The draw is seeded by ``(split, seed)`` under its own
+    name, so the ``train`` and ``heldout`` splits never share a course, and no
+    course is a go-to-point sequence's points.
+    """
+
+    if split not in SPLITS:
+        raise SystemExit(f"split {split!r} is not one of {SPLITS}")
+    options = {**GATES, **shape}
+    count = int(options["gates"])
+    if options["behind"] + options["side"] > count:
+        raise SystemExit(f"{count} gates cannot hold {options['behind']} behind and "
+                         f"{options['side']} to a side")
+    radius = float(options["radius_m"])
+    if not 0.0 < radius < 0.5 * float(options["distance_m"][0]):
+        raise SystemExit(f"a gate's radius {radius:g} m must be above 0 and under half the "
+                         f"shortest leg ({options['distance_m'][0]:g} m), so gates never overlap")
+    rng = random.Random(f"cadex-gates:{split}:{int(seed)}")
+    kinds = ["behind"] * int(options["behind"]) + ["side"] * int(options["side"])
+    kinds += [rng.choice(sorted(BEARINGS)) for _ in range(count - len(kinds))]
+    rng.shuffle(kinds)
+    x = y = heading = 0.0
+    gates = []
+    for kind in kinds:
+        low, high = BEARINGS[kind]
+        turn = math.radians(rng.uniform(low, high))
+        if kind == "side" and rng.random() < 0.5:
+            turn = -turn
+        heading = math.atan2(math.sin(heading + turn), math.cos(heading + turn))
+        distance = rng.uniform(*options["distance_m"])
+        x, y = x + distance * math.cos(heading), y + distance * math.sin(heading)
+        gates.append({"xy_m": [round(x, 4), round(y, 4)], "bearing": kind})
+    return {"schema": GATE_SCHEMA, "split": split, "seed": int(seed), "radius_m": radius,
+            "shape": {key: list(value) if isinstance(value, tuple) else value
+                      for key, value in options.items()},
+            "gates": gates}
+
+
+def course_length_m(course: Mapping[str, Any]) -> float:
+    """The course's centre line from the origin, gate to gate (m)."""
+
+    x = y = total = 0.0
+    for gate in course["gates"]:
+        gx, gy = gate["xy_m"]
+        total += math.hypot(gx - x, gy - y)
+        x, y = gx, gy
+    return total
+
+
+def gate_channel_names(ahead: int) -> list[str]:
+    """The policy's gate channels for ``ahead`` gates, in :func:`gate_view`'s order."""
+
+    return [f"gate{k}_{axis}" for k in range(int(ahead)) for axis in ("x", "y")]
+
+
+def gate_stack(np: Any, courses: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Courses of equal length as the racer's plan: ``gates (B, N, 2)``, ``radius (B,)``."""
+
+    lengths = {len(c["gates"]) for c in courses}
+    if len(lengths) != 1:
+        raise SystemExit(f"courses of different lengths {sorted(lengths)} cannot be stacked")
+    return {"gates": np.asarray([[g["xy_m"] for g in c["gates"]] for c in courses], dtype=np.float32),
+            "radius": np.asarray([c["radius_m"] for c in courses], dtype=np.float32)}
+
+
+def gate_start(xp: Any, batch: Sequence[int]) -> dict[str, Any]:
+    """The race's state at an episode's start: the first gate lit."""
+
+    return {"index": xp.zeros(tuple(batch), dtype=xp.int32)}
+
+
+def _gate(xp: Any, gates: Any, index: Any) -> Any:
+    last = gates.shape[-2] - 1
+    at = xp.minimum(index, last)[..., None, None]
+    return xp.take_along_axis(gates, at, axis=-2)[..., 0, :]
+
+
+def gate_step(xp: Any, plan: Mapping[str, Any], state: Mapping[str, Any], x: Any, y: Any
+              ) -> tuple[dict[str, Any], Any]:
+    """The race one pose on: the new state, and whether a gate was entered.
+
+    A gate is entered when the base (``x``, ``y``, m) is inside its circle
+    while it is lit; the next gate lights in the same step. Gates are at least
+    two radii apart (:func:`gate_course`), so one step enters at most one. Past
+    the last gate nothing is entered again. ``xp.where`` only, so the same
+    code runs in numpy and in jitted JAX.
+    """
+
+    index = state["index"]
+    gate = _gate(xp, plan["gates"], index)
+    inside = xp.hypot(gate[..., 0] - x, gate[..., 1] - y) < plan["radius"]
+    entered = inside & (index < plan["gates"].shape[-2])
+    return {"index": index + entered.astype(index.dtype)}, entered
+
+
+def gate_view(xp: Any, plan: Mapping[str, Any], index: Any, x: Any, y: Any, yaw: Any,
+              ahead: int, clip_m: float = GATE_VIEW_M) -> Any:
+    """The next ``ahead`` gates in the base's heading frame: ``(..., 2 * ahead)``, m.
+
+    Gate ``k`` reads ``[forward, left]`` of the base, in that order, each
+    clipped to ``clip_m``. A gate past the course's last reads as the last
+    one, so a finished course shows its last gate. This is the whole of what
+    the policy is told (ADR-955): nothing of speed or time.
+    """
+
+    cos, sin = xp.cos(yaw), xp.sin(yaw)
+    rows = []
+    for k in range(int(ahead)):
+        gate = _gate(xp, plan["gates"], index + k)
+        dx, dy = gate[..., 0] - x, gate[..., 1] - y
+        rows += [xp.clip(cos * dx + sin * dy, -clip_m, clip_m),
+                 xp.clip(-sin * dx + cos * dy, -clip_m, clip_m)]
+    return xp.stack(rows, axis=-1)
+
+
+def gate_speed(xp: Any, plan: Mapping[str, Any], index: Any, x: Any, y: Any,
+               vx: Any, vy: Any) -> Any:
+    """The base's speed made good toward the lit gate (m/s): its world planar
+    velocity projected on the line to the gate's centre. Negative going away,
+    zero once the course is done."""
+
+    gate = _gate(xp, plan["gates"], index)
+    dx, dy = gate[..., 0] - x, gate[..., 1] - y
+    distance = xp.maximum(xp.hypot(dx, dy), 1e-6)
+    made = (vx * dx + vy * dy) / distance
+    return xp.where(index < plan["gates"].shape[-2], made, 0.0)
+
+
 def played_filter_alpha(header: Mapping[str, Any]) -> float:
     """The action filter a policy was trained with, from its header (ADR-160, ADR-953).
 
@@ -381,7 +541,13 @@ class Player:
     ``CadexDynamics.height_scan_values`` reads it (ADR-859); ``ground`` is the
     bundle's box course, or the plane, until ``play --course`` stands another.
     A channel with no source here (contacts, trackers) is refused.
+    A policy trained with ``--gates`` reads the next gates instead of speed
+    goals (ADR-955); :meth:`control` is given them.
     """
+
+    #: A racer's gate count and channels (ADR-955); none for a joystick policy.
+    gate_ahead = 0
+    gate_channels: list[str] = []
 
     def __init__(self, policy_path: Path, task_path: Path, goals: Sequence[str],
                  other_model: bool = False) -> None:
@@ -431,8 +597,15 @@ class Player:
         key = self.model.keyframe(episode["reset_keyframe"])
         self.reset_command = np.clip(np.array(key.ctrl)[self.ctrl_index] / self.ctrl_scale, self.low, self.high)
         self.command_names = {r["channels"][0]: int(r["action"]) for r in task.get("commands") or ()}
+        # ADR-955: a racer reads the next gates, which :meth:`control` is
+        # given, and no speed goal.
+        hyper = (header.get("training") or {}).get("hyperparameters") or {}
+        self.gate_ahead = int(hyper.get("gate_ahead") or 0) if hyper.get("gates") else 0
+        self.gate_channels = gate_channel_names(self.gate_ahead)
         declared = {str(g["name"]): g for g in task.get("goal") or ()}
-        if len(goals) != 3 or any(name not in declared for name in goals):
+        if self.gate_ahead and goals:
+            raise SystemExit("a racer reads gates, not speed goals; give it no --goals")
+        if not self.gate_ahead and (len(goals) != 3 or any(name not in declared for name in goals)):
             raise SystemExit(f"--goals names the forward, lateral and yaw-rate goals; "
                              f"this task declares {sorted(declared)}")
         self.goals = list(goals)
@@ -467,7 +640,7 @@ class Player:
                        else (lambda x_mm, y_mm: 0.0))
         for channel in self.channels:
             if not (channel in self.sensor or channel in self.goals or channel in self.command_names
-                    or channel in scanned
+                    or channel in scanned or channel in self.gate_channels
                     or (channel.endswith("_rate") and channel[:-5] in self.command_names)):
                 raise SystemExit(f"channel {channel!r}: no source in this player")
         witness = header["evaluation"]
@@ -491,8 +664,12 @@ class Player:
         self.before = self.reset_command.copy()
         self.first = True
 
-    def control(self, data: Any, command: Sequence[float]) -> Any:
+    def control(self, data: Any, command: Sequence[float], gates: Sequence[float] = ()) -> Any:
+        """``data.ctrl`` for this step. ``command`` is the layer's (vx, vy, wz);
+        a racer's ``gates`` are :func:`gate_view`'s row, in its channel order."""
+
         goal = {name: float(value) * scale for name, value, scale in zip(self.goals, command, self.goal_scale)}
+        goal.update(zip(self.gate_channels, (float(v) for v in gates)))
         values = []
         heights = {}
         for row in self.scans:
@@ -846,6 +1023,213 @@ def play(options: argparse.Namespace) -> int:
     return 0
 
 
+#: How long a race may run (ADR-955): the course at ``floor_mps`` and
+#: ``slack_s`` more, so a slow robot is judged and not cut off; it stops
+#: ``stall_s`` after the last gate entered (or the start), a leg of the
+#: longest (4 m) at under 0.14 m/s, and a second after the course's last gate.
+RACE = {"floor_mps": 0.25, "slack_s": 10.0, "stall_s": 30.0}
+
+
+def race_seconds(course: Mapping[str, Any]) -> float:
+    """A generous bound on a race: :data:`RACE`'s floor speed over the course, and slack."""
+
+    return RACE["slack_s"] + course_length_m(course) / RACE["floor_mps"]
+
+
+def feet_bodies(task: Mapping[str, Any]) -> list[str]:
+    """The feet a task reads contact on, by body name, in its row order."""
+
+    return [str(row["contact"]["body"]) for row in task["observations"]
+            if (row.get("contact") or {}).get("body")]
+
+
+def judge_race(course: Mapping[str, Any], entered_s: Sequence[float], seconds: float,
+               fell: bool, fell_at_s: float | None,
+               closest_m: Sequence[float] | None = None) -> dict[str, Any]:
+    """A race's readings (ADR-955): per gate, when it was entered and its leg's
+    time, length and speed, and (``closest_m``) the nearest the base came to
+    its centre while it was lit; how many were passed (in order, by
+    construction); and the mean speed over the course run, the centre line to
+    the last gate passed over the time it was passed at."""
+
+    rows, x, y, before, run = [], 0.0, 0.0, 0.0, 0.0
+    for k, gate in enumerate(course["gates"]):
+        gx, gy = gate["xy_m"]
+        leg = math.hypot(gx - x, gy - y)
+        row = {"gate": k, "bearing": gate["bearing"], "xy_m": list(gate["xy_m"]),
+               "leg_m": round(leg, 3), "passed": k < len(entered_s)}
+        if closest_m is not None and math.isfinite(closest_m[k]):
+            row["closest_m"] = round(float(closest_m[k]), 3)
+        if row["passed"]:
+            at = float(entered_s[k])
+            row.update(at_s=round(at, 3), leg_s=round(at - before, 3),
+                       leg_speed_mps=round(leg / max(at - before, 1e-9), 3))
+            before, run = at, run + leg
+        rows.append(row)
+        x, y = gx, gy
+    passed = len(entered_s)
+    return {"gates": rows, "passed": passed, "of": len(course["gates"]),
+            "stalled": not fell and passed < len(course["gates"]),
+            "finished": passed == len(course["gates"]), "seconds": round(seconds, 3),
+            "course_m": round(course_length_m(course), 3), "run_m": round(run, 3),
+            "course_s": round(before, 3) if passed else None,
+            "mean_speed_mps": round(run / before, 3) if passed and before > 0 else None,
+            "fell": bool(fell), "fell_at_s": None if fell_at_s is None else round(fell_at_s, 3)}
+
+
+def drive_load(reading: Mapping[str, Any], model: Any, rated_nm: float | None) -> dict[str, Any]:
+    """A :class:`DriveMeter` reading against the drives' ratings (ADR-955): each
+    drive's RMS over the episode against ``rated_nm`` (its continuous rating)
+    and its peak instant against the model's force clamp (its peak rating). No
+    instant is held to the continuous rating: a motor carries its peak for
+    short spells, and its heat is the RMS."""
+
+    peaks = {model.actuator(a).name or f"actuator{a}":
+             (float(max(abs(model.actuator_forcerange[a][0]), abs(model.actuator_forcerange[a][1])))
+              if model.actuator_forcelimited[a] else None) for a in range(model.nu)}
+    rms_over = ({name: round(v / rated_nm, 4) for name, v in reading["rms_nm"].items()}
+                if rated_nm else None)
+    peak_over = {name: round(v / peaks[name], 4) for name, v in reading["peak_nm"].items()
+                 if peaks.get(name)}
+    worst_rms = max(rms_over, key=rms_over.get) if rms_over else None
+    worst_peak = max(peak_over, key=peak_over.get) if peak_over else None
+    return {"rated_nm": rated_nm, "peak_nm_clamp": peaks,
+            "rms_over_rated": rms_over, "peak_over_peak": peak_over,
+            "worst_rms_drive": worst_rms,
+            "worst_rms_over_rated": None if worst_rms is None else rms_over[worst_rms],
+            "worst_peak_drive": worst_peak,
+            "worst_peak_over_peak": None if worst_peak is None else peak_over[worst_peak]}
+
+
+def race(options: argparse.Namespace) -> int:
+    """Race a policy trained with ``--gates`` through one seeded gate course (ADR-955).
+
+    Stock MuJoCo on the bundle's model (the export's, ``--other-model``), the
+    policy shown the next gates as the trainer shows them. Writes ``view/``,
+    each frame carrying the lit gate's index (the ADR-839 ``goto`` shape:
+    the gates are its ``points``, each with ``radius_m``, its ``speed_mps``
+    the speed made on its leg, 0 when not passed; no ``hold``) and what the
+    motors did (ADR-956); and ``gates.json``: :func:`judge_race`, the drives'
+    load (:func:`drive_load`) and each foot's slip, its centre of mass's mean
+    horizontal speed while it touches the ground.
+    """
+
+    import hashlib
+
+    import mujoco
+    import numpy as np
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import cadex_train
+
+    policy_path = Path(options.policy).expanduser()
+    player = Player(policy_path, Path(options.task).expanduser(), [], other_model=options.other_model)
+    if not player.gate_ahead:
+        raise SystemExit(f"{policy_path.name} was not trained with --gates")
+    trained = cadex_train.decode_policy(policy_path.read_bytes())["header"].get("training") or {}
+    radius = float(options.radius if options.radius is not None
+                   else (trained.get("gates") or {}).get("radius_m") or GATES["radius_m"])
+    course = gate_course(options.seed, split=options.split, gates=options.gates, radius_m=radius)
+    plan = gate_stack(np, [course])
+    model, data = player.model, mujoco.MjData(player.model)
+    free = [j for j in range(model.njnt) if int(model.jnt_type[j]) == 0][0]
+    qadr = int(model.jnt_qposadr[free])
+    data.qpos[:] = player.home
+    data.ctrl[player.ctrl_index] = player.reset_command * player.ctrl_scale
+    mujoco.mj_forward(model, data)
+    home_height = float(data.xipos[player.base][2])
+    player.reset()
+    feet = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+            for name in (options.feet.split(",") if options.feet else feet_bodies(player.task))]
+    feet = [f for f in feet if f >= 0]
+    slip = {int(f): [] for f in feet}
+    state = gate_start(np, [1])
+    seconds = options.seconds or race_seconds(course)
+    steps = int(round(seconds / player.dt))
+    keep = max(1, int(round(1.0 / (player.dt * options.fps))))
+    poses, rates, forces, frames, entered_s = [], [], [], [], []
+    closest = [math.inf] * len(course["gates"])
+    fell, fell_at, step = False, None, 0
+    drives = DriveMeter(np, model)
+    velocity = np.zeros(6)
+    while step < steps:
+        x, y = float(data.qpos[qadr]), float(data.qpos[qadr + 1])
+        R = data.xmat[player.base].reshape(3, 3)
+        yaw = math.atan2(R[1, 0], R[0, 0])
+        state, entered = gate_step(np, plan, state, np.array([x]), np.array([y]))
+        if bool(entered[0]):
+            entered_s.append(step * player.dt)
+            if len(entered_s) == len(course["gates"]):
+                # One second past the last gate, so the finish is seen.
+                steps = min(steps, step + int(round(1.0 / player.dt)))
+        if step * player.dt - (entered_s[-1] if entered_s else 0.0) > RACE["stall_s"]:
+            break
+        index = int(state["index"][0])
+        if index < len(closest):
+            gx, gy = course["gates"][index]["xy_m"]
+            closest[index] = min(closest[index], math.hypot(gx - x, gy - y))
+        if step % keep == 0:
+            poses.append(data.qpos.copy())
+            rates.append(data.qvel.copy())
+            forces.append(data.actuator_force.copy())
+            frames.append({"index": index})
+        # A foot touches the ground when a contact pairs one of its geoms with the world's.
+        pairs = np.stack([model.geom_bodyid[data.contact.geom1[:data.ncon]],
+                          model.geom_bodyid[data.contact.geom2[:data.ncon]]], axis=-1)
+        for f in feet:
+            if (((pairs[:, 0] == f) & (pairs[:, 1] == 0)) | ((pairs[:, 0] == 0) & (pairs[:, 1] == f))).any():
+                mujoco.mj_objectVelocity(model, data, mujoco.mjtObj.mjOBJ_BODY, f, velocity, 0)
+                slip[f].append(math.hypot(velocity[3], velocity[4]))
+        view = gate_view(np, plan, state["index"], np.array([x]), np.array([y]), np.array([yaw]),
+                         player.gate_ahead)[0]
+        step += 1
+        data.ctrl[:] = player.control(data, (), view)
+        for _ in range(player.substeps):
+            mujoco.mj_step(model, data)
+            drives.add(data)
+        if not np.all(np.isfinite(data.qpos)):
+            fell, fell_at = True, step * player.dt
+            break
+        R = data.xmat[player.base].reshape(3, 3)
+        if R[2, 2] < JUDGE["fall_up_z"] or float(data.xipos[player.base][2]) \
+                < JUDGE["fall_height_share"] * home_height:
+            fell, fell_at = True, step * player.dt
+            poses.append(data.qpos.copy())
+            rates.append(data.qvel.copy())
+            forces.append(data.actuator_force.copy())
+            frames.append(dict(frames[-1]))
+            break
+    readings = judge_race(course, entered_s, step * player.dt, fell, fell_at, closest)
+    slips = {model.body(f).name: (round(float(np.mean(v)), 4) if v else None) for f, v in slip.items()}
+    known = [v for v in slips.values() if v is not None]
+    reading = drives.reading()
+    out = Path(options.view_dir).expanduser() if options.view_dir else policy_path.parent / "view"
+    drawn = {"schema": GATE_SCHEMA, "split": course["split"], "seed": course["seed"],
+             "radius_m": radius, "points": [
+                 {"xy_m": list(g["xy_m"]), "radius_m": radius, "band": "gate", "bearing": g["bearing"],
+                  "speed_mps": float(row.get("leg_speed_mps") or 0.0)}
+                 for g, row in zip(course["gates"], readings["gates"])]}
+    trace = cadex_train.write_view(out, player.model_xml, poses, player.dt * keep,
+                                   source=f"cadex_goto race {policy_path.name} {course['split']}:{course['seed']}",
+                                   goto={"sequence": drawn, "frames": frames},
+                                   velocities=rates, efforts=forces, rated_nm=options.rated_nm)
+    result = {"schema": GATE_EPISODE_SCHEMA, "policy": str(policy_path), "course": course,
+              "witness_error": player.witness_error, "action_filter_alpha": player.filter_alpha,
+              "view": str(trace), "model_sha256": hashlib.sha256(player.model_xml).hexdigest(),
+              "trained_on": player.trained_on, "trained_gates": trained.get("gates"),
+              **readings,
+              "drives": {**reading, **drive_load(reading, model, options.rated_nm)},
+              "slip_mps": slips, "slip_worst_mps": max(known) if known else None,
+              "slip_mean_mps": round(float(np.mean(known)), 4) if known else None}
+    (out.parent / "gates.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
+    print(json.dumps({"view": str(trace), "passed": readings["passed"], "of": readings["of"],
+                      "seconds": readings["seconds"], "mean_speed_mps": readings["mean_speed_mps"],
+                      "fell": fell, "worst_rms_over_rated": result["drives"]["worst_rms_over_rated"],
+                      "worst_peak_over_peak": result["drives"]["worst_peak_over_peak"],
+                      "slip_worst_mps": result["slip_worst_mps"]}))
+    return 0
+
+
 def main(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     verbs = parser.add_subparsers(dest="verb", required=True)
@@ -872,7 +1256,35 @@ def main(argv: Sequence[str]) -> int:
         verb.add_argument("--split", choices=SPLITS, default="heldout")
         verb.add_argument("--bands", required=True, help="NAME:LOW-HIGH,... in m/s")
         verb.add_argument("--points", type=int, default=SEQUENCE["points"])
+    # ADR-955: gate racing, its own two verbs: a course, and a race through one.
+    for name in ("gates", "race"):
+        verb = verbs.add_parser(name)
+        if name == "race":
+            verb.add_argument("policy", help="a .cxpolicy trained with cadex_train --gates")
+            verb.add_argument("--task", required=True, help="the bundle to race on (the export's)")
+            verb.add_argument("--other-model", action="store_true",
+                              help="race on a model the policy did not train on, its channels matched by name")
+            verb.add_argument("--view-dir", default=None, help="default: view/ beside the policy")
+            verb.add_argument("--seconds", type=float, default=None, help="default: race_seconds()")
+            verb.add_argument("--fps", type=float, default=25.0, help="view frames per second")
+            verb.add_argument("--rated-nm", type=float, default=None,
+                              help="every drive's continuous rating, N·m (ROB05: 1.6); "
+                                   "default: no RMS ratio")
+            verb.add_argument("--feet", default="",
+                              help="the foot bodies slip is read on; default the task's contact rows")
+        verb.add_argument("--seed", type=int, default=0)
+        verb.add_argument("--split", choices=SPLITS, default="heldout")
+        verb.add_argument("--gates", type=int, default=GATES["gates"])
+        verb.add_argument("--radius", type=float, default=None,
+                          help=f"m; default the policy's training radius ({GATES['radius_m']:g} for a course)")
     options = parser.parse_args(argv[1:])
+    if options.verb == "gates":
+        radius = GATES["radius_m"] if options.radius is None else options.radius
+        print(json.dumps(gate_course(options.seed, split=options.split, gates=options.gates,
+                                     radius_m=radius), indent=1))
+        return 0
+    if options.verb == "race":
+        return race(options)
     if options.verb == "sequence":
         print(json.dumps(sequence(options.seed, split=options.split, bands=parse_bands(options.bands),
                                   points=options.points), indent=1))
