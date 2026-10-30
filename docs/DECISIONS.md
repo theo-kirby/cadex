@@ -48518,3 +48518,48 @@ Disabling the player's filter fails the first. `pytest training/`: 111 passed;
 
 **Consequences.** Filtered go-to-point policies can be judged; unfiltered ones
 play exactly as before. `TRAINER_SHA256` changes with the trainer's file.
+
+## ADR-954 — A course's own contact pairs are the ground's, not the robot's (2026-10-30)
+
+**Context.** A warm start across a course change (ADR-161, ADR-859) is
+admitted only while the robot is unchanged: `cadex_train.robot_xml` compares
+the parent's and the new bundle's models less every `geom` and `hfield` named
+under `environment/`. RECIPE §T.4 collides a box course with the feet only
+(ADR-739), by giving the boxes `conaffinity` of the feet's contact group. A
+training cut (`cadex_training_model.py cut`) gives its feet and its fall geoms
+the same bits (contype 0, conaffinity 1), so no bit picks out the feet on a
+cut: a box on the feet's group touches nothing, and moving the feet's bits
+moves the robot, which the warm start refuses. leon VI's U1 step (its ADR-028)
+warm-starts its counted flat policy onto a leveled box pool on its cut. Boxes
+on the cut floor's own bits (contype 1) touched its eight box fall geoms too,
+and MJX's box-box pairs ran that run at about 45 s per 8192 × 20 iteration
+(3,600 env steps/s, against the flat cut's 169,800).
+
+**Decision.** `robot_xml` also drops a `<pair>` named under `environment/`,
+and a `<contact>` that dropping them leaves empty, its tail passed to the
+element before it so the text reads as if it had never been written. A
+course that must touch a cut's feet alone sets its boxes' bits to 0 and names
+one pair per foot and slot (`environment/pair/<foot>/<slot>`), carrying the
+contact a dynamic one would get by MuJoCo's mixing of the two geoms (a pair
+does not inherit it: left unset its solref is 0.02). A pair not named for the
+ground still moves the robot.
+
+**Evidence.** leon VI's U1 cut bundle (`tools/terrain_course.py bundle` in
+that project; 55 box and 12 dome slots, 268 pairs, model `bd5dbe29…`):
+`robot_xml` equals its parent's (`s4/joy-cut-ar10`); `--init-from` across
+`--init-from-task-change` is admitted, naming `label`, `model` and `terrain`.
+A paw stood 0.5 mm into a box at the keyframe makes the same contact on the
+cut (by pair) as on the export (by bits): dim 3, friction 1, 1, 0.005, 1e-4,
+1e-4, solref 0.004 1, solimp 0.9 0.95 0.001 0.5 2. The warm start then ran at
+about 9.2 s per iteration (17,800 env steps/s), 4.9× the box-box bits' rate.
+
+**Tests.** `training/test_robot_xml.py`: ground pairs drop and the robot is
+the same; a pair not named for the ground still differs; the robot's own
+`<contact>` (an exclude) survives beside the ground's pairs; an indented
+contact section of ground pairs leaves no trace. `pytest training/`: 115
+passed; `pixi run test-engine`: 138 passed, 29 skipped.
+
+**Consequences.** A cut can take a feet-only course by pairs without a recut
+and without losing its warm start. `TRAINER_SHA256` changes with the trainer's
+file. The pairs are computed every step whatever the course's placement, so a
+pool's cost scales with feet × slots.

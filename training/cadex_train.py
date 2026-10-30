@@ -466,14 +466,34 @@ def robot_xml(xml: bytes) -> bytes:
     Two exports whose robots are the same body for body, joint for joint and
     actuator for actuator, and differ only in the ground the world body
     carries (a plane, a heightfield, a box course), give equal bytes here.
-    A policy trained on one is the same controller on the other."""
+    A policy trained on one is the same controller on the other.
+
+    The ground's own contact pairs go with it (ADR-954): a ``<pair>`` named
+    under ``environment/`` is the course's, and a ``<contact>`` left empty by
+    removing them goes too. A training cut gives its feet and fall geoms the
+    same contact bits, so a course that must touch the feet alone names its
+    paw pairs rather than moving the robot's bits."""
 
     root = ElementTree.fromstring(xml)
+    emptied = []
     for parent in root.iter():
         for child in list(parent):
-            if (child.tag in ("geom", "hfield")
+            if (child.tag in ("geom", "hfield", "pair")
                     and str(child.get("name") or "").startswith(ENVIRONMENT_PREFIX)):
                 parent.remove(child)
+                if parent.tag == "contact" and len(parent) == 0:
+                    emptied.append(parent)
+    for contact in emptied:
+        children = list(root)
+        if contact in children:
+            # The text around it goes as if it had never been written: the
+            # element before takes its tail, so indentation reads the same.
+            at = children.index(contact)
+            if at:
+                children[at - 1].tail = contact.tail
+            else:
+                root.text = contact.tail
+            root.remove(contact)
     return ElementTree.tostring(root, encoding="utf-8")
 
 
