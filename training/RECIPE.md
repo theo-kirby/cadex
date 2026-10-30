@@ -89,7 +89,9 @@ line names the run that showed it.
    root's path within 5 mm of the export and stands (ADR-841). No one
    setting suits every robot: the fastest passes on leon V and blows up on
    the biped's stiff servos (`sandy-acorn-7218`), which is why the cut
-   searches. If no setting passes, the cut refuses. Then train on the
+   searches. A chain whose drives only hold it (leon VI's tail) can be
+   welded at its build pose with `--weld` (ADR-959) when the bench needs it;
+   the export's judge still plays the chain. If no setting passes, the cut refuses. Then train on the
    export instead, and say so.
 7. **Relay.** `cadex_relay.py EXPORT-TASK.json cut.xml --out DIR` re-lays
    the export's task by name, so the policy reads the export's channels

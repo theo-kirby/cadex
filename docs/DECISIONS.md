@@ -48801,3 +48801,58 @@ All four fail on the previous code.
 the same task as before. T1 (the tail in the policy) needs a source bundle
 that lists the tail drives.
 
+## ADR-959 — The training cut can weld a held, cable-coupled chain at its build pose (2026-10-30)
+
+**Context.** leon VI's new body (l6r1 revision 2) has a cable-coupled tail:
+two held root drives, then ten unactuated chain hinges tied by ten joint
+equalities. The policy does not drive the tail. On the cut (ADR-841) those
+ten hinges cut 8192-env MJX throughput from 210k to 123k env steps/s, under
+the 150k bar. The equality rows alone cost nothing. The welded variant was
+measured by a scratch XML edit, which is not a cut.
+
+**Decision.** `cadex_training_model.py cut --weld PATTERNS` (comma-separated
+`fnmatch` patterns of joint names) removes each matched joint and every
+joint equality that names one, before static bodies are fused. The chain is
+then rigid at its build pose and its bodies fuse into the first jointed
+body above them. The cut refuses a welded joint that is:
+- actuated;
+- coupled by no joint equality (a passive joint welded would change the
+  dynamics, not drop a held chain);
+- named by a sensor or tendon;
+- not a hinge or slide;
+- off its `qpos0` in any keyframe (the weld is at the build pose only).
+
+Keyframe `qpos` and `qvel` lose the welded coordinates. `compare` expects
+nq and nv less the welded coordinates and neq less the dropped equalities,
+and checks the mass matrix at qpos0 on the kept DoFs, to the same 1e-9.
+At qpos0 a welded joint is the joint locked, so the kept block is exact.
+The report gains `welded` (joints, DoF and qpos indices, equalities).
+
+Static-body fusion now accepts an identity frame (`pos="0 0 0"`,
+`quat="1 0 0 0"`) as the world frame. leon VI's export writes one on two tail
+links, and fusing them was refused. A non-identity frame is still refused.
+
+**Evidence.** leon VI, export `73f73bbf…`, `--weld 'j_tail[3-7]_*'` with
+the paws named and Euler 3 / 4 at 2 ms: cut `5998738d…`, nv 36 → 26, neq
+12 → 2, nbody 37 → 27, 5.599 kg, the mass matrix matching. Fidelity worst
+gated 3.748 mm (tolerance 5 mm; unwelded 2.945 mm), 6 of 12 gated. 10 s
+stand: tilt 0.077°, drift 0.74 mm, the paws carrying 54.9 of 54.9 N. Bench at
+8192 envs, RTX 5090: 239,065 and 237,023 env steps/s, against the unwelded
+cut's 123,200 in the same session. The goto bundle built from it
+(`cadex_relay.py` then `cadex_joystick.py`) has 14 actions, the two tail
+drives held. Over a 3 s stand on its model the tail root holds within 0.174°.
+
+**Tests.** `training/test_cadex_training_model.py`:
+- a toy's held tail chain welded keeps the root drive, drops the cables and
+  fuses the links, `compare` passes with the weld and refuses without it, and
+  a keyframe loses the welded coordinates;
+- an actuated joint and a pattern matching nothing are refused;
+- an uncoupled, a sensed and a posed joint are refused;
+- an identity-framed static body fuses.
+
+The five weld cases fail on the previous code.
+
+**Consequences.** A welded cut trains a body whose tail cannot flex. The
+export's judge still plays the full cable chain, so a gait the flex would
+break is caught there. T1 (the tail in the policy's actions) needs the
+unwelded cut, or a weld of the chain alone with the root drives as actions.

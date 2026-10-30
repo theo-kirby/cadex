@@ -893,6 +893,13 @@ export and checks it moves like the export, which stays the judge:
   (leon V: worst 1.88 mm; implicitfast there is 8.5 mm) and falls back to
   implicitfast at the same step (the biped's stiff servos blow up under
   explicit Euler damping). The report lists each setting tried.
+- **A held chain can be welded** (`--weld 'j_tail[3-7]_*'`, ADR-959). The
+  named joints and every joint equality naming them go, so a cable-coupled
+  chain whose drives only hold it is one rigid body at its build pose. A
+  welded joint must be unactuated, cable-coupled, unsensed and at qpos0 in
+  every keyframe. The mass matrix is then checked on the kept DoFs. leon VI's
+  tail chain welded: 123k → 239k env steps/s at 8192 envs, fidelity
+  2.945 → 3.748 mm.
 
 Pass the export as `--cad-model` to `cadex_train.py` and the dashboard draws
 the CAD on the cut's bodies (ADR-838).
