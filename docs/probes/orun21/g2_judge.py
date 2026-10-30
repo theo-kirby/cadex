@@ -6,7 +6,8 @@
         [--level L [--maze] | --flat]
 
 Each seed's ``goto.json`` and ``view/`` go to ``OUT/s<seed>/``; ``OUT/summary.json``
-holds G2's bar per seed and the time per leg, by band and bearing.
+holds G2's bar per seed, the time per leg, by band and bearing, and each seed's
+drive RMS with the worst over all seeds (``drive_rms_worst``, ADR-952).
 
 On a bundle with a drawn terrain pool (T2, ADR-858), ``--level L`` plays seed
 ``s`` on ``CadexDynamics.terrain_evaluation_course(terrain, s, level=L)``, a
@@ -118,6 +119,9 @@ def main() -> int:
                       "read_legs": {band: [sum("speed_ratio" in r for r in rows if r["band"] == band),
                                            sum(r["band"] == band for r in rows)] for band in ("walk", "run")},
                       "fell": result["fell"], "pass": result["pass"], "walls": result.get("walls"),
+                      "drive_rms_nm": (result.get("drives") or {}).get("rms_nm"),
+                      "drive_worst": (result.get("drives") or {}).get("worst"),
+                      "drive_worst_rms_nm": (result.get("drives") or {}).get("worst_rms_nm"),
                       "course": result.get("course"), "reach_fail": [
                           r["point"] for r in rows if not r["reached"] or r["closest_m"] is None
                           or r["closest_m"] > result["thresholds"]["reach_m"]]})
@@ -138,9 +142,14 @@ def main() -> int:
                "legs_read": {band: [sum(row["read_legs"][band][0] for row in seeds),
                                     sum(row["read_legs"][band][1] for row in seeds)] for band in ("walk", "run")},
                "leg_s_mean": {key: round(statistics.mean(v), 2) for key, v in sorted(by.items())}}
+    # ADR-952: the worst drive's RMS over any one episode, for a rating check.
+    rated = [row for row in seeds if row["drive_worst_rms_nm"] is not None]
+    worst = max(rated, key=lambda row: row["drive_worst_rms_nm"]) if rated else None
+    summary["drive_rms_worst"] = None if worst is None else {
+        "nm": worst["drive_worst_rms_nm"], "drive": worst["drive_worst"], "seed": worst["seed"]}
     (out / "summary.json").write_text(json.dumps(summary, indent=1) + "\n")
     print(json.dumps({k: summary[k] for k in ("passes", "pass_parts", "falls", "seconds_total", "speed_ratio_range",
-                                              "legs_read", "leg_s_mean")}, indent=1))
+                                              "legs_read", "leg_s_mean", "drive_rms_worst")}, indent=1))
     return 0
 
 

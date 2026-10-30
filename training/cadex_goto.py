@@ -657,8 +657,43 @@ def course_ground(np: Any, course: Mapping[str, Any]) -> Any:
     return ground
 
 
+class DriveMeter:
+    """Each actuator's RMS and peak force over an episode, read every solver step (ADR-952).
+
+    ``actuator_force`` is MuJoCo's force after the actuator's ``forcerange``
+    clamp, in N·m on a hinge, so the RMS is what a motor's continuous rating
+    is checked against. Every solver step counts, not only control steps.
+    """
+
+    def __init__(self, np: Any, model: Any) -> None:
+        self.np = np
+        self.names = [model.actuator(i).name or f"actuator{i}" for i in range(model.nu)]
+        self.square = np.zeros(model.nu)
+        self.peak = np.zeros(model.nu)
+        self.samples = 0
+
+    def add(self, data: Any) -> None:
+        force = self.np.asarray(data.actuator_force, dtype=self.np.float64)
+        self.square += force * force
+        self.peak = self.np.maximum(self.peak, self.np.abs(force))
+        self.samples += 1
+
+    def reading(self) -> dict[str, Any]:
+        rms = self.np.sqrt(self.square / max(self.samples, 1))
+        worst = int(self.np.argmax(rms)) if len(rms) else None
+        return {"samples": self.samples,
+                "rms_nm": {n: round(float(v), 4) for n, v in zip(self.names, rms)},
+                "peak_nm": {n: round(float(v), 4) for n, v in zip(self.names, self.peak)},
+                "worst": None if worst is None else self.names[worst],
+                "worst_rms_nm": None if worst is None else round(float(rms[worst]), 4)}
+
+
 def play(options: argparse.Namespace) -> int:
-    """Play one held-out (or training) sequence with a policy and write its view and readings."""
+    """Play one held-out (or training) sequence with a policy and write its view and readings.
+
+    ``goto.json`` carries ``drives``: each actuator's RMS and peak force over
+    the episode (:class:`DriveMeter`, ADR-952).
+    """
 
     import hashlib
 
@@ -709,6 +744,7 @@ def play(options: argparse.Namespace) -> int:
     fell = False
     count = len(plan["points"])
     step = 0
+    drives = DriveMeter(np, model)
     while step < steps:
         R = data.xmat[player.base].reshape(3, 3)
         x, y = float(data.xpos[player.base][0]), float(data.xpos[player.base][1])
@@ -754,6 +790,7 @@ def play(options: argparse.Namespace) -> int:
         data.ctrl[:] = player.control(data, [command["vx"][0], command["vy"][0], command["wz"][0]])
         for _ in range(player.substeps):
             mujoco.mj_step(model, data)
+            drives.add(data)
         if not np.all(np.isfinite(data.qpos)):
             fell = True
             break
@@ -780,7 +817,7 @@ def play(options: argparse.Namespace) -> int:
               "limits": player.limits, "layer": dict(LAYER), "seconds": round(len(record["index"]) * player.dt, 2),
               "witness_error": player.witness_error, "view": str(trace),
               "model_sha256": hashlib.sha256(player.model_xml).hexdigest(), "trained_on": player.trained_on,
-              **readings}
+              "drives": drives.reading(), **readings}
     (out.parent / "goto.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
     print(json.dumps({"view": str(trace), "seconds": result["seconds"], "reached": readings["reached"],
                       "of": count, "pass": readings["pass"], "speed_ratios": readings["speed_ratios"]}))

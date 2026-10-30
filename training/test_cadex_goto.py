@@ -12,7 +12,7 @@ import math
 
 import numpy as np
 
-from cadex_goto import layer_start, layer_step, maze_route, sequence, stack
+from cadex_goto import DriveMeter, layer_start, layer_step, maze_route, sequence, stack
 
 BANDS = [{"name": "walk", "low": 0.4, "high": 0.7}, {"name": "run", "low": 1.0, "high": 1.5}]
 LIMITS = {"vx": [-1.5, 1.5], "vy": [-0.8, 0.8], "wz": [-1.2, 1.2]}
@@ -89,3 +89,33 @@ def test_a_turn_in_place_goes_on_until_the_point_is_well_inside_the_cone() -> No
     assert not bool(state["turning"][0]) and command["vx"][0] > 0.0
     state, command = one(-40.0)  # back out to 50 deg while walking: keeps walking
     assert not bool(state["turning"][0]) and command["vx"][0] > 0.0
+
+
+def test_the_drive_meter_reads_a_held_arm_at_its_static_torque() -> None:
+    # ADR-952: a 0.5 kg point 0.2 m out on a hinge, held level by a stiff
+    # position drive, needs m g l = 0.981 N m; a second drive clamped at
+    # 0.3 N m reads its clamp, as a motor at its limit would.
+    import mujoco
+
+    model = mujoco.MjModel.from_xml_string("""
+    <mujoco><option timestep="0.001"/><worldbody>
+      <body><joint name="a" type="hinge" axis="0 1 0" damping="2"/>
+        <geom type="sphere" size="0.01" pos="0.2 0 0" mass="0.5"/></body>
+      <body pos="0 1 0"><joint name="b" type="hinge" axis="0 1 0" damping="2"/>
+        <geom type="sphere" size="0.01" pos="0.2 0 0" mass="0.5"/></body>
+    </worldbody><actuator>
+      <position name="held" joint="a" kp="2000"/>
+      <position name="weak" joint="b" kp="2000" forcelimited="true" forcerange="-0.3 0.3"/>
+    </actuator></mujoco>""")
+    data = mujoco.MjData(model)
+    for _ in range(3000):
+        mujoco.mj_step(model, data)
+    meter = DriveMeter(np, model)
+    for _ in range(500):
+        mujoco.mj_step(model, data)
+        meter.add(data)
+    reading = meter.reading()
+    assert reading["samples"] == 500
+    assert abs(reading["rms_nm"]["held"] - 0.5 * 9.81 * 0.2) < 1e-3
+    assert abs(reading["rms_nm"]["weak"] - 0.3) < 1e-6 and reading["peak_nm"]["weak"] <= 0.3 + 1e-9
+    assert reading["worst"] == "held" and reading["worst_rms_nm"] == reading["rms_nm"]["held"]

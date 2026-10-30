@@ -48439,3 +48439,35 @@ touch-free export stands on its named feet. `pytest training/`: 108 passed.
 **Consequences.** Re-cutting a robot whose foot geom sits on a joint-free
 body changes the cut's digest and moves it closer to its export. No export
 changes.
+
+## ADR-952 — The go-to-point judge reads each drive's RMS torque (2026-10-30)
+
+**Context.** A go-to-point policy must hold its motors' continuous rating, not
+only reach its points: leon V's concept-trained trot failed its export 0/10 on
+drive ratings (ADR-847), and leon VI's charter (l6r1 G1) bars any drive whose
+RMS over an episode exceeds rated. `cadex_goto.py play` and
+`docs/probes/orun21/g2_judge.py` read reach, hold, speed and falls, and no
+torque, so the rating had to be checked by a second, separate replay.
+
+**Decision.** `cadex_goto.DriveMeter` accumulates every actuator's
+`actuator_force` (after its `forcerange` clamp) at every solver step, not only
+control steps. `play` writes `drives` into `goto.json`: each actuator's RMS and
+peak, the worst actuator and its RMS. `g2_judge.py` copies each seed's RMS
+table and worst into `summary.json` and adds `drive_rms_worst` (N·m, drive,
+seed) over all seeds. The bar itself is unchanged: the rating is the robot's,
+so the comparison against it stays with the caller.
+
+**Evidence.** leon VI's 49.2 M route screen (cut `445cd40c…`, task
+`bd7a2592…`), judged on its export's task `439e3c9d…` with `--other-model`
+and bands `walk:0.187-0.327,run:0.467-0.7`: its best checkpoint (iteration
+286, `a658bf65…`) passes G2's bar 10/10, while the hind knee's RMS is
+2.268 N·m against the ROB05's 1.6 N·m rating (1.42×) and the spine pitch's
+2.073 N·m (1.30×). 62,130 solver steps in seed 7's 124.26 s episode.
+
+**Tests.** `training/test_cadex_goto.py::
+test_the_drive_meter_reads_a_held_arm_at_its_static_torque`: a 0.5 kg point
+held level 0.2 m out reads m·g·l = 0.981 N·m within 1e-3; a drive clamped at
+0.3 N·m reads its clamp. `pytest training/`: 109 passed.
+
+**Consequences.** `goto.json` and `summary.json` gain keys; nothing that read
+them before changes. Judging a policy's torque no longer needs a second replay.
