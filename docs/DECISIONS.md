@@ -48856,3 +48856,41 @@ The five weld cases fail on the previous code.
 export's judge still plays the full cable chain, so a gait the flex would
 break is caught there. T1 (the tail in the policy's actions) needs the
 unwelded cut, or a weld of the chain alone with the root drives as actions.
+
+## ADR-960 — Sprint courses: gate courses laid out for speed (2026-10-30)
+
+**Context.** Gate courses (ADR-955) put a gate behind or to the side every few
+legs, 1–4 m apart: a test of turning at a run, not of top speed. leon VI's l6r1
+charter judges its speed ladder (SP1–SP5) and its gallop-guide A/B (GG) on
+**sprint courses**: 8 gates, each within ±30° of the leg before, 2–4 m apart,
+seeded and split like `gate_course`, and raced on the export by the same judge.
+
+**Decision.** `cadex_goto.sprint_course(seed, split=, **shape)` draws one, from
+`SPRINT` (`gates` 8, `turn_deg` 30, `distance_m` 2–4, `radius_m` the gate
+course's 0.25): from the origin facing +x, each leg turned a uniform angle in
+±`turn_deg` from the leg before (the first from +x), each gate's `bearing`
+`ahead`. It is seeded by `cadex-sprint:{split}:{seed}`, its own stream, so the
+splits never meet and no sprint course is a gate course. The course has the
+gate course's schema and gates, with `"kind": "sprint"`, so `gate_stack`,
+`gate_step`, `judge_race` and the view take it unchanged.
+
+The `gates` and `race` verbs take `--sprint`; `--gates` defaults to the kind's
+length (12, or 8 with `--sprint`). Without `--sprint` both verbs draw exactly
+the courses they drew before. The trainer is unchanged: it plays no sprint
+course.
+
+**Evidence.** leon VI, export bundle `771851bf…`, gscreen1's final policy
+`4dac2fa9…` raced `--sprint` on train seeds 50000–50009: 10/10, 80/80 gates,
+no fall, 2.75–2.83 m/s (mean 2.79), each race under 0.5 s of CPU.
+
+**Tests.** `training/test_gate_race.py`:
+- a sprint course is its seed and split; 200 train and 200 held-out courses
+  are all distinct and none is an 8-gate gate course;
+- over 100 courses every leg is 2–4 m and turns within ±30°, both ways, out
+  to the bound; a named shape is honoured; overlapping gates, an unknown split
+  and a turn over 90° are refused;
+- the `gates` verb prints the sprint and gate courses at their own default
+  lengths, and honours `--gates` and `--radius`.
+
+**Consequences.** A speed claim names sprint seeds beside gate seeds. A
+trainer that should practise sprints would need its own flag; none is added.

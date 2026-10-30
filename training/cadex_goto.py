@@ -42,6 +42,7 @@ in JAX, and its judge, which races a policy that sees the gates through a
 held-out course and writes ``view/`` and ``gates.json``:
 
     python training/cadex_goto.py gates --seed 0 --split heldout
+    python training/cadex_goto.py gates --sprint --seed 0 --split heldout   # ADR-960
     python training/cadex_goto.py race POLICY --task outputs/T-task.json --seed 0 --rated-nm 1.6
 
 Standard library at module scope (ADR-084); numpy and mujoco only inside ``play``.
@@ -98,6 +99,11 @@ GATES = {"gates": 12, "behind": 2, "side": 3, "distance_m": (1.0, 4.0), "radius_
 #: reading is clipped, so a far gate reads as a direction, not a number the
 #: normaliser has never seen.
 GATE_VIEW_M = 8.0
+#: A sprint course's shape when the caller names none (ADR-960): ``gates``
+#: gates, each turned at most ``turn_deg`` either way from the leg before (the
+#: first from the start's heading, +x), ``distance_m`` apart, so a racer has
+#: room to reach and hold its top speed. The gate is the gate course's.
+SPRINT = {"gates": 8, "turn_deg": 30.0, "distance_m": (2.0, 4.0), "radius_m": GATES["radius_m"]}
 
 
 def parse_bands(text: str) -> list[dict[str, Any]]:
@@ -418,6 +424,46 @@ def gate_course(seed: int, *, split: str, **shape: Any) -> dict[str, Any]:
         x, y = x + distance * math.cos(heading), y + distance * math.sin(heading)
         gates.append({"xy_m": [round(x, 4), round(y, 4)], "bearing": kind})
     return {"schema": GATE_SCHEMA, "split": split, "seed": int(seed), "radius_m": radius,
+            "shape": {key: list(value) if isinstance(value, tuple) else value
+                      for key, value in options.items()},
+            "gates": gates}
+
+
+def sprint_course(seed: int, *, split: str, **shape: Any) -> dict[str, Any]:
+    """One seeded sprint course (ADR-960), the same on every machine.
+
+    The gate course's gates and race (:func:`gate_course`), laid out for
+    speed: from the origin facing +x, each gate turned a uniform angle within
+    ``turn_deg`` either way of the leg before it, at a distance in
+    ``distance_m``. Every gate's ``bearing`` is ``ahead``. The draw is seeded
+    by ``(split, seed)`` under its own name, so the ``train`` and ``heldout``
+    splits never share a course and no sprint course is a gate course.
+    """
+
+    if split not in SPLITS:
+        raise SystemExit(f"split {split!r} is not one of {SPLITS}")
+    options = {**SPRINT, **shape}
+    count = int(options["gates"])
+    if count < 1:
+        raise SystemExit(f"a sprint course needs a gate, not {count}")
+    turn = float(options["turn_deg"])
+    if not 0.0 <= turn <= 90.0:
+        raise SystemExit(f"a sprint's turn {turn:g} deg must be within 0..90")
+    radius = float(options["radius_m"])
+    if not 0.0 < radius < 0.5 * float(options["distance_m"][0]):
+        raise SystemExit(f"a gate's radius {radius:g} m must be above 0 and under half the "
+                         f"shortest leg ({options['distance_m'][0]:g} m), so gates never overlap")
+    rng = random.Random(f"cadex-sprint:{split}:{int(seed)}")
+    x = y = heading = 0.0
+    gates = []
+    for _ in range(count):
+        heading += math.radians(rng.uniform(-turn, turn))
+        heading = math.atan2(math.sin(heading), math.cos(heading))
+        distance = rng.uniform(*options["distance_m"])
+        x, y = x + distance * math.cos(heading), y + distance * math.sin(heading)
+        gates.append({"xy_m": [round(x, 4), round(y, 4)], "bearing": "ahead"})
+    return {"schema": GATE_SCHEMA, "kind": "sprint", "split": split, "seed": int(seed),
+            "radius_m": radius,
             "shape": {key: list(value) if isinstance(value, tuple) else value
                       for key, value in options.items()},
             "gates": gates}
@@ -1101,6 +1147,18 @@ def drive_load(reading: Mapping[str, Any], model: Any, rated_nm: float | None) -
             "worst_peak_over_peak": None if worst_peak is None else peak_over[worst_peak]}
 
 
+def race_course(options: argparse.Namespace, radius: float) -> dict[str, Any]:
+    """The course the ``gates`` and ``race`` verbs name: a gate course, or with
+    ``--sprint`` a sprint course (ADR-960), ``--gates`` long (default the kind's)."""
+
+    if options.sprint:
+        return sprint_course(options.seed, split=options.split,
+                             gates=SPRINT["gates"] if options.gates is None else options.gates,
+                             radius_m=radius)
+    return gate_course(options.seed, split=options.split,
+                       gates=GATES["gates"] if options.gates is None else options.gates, radius_m=radius)
+
+
 def race(options: argparse.Namespace) -> int:
     """Race a policy trained with ``--gates`` through one seeded gate course (ADR-955).
 
@@ -1129,7 +1187,7 @@ def race(options: argparse.Namespace) -> int:
     trained = cadex_train.decode_policy(policy_path.read_bytes())["header"].get("training") or {}
     radius = float(options.radius if options.radius is not None
                    else (trained.get("gates") or {}).get("radius_m") or GATES["radius_m"])
-    course = gate_course(options.seed, split=options.split, gates=options.gates, radius_m=radius)
+    course = race_course(options, radius)
     plan = gate_stack(np, [course])
     model, data = player.model, mujoco.MjData(player.model)
     free = [j for j in range(model.njnt) if int(model.jnt_type[j]) == 0][0]
@@ -1210,7 +1268,7 @@ def race(options: argparse.Namespace) -> int:
                   "speed_mps": float(row.get("leg_speed_mps") or 0.0)}
                  for g, row in zip(course["gates"], readings["gates"])]}
     trace = cadex_train.write_view(out, player.model_xml, poses, player.dt * keep,
-                                   source=f"cadex_goto race {policy_path.name} {course['split']}:{course['seed']}",
+                                   source=f"cadex_goto race {policy_path.name} {course.get('kind', 'gates')} {course['split']}:{course['seed']}",
                                    goto={"sequence": drawn, "frames": frames},
                                    velocities=rates, efforts=forces, rated_nm=options.rated_nm)
     result = {"schema": GATE_EPISODE_SCHEMA, "policy": str(policy_path), "course": course,
@@ -1274,14 +1332,19 @@ def main(argv: Sequence[str]) -> int:
                               help="the foot bodies slip is read on; default the task's contact rows")
         verb.add_argument("--seed", type=int, default=0)
         verb.add_argument("--split", choices=SPLITS, default="heldout")
-        verb.add_argument("--gates", type=int, default=GATES["gates"])
+        verb.add_argument("--gates", type=int, default=None,
+                          help=f"gates in the course; default {GATES['gates']}, "
+                               f"or {SPRINT['gates']} with --sprint")
+        verb.add_argument("--sprint", action="store_true",
+                          help=f"a sprint course (ADR-960): every gate within "
+                               f"±{SPRINT['turn_deg']:g}° of the leg before, "
+                               f"{SPRINT['distance_m'][0]:g}–{SPRINT['distance_m'][1]:g} m apart")
         verb.add_argument("--radius", type=float, default=None,
                           help=f"m; default the policy's training radius ({GATES['radius_m']:g} for a course)")
     options = parser.parse_args(argv[1:])
     if options.verb == "gates":
         radius = GATES["radius_m"] if options.radius is None else options.radius
-        print(json.dumps(gate_course(options.seed, split=options.split, gates=options.gates,
-                                     radius_m=radius), indent=1))
+        print(json.dumps(race_course(options, radius), indent=1))
         return 0
     if options.verb == "race":
         return race(options)

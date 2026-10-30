@@ -86,6 +86,56 @@ def test_a_gate_course_honours_its_shape_and_carries_no_speed_or_hold() -> None:
         G.gate_course(0, split="test")
 
 
+def test_a_sprint_course_is_its_seed_and_split_and_meets_no_other_course() -> None:
+    # ADR-960.
+    a = G.sprint_course(3, split="heldout")
+    assert a == G.sprint_course(3, split="heldout")
+    train = {json.dumps(G.sprint_course(s, split="train")["gates"]) for s in range(200)}
+    heldout = {json.dumps(G.sprint_course(s, split="heldout")["gates"]) for s in range(200)}
+    assert len(train) == len(heldout) == 200 and not train & heldout
+    gates = {json.dumps(G.gate_course(s, split=sp, gates=8)["gates"]) for s in range(200)
+             for sp in G.SPLITS}
+    assert not (train | heldout) & gates
+
+
+def test_a_sprint_course_turns_within_its_bound_and_spaces_its_gates() -> None:
+    turns = []
+    for seed in range(100):
+        course = G.sprint_course(seed, split="train")
+        assert course["kind"] == "sprint" and course["schema"] == G.GATE_SCHEMA
+        assert course["radius_m"] == 0.25 and len(course["gates"]) == 8
+        x = y = heading = 0.0
+        for gate in course["gates"]:
+            assert set(gate) == {"xy_m", "bearing"} and gate["bearing"] == "ahead"
+            dx, dy = gate["xy_m"][0] - x, gate["xy_m"][1] - y
+            assert 2.0 - 1e-3 <= math.hypot(dx, dy) <= 4.0 + 1e-3
+            leg = math.atan2(dy, dx)
+            turn = math.degrees(math.atan2(math.sin(leg - heading), math.cos(leg - heading)))
+            assert abs(turn) <= 30.0 + 0.01
+            turns.append(turn)
+            x, y, heading = gate["xy_m"][0], gate["xy_m"][1], leg
+    # Both ways, and out to the bound.
+    assert min(turns) < -25.0 and max(turns) > 25.0
+    course = G.sprint_course(0, split="heldout", gates=5, turn_deg=10.0, radius_m=0.3)
+    assert len(course["gates"]) == 5 and course["radius_m"] == 0.3
+    with pytest.raises(SystemExit):
+        G.sprint_course(0, split="heldout", radius_m=1.0)  # gates would overlap
+    with pytest.raises(SystemExit):
+        G.sprint_course(0, split="test")
+    with pytest.raises(SystemExit):
+        G.sprint_course(0, split="train", turn_deg=120.0)
+
+
+def test_the_gates_verb_draws_either_kind_at_its_own_default_length(capsys) -> None:
+    assert G.main(["cadex_goto.py", "gates", "--sprint", "--seed", "4", "--split", "train"]) == 0
+    assert json.loads(capsys.readouterr().out) == G.sprint_course(4, split="train")
+    assert G.main(["cadex_goto.py", "gates", "--seed", "4", "--split", "train"]) == 0
+    assert json.loads(capsys.readouterr().out) == G.gate_course(4, split="train")
+    assert G.main(["cadex_goto.py", "gates", "--sprint", "--gates", "3", "--radius", "0.3"]) == 0
+    assert json.loads(capsys.readouterr().out) == G.sprint_course(0, split="heldout", gates=3,
+                                                                  radius_m=0.3)
+
+
 # -- the race's logic ---------------------------------------------------------
 
 

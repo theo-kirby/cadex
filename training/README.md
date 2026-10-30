@@ -784,6 +784,11 @@ python training/cadex_goto.py gates --seed 0 --split heldout
     --task s4/joy-export/outputs/goto-task.json --other-model --seed 0 --rated-nm 1.6
 ```
 
+**Sprint courses (ADR-960).** `--sprint` on `gates` and `race` draws a sprint
+course in place of a gate course: 8 gates (`--gates`), each turned within ±30°
+of the leg before, 2–4 m apart, the same 0.25 m gate, seeded under its own name
+(`cadex_goto.sprint_course`). They judge top speed; the trainer plays none.
+
 `race` judges a racer on stock MuJoCo (here the export's bundle, by channel
 name): it runs to the last gate, a fall, 30 s with no gate, or the course at
 0.25 m/s plus 10 s, and writes `view/` (the gates in the `goto` shape the
