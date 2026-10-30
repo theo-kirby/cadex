@@ -48382,3 +48382,60 @@ skipped without). `pytest cli/tests`: 52 passed, 2 skipped.
 **Consequences.** A body that used to be refused now exports, with its
 warning in the evidence; nothing that integrated physically changes, so no
 existing MJCF digest moves. `docs/MUJOCO.md` §7 step 4 notes the exception.
+
+## ADR-951 — The training cut keeps the bodies that hold its floor geoms (2026-10-30)
+
+**Context.** leon VI's cut (`cadex_training_model.py cut`, ADR-841) from its
+export (MJCF `af9792e7…`, 81 bodies) failed fidelity on every setting of the
+ladder: worst gated root error 20.8 mm (Euler) and 35.6 mm (implicitfast)
+against 5 mm. It failed even with the export's own solver (implicitfast, 100
+and 50 iterations): 5.65 mm on the 2 Hz, 0.05 rad signal, where the export
+differs from itself at half its step by 0.94 mm. Taking the cut's changes one
+at a time, the floor-only contacts and dropped excludes changed nothing
+(0.000 mm) and `fuse_static` alone gave the 5.65 mm. The fused model's
+dynamics are exact: the joint-space mass matrix and bias forces agree to
+2.3e-9 and 6.3e-9 at the build pose and at two random poses. The paths
+nonetheless split at the first contact step. MuJoCo softens each constraint
+by its bodies' `body_invweight0`. Each paw is a joint-free body holding the
+foot sphere (`c_fl_paw`, invweight0 10.89), and fusion moved the sphere into
+the forearm (3.45). Each floor contact became about three times stiffer. With
+the four paw bodies kept, every gated signal matched the export at 0.000 mm.
+The cut's stand check also could not see leon VI's feet: the export carries
+no touch sensor yet (that comes with its task), so `stand` found no foot
+bodies even with `--feet` given, and failed `on_feet_only`.
+
+**Decision.** `fuse_static(root, keep=...)` never fuses a body in `keep`.
+`derive` passes the bodies that hold a foot geom or a named `--fall-geoms`
+geom. Any other joint-free body still fuses. `stand`, `judge` and the
+`fidelity` command take the foot geoms (`--feet`, now on both commands).
+`cut` passes the feet it kept. Without them, the feet are still the bodies
+that hold touch sites.
+
+- **Not a stiffer `solref` on the fused foot.** The softening depends on the
+  whole contact's invweight, so no constant `solref` reproduces the export at
+  every pose. Keeping the body is exact and costs one body per foot: leon VI's
+  cut has 24 bodies, not 20.
+- **The ladder is unchanged.** After this fix, leon VI passes at Euler with 3
+  and 4 iterations (1.80 mm), but not at the ladder's 2 and 3 (10.6 mm Euler,
+  11.9 mm implicitfast). The setting is named on its command line, as the
+  module allows.
+
+**Evidence.** leon VI, project revision `ba993447`, export `af9792e7…`.
+`cut --feet <four paw spheres> --integrator Euler --iterations 3
+--ls-iterations 4 --timestep 0.002` wrote cut `8ff718b1…`. Fidelity: worst
+gated 1.799 mm (5 of 12 signals gated). Stand: 10 s, finite, tilt 0.231°,
+drift 0.97 mm, the four paws carrying 50.7 N of 50.7 N. Solver sweep with this
+fix, worst gated: Euler 2/3 10.635, 3/4 1.799, 4/6 1.704, 10/10 1.99 mm;
+implicitfast 2/3 11.894, 3/4 6.393, 4/6 2.738, 6/8 0.325, 100/50 0.000 mm.
+`cadex_train_bench.py --envs 8192` on the RTX 5090: Euler 3/4 343,522, Euler
+4/6 332,421, implicitfast 4/6 289,401, implicitfast 6/8 281,924 env steps/s.
+
+**Tests.** `training/test_cadex_training_model.py::
+test_a_foot_body_is_kept_so_its_contact_is_as_soft_as_the_export`: the toy's
+foot bodies survive the cut. At the export's solver, the cut's root path
+matches the export's to 1e-6 m (it fails on the previous code). A
+touch-free export stands on its named feet. `pytest training/`: 108 passed.
+
+**Consequences.** Re-cutting a robot whose foot geom sits on a joint-free
+body changes the cut's digest and moves it closer to its export. No export
+changes.

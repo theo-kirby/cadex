@@ -84,7 +84,7 @@ line names the run that showed it.
    back into the spec (step 1) before believing a concept policy.
 6. **Cut, passing fidelity.** `cadex_training_model.py cut --project DIR
    --out cut.xml` takes under 1 s. It keeps floor-only contacts and fused
-   static bodies, and picks the fastest solver setting that keeps the
+   static bodies, except those holding the feet (ADR-951), and picks the fastest solver setting that keeps the
    root's path within 5 mm of the export and stands (ADR-841). No one
    setting suits every robot: the fastest passes on leon V and blows up on
    the biped's stiff servos (`sandy-acorn-7218`), which is why the cut

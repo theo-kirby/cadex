@@ -21,6 +21,10 @@ no others:
   dead and go.
 * **Static parts merged into their bodies.** A joint-free body no sensor,
   equality or tendon names is fused into its parent by the parallel-axis sum.
+  A body holding a foot or a named fall geom is kept (ADR-951): MuJoCo softens
+  a contact by its bodies' ``invweight0``, so a paw fused into its forearm
+  presses about three times stiffer, and leon VI's cut drifted 5.65 mm from
+  its export with the export's own solver.
   MuJoCo's ``fusestatic`` is not used: it stops wherever a sensor names a
   subtree. A Cadex export writes every body frame as the world frame, which is
   what makes moving elements up exact; a static body with its own frame is
@@ -47,12 +51,13 @@ with itself at half its timestep by more than ``--converged`` (1 mm) the motion
 is chaotic and the signal is reported but not gated. A model passes when every
 gated signal stays within ``--tolerance`` (5 mm), and when it stands for 10 s
 from keyframe 0 at zero action: finite, tilt under 5 deg, only the feet on the
-floor, carrying the weight within 2%.
+floor, carrying the weight within 2%. The feet are the bodies holding a touch
+sensor's site, or those holding the ``--feet`` geoms when given.
 
     python training/cadex_training_model.py cut --project DIR --out MODEL.xml [--json REPORT]
         [--engine MJCF] [--timestep S] [--iterations N] [--ls-iterations N]
         [--integrator Euler|implicitfast] [--feet G,...] [--fall-geoms G,...] [--fall-condim 1]
-    python training/cadex_training_model.py fidelity MODEL.xml [...] --project DIR [--json OUT]
+    python training/cadex_training_model.py fidelity MODEL.xml [...] --project DIR [--json OUT] [--feet G,...]
 
 ``--project`` reads the accepted attempt's MJCF export; ``--engine`` names one.
 Each prints one JSON report and exits 0 only on a pass. Needs ``mujoco`` and
@@ -158,10 +163,10 @@ def merged_inertial(inertials) -> dict[str, str]:
             "diaginertia": fmt(np.maximum(diag, 0.0))}
 
 
-def fuse_static(root) -> int:
-    """Fuse every joint-free body nothing names into its parent; return how many."""
+def fuse_static(root, keep: Iterable[str] = ()) -> int:
+    """Fuse every joint-free body nothing names, and not in ``keep``, into its parent; return how many."""
 
-    named = set()
+    named = set(keep)
     for section in [*root.findall("sensor"), *root.findall("equality"), *root.findall("tendon")]:
         for el in section.iter():
             for key in ("objname", "body", "refname", "body1", "body2"):
@@ -194,6 +199,11 @@ def fuse_static(root) -> int:
 
     visit(root.find("worldbody"))
     return fused
+
+
+def _bodies_holding(root, geoms: Iterable[str]) -> set[str]:
+    names = set(geoms)
+    return {str(b.get("name")) for b in root.iter("body") if any(g.get("name") in names for g in b.findall("geom"))}
 
 
 def default_fall_geoms(root, colliding: set[str], feet: set[str]) -> list[str]:
@@ -235,7 +245,8 @@ def derive(xml: str, *, timestep: float, iterations: int, ls_iterations: int, in
 
     for contact in root.findall("contact"):
         root.remove(contact)
-    fuse_static(root)
+    floor_geoms = {*feet, *(fall_geoms or ())}
+    fuse_static(root, keep=_bodies_holding(root, floor_geoms))
     fall = list(fall_geoms) if fall_geoms is not None else default_fall_geoms(root, colliding, set(feet))
 
     option = root.find("option")
@@ -389,14 +400,16 @@ def floor_loads(model, data) -> dict[str, float]:
     return loads
 
 
-def stand(xml: str, seconds: float = STAND_SECONDS) -> dict[str, Any]:
-    """A zero-action stand from keyframe 0; the feet are the bodies holding touch sites."""
+def stand(xml: str, seconds: float = STAND_SECONDS, feet: Iterable[str] | None = None) -> dict[str, Any]:
+    """A zero-action stand from keyframe 0; the feet are the bodies holding ``feet`` geoms, else touch sites."""
 
     import mujoco as mj
     import numpy as np
 
     m = mj.MjModel.from_xml_string(xml)
-    feet = {str(b.get("name")) for b in _foot_bodies(ET.fromstring(xml))}
+    root = ET.fromstring(xml)
+    feet = (_bodies_holding(root, feet) if feet is not None
+            else {str(b.get("name")) for b in _foot_bodies(root)})
     d = mj.MjData(m)
     _reset(mj, m, d)
     d.ctrl[:] = 0.0
@@ -422,7 +435,7 @@ def stand(xml: str, seconds: float = STAND_SECONDS) -> dict[str, Any]:
 
 def judge(engine_xml: str, models: dict[str, str], tolerance: float = TOLERANCE_M,
           converged: float = CONVERGED_M, frequencies=FREQUENCIES_HZ, amplitudes=AMPLITUDES_RAD,
-          stand_seconds: float = STAND_SECONDS) -> dict[str, Any]:
+          stand_seconds: float = STAND_SECONDS, feet: Iterable[str] | None = None) -> dict[str, Any]:
     """Every signal on the engine, its half-step floor and each model; then each model's stand."""
 
     import mujoco as mj
@@ -447,7 +460,7 @@ def judge(engine_xml: str, models: dict[str, str], tolerance: float = TOLERANCE_
         gated = [s["error_mm"][name] for s in signals if s["gated"]]
         worst = max(gated) if gated else None
         fidelity = bool(gated) and worst <= 1000 * tolerance
-        standing = stand(xml, stand_seconds)
+        standing = stand(xml, stand_seconds, feet)
         verdicts[name] = {"fidelity_worst_gated_mm": worst, "fidelity_pass": fidelity,
                           "stand": standing, "pass": fidelity and standing["pass"]}
     return {"tolerance_mm": 1000 * tolerance, "converged_mm": 1000 * converged,
@@ -493,7 +506,8 @@ def cmd_cut(args) -> int:
         problems = compare(engine, train)
         verdict = None
         if not problems and not args.no_check:
-            verdict = judge(engine_xml, {"training": train_xml}, args.tolerance, args.converged)
+            verdict = judge(engine_xml, {"training": train_xml}, args.tolerance, args.converged,
+                            feet=kept["feet"])
             if not verdict["models"]["training"]["pass"]:
                 problems = ["fidelity or standing failed"]
         tried.append({"options": options, "problems": problems, "sha256": sha256(train_xml),
@@ -527,7 +541,7 @@ def cmd_fidelity(args) -> int:
     source = _engine_path(args)
     engine_xml = source.read_text()
     texts = {str(p): p.read_text() for p in args.models}
-    result = judge(engine_xml, texts, args.tolerance, args.converged)
+    result = judge(engine_xml, texts, args.tolerance, args.converged, feet=_names(args.feet))
     result["engine_mjcf"] = str(source)
     result["engine_mjcf_sha256"] = sha256(engine_xml)
     for name, xml in texts.items():
@@ -555,12 +569,12 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--ls-iterations", type=int)
             p.add_argument("--integrator", choices=("Euler", "implicitfast", "implicit", "RK4"))
             p.add_argument("--no-check", action="store_true", help="skip the fidelity and standing check")
-            p.add_argument("--feet", help="comma-separated foot geoms (default: on the touch sensors' bodies)")
             p.add_argument("--fall-geoms", help="comma-separated geoms kept against the floor besides the "
                                                 "feet (default: the root's and multi-foot bodies')")
             p.add_argument("--fall-condim", type=int, default=1, choices=(1, 3))
         else:
             p.add_argument("models", nargs="+", type=Path, help="training MJCFs to judge")
+        p.add_argument("--feet", help="comma-separated foot geoms (default: on the touch sensors' bodies)")
         p.add_argument("--tolerance", type=float, default=TOLERANCE_M, help="metres")
         p.add_argument("--converged", type=float, default=CONVERGED_M, help="metres")
     args = parser.parse_args(argv)
