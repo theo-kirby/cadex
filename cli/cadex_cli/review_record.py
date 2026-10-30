@@ -707,7 +707,7 @@ TRAINER_BEATS_S = 60.0
 
 #: How deep under a run a trainer's ``progress.json`` is looked for: a seed's
 #: directory (``seed0/``) or a stage's seed (``stage2/seed0/``) (ADR-837).
-TRAINER_PROGRESS_GLOBS = ("*/progress.json", "*/*/progress.json")
+TRAINER_PROGRESS_GLOBS = ("progress.json", "*/progress.json", "*/*/progress.json")
 
 
 def _progress_files(directory: Path) -> list[str]:
@@ -723,8 +723,9 @@ def trainer_progress(run_dir: Path | str) -> str | None:
     """The run's trainer telemetry, relative to the run (ADR-835, ADR-837).
 
     ``train/progress.json`` where a walk puts it, else the newest
-    ``progress.json`` one or two levels down, where a trainer run by hand
-    writes it beside its policy (``seed0/``, ``stage2/seed0/``). Never a file
+    ``progress.json`` in the run itself or one or two levels down, where a
+    trainer run by hand writes it beside its policy (``--out runs/<run>/…``,
+    ``seed0/``, ``stage2/seed0/``). Never a file
     reached through a symlink out.
     """
 

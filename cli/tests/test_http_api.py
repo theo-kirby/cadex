@@ -41,7 +41,7 @@ STATIC = REPO / "cli" / "cadex_cli" / "review_static"
 BROWSER_KEYS = {"cadex.theme", "cadex.layout.v7", "cadex.render", "cadex.meshlines", "cadex.meshlines.strength",
                 "cadex.reflections", "cadex.look", "cadex.occlusion", "cadex.detail", "cadex.outliner.group",
                 "cadex.outliner.folded", "cadex.follow", "cadex.heat", "cadex.activations.views",
-                "cadex.trail", "cadex.trail.colours", "cadex.gizmo", "cadex.training.cards"}
+                "cadex.trail", "cadex.trail.colours", "cadex.gizmo", "cadex.training.cards", "cadex.primitives"}
 
 
 def _documented() -> dict[str, tuple[set[str], set[str]]]:
@@ -175,6 +175,8 @@ def biped(tmp_path):
         "frames": [{"nominal_time_s": t, "component_placements": {"body": {
             "position_mm": [t * 100.0, 0.0, 0.0], "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}}} for t in (0.0, 1.0)],
         "checkpoint": {"iteration": 4, "reward_per_step": 0.15, "sha256": "b" * 64}}))
+    # The same trainer told `--out runs/<run>/…`: everything in the run itself.
+    shutil.copytree(seed, root / "runs" / "flat")
     # A staged run whose trainer stopped beating two minutes ago, under
     # runs/<name>/<stage>/<seed>/ (ADR-837).
     stage = root / "runs" / "staged" / "s2" / "seed0"
@@ -185,14 +187,42 @@ def biped(tmp_path):
         "curve": [], "loss_curve": [], "episode_steps_curve": [], "error": "",
         "run": {"driver": "ouroboros", "heartbeat_s": 10.0, "ended_at": None},
         "model": {"tier": "concept", "sha256": "c" * 64, "bodies": {}}}))
+    # Films a project's judge wrote under the hand-started run (ADR-901): a
+    # go-to-point episode with its motors on a course, one unplayable trace,
+    # and one a directory too deep to be looked for.
+    judge = root / "runs" / "byhand" / "judge" / "best"
+    _film(judge / "s0", {**motor_trace("000005"), "terrain": COURSE, **_goto_episode(30)})
+    _film(judge / "s10", {**motor_trace("000005"), **_goto_episode(30)})
+    _film(judge / "s1", {**json.loads(_trace({"body": [0.0, 0.0, 0.0]})),
+                         "frames": [{"nominal_time_s": 0.0, "component_placements": {}}]})
+    _film(root / "runs" / "byhand" / "a" / "b" / "c" / "d", motor_trace("000005"))
     return root
+
+
+def _film(directory: Path, trace: dict) -> None:
+    """A self-contained ``view/`` under ``directory``, as a judge writes one."""
+
+    (directory / "view").mkdir(parents=True)
+    (directory / "view" / "trace.json").write_text(json.dumps(trace))
+
+
+def _goto_episode(frames: int) -> dict:
+    """A go-to-point episode of three points (ADR-839), written after the frames as a judge does."""
+
+    return {"goto": {"schema": "cadex-goto-sequence-v1", "points": [
+        {"xy_m": [1.0, 0.0], "speed_mps": 0.3, "hold_s": 1.0, "band": "walk"},
+        {"xy_m": [1.0, 1.0], "speed_mps": 0.6, "hold_s": 0.0, "band": "run"},
+        {"xy_m": [0.0, 1.0], "speed_mps": 0.3, "hold_s": 2.0, "band": "walk"}]},
+        "frames": [frame if "nominal_time_s" not in frame else
+                   {**frame, "goto": {"index": min(2, i // 10), "arrived": i % 10 > 6, "hold": 0.0}}
+                   for i, frame in enumerate(motor_trace("000005", frames=frames)["frames"])]}
 
 
 #: Each route, the paths that reach it in the fixture, and the 404s it gives.
 PROBES = {
     "project": (["api/project"], []),
     "run/<run>": (["api/run/first", "api/run/broken", "api/run/escaped", f"api/run/{RUN}", "api/run/killed",
-                   "api/run/byhand", "api/run/staged"],
+                   "api/run/byhand", "api/run/flat", "api/run/staged"],
                   ["api/run/nope"]),
     "policy-origin/<run>": (["api/policy-origin/first", "api/policy-origin/escaped"],
                             ["api/policy-origin/nope"]),
@@ -201,15 +231,22 @@ PROBES = {
     "model/revision/<ordinal>": (["api/model/revision/1", "api/model/revision/2", "api/model/revision/3"],
                                  ["api/model/revision/9", "api/model/revision/x"]),
     "model/run/<run>": (["api/model/run/first", "api/model/run/broken", f"api/model/run/{RUN}",
-                         "api/model/run/borrowing", "api/model/run/byhand"],
+                         "api/model/run/borrowing", "api/model/run/byhand", "api/model/run/flat"],
                         ["api/model/run/nope"]),
-    "playback/run/<run>": (["api/playback/run/second", "api/playback/run/broken", "api/playback/run/byhand"], ["api/playback/run/nope"]),
+    "playback/run/<run>": (["api/playback/run/second", "api/playback/run/broken", "api/playback/run/byhand",
+                            "api/playback/run/flat"], ["api/playback/run/nope"]),
     "playback/checkpoint/<run>/<stem>": (
         [f"api/playback/checkpoint/{RUN}/walk.000040", f"api/playback/checkpoint/{RUN}/walk.000060"],
         [f"api/playback/checkpoint/{RUN}/walk.000080", "api/playback/checkpoint/nope/walk.000040"]),
     "playback/reference/<task>": (["api/playback/reference/walk", "api/playback/reference/stand"],
                                   ["api/playback/reference/nope"]),
-    "checkpoints/<run>": ([f"api/checkpoints/{RUN}", "api/checkpoints/first"], ["api/checkpoints/nope"]),
+    "checkpoints/<run>": ([f"api/checkpoints/{RUN}", "api/checkpoints/first", "api/checkpoints/flat"], ["api/checkpoints/nope"]),
+    "films/<run>": (["api/films/byhand", "api/films/first", "api/films/flat"], ["api/films/nope"]),
+    "playback/film/<run>/<film>": (
+        ["api/playback/film/byhand/judge%2Fbest%2Fs0", "api/playback/film/byhand/judge%2Fbest%2Fs1"],
+        ["api/playback/film/byhand/seed0", "api/playback/film/byhand/judge%2Fbest", "api/playback/film/byhand/judge",
+         "api/playback/film/byhand/a%2Fb%2Fc%2Fd", "api/playback/film/byhand/judge%2Fbest%2Fs0%2Fview",
+         "api/playback/film/flat/.", "api/playback/film/nope/judge%2Fbest%2Fs0"]),
     "policy/run/<run>": ([f"api/policy/run/{RUN}", "api/policy/run/first"], ["api/policy/run/nope"]),
     "policy/checkpoint/<run>/<stem>": (
         [f"api/policy/checkpoint/{RUN}/walk.000040", f"api/policy/checkpoint/{RUN}/walk.000080"],
@@ -256,6 +293,9 @@ def test_every_reply_carries_its_documented_keys_and_nothing_else(biped, tmp_pat
         assert byhand["status"] == "ok" and byhand["telemetry"]["state"] == "done"
         assert byhand["telemetry"]["driver"] == "shell" and byhand["model"]["tier"] == "training"
         assert byhand["telemetry"]["model"]["bodies"] == {"body": ["body", "shin"]}
+        flat = _json(server.url + "api/run/flat")
+        assert flat["status"] == "ok" and flat["telemetry"]["state"] == "done"
+        assert [c["stem"] for c in _json(server.url + "api/checkpoints/flat")["items"]] == ["byhand.000005"]
         staged = _json(server.url + "api/run/staged")
         assert staged["status"] == "failed" and "stopped writing s2/seed0/progress.json" in staged["error"]
         assert staged["telemetry"]["driver"] == "ouroboros" and staged["model"]["tier"] == "concept"
@@ -265,6 +305,19 @@ def test_every_reply_carries_its_documented_keys_and_nothing_else(biped, tmp_pat
         goto = _json(server.url + "api/playback/run/byhand")["goto"]
         assert [p["band"] for p in goto["points"]] == ["walk", "run"]
         assert goto["frames"] == [{"index": 0, "arrived": False, "hold": 0.0}, {"index": 0, "arrived": True, "hold": 0.5}]
+        # Its films (ADR-901): natural order, never its own closing view nor one too deep.
+        films = _json(server.url + "api/films/byhand")
+        assert [(f["film"], f["group"], f["name"], f["state"]) for f in films["items"]] == [
+            ("judge/best/s0", "judge/best", "s0", "ready"), ("judge/best/s1", "judge/best", "s1", "ready"),
+            ("judge/best/s10", "judge/best", "s10", "ready")]
+        s0 = films["items"][0]
+        assert (s0["frames"], s0["goto"], s0["points"], s0["frames_per_second"]) == (30, True, 3, 25.0)
+        assert s0["duration_s"] == pytest.approx(29 * 0.04) and films["items"][1]["goto"] is False
+        assert _json(server.url + "api/films/flat")["items"] == []
+        filmed = _json(server.url + s0["url"])
+        assert filmed["available"] and filmed["source"] == "runs/byhand/judge/best/s0/view/trace.json"
+        assert len(filmed["goto"]["points"]) == 3 and len(filmed["goto"]["frames"]) == len(filmed["times_s"]) == 30
+        assert not _json(server.url + films["items"][1]["url"])["available"]
         drawn = _json(server.url + "api/model/run/byhand")
         assert drawn["available"] and [c["mesh_status"] for c in drawn["components"]] == ["retained"]
         # The accepted part on the body it was cut into, its primitive outlined (ADR-838).
@@ -291,6 +344,35 @@ def test_every_reply_carries_its_documented_keys_and_nothing_else(biped, tmp_pat
     for route, (always, sometimes) in API_RESPONSE_KEYS.items():
         unseen = (always | sometimes) - seen[route]
         assert unseen <= ({"video_render"} if route == "run/<run>" else set()), (route, sorted(unseen))
+
+
+def test_a_film_reached_through_a_symlink_or_out_of_the_tree_is_refused(biped, tmp_path) -> None:
+    """A film is a regular ``view/trace.json`` inside the run (ADR-901): a
+    linked trace, a linked directory, a link out of the project and a path
+    climbing out of the run are none, listed or played."""
+
+    outside = tmp_path / "elsewhere" / "film"
+    _film(outside, motor_trace("000005"))
+    judge = biped / "runs" / "byhand" / "judge"
+    (judge / "linked-dir").symlink_to(outside, target_is_directory=True)
+    (judge / "linked-view" / "view").mkdir(parents=True)
+    (judge / "linked-view" / "view" / "trace.json").symlink_to(outside / "view" / "trace.json")
+    (judge / "linked-inside").symlink_to(judge / "best", target_is_directory=True)
+    server, _thread = serve(biped, "127.0.0.1", 0)
+    try:
+        listed = [f["film"] for f in _json(server.url + "api/films/byhand")["items"]]
+        assert listed == ["judge/best/s0", "judge/best/s1", "judge/best/s10"]
+        for film in ("judge/linked-dir", "judge/linked-view", "judge/linked-inside/s0",
+                     "../escaped/training-view", "judge/best/../best/s0", "/judge/best/s0"):
+            status, _headers, body = _get(server.url + "api/playback/film/byhand/" + film.replace("/", "%2F"))
+            assert status == 404 and set(json.loads(body)) == {"error", "what"}, film
+        # A run that is itself a link out of the project lists nothing.
+        _film(tmp_path / "elsewhere" / "escaped" / "judge", motor_trace("000005"))
+        assert _json(server.url + "api/films/escaped")["items"] == []
+        assert _get(server.url + "api/playback/film/escaped/judge")[0] == 404
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def test_the_page_keeps_only_per_viewer_conveniences_in_the_browser() -> None:

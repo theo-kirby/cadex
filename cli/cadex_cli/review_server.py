@@ -66,6 +66,7 @@ from .studio import PRINTABLES, STUDIO
 from .review_record import (
     policy_lineage,
     trainer_progress,
+    trainer_view,
     PROJECT_ARTIFACT_KEYS,
     PROJECT_SCRIPT_FILENAME,
     PROJECT_SCRIPT_SCHEMA,
@@ -136,6 +137,8 @@ API_ROUTES = (
     "playback/checkpoint/<run>/<stem>",
     "playback/reference/<task>",
     "checkpoints/<run>",
+    "films/<run>",
+    "playback/film/<run>/<film>",
     "policy/run/<run>",
     "policy/checkpoint/<run>/<stem>",
 )
@@ -186,6 +189,11 @@ API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                                   (_PLAYBACK_KEYS - {"policy", "joints", "velocities", "efforts", "terrain"})
                                   | {"reference", "strides"}),
     "checkpoints/<run>": (frozenset({"run", "items", "pending", "listed_of", "reason"}), frozenset()),
+    # Whole episodes filmed under a run by something other than its trainer (ADR-901).
+    "films/<run>": (frozenset({"run", "items", "listed_of", "reason"}), frozenset()),
+    # A film plays no policy: who filmed it is not said.
+    "playback/film/<run>/<film>": (frozenset({"available", "run", "film", "source"}),
+                                   (_PLAYBACK_KEYS - {"policy"}) | {"goto"}),
     "policy/run/<run>": (frozenset({"available", "run", "source"}), _POLICY_KEYS),
     "policy/checkpoint/<run>/<stem>": (frozenset({"available", "run", "stem", "source"}), _POLICY_KEYS),
 }
@@ -197,6 +205,7 @@ _API_HANDLERS = {
     "playback/checkpoint/<run>/<stem>": "playback_checkpoint",
     "playback/reference/<task>": "playback_reference",
     "checkpoints/<run>": "checkpoints",
+    "films/<run>": "films", "playback/film/<run>/<film>": "playback_film",
     "policy/run/<run>": "policy_run",
     "policy/checkpoint/<run>/<stem>": "policy_checkpoint",
 }
@@ -515,6 +524,11 @@ def _goto_points(sequence: Any) -> list[dict[str, Any]]:
             return []
         if not all(math.isfinite(v) for v in (x, y, row["speed_mps"], row["hold_s"])):
             return []
+        # A gate (ADR-955 on leon6/tooling, ADR-902): raced through, never held; its
+        # circle is its own radius and its speed the one made on the leg to it.
+        radius = point.get("radius_m", sequence.get("radius_m")) if row["band"] == "gate" else None
+        if isinstance(radius, (int, float)) and math.isfinite(radius) and radius > 0:
+            row["radius_m"] = float(radius)
         points.append(row)
     return points
 
@@ -701,10 +715,9 @@ def _checkpoint_dir(root: Path, run: str) -> Path | None:
     ``stage2/seed0/``), where a trainer started by hand leaves its checkpoints
     (ADR-851); ``None`` when neither does."""
 
-    for relative in ("train", str(Path(trainer_progress(root / RUNS_DIRNAME / run) or ".").parent)):
-        if relative == ".":
-            continue
-        ref = resolve_reference(root, f"{RUNS_DIRNAME}/{run}/{relative}")
+    progress = trainer_progress(root / RUNS_DIRNAME / run)
+    for relative in ("train",) + ((Path(progress).parent.as_posix(),) if progress else ()):
+        ref = resolve_reference(root, (Path(RUNS_DIRNAME) / run / relative).as_posix())
         if not ref["error"] and ref["exists"] and (root / ref["path"]).is_dir():
             return root / ref["path"]
     return None
@@ -825,6 +838,201 @@ def checkpoint_playback(project_root: Path | str, run: str, stem: str) -> dict[s
     if playback["available"] and policy.is_file() and not policy.is_symlink():
         playback["policy"] = f"api/policy/checkpoint/{quote(run, safe='')}/{quote(stem, safe='')}"
     return playback
+
+
+# -- films: whole episodes filmed under a run by something other than its trainer (ADR-901) --
+
+#: How many directories below the run a film's ``view/`` may sit: the run's
+#: ``judge-export/best/s3/view/`` is four.
+FILM_VIEW_DEPTH = 4
+#: The films a run lists, in order; the rest stay on disk and are counted.
+FILMS_LISTED = 256
+#: A trace's head and tail read for a film's listing: its schema, frame rate and
+#: first time are in front of its frames, its last time and episode behind them.
+_FILM_EDGE_BYTES = 256 * 1024
+_FILM_TIME = re.compile(rb'"nominal_time_s"\s*:\s*(-?[0-9][0-9.eE+-]*)')
+_FILM_FPS = re.compile(rb'"frames_per_second"\s*:\s*([0-9][0-9.eE+-]*)')
+_FILM_GOTO = re.compile(r'"goto"\s*:\s*(?=\{)')
+_FILM_MEMO: "OrderedDict[str, tuple[tuple[int, int] | None, dict[str, Any]]]" = OrderedDict()
+
+
+def _natural(text: str) -> list[Any]:
+    """``s2`` before ``s10``: digits compared as numbers."""
+
+    return [(0, int(part), "") if part.isdigit() else (1, 0, part) for part in re.split(r"(\d+)", text) if part]
+
+
+def _film_traces(run_dir: Path) -> list[str]:
+    """Every ``<dir>/view/trace.json`` under the run, its ``view/`` at most
+    ``FILM_VIEW_DEPTH`` directories down, as the run-relative directory
+    holding the ``view/``: never through a symlink, only regular files, and
+    never the run's own ``view/`` (the run itself, ``.``)."""
+
+    found: list[str] = []
+
+    def walk(directory: Path, depth: int) -> None:
+        try:
+            entries = sorted(directory.iterdir(), key=lambda p: p.name)
+        except OSError:
+            return
+        for entry in entries:
+            if entry.name.startswith(".") or entry.is_symlink() or not entry.is_dir():
+                continue
+            if entry.name == "view":
+                trace = entry / "trace.json"
+                if directory != run_dir and not trace.is_symlink() and trace.is_file():
+                    found.append(directory.relative_to(run_dir).as_posix())
+            elif depth < FILM_VIEW_DEPTH:
+                walk(entry, depth + 1)
+
+    walk(run_dir, 1)
+    return found
+
+
+def _film_edges(path: Path) -> dict[str, Any]:
+    """What a film's listing says of its trace, read once per file identity
+    and never whole: its frames counted by their ``nominal_time_s`` in one
+    streamed pass, its first and last times and frame rate from its head and
+    tail, and its go-to-point episode (ADR-839) from wherever the head or
+    tail holds it. The playback parses the trace; this only lists it."""
+
+    key = _stat_key(path)
+    with _MEMO_LOCK:
+        held = _FILM_MEMO.get(str(path))
+        if held is not None and held[0] == key:
+            _FILM_MEMO.move_to_end(str(path))
+            return held[1]
+    head = {"state": "ready", "reason": "", "bytes": key[1] if key else None, "frames": None,
+            "duration_s": None, "frames_per_second": None, "goto": False, "points": 0}
+    try:
+        if key is None or key[1] > JSON_READ_LIMIT:
+            raise ValueError("the trace is past the read bound" if key else "the trace is unreadable")
+        marker, count, front, back = b'"nominal_time_s"', 0, b"", b""
+        with path.open("rb") as handle:
+            carry = b""
+            while True:
+                block = handle.read(1 << 20)
+                if not block:
+                    break
+                if len(front) < _FILM_EDGE_BYTES:
+                    front += block[:_FILM_EDGE_BYTES - len(front)]
+                joined = carry + block
+                count += joined.count(marker)
+                carry = joined[-(len(marker) - 1):]
+                back = (back + block)[-_FILM_EDGE_BYTES:]
+        if TRACE_SCHEMA.encode() not in front[:4096]:
+            raise ValueError("not a " + TRACE_SCHEMA)
+        first, last = _FILM_TIME.search(front), list(_FILM_TIME.finditer(back))
+        fps = _FILM_FPS.search(front)
+        head["frames"] = count - front.count(marker + b":null") - front.count(marker + b": null")
+        if first and last:
+            head["duration_s"] = float(last[-1].group(1)) - float(first.group(1))
+        if fps:
+            head["frames_per_second"] = float(fps.group(1))
+        # The episode is the one ``goto`` that carries points; a frame's own is only its state.
+        decoder = json.JSONDecoder()
+        for edge in (back, front):
+            text = edge.decode("utf-8", "ignore")
+            for match in reversed(list(_FILM_GOTO.finditer(text))):
+                try:
+                    value, _end = decoder.raw_decode(text, match.end())
+                except ValueError:
+                    continue
+                points = _goto_points(value)
+                if points:
+                    head.update(goto=True, points=len(points))
+                    break
+            if head["goto"]:
+                break
+    except (OSError, ValueError) as exc:
+        head.update(state="failed", reason=str(exc))
+    for name in ("duration_s", "frames_per_second"):
+        if head[name] is not None and not math.isfinite(head[name]):
+            head[name] = None
+    with _MEMO_LOCK:
+        _FILM_MEMO[str(path)] = (key, head)
+        _FILM_MEMO.move_to_end(str(path))
+        while len(_FILM_MEMO) > _CHECKPOINT_MEMO_SIZE:
+            _FILM_MEMO.popitem(last=False)
+    return head
+
+
+def run_films(project_root: Path | str, run: str) -> dict[str, Any]:
+    """``/api/films/<run>``: the whole episodes filmed under a run (ADR-901).
+
+    A project's judge, an evaluation of its own or a second trainer seed
+    writes a self-contained ``view/`` (a ``trace.json`` and its meshes)
+    beneath the run: ``judge-export/best/s3/view/``. Each such ``view/`` at
+    most ``FILM_VIEW_DEPTH`` directories down is a film, except the one the
+    run plays as its own rollout (:func:`trainer_view`). The film is named by
+    the directory that holds its ``view/``, which is also its id, grouped by
+    that directory's parent, in natural order. Nothing is reached through a
+    symlink or outside the project; a trace is read once per file identity,
+    and only its edges are parsed.
+    """
+
+    root = Path(project_root).expanduser()
+    ref = resolve_reference(root, f"{RUNS_DIRNAME}/{run}")
+    if ref["error"] or not ref["exists"] or not (root / ref["path"]).is_dir():
+        return {"run": run, "items": [], "listed_of": 0, "reason": "the run directory is missing or escapes the project"}
+    run_dir = root / ref["path"]
+    own = trainer_view(run_dir)[0]
+    items = []
+    for film in _film_traces(run_dir):
+        relative = f"{film}/view/trace.json"
+        if relative == own:
+            continue
+        trace = resolve_reference(root, f"{RUNS_DIRNAME}/{run}/{relative}")
+        if trace["error"] or not trace["exists"]:
+            continue
+        group, _slash, name = film.rpartition("/")
+        items.append({"film": film, "group": group, "name": name, **_film_edges(root / trace["path"]),
+                      "source": trace["path"],
+                      "url": f"api/playback/film/{quote(run, safe='')}/{quote(film, safe='')}"})
+    items.sort(key=lambda item: (_natural(item["group"]), _natural(item["name"])))
+    return {"run": run, "items": items[:FILMS_LISTED], "listed_of": len(items),
+            "reason": "" if items else "no film under the run"}
+
+
+def film_playback(project_root: Path | str, run: str, film: str) -> dict[str, Any] | None:
+    """``/api/playback/film/<run>/<film>``: one film's episode as playback
+    frames, go-to-point points included; ``None`` when ``film`` is not one
+    :func:`run_films` lists."""
+
+    root = Path(project_root).expanduser()
+    item = next((item for item in run_films(root, run)["items"] if item["film"] == film), None)
+    if item is None:
+        return None
+    trace = _load_json(root / item["source"])
+    shown = _run_bodies(root, run)
+    frames = (trace or {}).get("frames") or []
+    first = frames[0] if frames and isinstance(frames[0], Mapping) else {}
+    if shown and shown & set(first.get("component_placements") or {}):
+        # A film made on a fuller model (a judge's export) places every one of
+        # its components; only the run's own bodies are drawn, so only theirs
+        # are sent (a judge's film is 68 MB whole). A film that places none of
+        # them is sent whole.
+        trace = {**trace, "frames": [
+            {**frame, "component_placements": {name: entry for name, entry
+                                               in (frame.get("component_placements") or {}).items()
+                                               if name in shown}}
+            if isinstance(frame, Mapping) else frame for frame in frames]}
+    playback = trace_playback(trace)
+    playback.update(run=run, film=film, source=item["source"])
+    return playback
+
+
+def _run_bodies(root: Path, run: str) -> frozenset[str] | None:
+    """The bodies the run's own closing view places, or ``None`` when it has none."""
+
+    run_dir = root / RUNS_DIRNAME / run
+    relative, _policy = trainer_view(run_dir)
+    if relative is None:
+        return None
+    view = _load_json(run_dir / relative) or {}
+    frames = view.get("frames") or []
+    first = frames[0] if frames and isinstance(frames[0], Mapping) else {}
+    return frozenset(first.get("component_placements") or {}) or None
 
 
 # -- policies: the network behind a rollout, for the Activations editor (ADR-727) --
@@ -3667,6 +3875,12 @@ class ReviewHandler(BaseHTTPRequestHandler):
     def _api_checkpoints(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
         # Any run's, as the stage carries the run it reads (ADR-790).
         return checkpoint_rollouts(project.root, run) if project.run(run) is not None else None
+
+    def _api_films(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
+        return run_films(project.root, run) if project.run(run) is not None else None
+
+    def _api_playback_film(self, project: ReviewProject, run: str, film: str) -> dict[str, Any] | None:
+        return film_playback(project.root, run, film) if project.run(run) is not None else None
 
     def _api_policy_run(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
         record = project.run(run)

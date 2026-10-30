@@ -287,6 +287,7 @@
     }).then(function (manifest) {
       if (ticket !== modelLoad) return;
       state.model = manifest;
+      renderPrimitives();
       if (manifest.view === 'revision') renderRevisionTimeline();
       if (!manifest.available) {
         state.viewer.clear();
@@ -317,7 +318,7 @@
         status.textContent = manifest.tier && manifest.tier.label ? manifest.tier.label : '';
         status.dataset.tier = manifest.tier ? manifest.tier.name : '';
         // A run with checkpoint rollouts plays them, its own rollout last.
-        if (checkpointItems().items.length) { renderCheckpoints(); return null; }
+        if (checkpointItems().items.length || ckpt.film) { renderCheckpoints(); return null; }
         // A reference loops from the start, as soon as it is in.
         if (reference) return loadPlayback({ playback: { url: reference.url } }, ticket, true);
         return loadPlayback(manifest, ticket);
@@ -533,6 +534,22 @@
     if (state.activations) state.activations.repaintViewports();
     return view.heat;
   }
+  // A training model's primitives outlined over its CAD (ADR-838), or not (ADR-901): each viewport's
+  // own switch, the first's kept by this browser, offered only while the model shown has them.
+  var primitivesPref = readPref('cadex.primitives', ['on', 'off'], 'on') === 'on';
+  function hasPrimitives() {
+    return !!(state.model && state.model.available && (state.model.components || []).some(function (c) { return c.outline && c.cad && c.cad.length; }));
+  }
+  function applyPrimitives(on, view) {
+    view = view || firstView();
+    if (!view) return primitivesPref;
+    view.primitives = !!on;
+    view.primitivesButton.setAttribute('aria-pressed', String(view.primitives));
+    if (view === firstView()) { primitivesPref = view.primitives; writePref('cadex.primitives', on ? 'on' : 'off'); }
+    view.viewer.showPrimitives(view.primitives);
+    return view.primitives;
+  }
+  function renderPrimitives() { var offered = hasPrimitives(); views().forEach(function (v) { v.primitivesButton.hidden = !offered; }); }
   // The axes gizmo folds away to a caret, and back (ADR-770); each viewport's own, the first's kept.
   var gizmoPref = readPref('cadex.gizmo', ['on', 'off'], 'on') === 'on';
   function applyGizmo(on, view) {
@@ -577,6 +594,13 @@
   function showGoto(goto, at) {
     state.viewer.showTargets(at);
     var n = goto.points.length, i = at ? at.index : 0, p = goto.points[Math.min(i, n - 1)];
+    // A gate course (ADR-902): which gate, and the speed made on the leg to the last one passed.
+    if (p && p.radius_m > 0) {
+      var last = i > 0 ? goto.points[Math.min(i, n) - 1] : null;
+      $('play-goto').textContent = !at ? '' : (i >= n ? 'all ' + n + ' gates' : 'gate ' + (i + 1) + '/' + n)
+        + (last ? ' · last leg ' + last.speed_mps.toFixed(2) + ' m/s' : '');
+      return;
+    }
     $('play-goto').textContent = !at ? '' : i >= n ? 'all ' + n + ' points done'
       : 'point ' + (i + 1) + '/' + n + ' · ' + (p.band ? p.band + ' ' : '') + p.speed_mps.toFixed(2) + ' m/s'
         + (p.hold_s > 0 ? ' · hold ' + p.hold_s.toFixed(1) + ' s' + (at.arrived ? ' ' + Math.round(at.hold * 100) + '%' : '') : '');
@@ -608,7 +632,7 @@
   // the model shown, the newest one loops; the scrubber picks an older one,
   // and moving it back to the newest end follows new ones again. While the
   // run trains, the viewport turns to it unless a source was picked by hand.
-  var ckpt = { items: [], pending: 0, pinned: null, shown: null, playing: null, paused: false, chosenSource: false };
+  var ckpt = { items: [], films: [], pending: 0, pinned: null, film: null, shown: null, playing: null, paused: false, chosenSource: false };
 
   // Any run picked as the source scrubs its own checkpoints (ADR-790): the stage carries the
   // run it reads, and any other is read from its own route when picked, and again while it moves.
@@ -632,15 +656,37 @@
     return otherCkpt.block;
   }
   function checkpointItems() {
-    if (!state.review || source.indexOf('run:') !== 0) return { items: [], pending: 0 };
-    var block = checkpointBlock(source.slice(4));
-    if (!block) return { items: [], pending: 0 };
-    var items = (block.items || []).slice(), own = state.model && state.model.available && state.model.playback;
+    if (!state.review || source.indexOf('run:') !== 0) return { items: [], pending: 0, films: [] };
+    var block = checkpointBlock(source.slice(4)), filmed = filmItems(source.slice(4));
+    var items = ((block && block.items) || []).slice(), own = state.model && state.model.available && state.model.playback;
     // The run's own rollout, once it has one, is its newest policy.
-    if (items.length && own && own.available && own.url) {
+    if ((items.length || filmed.length) && own && own.available && own.url) {
       items.push({ stem: 'final', tag: 'final', state: 'ready', url: own.url, iteration: null, reward_per_step: null, final: true });
     }
-    return { items: items, pending: block.pending || 0 };
+    return { items: items, pending: (block && block.pending) || 0, films: filmed };
+  }
+  // -- 3D viewport: films (ADR-901) ---------------------------------------------------
+  // Whole episodes something other than the run's trainer filmed under it (a project's judge's
+  // `judge-export/best/s3/view/`), read from `/api/films/<run>` when the run is picked and every
+  // 30 s after, are stops beside its checkpoints. A picked film stays picked until a checkpoint is
+  // picked or its run no longer lists it; new checkpoints landing never take its place.
+  var films = { run: null, block: null, at: 0, busy: false };
+  function filmItems(name) {
+    if (films.run !== name) { films = { run: name, block: null, at: 0, busy: false }; ckpt.film = null; }
+    if (!films.busy && (!films.at || Date.now() - films.at > 30000)) {
+      films.busy = true;
+      json('api/films/' + encodeURIComponent(name)).then(function (block) {
+        if (films.run !== name) return;
+        films.block = block; films.at = Date.now(); films.busy = false;
+        renderCheckpoints();
+      }).catch(function () {
+        if (films.run === name) { films.busy = false; films.at = Date.now(); }
+      });
+    }
+    return ((films.block && films.block.items) || []).map(function (f) {
+      return { stem: 'film:' + f.film, film: f.film, group: f.group, name: f.name, state: f.state === 'ready' ? 'ready' : 'failed',
+               reason: f.reason, error: '', url: f.url, duration_s: f.duration_s, points: f.goto ? f.points : 0, bytes: f.bytes };
+    });
   }
   function followTraining() {
     var stage = state.review.stage || {}, block = stage.checkpoints;
@@ -651,6 +697,7 @@
   }
   function checkpointName(item) {
     if (item.final) return 'final policy';
+    if (item.film) return item.film;
     return 'iteration ' + (item.iteration + 1) + ' · reward ' + (item.reward_per_step == null ? '—' : fmt(item.reward_per_step));
   }
   function restPoses() {
@@ -659,42 +706,193 @@
     return poses;
   }
   function renderCheckpoints() {
-    var got = checkpointItems(), items = got.items, box = $('checkpoints');
-    ckpt.items = items; ckpt.pending = got.pending;
-    setHidden('checkpoints', !items.length);
-    if (!items.length) { setHidden('checkpoint-status', true); ckpt.shown = null; ckpt.playing = null; return; }
+    var got = checkpointItems(), items = got.items, filmed = got.films, box = $('checkpoints');
+    ckpt.items = items; ckpt.films = filmed; ckpt.pending = got.pending;
+    setHidden('checkpoints', !items.length && !filmed.length);
+    if (!items.length && !filmed.length) { setHidden('checkpoint-status', true); ckpt.shown = null; ckpt.playing = null; return; }
     var stems = items.map(function (item) { return item.stem; });
     if (ckpt.pinned && stems.indexOf(ckpt.pinned) < 0) ckpt.pinned = null;
-    var index = ckpt.pinned ? stems.indexOf(ckpt.pinned) : items.length - 1, item = items[index];
-    // One option per checkpoint, newest first; the newest follows new ones as they land.
-    var pick = $('checkpoint-pick'), names = items.map(function (it, i) {
-      return checkpointName(it) + (it.state === 'failed' ? ' · failed' : it.state !== 'ready' ? ' · ' + it.state : '') + (i === items.length - 1 ? ' · newest' : '');
-    });
-    var optionsKey = JSON.stringify(names);
-    if (pick.dataset.options !== optionsKey) {
-      pick.dataset.options = optionsKey;
-      pick.textContent = '';
-      for (var i = items.length - 1; i >= 0; i--) {
-        var option = document.createElement('option');
-        option.value = String(i); option.textContent = names[i];
-        pick.appendChild(option);
-      }
-    }
-    if (pick.value !== String(index)) pick.value = String(index);
-    if (box.dataset.follow !== String(!ckpt.pinned)) box.dataset.follow = String(!ckpt.pinned);
+    var film = ckpt.film ? filmed.filter(function (f) { return f.film === ckpt.film; })[0] : null;
+    if (ckpt.film && !film && films.block) ckpt.film = null;
+    var index = ckpt.pinned ? stems.indexOf(ckpt.pinned) : items.length - 1, item = film || items[index] || null;
+    renderStops(items, filmed, item);
+    var pick = $('checkpoint-pick');
+    if (box.dataset.follow !== String(!ckpt.pinned && !film)) box.dataset.follow = String(!ckpt.pinned && !film);
+    box.querySelector('.timeline-name').textContent = film ? 'Film' : 'Checkpoint';
+    // Films and no checkpoint, rollout or pick: the model stands, and the picker offers the films.
+    if (!item) { pick.title = filmed.length + ' film' + (filmed.length > 1 ? 's' : '') + ' under this run'; setHidden('checkpoint-status', true); return; }
     if (box.dataset.state !== item.state) box.dataset.state = item.state;
     $('checkpoint-status').dataset.state = item.state;
-    pick.title = 'Checkpoint ' + (index + 1) + ' of ' + items.length + (ckpt.pinned ? '' : ', following the newest');
-    var note = item.state === 'failed' ? 'rollout failed: ' + item.reason + (item.error ? ' — ' + item.error : '')
+    pick.title = film ? 'Film ' + film.film + ', one of ' + filmed.length
+                      : 'Checkpoint ' + (index + 1) + ' of ' + items.length + (ckpt.pinned ? '' : ', following the newest');
+    var note = item.state === 'failed' ? (film ? 'film unplayable: ' : 'rollout failed: ') + item.reason + (item.error ? ' — ' + item.error : '')
              : got.pending ? got.pending + ' newer checkpoint' + (got.pending > 1 ? 's' : '') + ' rolling out' : '';
     setText('checkpoint-status', note).title = note;
     setHidden('checkpoint-status', !note);
-    var key = item.stem + ':' + item.state + ':' + (item.sha256 || item.url || '');
+    var key = item.stem + ':' + item.state + ':' + (item.sha256 || item.url || '') + ':' + (item.bytes || '');
     // Poses go onto that run's own model, once it is drawn.
     var drawn = state.model && state.model.run === source.slice(4) && $('model-status').dataset.state === 'loaded';
     if (key === ckpt.shown || !drawn) return;
     ckpt.shown = key;
     showCheckpoint(item, key);
+  }
+
+  // -- the stop picker (ADR-901) ------------------------------------------------------
+  // One button names the stop shown; it opens a popover over the area that would clip it (as
+  // Training's Cards menu does) holding a filter and a listbox: the checkpoints newest first, then
+  // each directory's films, each stop with its length and, for a go-to-point episode, its points.
+  // Typing filters (every word must match the stop's group and name), the arrows and Page keys
+  // move through what is shown, Enter picks and Escape closes.
+  function stopSeconds(d) { return d == null ? '' : (d < 10 ? d.toFixed(1) : String(Math.round(d))) + ' s'; }
+  function stopMeta(item) {
+    var parts = [];
+    if (item.state === 'failed') parts.push('failed');
+    else if (item.state !== 'ready') parts.push(item.state);
+    if (item.duration_s != null) parts.push(stopSeconds(item.duration_s));
+    if (item.points) parts.push(item.points + ' point' + (item.points > 1 ? 's' : ''));
+    return parts.join(' · ');
+  }
+  function renderStops(items, filmed, current) {
+    var groups = [];
+    if (items.length) {
+      groups.push({ name: 'Checkpoints', stops: items.map(function (it, i) {
+        return { item: it, label: checkpointName(it) + (i === items.length - 1 ? ' · newest' : '') };
+      }).reverse() });
+    }
+    filmed.forEach(function (f) {
+      var last = groups[groups.length - 1], name = f.group || 'films';
+      if (!last || !last.films || last.name !== name) groups.push(last = { name: name, films: true, stops: [] });
+      last.stops.push({ item: f, label: f.name });
+    });
+    var list = $('checkpoint-list'), optionsKey = JSON.stringify(groups.map(function (g) {
+      return [g.name, g.stops.map(function (s) { return [s.item.stem, s.label, stopMeta(s.item)]; })];
+    }));
+    if (list.dataset.options !== optionsKey) {
+      var active = stopActive(), keep = active && active.dataset.stop, n = 0;
+      list.dataset.options = optionsKey;
+      list.textContent = '';
+      groups.forEach(function (g) {
+        var row = document.createElement('li'), head = document.createElement('div'), group = document.createElement('ul');
+        row.className = 'stop-group'; row.setAttribute('role', 'presentation');
+        head.className = 'stop-group-name'; head.setAttribute('aria-hidden', 'true');
+        head.textContent = g.name + (g.films ? ' · ' + g.stops.length : '');
+        group.setAttribute('role', 'group'); group.setAttribute('aria-label', g.name);
+        g.stops.forEach(function (s) {
+          var option = document.createElement('li'), name = document.createElement('span'), meta = document.createElement('span');
+          option.id = 'checkpoint-stop-' + (n++); option.setAttribute('role', 'option');
+          option.dataset.stop = s.item.stem; option.dataset.state = s.item.state;
+          option.dataset.search = (g.name + ' ' + (s.item.film || '') + ' ' + s.label).toLowerCase();
+          name.className = 'stop-name'; name.textContent = s.label; name.title = s.item.film || s.label;
+          meta.className = 'stop-meta'; meta.textContent = stopMeta(s.item);
+          option.appendChild(name); option.appendChild(meta); group.appendChild(option);
+        });
+        row.appendChild(head); row.appendChild(group); list.appendChild(row);
+      });
+      filterStops();
+      if (keep) setStopActive(list.querySelector('[data-stop="' + CSS.escape(keep) + '"]'));
+    }
+    list.querySelectorAll('[role="option"]').forEach(function (option) {
+      var chosen = String(!!current && option.dataset.stop === current.stem);
+      if (option.getAttribute('aria-selected') !== chosen) option.setAttribute('aria-selected', chosen);
+    });
+    var pick = $('checkpoint-pick'), label = current ? checkpointName(current) + (current === items[items.length - 1] && !current.film ? ' · newest' : '') : 'pick a film';
+    if (pick.querySelector('.stop-label').textContent !== label) pick.querySelector('.stop-label').textContent = label;
+    var meta = current ? stopMeta(current) : filmed.length + ' film' + (filmed.length > 1 ? 's' : '');
+    if (pick.querySelector('.stop-meta').textContent !== meta) pick.querySelector('.stop-meta').textContent = meta;
+  }
+  function shownStops() {
+    return Array.prototype.filter.call($('checkpoint-list').querySelectorAll('[role="option"]'), function (o) { return !o.hidden && !o.parentNode.parentNode.hidden; });
+  }
+  function stopActive() {
+    var id = $('checkpoint-filter').getAttribute('aria-activedescendant');
+    return id ? document.getElementById(id) : null;
+  }
+  function setStopActive(option) {
+    var before = stopActive();
+    if (before) before.classList.remove('active');
+    if (!option) { $('checkpoint-filter').removeAttribute('aria-activedescendant'); return; }
+    option.classList.add('active');
+    $('checkpoint-filter').setAttribute('aria-activedescendant', option.id);
+    option.scrollIntoView({ block: 'nearest' });
+  }
+  function filterStops() {
+    var words = $('checkpoint-filter').value.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
+    $('checkpoint-list').querySelectorAll('.stop-group').forEach(function (row) {
+      var any = false;
+      row.querySelectorAll('[role="option"]').forEach(function (option) {
+        var hit = words.every(function (w) { return option.dataset.search.indexOf(w) >= 0; });
+        option.hidden = !hit;
+        if (hit) { any = true; shown += 1; }
+      });
+      row.hidden = !any;
+    });
+    $('checkpoint-empty').hidden = shown > 0;
+    var active = stopActive();
+    if (!active || active.hidden || active.parentNode.parentNode.hidden) setStopActive(shownStops()[0] || null);
+  }
+  function placeStops() {
+    // On the side of the button with more room (the Version strip is low on the screen), as wide
+    // as a phone allows inside a 16 px gutter.
+    var menu = $('checkpoint-menu'), r = $('checkpoint-pick').getBoundingClientRect(), w = window.innerWidth, h = window.innerHeight;
+    var width = Math.min(440, w - 32), below = h - r.bottom - 12, above = r.top - 12, up = above > below;
+    menu.style.width = width + 'px'; menu.style.right = 'auto';
+    menu.style.left = Math.max(16, Math.min(w - width - 16, r.left)) + 'px';
+    menu.style.maxHeight = Math.max(160, Math.min(520, up ? above : below)) + 'px';
+    if (up) { menu.style.top = 'auto'; menu.style.bottom = (h - r.top + 4) + 'px'; }
+    else { menu.style.bottom = 'auto'; menu.style.top = (r.bottom + 4) + 'px'; }
+  }
+  function chooseStop(stem) {
+    var menu = $('checkpoint-menu');
+    if (menu.matches(':popover-open')) { menu.hidePopover(); $('checkpoint-pick').focus(); }
+    if (stem.indexOf('film:') === 0) return pickFilm(stem.slice(5));
+    return pickCheckpoint(ckpt.items.map(function (item) { return item.stem; }).indexOf(stem));
+  }
+  function pickFilm(film) {
+    if (!ckpt.films.some(function (f) { return f.film === film; })) return null;
+    ckpt.film = film;
+    renderCheckpoints();
+    return ckpt.film;
+  }
+  var stopSeed = '';
+  function wireStops() {
+    var pick = $('checkpoint-pick'), menu = $('checkpoint-menu'), filter = $('checkpoint-filter');
+    pick.addEventListener('keydown', function (e) {
+      // The arrows open it, as a select's do; a letter opens it filtering by that letter.
+      var letter = e.key.length === 1 && e.key !== ' ' && !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && !letter) return;
+      e.preventDefault();
+      stopSeed = letter ? e.key : '';
+      if (!menu.matches(':popover-open')) menu.showPopover();
+    });
+    menu.addEventListener('toggle', function (e) {
+      pick.setAttribute('aria-expanded', String(e.newState === 'open'));
+      if (e.newState !== 'open') return;
+      filter.value = stopSeed; stopSeed = '';
+      filterStops();
+      placeStops();
+      var chosen = $('checkpoint-list').querySelector('[aria-selected="true"]');
+      setStopActive(chosen && !chosen.hidden ? chosen : shownStops()[0] || null);
+      filter.focus();
+    });
+    filter.addEventListener('input', filterStops);
+    filter.addEventListener('keydown', function (e) {
+      var shown = shownStops(), at = shown.indexOf(stopActive()), step = { ArrowDown: 1, ArrowUp: -1, PageDown: 8, PageUp: -8 }[e.key];
+      if (step) {
+        e.preventDefault();
+        if (shown.length) setStopActive(shown[Math.max(0, Math.min(shown.length - 1, at < 0 ? 0 : at + step))]);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (at >= 0) chooseStop(shown[at].dataset.stop);
+      } else if (e.key === 'Escape') {
+        // A search field would only clear itself on the first Escape.
+        e.preventDefault();
+        menu.hidePopover(); pick.focus();
+      }
+    });
+    $('checkpoint-list').addEventListener('click', function (e) {
+      var option = e.target.closest('[role="option"]');
+      if (option) chooseStop(option.dataset.stop);
+    });
   }
   function showCheckpoint(item, key) {
     var ticket = modelLoad;
@@ -723,6 +921,7 @@
   function pickCheckpoint(index) {
     var items = ckpt.items;
     if (!items.length) return null;
+    ckpt.film = null;
     index = Math.max(0, Math.min(items.length - 1, Math.round(index)));
     ckpt.pinned = index === items.length - 1 ? null : items[index].stem;
     renderCheckpoints();
@@ -1137,7 +1336,7 @@
     var view = { viewer: viewer, canvas: canvas, tools: tools, body: ref('model'), follow: false, style: renderStyle, look: look.name,
                  styleGroup: ref('view3d-style'), lookSelect: ref('view3d-look'), followButton: ref('play-follow'),
                  trail: 'off', trailSelect: ref('view3d-trail'), gizmoOn: true, gizmoToggle: ref('view3d-gizmo-toggle'),
-                 heat: false, heatButton: ref('view3d-heat') };
+                 heat: false, heatButton: ref('view3d-heat'), primitives: true, primitivesButton: ref('view3d-primitives') };
     view.gizmo = window.CadexGizmo.create(viewer, ref('view3d-gizmo'), canvas);
     var first = !state.views.first();
     view.styleGroup.addEventListener('click', function (event) {
@@ -1151,6 +1350,7 @@
     view.trailSelect.addEventListener('change', function () { applyTrail(view.trailSelect.value, view); });
     view.gizmoToggle.addEventListener('click', function () { applyGizmo(!view.gizmoOn, view); });
     view.heatButton.addEventListener('click', function () { applyHeat(!view.heat, view); });
+    view.primitivesButton.addEventListener('click', function () { applyPrimitives(!view.primitives, view); });
     if (first) view.follow = followCam;
     view.followButton.setAttribute('aria-pressed', String(view.follow));
     state.views.add(view);
@@ -1160,6 +1360,8 @@
     var lead = first ? null : firstView();
     applyTrail(lead ? lead.trail : trailPref, view);
     applyGizmo(lead ? lead.gizmoOn : gizmoPref, view);
+    applyPrimitives(lead ? lead.primitives : primitivesPref, view);
+    view.primitivesButton.hidden = !hasPrimitives();
     return view;
   }
   // A copy of an editor that may be shown more than once (ADR-729), from its pristine markup.
@@ -1249,7 +1451,7 @@
     $('occlusion').addEventListener('change', function () { applyLook({ occlusion: $('occlusion').checked }); });
     $('detail').addEventListener('change', function () { applyLook({ detail: $('detail').checked }); });
     $('play-toggle').addEventListener('click', function () { ckpt.paused = !!playing; togglePlayback(); });
-    $('checkpoint-pick').addEventListener('change', function () { pickCheckpoint(Number($('checkpoint-pick').value)); });
+    wireStops();
     $('revision-pick').addEventListener('input', function () { pickRevision(Number($('revision-pick').value)); });
     $('revision-list').addEventListener('click', function (event) {
       var row = event.target.closest('li[data-ordinal]');
@@ -1322,9 +1524,11 @@
                                                   goto: playback.goto ? { points: playback.goto.points.length, label: $('play-goto').textContent } : null }; },
     checkpoints: function () {
       return { items: ckpt.items.map(function (item) { return { stem: item.stem, state: item.state, iteration: item.iteration, reward_per_step: item.reward_per_step }; }),
-               pending: ckpt.pending, pinned: ckpt.pinned, playing: ckpt.playing, source: source };
+               pending: ckpt.pending, pinned: ckpt.pinned, playing: ckpt.playing, source: source,
+               film: ckpt.film, films: ckpt.films.map(function (f) { return { film: f.film, group: f.group, name: f.name, state: f.state, duration_s: f.duration_s, points: f.points }; }) };
     },
     pickCheckpoint: pickCheckpoint,
+    pickFilm: pickFilm,
     revisions: function () {
       var current = state.review && state.review.accepted.revision, model = state.model && state.model.view === 'revision' ? state.model : null;
       return { stops: revisionStops().map(function (s) { return { ordinal: s.ordinal, revision: s.revision, retained: !!s.retained, current: s.revision === current }; }),
@@ -1340,11 +1544,12 @@
     trail: function () { return { style: trailPref, course: !!trailCourse.served, prints: trailCourse.prints, scene: state.viewer.trail && state.viewer.trail() }; },
     setGizmo: applyGizmo,
     setHeat: function (on, i) { return applyHeat(on, views()[i || 0]); },
+    setPrimitives: function (on, i) { return applyPrimitives(on, views()[i || 0]); },
     setFollow: applyFollow,
     follow: function () { return { on: followCam, tracked: !!track, camera: state.viewer.camera && state.viewer.camera() }; },
     view: function (i) { var v = views()[i]; return v ? v.viewer : null; },
     views: function () {
-      return views().map(function (v) { return { style: v.style, look: v.look, follow: v.follow, trail: v.trail, axes: v.gizmoOn, heat: v.heat, camera: v.viewer.camera(), gizmo: v.gizmo }; });
+      return views().map(function (v) { return { style: v.style, look: v.look, follow: v.follow, trail: v.trail, axes: v.gizmoOn, heat: v.heat, primitives: { on: v.primitives, offered: !v.primitivesButton.hidden }, camera: v.viewer.camera(), gizmo: v.gizmo }; });
     },
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, ms: lastPoll.ms }; },
     state: function () {

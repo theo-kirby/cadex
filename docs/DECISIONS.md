@@ -48325,3 +48325,94 @@ five edits and a check take ~3,200 s against ~6,700 s.
   asks for `fit: true` there.
 - The parts themselves are now the cost of an edit (469 s on leon V), and
   mostly skin planning (§9). Two smaller cuts are named there and not taken.
+
+## ADR-901 — Films under a run, a stop picker, and the primitives' outlines on a switch (2026-10-30)
+
+**Context.** A run's stops in the 3D viewport were its checkpoints' rollouts
+(ADR-545, ADR-851) and its own closing view, in one dropdown. leon VI's
+judge now films whole go-to-point episodes (ADR-839) under a run, each a
+self-contained `view/` beside its meshes:
+`runs/screen4/judge-export/<best|final|000100|000200>/s0..s9/view/trace.json`,
+forty per screen and 140 under `full1`, each 110 to 175 s and 25 to 40 MB,
+placing 80 components (a superset of the run's 24 trained bodies). The page
+could not reach one; a dropdown of 40 to 140 rows would not have served if
+it could. Separately, a training model with CAD on its bodies always drew
+its primitives as `#35c4ff` outlines over the parts (ADR-838), which is what
+a person checking the fit wants and not what one judging the gait does.
+
+**Decision.**
+- **`GET /api/films/<run>`** lists every regular `view/trace.json` whose
+  `view/` is at most four directories below the run (`FILM_VIEW_DEPTH`),
+  reached through no symlink, inside the project (`resolve_reference`), and
+  not the closing view the run plays as its own (`trainer_view`). A film's
+  id is the run-relative directory holding the `view/` (`judge-export/best/s3`),
+  grouped by that directory's parent, in natural order, the first 256
+  listed (`listed_of` counts all). Each says `state`, `bytes`, `frames`,
+  `duration_s`, `frames_per_second`, `goto`, `points`, `source` and `url`.
+- **A listing never parses a trace.** `_film_edges` reads one once per file
+  identity (mtime, size), as `_checkpoint_head` does: its timed frames
+  counted by `"nominal_time_s"` in one streamed pass, its first time, rate
+  and schema from the first 256 KB, its last time from the last 256 KB, and
+  its episode from whichever edge holds the one `goto` that carries points
+  (a judge writes it after the frames). It is a separate route, not a key of
+  `checkpoints/<run>`, because that reply is also `/api/project`'s
+  `stage.checkpoints` and is read on every poll.
+- **`GET /api/playback/film/<run>/<film>`**, `<film>` the id with its
+  slashes encoded, serves only a film that listing names, through the same
+  `trace_playback` as a checkpoint, `goto` included. It has no `policy`: a
+  film does not say who filmed it.
+- **The stop picker** replaces the dropdown. `#checkpoint-pick` keeps its id
+  as a button naming the stop shown; it opens a popover (`#checkpoint-menu`,
+  as Training's Cards menu is one) with a filter and a listbox: the
+  checkpoints newest first, then each directory's films with their count,
+  every stop with its length and points. Typing filters on every word, the
+  arrows, Page keys, Enter and Escape work it, and it opens on the side of
+  its button with more room, inside a 16 px gutter on a phone. Follow-newest
+  is unchanged for checkpoints; a picked film loops and stays picked while
+  checkpoints land, and picking a checkpoint returns to them.
+- **`#view3d-primitives`** shows or hides the primitives' outlines, each
+  viewport's own, the first's kept as `cadex.primitives`, on by default,
+  offered only while the model shown has CAD on its bodies.
+
+**Evidence.** On `leon-vi-runlab`, a server started beside the live one:
+`/api/films/screen4` lists 40 films in 0.45 s cold and 12 ms warm (`full1`'s
+140 in 2.1 s cold); `judge-export/000100/s0` counts 3,655 frames over
+146.16 s at 25 fps, eight points. `/api/playback/film/screen4/judge-export%2Fbest%2Fs3`
+answers 3,514 frames, 140.52 s and eight points with a state on every frame
+in 2.5 s; the reply is 68 MB, all 80 components' placements. In Chromium
+the film loads in about 7 s, draws its eight points and fills `#play-goto`
+(`point 3/8 · run 0.50 m/s` at 40 s); the picker, filtered to `best`, opens
+over the viewport at 1440 × 900 and at 400 × 850. `test_http_api.py` holds
+the routes to the fixture biped (three films, one unplayable, one too deep)
+and refuses a linked trace, a linked directory, a link back into the run, a
+run that is a link out of the project and an id that climbs.
+
+**Consequences.**
+- A film's listing is as cheap as a directory walk once warm, but the first
+  read of a run reads every trace through once (about 25 ms each from the
+  page cache).
+- A film made on a fuller model than the run's is cut to the bodies the
+  run's closing view places (68 MB to 20 MB for screen4's films); a film
+  that places none of them is served whole.
+- `/api/films` counts what something else wrote under a run. Nothing says
+  which policy or judge filmed it beyond its path; the picker names it by
+  that path only.
+
+## ADR-902 — Gates drawn as their own circles (2026-10-30)
+
+**Context.** A gate-racing film (ADR-955 on `leon6/tooling`) carries
+gates, not points: each `{xy_m, radius_m, band: "gate", speed_mps}`, its
+speed the one made on the leg to it (0 until passed), with no hold. The
+viewport drew every point with ADR-839's fixed 0.15 m hold disc and 0.3 m
+reach, coloured by commanded speed.
+
+**Decision.** `_goto_points` keeps a gate's `radius_m` (the point's own,
+else the course's). The viewport draws a gate as one circle of that radius,
+a faint disc to its edge and its line at the edge, all gates one colour
+(`#f2f2ea`), since a gate's speed is known only once passed; lit, next and
+done keep ADR-839's strengths. `#play-goto` reads `gate 3/12 · last leg
+0.84 m/s`, then `all 12 gates`. Points without `radius_m` draw as before.
+
+**Consequences.** A gate course's per-leg speeds are read in the readout,
+not the colours. The trainer's own gate telemetry in `progress.json`
+(`gate_ceiling_mps`, `gate_progress_mps`, `gates_per_s`) is not drawn yet.

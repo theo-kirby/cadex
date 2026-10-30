@@ -854,6 +854,25 @@ symlink). `stage.checkpoints` (ADR-545) is that run's checkpoint rollouts
 `GET /api/checkpoints/<run>` answers the same for any run (ADR-790). Traces
 are parsed once per file identity.
 
+`GET /api/films/<run>` (ADR-901) lists the whole episodes something other
+than the run's trainer filmed beneath it, as a project's judge writes
+`judge-export/best/s3/view/trace.json`: every regular `view/trace.json` whose
+`view/` is at most four directories below the run, reached through no
+symlink and inside the project, except the closing view the run plays as its
+own (`view/` beside its trainer's newest `progress.json`). Each item is
+`film` (the run-relative directory holding the `view/`, also its id),
+`group` (that directory's parent) and `name` (its last part), in natural
+order (`s2` before `s10`); `state` (`ready`, or `failed` with `reason` when
+the trace is past the 64 MB read bound or not a trace); `bytes`; `frames`
+(its timed frames, counted); `duration_s` and `frames_per_second`; `goto`
+and `points` (whether it is a go-to-point episode, ADR-839, and how many
+points); `source` (project-relative) and `url`. The first 256 in that
+order are listed and `listed_of` counts them all. A listing never parses a
+trace: each is read once per file identity, its frames counted in one pass
+and its edges parsed, so a warm listing costs a directory walk.
+`GET /api/playback/film/<run>/<film>` serves only a film that listing names,
+through the same `trace_playback` as a checkpoint, with its `goto`.
+
 `/api/project`'s `revisions` marks each entry `retained` or carries
 `retained_reason` (ADR-546). `GET /api/model/revision/<ordinal>` (ADR-547)
 is a retained revision's model with `previous`, `changed` (outputs whose
@@ -949,6 +968,8 @@ of a fixture biped that reaches every route disagree, in the way
 | `GET api/playback/checkpoint/<run>/<stem>` | one checkpoint's rollout as playback frames | `available`, `run`, `stem`, `checkpoint`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `policy`, `terrain` |
 | `GET api/playback/reference/<task>` | an accepted task's gait reference (ADR-703) as playback frames: its one stride repeated a stride further on each time, for about 4 s | `available`, `task`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `reference`, `strides` |
 | `GET api/checkpoints/<run>` | any run's checkpoint rollouts, as `stage.checkpoints` lists the stage's run (ADR-790) | `run`, `items`, `pending`, `listed_of`, `reason` | |
+| `GET api/films/<run>` | the whole episodes filmed under a run by something other than its trainer (ADR-901): each `view/trace.json` at most four directories down but the run's own, by the directory that holds it | `run`, `items`, `listed_of`, `reason` | |
+| `GET api/playback/film/<run>/<film>` | one film as playback frames, `<film>` the listed id with its slashes encoded (`judge-export%2Fbest%2Fs3`) | `available`, `run`, `film`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `terrain`, `goto` |
 | `GET api/policy/run/<run>` | the run's own policy as the Activations editor runs it (ADR-727): its network, normaliser, input and action names, the weights as base64, each input's kind from the task bundle, the gait clock and the parts each motor moves | `available`, `run`, `source` | `reason`, `label`, `network`, `normaliser`, `observations`, `actions`, `weights`, `inputs`, `clock`, `parts` |
 | `GET api/policy/checkpoint/<run>/<stem>` | one checkpoint's policy, the same way | `available`, `run`, `stem`, `source` | `reason`, `label`, `network`, `normaliser`, `observations`, `actions`, `weights`, `inputs`, `clock`, `parts` |
 
@@ -1012,9 +1033,11 @@ ADR-728), `cadex.trail` and `cadex.gizmo` (the first 3D viewport's trail
 style and whether its axes gizmo is shown, ADR-770), `cadex.trail.colours`
 (the trail's colour, or its colours by age, that Settings picks, ADR-770) and
 `cadex.training.cards` (how the Training cards are arranged: their order,
-which are pinned or hidden, and their sizes, ADR-770) — and `cli/tests/test_http_api.py` fails if the page stores any
+which are pinned or hidden, and their sizes, ADR-770) and `cadex.primitives`
+(whether the first 3D viewport outlines a training model's primitives over its
+CAD, ADR-901) — and `cli/tests/test_http_api.py` fails if the page stores any
 other key, or this list names one it does not. A picked
-checkpoint, a scrubbed revision, a selected run, and the parts hidden or
+checkpoint or film, a scrubbed revision, a selected run, and the parts hidden or
 selected in the Outliner last only as long as the page.
 
 ### Exit codes

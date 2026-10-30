@@ -166,6 +166,10 @@
         <option value="ribbon">Trail: ribbon</option>
         <option value="footprints">Trail: footprints</option>
       </select>
+      <!-- A training model's primitives outlined over its CAD (ADR-838), shown or not (ADR-901): each
+           viewport's own, offered only while the model shown has them. -->
+      <button id="view3d-primitives" type="button" aria-pressed="true" hidden
+              title="Outline the primitives each body trained as over its CAD">Primitives</button>
       <!-- The rollout's motors painted on the parts they move, in the heat colours: each viewport's
            own (ADR-770; the Activations editor's "Show in viewport" until then). -->
       <button id="view3d-heat" type="button" aria-pressed="false"
@@ -204,10 +208,21 @@
           <output id="revision-label"></output>
         </div>
         <!-- A training run's checkpoints, each rolled out by the engine as it lands (ADR-544, ADR-545):
-             the newest loops; the dropdown picks an older one (ADR-733), and the newest follows again. -->
+             the newest loops; the picker picks an older one (ADR-733), and the newest follows again.
+             Beside them the films under the run (ADR-901), grouped by their directory; the picker
+             filters as you type and is worked by the keyboard. -->
         <div id="checkpoints" class="timeline" data-follow="true" data-state="ready" hidden>
           <span class="timeline-name">Checkpoint</span>
-          <select id="checkpoint-pick" aria-label="Checkpoint"></select>
+          <button id="checkpoint-pick" type="button" popovertarget="checkpoint-menu" aria-haspopup="listbox"
+                  aria-expanded="false" aria-controls="checkpoint-menu" aria-label="Checkpoint or film"><span
+                  class="stop-label"></span><span class="stop-meta"></span></button>
+          <div id="checkpoint-menu" class="menu-panel stop-menu" popover>
+            <input id="checkpoint-filter" type="search" placeholder="Filter checkpoints and films" autocomplete="off"
+                   spellcheck="false" role="combobox" aria-label="Filter checkpoints and films" aria-expanded="true"
+                   aria-controls="checkpoint-list" aria-autocomplete="list">
+            <ul id="checkpoint-list" role="listbox" aria-label="Checkpoints and films"></ul>
+            <p id="checkpoint-empty" hidden>Nothing matches.</p>
+          </div>
         </div>
       </div>
       <!-- A run's rollout trace plays here (orun2 D2.5); nothing is simulated in the page. -->

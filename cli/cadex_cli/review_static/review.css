@@ -310,7 +310,7 @@ table.status-table { width: 100%; border-collapse: collapse; table-layout: auto;
 #status-activity-list li[data-outcome="running"] { color: var(--info); }
 .timelines { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; flex-direction: column; gap: var(--s1); pointer-events: none; }
 /* Version (ADR-770): which version every 3D viewport shows -- the source in the header, the revision
-   scrubber or the checkpoint dropdown, the rollout's timeline and their notes in the body. */
+   scrubber or the stop picker (ADR-901), the rollout's timeline and their notes in the body. */
 #version { padding: var(--s2) var(--s3); display: flex; flex-direction: column; gap: var(--s2); font-size: var(--fs-0); }
 .version-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); }
 .version-row:not(:has(> :not([hidden]))) { display: none; }
@@ -329,7 +329,32 @@ table.status-table { width: 100%; border-collapse: collapse; table-layout: auto;
 .timeline output { flex: none; min-width: 56px; text-align: right; }
 .timeline-name { flex: none; color: var(--ink-2); }
 #checkpoints { flex: 1 1 320px; min-width: 0; }
-#checkpoint-pick { flex: 0 1 auto; max-width: 28em; min-width: 0; font-family: var(--mono); }
+/* The stop picker (ADR-901): a button naming the stop shown, and a popover over the area that would
+   clip it with a filter and the stops, grouped: the checkpoints, then each directory's films. */
+#checkpoint-pick { flex: 0 1 auto; max-width: 32em; min-width: 0; display: inline-flex; align-items: center; gap: var(--s2);
+                   font-family: var(--mono); text-align: left; }
+#checkpoint-pick::after { content: ""; flex: none; width: 5px; height: 5px; margin: -3px 0 0 2px; border: solid var(--ink-2);
+                          border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.stop-label, .stop-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stop-meta { flex: none; color: var(--ink-2); white-space: nowrap; }
+#checkpoint-menu { position: fixed; inset: auto; margin: 0; min-width: 0; max-width: none; padding: var(--s2);
+                   overflow: hidden; color: var(--ink); font-size: var(--fs-0); }
+#checkpoint-menu:popover-open { display: flex; flex-direction: column; gap: var(--s2); }
+#checkpoint-filter { flex: none; width: 100%; min-height: var(--tool); padding: 0 var(--s2); font: inherit; color: var(--ink);
+                     background: var(--surface); border: var(--bw) solid var(--rule); border-radius: 6px; }
+#checkpoint-filter:focus { outline: none; border-color: var(--rule-strong); }
+#checkpoint-list, #checkpoint-list ul { list-style: none; margin: 0; padding: 0; }
+#checkpoint-list { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.stop-group-name { position: sticky; top: 0; z-index: 1; padding: var(--s1) var(--s2); background: var(--surface-2);
+                   color: var(--ink-2); font-weight: 600; overflow-wrap: anywhere; }
+#checkpoint-list [role="option"] { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3);
+                                   padding: 3px var(--s2); border-radius: 6px; cursor: pointer; font-family: var(--mono); }
+#checkpoint-list [role="option"]:hover, #checkpoint-list [role="option"].active { background: var(--surface-3); }
+#checkpoint-list [role="option"][aria-selected="true"] { background: var(--select); }
+#checkpoint-list [role="option"].active { box-shadow: inset 0 0 0 var(--bw) var(--rule-strong); }
+#checkpoint-list [role="option"][data-state="failed"] .stop-name { color: var(--bad); }
+#checkpoint-empty { margin: 0; padding: 0 var(--s2); color: var(--ink-2); }
+@media (pointer: coarse) { #checkpoint-list [role="option"] { min-height: 40px; align-items: center; } }
 :is(#revision-label, [data-ref="revision-label"]) { flex: 0 1 auto; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
 #revision-list li[data-retained] { cursor: pointer; }
 
