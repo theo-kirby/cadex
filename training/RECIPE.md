@@ -146,7 +146,9 @@ ends, not on a clock. This replaces separate stand, sprint and turn tasks.
    --out DIR` writes G2's task onto any `cadex-training-task-v1` bundle: an
    export's, or a relay's onto a concept or a cut (ADR-862). It reads the
    root, drives, joint ranges, keyframe, feet and floor from the model, and
-   the substeps from its timestep. It writes Playground's terms (§D) with
+   the substeps from its timestep. Its actions are the source bundle's: a
+   drive the source leaves out (leon VI's tail) is held at its keyframe
+   command, which must be 0 (ADR-958). It writes Playground's terms (§D) with
    the Go1's speeds (±1.5, ±0.8 m/s, ±1.2 rad/s; `--speeds` changes them).
    On the Go1 it writes orun18's bundle back again, up to channel names.
    The task names nothing robot-specific beyond the model. Slower

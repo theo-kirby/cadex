@@ -48757,3 +48757,47 @@ dependency.
 
 **Consequences.** The guide shapes, it does not prescribe phase. Its pose
 and rate scales are constants (`REFERENCE_SCALE`), not tuned on any run.
+
+## ADR-958 — The go-to-point task's actions are its source bundle's; the other drives are held (2026-10-30)
+
+**Context.** `cadex_joystick.py` (ADR-862) made every position actuator in
+the model an action. leon VI's new body (l6r1 revision 2) has sixteen drives,
+and two of them, the tail root's pitch and yaw, are position servos that hold
+the build pose and are not the policy's. The engine export's task and
+`cadex_relay.py`'s re-laying onto the cut both list fourteen actions. The
+go-to-point and gate bundles built on them had sixteen (76 actor channels),
+so a policy trained on them would move the tail.
+
+**Decision.** The drives the task acts on are the source bundle's `actions`,
+by actuator name, in model order. A source that lists none keeps the old rule:
+every position drive. A listed actuator that is not in the model is refused.
+Every other drive is **held**. It gets no action, no command, no joint or
+torque observation, and no reward term (limits, pose, torque, energy, action
+rate) or friction and armature randomisation. The trainer (`ctrl_index`) and
+the players (`cadex_goto.Player`, `g2_judge.py`) write only the actions'
+ctrl, so a held drive keeps MjData's initial ctrl of 0. A held drive whose
+keyframe command is not 0 is therefore refused, not silently moved. The
+report gains `actions` and `held`.
+
+**Evidence.** leon VI's relay task `19e75738…` (14 actions) on cut
+`ec34dc12…` now gives goto bundle `46df09ee…` (model `f189f9d6…`) with
+**14 actions**. `j_tail_pitch/position` and `j_tail_yaw/position` are held,
+with 68 actor channels (76 − 2 positions − 2 velocities − 2×2 command
+channels). `cadex_train.py --gates` loads it with 14 actions and 4 gate
+channels. Over a 3 s stand on that model, with only the 14 actions' ctrl
+written, the 12 tail hinges stay within 0.257° of the keyframe, the figure
+ADR-031 measured on the cut.
+
+**Tests.** `training/test_cadex_joystick.py` covers four cases:
+- a source with two of three drives listed gives two actions, and the
+  held tail is out of the observations, reward and randomisation;
+- a source with none listed drives all three;
+- a held drive with a non-zero keyframe command is refused;
+- an action naming no actuator is refused.
+
+All four fail on the previous code.
+
+**Consequences.** A source whose actions list every drive, or none, gives
+the same task as before. T1 (the tail in the policy) needs a source bundle
+that lists the tail drives.
+

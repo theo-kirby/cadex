@@ -805,7 +805,8 @@ task the Go1 passed G2 on (Playground's joystick: `cx`/`cy`/`cw` goals, body-fra
 velocity, gyro, gravity, joint positions and velocities and the last command for
 the actor, home + 0.5 rad actions, Playground's reward terms and randomisation,
 upside-down termination) onto the model of any bundle, a concept's, a cut's or
-an export's. The root, the driven joints, their ranges and keyframe pose, the
+an export's. The root, the driven joints (the source bundle's actions; any other
+drive is held at its keyframe command, ADR-958), their ranges and keyframe pose, the
 feet (bodies with colliding geoms and none below them) and the floor are read
 from the model; substeps come from the model's own timestep. On the Go1 it
 writes every reward expression, randomisation entry, reset and termination of
