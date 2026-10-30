@@ -9770,6 +9770,10 @@ def validate_and_solve_assembly(
             assembly_properties, component_outputs, components, component_data, joint_data,
             diagnostics["status"] == "solved")
     by_name[assembly_output]["panels"] = panel_rows
+    if skip_fit and not skip_derived:
+        # Measured later by a build with the fit on (ADR-876); readers say
+        # "deferred" rather than reading every pair as unmeasured.
+        by_name[assembly_output]["fit_deferred"] = True
     if form_containment is not None:
         by_name[assembly_output]["form_containment"] = form_containment
     by_name[assembly_output]["assembly_data"] = {

@@ -85,6 +85,11 @@ VIEW_ARGS: dict[tuple[str, str], tuple[type, str]] = {
     ),
 }
 
+#: The modelling ops that skip the fit unless the model passes ``fit: true``
+#: (ADR-876): a design is iterated at the cost of its parts, and ``rebuild``
+#: measures the fit once it settles.
+FIT_DEFERRED_OPS = frozenset({"write_script", "edit_script", "set_params"})
+
 #: The tessellation request every modelling op carries: what `cadex params`
 #: asks for (ADR-293), and what the review dashboard draws (ADR-312).
 STANDARD_DISPLAY: dict[str, Any] = {"quality": "standard", "edges": False}
@@ -130,7 +135,11 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     ),
     "rebuild": (
         "Re-run the accepted script into a fresh document and report the "
-        "content digest. Use it to confirm the model still reproduces."
+        "content digest, with the fit measured: every component pair, the "
+        "joint sweeps and the panels. write_script, edit_script and "
+        "set_params skip the fit to stay fast, so this is the check to run "
+        "when a design settles, before you call it done, export it or train "
+        "on it. It also confirms the model still reproduces."
     ),
     "inspect": (
         "Read engine state. This is how you verify your work in numbers; "
@@ -400,6 +409,13 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
     },
 }
 
+FIT_ARG_DESCRIPTION = (
+    "Default false: the build skips the fit (interference between "
+    "components, joint sweeps, panel checks) so you can iterate quickly, "
+    "and its reply's fit reads `deferred`. Set true to measure it on this "
+    "build; rebuild measures it too."
+)
+
 ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
     ("write_script", "source"): (
         "The complete new script source. Lengths are millimetres. Declare "
@@ -413,6 +429,13 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
         "declares. Without it a script that would remove one is refused, "
         "because write_script replaces THE whole script and losing an output "
         "by accident is easy."
+    ),
+    ("write_script", "fit"): FIT_ARG_DESCRIPTION,
+    ("edit_script", "fit"): FIT_ARG_DESCRIPTION,
+    ("set_params", "fit"): FIT_ARG_DESCRIPTION,
+    ("rebuild", "fit"): (
+        "Default true: measure the fit. Set false only to re-run the script "
+        "without checking it."
     ),
     ("edit_script", "replacements"): (
         'Array of {"old": ..., "new": ...} objects, applied in order. Each '

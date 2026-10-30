@@ -36,7 +36,7 @@ from .revision_meshes import retain as retain_revision_meshes
 from .render import retained_reply
 from .studio import ANATOMY, FIT_REPORT, STUDIO
 from .tools import (
-    BRIDGE_TOOLS, STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision,
+    BRIDGE_TOOLS, FIT_DEFERRED_OPS, STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision,
     tool_definitions,
 )
 
@@ -160,6 +160,10 @@ class Bridge:
             args["expected_revision"] = self.state.revision
         if injects_display(protocol, tool):
             args["display"] = dict(STANDARD_DISPLAY)
+        # An edit skips the fit unless the model asks for it; `rebuild`
+        # measures it (ADR-876).
+        if tool in FIT_DEFERRED_OPS:
+            args.setdefault("fit", False)
 
         with self._lock:
             try:
@@ -337,7 +341,8 @@ class Bridge:
                     self.state.last_anatomy = self._read_anatomy()
                 return reply
         if reply is None:
-            args: dict[str, Any] = {"display": dict(STANDARD_DISPLAY)}
+            # Only to have something to draw: not a check (ADR-876).
+            args: dict[str, Any] = {"display": dict(STANDARD_DISPLAY), "fit": False}
             if injects_revision(self.client.engine.protocol, "rebuild"):
                 args["expected_revision"] = self.state.revision
             reply = self.client.request("rebuild", args)
@@ -1094,8 +1099,8 @@ def _fit_line(fit: dict[str, Any]) -> str:
     """The fit block as one progress-log phrase, both halves (ADR-366)."""
 
     verdict = str(fit.get("verdict") or "")
-    if verdict == "unavailable":
-        line = "fit unavailable"
+    if verdict in {"unavailable", "deferred"}:
+        line = "fit " + verdict
     else:
         line = "fit {:s}: {:d} failing of {:d} pair(s)".format(
             verdict, int(fit.get("failing_count") or 0),

@@ -9,7 +9,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from .inventory import InventoryError, _cell, _read_path
+from .inventory import InventoryError, _ask, _cell, _read_path
 from .studio import FIT_REPORT
 
 
@@ -46,6 +46,14 @@ def read_fit(
     if not isinstance(value, dict) or value.get("ok") is False:
         raise InventoryError(str(value))
     return fit_summary(value, minimum=minimum, maximum_volume=maximum_volume)
+
+
+def fit_deferred(client: Any) -> bool:
+    """True when the accepted build skipped the fit (ADR-876). One page."""
+
+    reply = _ask(client, {"scope": "clearance", "target": "", "path": "", "offset": 0, "limit": 50})
+    value = reply.get("value")
+    return isinstance(value, dict) and value.get("deferred") is True
 
 
 def read_fit_or_unavailable(client: Any) -> dict[str, Any]:
@@ -135,7 +143,7 @@ def verdict_brief(fit: dict[str, Any] | None, *, limit: int = VERDICT_BRIEF_LIMI
     fit = fit if isinstance(fit, dict) else {}
     verdict = str(fit.get("verdict") or "unavailable")
     brief: dict[str, Any] = {"revision": str(fit.get("revision") or "")[:12], "fit": verdict}
-    if verdict == "unavailable":
+    if verdict in {"unavailable", "deferred"}:
         brief["reason"] = str(fit.get("error") or fit.get("note") or "no fit was measured")
         return brief
     brief["pairs_checked"] = int(fit.get("pairs_checked") or 0)
@@ -235,8 +243,8 @@ def verdict_lines(brief: dict[str, Any]) -> list[str]:
             lines.append(f"  ... and {block[key + '_more']} more")
 
     verdict = str(brief.get("fit") or "")
-    if verdict == "unavailable":
-        lines.append(f"fit    unavailable: {brief.get('reason') or ''}")
+    if verdict in {"unavailable", "deferred"}:
+        lines.append(f"fit    {verdict}: {brief.get('reason') or ''}")
         return lines
     lines.append("fit    {:s}  {:d} failing of {:d} pair(s)  (revision {:s})".format(
         verdict, int(brief.get("failing_pairs") or 0), int(brief.get("pairs_checked") or 0),

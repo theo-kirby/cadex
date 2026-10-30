@@ -803,6 +803,9 @@ class CadexdServer:
         # generation while it does would be answering about a model that no
         # longer exists.
         self._invalidate_resident_workers()
+        # Not a tool argument: whether this build measures the fit (ADR-876).
+        args = dict(args)
+        measure_fit = args.pop("fit", True) is not False
         sink: dict[str, Any] = {}
         payload = self._run_lifecycle(
             self._service,
@@ -813,6 +816,7 @@ class CadexdServer:
                 {"id": request_id, "event": event}
             ),
             result_sink=sink,
+            measure_fit=measure_fit,
         )
         if payload.get("ok"):
             note = getattr(self._service, "note_document_changed", None)
@@ -865,6 +869,8 @@ class CadexdServer:
         }
         if isinstance(args.get("display"), dict):
             rebuild_args["display"] = args["display"]
+        if args.get("fit") is False:
+            rebuild_args["fit"] = False
         return self._lifecycle_response(
             request_id, "xscript.project.write_script", rebuild_args
         )

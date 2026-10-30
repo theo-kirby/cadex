@@ -79,13 +79,17 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
     # refused, because write_script replaces THE whole project script and
     # "add a part" is an easy way to ask for exactly that by accident
     # (ADR-045).
+    # `fit` (ADR-876): false skips the static fit, the joint sweeps and the
+    # panel checks, which are advisory and no digest covers, so a design can
+    # be iterated at the cost of its parts. Omitted means true; `rebuild`
+    # with it true is the check once a design settles.
     "write_script": (
         {"source": str, "expected_revision": str},
-        {"display": dict, "replace": bool},
+        {"display": dict, "replace": bool, "fit": bool},
     ),
     "edit_script": (
         {"replacements": list, "expected_revision": str},
-        {"display": dict},
+        {"display": dict, "fit": bool},
     ),
     # `nets` is the connection table's stored rows (ADR-065): a **full row
     # list**, not a patch, which is what lets the wiring editor add and
@@ -113,9 +117,9 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
     "set_params": (
         {"values": dict, "expected_revision": str},
         {"display": dict, "nets": list, "boards": list, "mounts": list,
-         "cages": list},
+         "cages": list, "fit": bool},
     ),
-    "rebuild": ({}, {"display": dict}),
+    "rebuild": ({}, {"display": dict, "fit": bool}),
     # A path, not bytes: the asset budget is 128 MB and the frame cap is 8 MB.
     # Both halves share a filesystem and the protocol already relies on it
     # (``inspect scope=image`` hands back a store path).

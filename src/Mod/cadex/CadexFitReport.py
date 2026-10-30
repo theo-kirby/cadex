@@ -1700,6 +1700,9 @@ def fit_summary(
     accepted revision publishes no assembly at all, which is a script with
     nothing to fit rather than one that fails.
 
+    ``deferred`` when the revision was built with ``fit=false`` (ADR-876):
+    nothing was measured on purpose, so the block has no rows to judge.
+
     ``sweep`` and ``attachments`` are the swept fit (ADR-366) and what the
     fixed joints actually hold (ADR-370), each from the same published value
     and each keeping its own verdict: a number read from any of the three
@@ -1708,6 +1711,18 @@ def fit_summary(
 
     if not isinstance(value, dict):
         value = {}
+    if value.get("deferred"):
+        # Built with fit=false (ADR-876): not a failure and not a pass.
+        return {
+            "verdict": "deferred",
+            "source": FIT_SOURCE,
+            "revision": str(value.get("revision") or ""),
+            "assembly": str(value.get("assembly") or ""),
+            "pairs_checked": 0,
+            "failing_count": 0,
+            "failing": [],
+            "note": str(value.get("reason") or "The fit was deferred on this build."),
+        }
     pairs = [row for row in (value.get("pairs") or []) if isinstance(row, dict)]
     counts = {"clear": 0, "intersection": 0, "below clearance": 0, "unknown": 0}
     failing: list[dict[str, Any]] = []

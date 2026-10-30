@@ -48263,3 +48263,65 @@ fit failures and complete sweep coverage. One jaw panel has an equivalent
 solid but a different BREP representation and last-digit facts, so overall
 digests differ; this is recorded as an open reproducibility finding in the
 audit, not hidden by rounding or a weakened digest check.
+
+
+## ADR-876 — An edit defers the fit; `rebuild` checks it (2026-10-30)
+
+**Context.** Every accepted build measured the fit: every component pair at
+the solved pose, every limited joint swept through its range, every panel.
+On a large creature it is most of an edit. A whole-robot geometry edit on
+leon V took 1,332 s, and that edit's fit is the larger share
+(`docs/PERFORMANCE-AUDIT.md` §9). The fit is advisory: it never refuses a
+build, and no digest covers it, which is why a restore already skips it
+(ADR-630). An agent changing the legs, then the panels, then the drives paid
+for the whole check at every step, when the owner wanted it once, at the end.
+
+**Decision.**
+- **`write_script`, `edit_script`, `set_params` and `rebuild` take an
+  optional `fit` (bool)** in `CadexdProtocol.OP_ARG_SPECS`. The engine
+  default stays true, so a client that does not send it changes nothing.
+  `fit: false` runs the worker with `skip_fit`. The assembly publishes
+  `fit_deferred`; `inspect scope=clearance` answers `deferred: true` with no
+  pairs and a reason. `CadexFitReport.fit_summary` reads that as verdict
+  **`deferred`**, never a pass and never a fail. Without the marker every
+  pair would have read as unmeasured, a fail with thousands of rows.
+- **The agent's edits defer by default.** The `cadex mcp` bridge sends
+  `fit: false` on the three edit ops unless the model passes `fit: true`.
+  `rebuild` measures, and its description now says it is the check to run
+  when a design settles and before it is called done, exported or trained.
+  The guidance says the same.
+- **So do the CLI's edits.** `cadex script --set` and `cadex params` defer
+  unless given `--fit`. `cadex clearance` checks: when the accepted build
+  deferred the fit it rebuilds the same revision with the fit on, with
+  display, so the measured attempt becomes the pin, then writes
+  `docs/clearance.md`. `--sweep` still never rebuilds.
+- **Unchanged:** acceptance and digests (the fit is not recipe material),
+  restore, export, the dashboard (which shows no fit verdict), `cadex
+  revision`'s restore of an old revision, which still measures, and
+  `preview_params`.
+
+**Evidence.** A scratch copy of leon V (rev `c602ecfd`), one build at a time,
+the engine at this commit (`docs/PERFORMANCE-AUDIT.md` §9):
+
+| step | wall |
+|---|---|
+| re-accept, deferred, cold part cache (the engine edit changed its fingerprint) | 447 s |
+| `panel_gap` 3.5 → 3.0, deferred | **469 s** |
+| `cadex clearance`: rebuild with the fit, then the report | 865 s |
+| `panel_gap` 3.0 → 2.5, `--fit` | **1,332 s** |
+
+The deferred edit and its check accepted the same revision (`479e53ce`) and
+digest (`4753cb63`). The check measured 5,050 static pairs, as ADR-875's run
+did. The `--fit` edit passed, 0 of 5,050 pairs failing, 14 of 14 joints
+swept. An edit is 65% faster; the check costs what it did and runs once, so
+five edits and a check take ~3,200 s against ~6,700 s.
+
+**Consequences.**
+- An agent can now report a design as checked without having checked it, if
+  it ignores `deferred`. The guidance names `deferred` among the verdicts that
+  checked nothing, and the brief prints it as such. Nothing in `cadex export`,
+  `train` or `evaluate` refuses a deferred pin. Whether one should is open.
+- Placing parts early is where a clash is cheapest to move. The guidance
+  asks for `fit: true` there.
+- The parts themselves are now the cost of an edit (469 s on leon V), and
+  mostly skin planning (§9). Two smaller cuts are named there and not taken.

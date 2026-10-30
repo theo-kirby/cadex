@@ -1,6 +1,6 @@
 # ROADMAP.md — Where Cadex Stands and What's Next
 
-Verified against source: 2026-10-29
+Verified against source: 2026-10-30
 
 The destination is [`VISION.md`](VISION.md): *describe a robot or mechanism
 to your agent; get back a design you can build and a policy that moves it*,
@@ -51,6 +51,8 @@ banded goals).
 
 - [x] Remove redundant CLI restores, reuse accepted render/section display,
   and parallelize cold static fit pairs within worker budgets (ADR-875).
+- [x] Edits defer the fit; `rebuild` / `cadex clearance` check it once a
+  design settles. A leon V geometry edit takes 469 s, against 1,332 s with the fit (ADR-876).
 
 **Truth and cleanup**
 - [x] **The identity docs agree** (ADR-833): README, VISION (broadened North

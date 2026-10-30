@@ -1,6 +1,6 @@
 # PERFORMANCE-AUDIT.md — Build cost on large creature assemblies
 
-Verified against source: 2026-10-29
+Verified against source: 2026-10-30
 
 What this is: a measured audit of where the time goes when an agent builds
 and reads a large catalog assembly through `cadex mcp`, done after the
@@ -352,3 +352,60 @@ only the frozen **old** part-building code, resetting its shape memo between
 builds. It also produced two different BREP hashes, with volumes differing
 by about 2e-11 mm³. The representation instability therefore predates this
 patch; its underlying kernel/build-context cause remains unresolved.
+
+## 9. Where a large frame's build goes, and a deferred fit (2026-10-30, ADR-876)
+
+A whole-robot geometry edit on leon V (`panel_gap`, orun21 §9) was 2,286
+CPU-s in 1,408 s of wall. The worker's ledger keeps only its five dearest
+stages: `chest_frame` 290 CPU-s, `skull_frame` 184, `pelvis_frame` 86, then
+static pairs at 84–89 each. Parts are roughly a third of that build and the
+fit (static pairs, joint sweeps, panels) the rest.
+
+**The three frames, profiled.** Each was built cold, alone, under cProfile:
+the accepted attempt's own `request.json` (leon V rev `c602ecfd`) ran in
+`FreeCADCmd` with `_serialize_part_cached` patched to skip every other output
+and build the target with no part cache. They ran unpinned and in parallel, so
+OCCT's own threads took more CPU than the worker's four pinned CPUs allow.
+Wall time is the comparable figure:
+
+| frame | wall | CPU | skin plans (`build_skin_plan`) | what else |
+|---|---|---|---|---|
+| `chest_frame` | 143 s | 1,245 s | 122 s, 3 plans | 676 script `fuse`s 49 s (inside the plans, which build what they wrap); formers 21 s; `isValid` 12.7 s (9,610 calls) |
+| `skull_frame` | 177 s | 440 s | 137 s, 2 plans | fillets 44 s: 90 blends made 1,286 kernel attempts, 26 failed their first try and were searched (`_blend_partition` 24 s, `_blend_largest_radius` 5 s); `removeSplitter` 25 s (1,811 refines); `isValid` 15.7 s; `Shape.Solids` in output normalisation 16.7 s |
+| `pelvis_frame` | 62 s | 322 s | 49 s, 8 plans | formers 18 s; `isValid` 5.1 s |
+
+What it says:
+
+- **A frame is mostly the skins around it.** A frame's panel bosses need
+  the skin plans of the panels mounted on it, and a plan builds the geometry
+  it wraps. 70–85% of each frame is `build_skin_plan`, and inside it is
+  ordinary OCCT work: `fuse`, `cut`, `common`, `slice`, `section`,
+  `makeOffsetShape`. No single call is pathological. `part.fuse` already
+  hands OCCT all its operands at once. A mesh kernel would not help here
+  without reimplementing the skin planner, which is mostly surface work
+  (sections, slices, offsets).
+- **Two moderate, safe-looking wins remain, not taken here.** (1) Every
+  operation's result is validated, and a single-solid compound is
+  validated again after its solid is taken out of it
+  (`_build_part_shape_checked`, about 9% of each frame between the
+  `isValid` calls and the `Solids` read). (2) A blend whose first attempt
+  fails is searched again on every build; caching the search's outcome
+  against the blend's inputs would save the skull's ~30 s. Both change
+  only work that repeats, but both need the corpus check that digest-
+  adjacent changes get.
+- **The fit is the larger share, and it is advisory.** It never refuses a
+  build and no digest covers it, so ADR-876 lets a build skip it and leaves
+  the check for when the design settles.
+
+**Measured after ADR-876** (a scratch copy of leon V, one build at a time):
+
+| step | wall |
+|---|---|
+| re-accept, deferred, cold part cache | 447 s |
+| `panel_gap` edit, fit deferred | **469 s** |
+| `cadex clearance` on it (rebuild with the fit, warm parts) | 865 s |
+| `panel_gap` edit, `--fit` | **1,332 s** |
+
+Same revision and digest from the deferred edit and its check, so skipping
+the fit moved no digest. The `--fit` edit passed 5,050 of 5,050 pairs and 14 of 14
+swept joints.
