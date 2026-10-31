@@ -921,7 +921,10 @@ class Player:
     bundle's box course, or the plane, until ``play --course`` stands another.
     A channel with no source here (contacts, trackers) is refused.
     A policy trained with ``--gates`` reads the next gates instead of speed
-    goals (ADR-955); :meth:`control` is given them.
+    goals (ADR-955); :meth:`control` is given them. One trained with
+    ``--race-scan`` (ADR-967) reads the base's height over :attr:`ground` at
+    the header's grid, from the base along its heading; ``race --terrain``
+    stands the course's relief there.
     """
 
     #: A racer's gate count and channels (ADR-955); none for a joystick policy.
@@ -1013,6 +1016,13 @@ class Player:
         self.channels = list(header["observations"])
         self.scans = [row for row in task.get("scans") or ()
                       if set(row["channels"]) & set(self.channels)]
+        # ADR-967: a racer's scan of the ground ahead, from the base, in the
+        # trainer's grid; read over :attr:`ground` like a bundle's scan.
+        self.race_scan = (header.get("training") or {}).get("race_scan")
+        if self.race_scan:
+            self.scans.append({"body_id": self.base, "scale": 1000.0,
+                               "offsets_mm": self.race_scan["offsets_mm"],
+                               "channels": self.race_scan["channels"]})
         scanned = {channel for row in self.scans for channel in row["channels"]}
         terrain = task.get("terrain") or {}
         self.ground = (course_ground(np, terrain) if terrain.get("kind") == "boxes"

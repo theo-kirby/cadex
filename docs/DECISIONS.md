@@ -49197,3 +49197,45 @@ obstacles; a scaled b1 field is the raw field at k/levels; held-out `b1` and
 fields stay paws-only contact (ADR-854, ADR-962): a trunk that strikes a box
 face passes through it in training though not in the judge's MuJoCo, so a
 blind policy's tumble at a box face is not trained against directly.
+
+## ADR-967 — A racer reads a height scan of the ground ahead (2026-10-31)
+
+**Context.** ADR-966's boxes train, but the actor is blind: under
+`--race-terrain` the trainer refused a bundle's height scan (ADR-715), and a
+bundle's scan reads the bundle's own terrain, not the trainer's relief fields
+(ADR-962). A blind racer meets a 20–60 mm box when a paw strikes it, about
+0.2 s before it falls (leon VI's lb1: 0.76 falls per horizon at its top level).
+
+**Decision.**
+- `cadex_train.py --race-scan default|AHEAD,..:LEFT,..` (with `--gates`) adds
+  a `race_scan` block to the race's task: points ahead of and left of the
+  base's centre along its heading, in mm (`default` −200..800 every 200 by
+  −120, 0, 120: 18 points), channels `rscan<i>` after the gate channels in the
+  actor's and the critic's vectors.
+- Each channel is the base's height over the ground at its point in mm, read
+  bilinearly from the episode's own relief field (the plane on level 0, and
+  beyond the field), as `cadex_goto.terrain_ground` reads a race's terrain.
+  No noise is added.
+- A warm start from a policy that read every other actor channel in order
+  gains the scan's inputs at zero weight with fresh statistics (ADR-859's
+  rule), so the warmed actor plays its source until training moves them.
+- The policy header carries `training.race_scan`; `cadex_goto.Player` reads it
+  and plays the scan from the base over its ground, which `race --terrain`
+  stands as the course's relief (the plane without it).
+- A bundle that carries its own scan is refused with `--race-scan`.
+
+**Evidence.** A warm start from leon VI's lb1 on its 12-action gate bundle at
+1024 envs: "the actor gains 18 height-scan inputs at zero weight", two
+iterations, witness 2.7e-7; its policy races a train b1 course on the export
+through `race --terrain b1`.
+
+**Tests.** `training/test_race_scan.py`: the grid's default and parsed forms
+and its refusals; the scan follows the gate channels and a warm start gains
+only it; `race_scan_vector` equals `terrain_ground` over a b1 field at random
+poses and the plane on level 0; the built environment's actor reads it over
+each episode's own field across fresh episodes; the player reads the header's
+grid over its ground. Training suite 170 passed.
+
+**Consequences.** A scanned racer is judged with the same terrain it is
+raced over. The scan is a simulated elevation map: a robot needs a depth
+sensor, odometry and a map to read it (the project's sensor spec).

@@ -300,6 +300,9 @@ mesh (ADR-853–855, `docs/MUJOCO.md` *The floor and terrain*).
    every leg on that relief, `boxes` the same boxes on the plane.
    `--race-terrain b1` (ADR-966) trains over them: each field scatters
    0.2 boxes and steps per m², about one every 3 m of a run.
+   `--race-scan default` (ADR-967) lets the actor see them: the base's
+   height over the ground on 18 points up to 0.8 m ahead, warmed in at zero
+   weight from a blind racer.
 
 ## D. Defaults (from R1, RESEARCH.md §3 and §5)
 

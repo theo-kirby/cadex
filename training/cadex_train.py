@@ -790,6 +790,11 @@ def body_layout(task: dict[str, Any]) -> dict[str, Any] | None:
             name, gain, centre = f"command.{channel}", 1.0, 0.0
         elif channel in gate_channels(task):
             name, gain, centre = f"gate.{channel}", 1.0, 0.0
+        elif channel in race_scan_channels(task):
+            # ADR-967: by its index on a grid named by its offsets, in metres.
+            record = task["race_scan"]
+            grid = hashlib.sha256(json.dumps(record["offsets_mm"]).encode("ascii")).hexdigest()[:12]
+            name, gain, centre = f"racescan.{grid}.{record['channels'].index(channel)}", 0.001, 0.0
         else:
             grid = name = None
             for record in task.get("scans") or ():
@@ -1206,6 +1211,10 @@ def check_policy_fits(
             and set(gained) <= set(scan_channels(bundle["task"], policy_only=True))):
         curriculum = curriculum + ["scans.actor"]
         wanted_channels = read
+    elif race_scan_gained(read, bundle["task"]) and not family_morph_names(bundle):
+        # ADR-967: a race scan joins after every input the source read, at
+        # zero weight, as ADR-859's scan does.
+        wanted_channels = read
     if read != wanted_channels:
         refuse(
             "the observation channels, in order",
@@ -1543,6 +1552,69 @@ def gate_channels(task: dict[str, Any]) -> list[str]:
     """
 
     return [str(channel) for channel in (task.get("gates") or {}).get("channels") or ()]
+
+
+def race_scan_channels(task: dict[str, Any]) -> list[str]:
+    """The race scan's channels under ``--race-scan`` (ADR-967), after the gates'.
+
+    ``rscan<i>``: the base's height in mm over the ground at the scan's
+    ``i``-th point, ahead of and to the left of the base along its heading.
+    The policy and the critic read them; a task without a ``race_scan``
+    block has none.
+    """
+
+    return [str(channel) for channel in (task.get("race_scan") or {}).get("channels") or ()]
+
+
+def race_scan_gained(read: Sequence[str], task: dict[str, Any]) -> int:
+    """How many race-scan inputs a warm start gains (ADR-967): the count of
+    ``race_scan_channels`` when the source read every other actor channel in
+    order and none of them, else 0."""
+
+    wanted = actor_channels(task)
+    scan = race_scan_channels(task)
+    read = list(read)
+    if scan and wanted[:len(read)] == read and wanted[len(read):] == scan:
+        return len(scan)
+    return 0
+
+
+def race_scan_vector(xp: Any, offsets_mm: Any, x_m: Any, y_m: Any, z_m: Any, yaw: Any,
+                     grids: Any, level: Any, field: dict[str, Any] | None) -> Any:
+    """The race scan (ADR-967), ``(..., P)``: the base's height in mm over
+    the ground at each of ``offsets_mm`` ``(P, 2)`` (ahead, left of the base
+    along ``yaw``). ``grids`` ``(K, nrow, ncol)`` holds the run's relief
+    fields in mm, ``level`` ``(...)`` the field each environment stands on
+    (0 the plane), ``field`` the fields' shared ``x_range_mm``, ``y_range_mm``
+    and ``cell_mm``; ``None`` reads the plane. A field is read bilinearly
+    between its grid points (``cadex_goto.terrain_ground``) and is the plane
+    beyond them."""
+
+    offsets = xp.asarray(offsets_mm, dtype=x_m.dtype)
+    cos, sin = xp.cos(yaw)[..., None], xp.sin(yaw)[..., None]
+    px = 1000.0 * x_m[..., None] + cos * offsets[:, 0] - sin * offsets[:, 1]
+    py = 1000.0 * y_m[..., None] + sin * offsets[:, 0] + cos * offsets[:, 1]
+    top = 1000.0 * z_m[..., None]
+    if field is None or grids is None:
+        return top - 0.0 * px
+    cell = float(field["cell_mm"])
+    nrow, ncol = int(grids.shape[1]), int(grids.shape[2])
+    u = (px - float(field["x_range_mm"][0])) / cell
+    v = (py - float(field["y_range_mm"][0])) / cell
+    inside = (u >= 0.0) & (u <= ncol - 1) & (v >= 0.0) & (v <= nrow - 1)
+    u, v = xp.clip(u, 0.0, ncol - 1), xp.clip(v, 0.0, nrow - 1)
+    c = xp.minimum(xp.floor(u), ncol - 2).astype(xp.int32)
+    r = xp.minimum(xp.floor(v), nrow - 2).astype(xp.int32)
+    fu, fv = u - c, v - r
+    k = xp.clip(level - 1, 0, int(grids.shape[0]) - 1)[..., None] * xp.ones_like(c)
+
+    def at(rr, cc):
+        return grids[k, rr, cc]
+
+    ground = ((1.0 - fv) * ((1.0 - fu) * at(r, c) + fu * at(r, c + 1))
+              + fv * ((1.0 - fu) * at(r + 1, c) + fu * at(r + 1, c + 1)))
+    ground = xp.where(inside & (level[..., None] > 0), ground, 0.0)
+    return top - ground
 
 
 def waypoint_vector(xp: Any, task: dict[str, Any], told: Any, xipos: Any,
@@ -1959,7 +2031,8 @@ def channels(task: dict[str, Any]) -> list[str]:
         for record in task["observations"]
         for channel in record["channels"]
     ] + (goal_channels(task) + command_channels(task) + acceleration_channels(task)
-         + tracking_channels(task) + scan_channels(task) + gate_channels(task))
+         + tracking_channels(task) + scan_channels(task) + gate_channels(task)
+         + race_scan_channels(task))
 
 
 def actor_channels(task: dict[str, Any]) -> list[str]:
@@ -1976,7 +2049,7 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
     to do, so the policy always reads it. Then the policy's command channels
     (ADR-696), then a gait reference's clock (ADR-706), then a height scan
     marked ``role: policy`` (ADR-748), then the next gates under ``--gates``
-    (ADR-955).
+    (ADR-955), then a race scan under ``--race-scan`` (ADR-967).
     """
 
     return [
@@ -1986,7 +2059,8 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
         for channel in record["channels"]
     ] + (goal_channels(task) + command_channels(task, policy_only=True)
          + tracking_channels(task, policy_only=True)
-         + scan_channels(task, policy_only=True) + gate_channels(task))
+         + scan_channels(task, policy_only=True) + gate_channels(task)
+         + race_scan_channels(task))
 
 
 def tracker_reading(xp: Any, true_mm: Any, tracker: dict[str, Any],
@@ -2103,7 +2177,8 @@ def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
                 floor.append(0.25)
     return floor + [0.0] * (len(goal_channels(task)) + len(command_channels(task))
                             + len(acceleration_channels(task)) + len(tracking_channels(task))
-                            + len(scan_channels(task)) + len(gate_channels(task)))
+                            + len(scan_channels(task)) + len(gate_channels(task))
+                            + len(race_scan_channels(task)))
 
 
 def sensor_noise_std(task: dict[str, Any]) -> list[float]:
@@ -2883,6 +2958,8 @@ def gate_task(task: dict[str, Any], options: argparse.Namespace) -> dict[str, An
     """
 
     if not getattr(options, "gates", False):
+        if getattr(options, "race_scan", None):
+            raise SystemExit("--race-scan reads the ground under a gate race; give --gates")
         return task
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import cadex_goto
@@ -2908,12 +2985,50 @@ def gate_task(task: dict[str, Any], options: argparse.Namespace) -> dict[str, An
     ahead = int(options.gate_ahead)
     if ahead < 1:
         raise SystemExit("--gate-ahead is how many gates the policy sees, from 1")
-    return {**task, "goal": [],
-            "reward": [term for term in task["reward"] if not reads_goal(term["expression"])],
-            "gates": {"ahead": ahead, "unit": "m", "radius_m": float(options.gate_radius),
-                      "channels": cadex_goto.gate_channel_names(ahead),
-                      "dropped_reward": [str(term["label"]) for term in task["reward"]
-                                         if reads_goal(term["expression"])]}}
+    raced = {**task, "goal": [],
+             "reward": [term for term in task["reward"] if not reads_goal(term["expression"])],
+             "gates": {"ahead": ahead, "unit": "m", "radius_m": float(options.gate_radius),
+                       "channels": cadex_goto.gate_channel_names(ahead),
+                       "dropped_reward": [str(term["label"]) for term in task["reward"]
+                                          if reads_goal(term["expression"])]}}
+    grid = race_scan_grid(getattr(options, "race_scan", None))
+    if grid is not None:
+        if task.get("scans"):
+            raise SystemExit("--race-scan: this bundle already carries a height scan (ADR-715)")
+        raced["race_scan"] = grid
+    return raced
+
+
+#: The race scan's default grid (ADR-967): points ahead of the base's
+#: centre along its heading, -0.2 to 0.8 m every 0.2 m, by points to its
+#: left, -0.12, 0 and 0.12 m, in mm. At 2 m/s the farthest row is 0.4 s ahead.
+RACE_SCAN_AHEAD_MM = (-200.0, 0.0, 200.0, 400.0, 600.0, 800.0)
+RACE_SCAN_LEFT_MM = (-120.0, 0.0, 120.0)
+
+
+def race_scan_grid(text: str | None) -> dict[str, Any] | None:
+    """``--race-scan`` resolved (ADR-967): ``default`` is
+    :data:`RACE_SCAN_AHEAD_MM` by :data:`RACE_SCAN_LEFT_MM`; ``A,B,..:L,M,..``
+    names the rows ahead and the columns left in mm. The block names its
+    points (ahead outer, left inner) and channels ``rscan<i>``; None without
+    the flag."""
+
+    if not text:
+        return None
+    if str(text) == "default":
+        ahead, left = RACE_SCAN_AHEAD_MM, RACE_SCAN_LEFT_MM
+    else:
+        parts = str(text).split(":")
+        if len(parts) != 2:
+            raise SystemExit(f"--race-scan {text!r} is 'default' or AHEAD,..:LEFT,.. in mm")
+        ahead = parse_floats(parts[0], len(parts[0].split(",")), "--race-scan ahead")
+        left = parse_floats(parts[1], len(parts[1].split(",")), "--race-scan left")
+    offsets = [[float(a), float(b)] for a in ahead for b in left]
+    return {"body": "base", "unit": "mm", "offsets_mm": offsets,
+            "channels": [f"rscan{i}" for i in range(len(offsets))],
+            "reads": "the base's height over the ground at each point, ahead of and left of "
+                     "the base's centre along its heading; the episode's relief field, or "
+                     "the plane"}
 
 
 def parse_floats(text: str, count: int, flag: str) -> tuple[float, ...]:
@@ -3717,6 +3832,20 @@ def build_environment(
         guide_q, guide_dq = jnp.asarray(guide["q"]), jnp.asarray(guide["dq"])
         guide_qpos, guide_dof = jnp.asarray(guide["qpos"]), jnp.asarray(guide["dof"])
     paying = gating or referencing
+    # ADR-967: the race scan, a PYTHON bool on the same terms; it reads the
+    # episode's relief field (ADR-962), or the plane without --race-terrain.
+    race_scanning = bool(task.get("race_scan"))
+    race_scan_field = race_scan_grids = None
+    if race_scanning:
+        race_scan_offsets = jnp.asarray(task["race_scan"]["offsets_mm"], dtype=jnp.float32)
+        if relieving:
+            shapes = {(int(f["nrow"]), int(f["ncol"]), float(f["cell_mm"]),
+                       tuple(f["x_range_mm"]), tuple(f["y_range_mm"])) for f in relief_drawn}
+            if len(shapes) != 1:
+                raise SystemExit("--race-scan: the relief fields do not share one grid")
+            race_scan_field = relief_drawn[0]
+            race_scan_grids = jnp.asarray(np.stack([np.asarray(f["heights_mm"], dtype=np.float32)
+                                                    for f in relief_drawn]))
 
     def gate_plan(state):
         """Each environment's course, turned by its heading about where its
@@ -4219,7 +4348,7 @@ def build_environment(
     bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
 
     def sensed(key, data, picks, steps, origin, carry, course=None, turned=None, going_state=None,
-               gate_state=None):
+               gate_state=None, relief_level=None):
         """The observation the policy acts on, in the state ``data`` holds.
 
         What the policy acts on carries its sensors' noise; the reward and
@@ -4265,6 +4394,15 @@ def build_environment(
         if gating:
             # ADR-955: the gates the policy races to, last in every vector.
             vector = jnp.concatenate([vector, gate_reading(gate_state, data)], axis=-1)
+        if race_scanning:
+            # ADR-967: the ground ahead on the episode's own field, after the gates.
+            x, y, yaw, _vx, _vy = gate_pose(data)
+            z = data.qpos[:, race["qpos"] + 2]
+            level = (relief_level if relief_level is not None
+                     else jnp.zeros((envs,), dtype=jnp.int32))
+            vector = jnp.concatenate([vector, race_scan_vector(
+                jnp, race_scan_offsets, x, y, z, yaw, race_scan_grids, level,
+                race_scan_field)], axis=-1)
         return key, vector
 
     def observation(vector):
@@ -4371,7 +4509,7 @@ def build_environment(
             # ADR-957: the guide's weight, faded by the train loop.
             info["reference_weight"] = jnp.full((envs,), float(options.reference_weight), jnp.float32)
         key, vector = sensed(key, data, picks, steps, origin, carry, course, turned,
-                             info.get("goto"), info.get("gates"))
+                             info.get("goto"), info.get("gates"), info.get("relief"))
         info["key"] = key
         return State(pipeline_state=data, obs=observation(vector),
                      reward=jnp.zeros((envs,), dtype=jnp.float32),
@@ -4567,7 +4705,7 @@ def build_environment(
             info["gate_entered"] = jnp.where(blown, 0.0, entered.astype(jnp.float32))
             info["gate_speed"] = jnp.where(blown, 0.0, rewarded).astype(jnp.float32)
         key, vector = sensed(key, data, picks, steps, origin, carry, course, turned,
-                             info.get("goto"), info.get("gates"))
+                             info.get("goto"), info.get("gates"), info.get("relief"))
         info.update(key=key, forces=forces, starts=starts, elapsed=elapsed,
                     steps=steps, carry=carry,
                     truncation=truncation.astype(jnp.float32),
@@ -4912,7 +5050,8 @@ def train(
                 f"{activation_name!r}. Weights do not carry across an "
                 f"activation; pass --activation {trained_with} to continue it.")
         gained = (len(env.actor_names) - len(source_header.get("observations") or ())
-                  if "scans.actor" in (curriculum_keys or ()) else 0)
+                  if "scans.actor" in (curriculum_keys or ())
+                  else race_scan_gained(source_header.get("observations") or (), bundle["task"]))
         restored = unflatten_parameters(
             np, decoded["weights"], [(shapes[0][0] - gained, shapes[0][1])] + list(shapes[1:]))
         if gained:
@@ -5731,6 +5870,8 @@ def policy_header(
                                         "after an iteration whose mean rewarded speed "
                                         "reached PROMOTE of it, up to MAX; it never falls"}}
                if task.get("gates") else {}),
+            # ADR-967: the race scan the actor reads, so a judge reads it too.
+            **({"race_scan": dict(task["race_scan"])} if task.get("race_scan") else {}),
             # ADR-962: the relief the race ran over, and how it was dealt.
             **({"race_terrain": {**trained["relief"],
                                  "curriculum": "each episode stands on a level drawn uniformly in "
@@ -5936,6 +6077,12 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "of cadex_goto's race terrain round the start, field k scaled to k/levels; "
              "boxes and b1 (ADR-966) scatter boxes and steps over each field; "
              "the paws (the floor's spheres and capsules) touch it, a box does not")
+    parser.add_argument(
+        "--race-scan", default=None, metavar="default|AHEAD,..:LEFT,..",
+        help="the actor reads the base's height over the ground ahead (ADR-967): a grid of "
+             "points ahead and left of the base along its heading in mm, after the gate "
+             "channels, read over the episode's relief field; 'default' is "
+             "-200..800 every 200 by -120,0,120. A warm start gains them at zero weight")
     parser.add_argument(
         "--relief-levels", type=int, default=RELIEF_LEVELS,
         help="how many fields of relief --race-terrain lays, each a level of amplitude")

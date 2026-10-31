@@ -805,6 +805,10 @@ outside its boxes, and `gates.json` lists every box's leg, place, size, yaw
 and height. The trainer lays them too (ADR-966): `--race-terrain b1` scatters
 0.2 obstacles per m² over each training field, boxes on the graded hills with
 `--relief-fields graded-rough` (field 1 stays rough alone).
+`--race-scan default` (ADR-967) gives the actor the base's height over the
+ground on 18 points ahead (−0.2 to 0.8 m by −0.12 to 0.12 m), read over the
+episode's own field, after the gate channels; a warm start gains them at zero
+weight, and `race` reads them over the course's terrain.
 
 **Race terrain in training (ADR-962).** `--race-terrain rough|hills|u1` (with
 `--gates`) lays `--relief-levels` K fields of that relief round the start,
