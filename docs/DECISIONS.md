@@ -49034,3 +49034,37 @@ policy with `--race-terrain u1`, judged on held-out `race --terrain` and flat
 courses. A 49.2 M screen at K = 4 costs about 800 s of training against
 lfast2's 342 s. A field is fixed for the run, so a policy may learn its
 features; the held-out judge measures that. Films do not draw the relief.
+
+## ADR-963 — Graded relief fields: every field at the race's full amplitude (2026-10-30)
+
+**Context.** ADR-962 scales field k of K to k/K of its draw, so of leon VI's
+four fields (seed 1) only the top one is full amplitude: hill grades 2.7, 5.0,
+6.6 and 10.6°, rough relief 7.5–30 mm. A held-out `u1` race draws hills
+8–15° (`RACE_TERRAIN["grade_deg"]`) under full 30 mm rough relief everywhere.
+l6r1 lu1 (leon VI ADR-048), trained so, finishes 5/10 held-out `u1` courses
+with four falls where hills and rough relief add.
+
+**Decision.** `cadex_train.py --relief-fields scaled|graded` (default
+`scaled`, ADR-962 unchanged). `graded` lays every field unscaled — rough
+relief at the race's full height — and fixes field k's hills' steepest grade
+at `low + (high − low)·k/K` of the race's `grade_deg` range by passing
+`grade_deg=(g, g)` to `cadex_goto.field_terrain`. The draw stream is the
+scaled field's (the fixed range still consumes its draw), so the seed string,
+the layout of hills, bumps, rocks and tiles and the train-only split are as
+ADR-962's; only the hills' amplitude and the rough relief's scale differ. The
+top field is as steep as the steepest held-out race. The rule carries
+`fields`, so the policy header `training.race_terrain` names it. The
+curriculum, levels, model and contact are ADR-962's.
+
+**Evidence.** Seed 1, K = 4, `u1`: grades 9.75, 11.5, 13.25 and 15.0°,
+highest 254, 324, 442 and 420 mm, rough relief 29.8–30.0 mm on every field.
+
+**Tests.** `training/test_race_terrain_training.py`: graded fields are their
+own unscaled draws on the same seed stream (the heights and the digest of
+`field_terrain` with the fixed grade), every one carries full rough relief, at
+least the scaled field's, hills alone climb the race's grade range to its top;
+the rule carries `fields` (`scaled` by default) and refuses another name.
+
+**Consequences.** RECIPE §T.9: a U1 screen may train on held-out's full
+amplitude from the first level. A graded field's cost per iteration is the
+scaled field's: the grids are the same size.

@@ -188,7 +188,7 @@ Go1 benchmark that Brax learns to trot in under six minutes (docs/MUJOCO.md
 | `--terrain-curriculum`, `--terrain-promote` | off, `1` | deal a leveled pool by level and move each environment by points reached (ADR-856, below) |
 | `--gates`, `--gate-ahead`, `--gate-radius` | off, `2`, `0.25` | race through gates: the policy sees the next K gates instead of speed goals (ADR-955, below) |
 | `--gate-weights`, `--gate-ceiling` | `1,0.5,0.1`, `0.5,0.25,6,0.7` | the race's progress, entry and time weights; the speed curriculum's START,STEP,MAX,PROMOTE (ADR-955) |
-| `--race-terrain`, `--relief-levels`, `--relief-ceiling`, `--relief-half` | off, `4`, `1,0.1,10`, `15` | race the gates over race terrain: `rough`, `hills` or `u1` relief in train-split fields, dealt by a curriculum on amplitude (ADR-962, below) |
+| `--race-terrain`, `--relief-levels`, `--relief-ceiling`, `--relief-half`, `--relief-fields` | off, `4`, `1,0.1,10`, `15`, `scaled` | race the gates over race terrain: `rough`, `hills` or `u1` relief in train-split fields, dealt by a curriculum on amplitude (ADR-962, below); `graded` lays every field at full amplitude, grade rising field by field (ADR-963) |
 | `--gait-reference`, `--reference-weight`, `--reference-fade` | off, `0.5`, `0` | a gait guide that fades: a CadexGait name (`gallop`) or a clip JSON (ADR-957, below) |
 | `--reference-speed`, `--reference-legs` | `1.5`, the task's feet | a named guide's speed and feet |
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
@@ -820,6 +820,9 @@ seed, scale, grade, highest point and sha256). The actor is blind: a bundle
 with a height scan or a terrain pool is refused. Each field costs about 0.5 s
 per 8192 × 20-step iteration on an RTX 5090 (leon VI's cut: 0.64 s flat, 1.71 s
 at K = 2, 2.66 s at K = 4).
+`--relief-fields graded` (ADR-963) lays every field unscaled, full rough relief
+and all, with field k's steepest hill grade k/K of the way up the race's
+`grade_deg` range.
 
 `race` judges a racer on stock MuJoCo (here the export's bundle, by channel
 name): it runs to the last gate, a fall, 30 s with no gate, or the course at

@@ -99,9 +99,36 @@ def test_field_k_is_its_own_draw_scaled_to_k_of_the_levels() -> None:
     assert len({f["sha256"] for f in fields}) == 3
 
 
+def test_graded_fields_are_full_amplitude_and_climb_the_races_grades() -> None:
+    """ADR-963: every graded field is its own unscaled draw on the same seed
+    stream, rough relief at the race's full height, its hills' steepest grade
+    k/levels of the way up ``grade_deg``; the top field is the steepest race's."""
+
+    rule = T.relief_rule(options("--relief-levels", "4", "--relief-fields", "graded"))
+    assert rule["fields"] == "graded"
+    low, high = G.RACE_TERRAIN["grade_deg"]
+    hills = T.relief_fields(np, T.relief_rule(T.arguments(
+        ["b.json", "--out", "x.cxpolicy", "--gates", "--race-terrain", "hills", "--relief-half", "2",
+         "--relief-fields", "graded"])), 5)
+    for f in hills:
+        assert f["scale"] == 1.0
+        assert f["hill_grade_deg"] == pytest.approx(low + (high - low) * f["level"] / 4, abs=0.05)
+    assert hills[-1]["hill_grade_deg"] == pytest.approx(high, abs=0.05)
+    fields = T.relief_fields(np, rule, 5)
+    scaled = T.relief_fields(np, T.relief_rule(options("--relief-levels", "4")), 5)
+    for f, s in zip(fields, scaled):
+        raw = G.field_terrain(np, "u1", 5 * 4 + f["level"] - 1, half_m=2.0,
+                              grade_deg=(low + (high - low) * f["level"] / 4,) * 2)
+        assert np.array_equal(f["heights_mm"], raw["heights_mm"]) and f["sha256"] == raw["sha256"]
+        # Full rough relief on every field, where scaled fields carry k/levels of it.
+        assert f["rough_highest_mm"] > 0.9 * G.RACE_TERRAIN["rough_mm"]
+        assert f["rough_highest_mm"] >= s["rough_highest_mm"]
+    assert len({f["sha256"] for f in fields}) == 4
+
+
 def test_the_rule_needs_a_race_and_is_refused_out_of_its_bounds() -> None:
     rule = T.relief_rule(options())
-    assert rule == {"kind": "u1", "levels": T.RELIEF_LEVELS, "half_m": 2.0,
+    assert rule == {"kind": "u1", "levels": T.RELIEF_LEVELS, "half_m": 2.0, "fields": "scaled",
                     "ceiling": {"start": 1, "falls": 0.1, "hold": 10}}
     assert T.relief_rule(T.arguments(["b.json", "--out", "x.cxpolicy", "--gates"])) is None
     assert T.relief_rule(T.arguments(["b.json", "--out", "x.cxpolicy", "--gates",
@@ -110,7 +137,7 @@ def test_the_rule_needs_a_race_and_is_refused_out_of_its_bounds() -> None:
         T.relief_rule(T.arguments(["b.json", "--out", "x.cxpolicy", "--race-terrain", "u1"]))
     for bad in (("--relief-levels", "0"), ("--relief-ceiling", "5,0.1,10"),
                 ("--relief-ceiling", "1.5,0.1,10"), ("--relief-ceiling", "1,1.5,10"),
-                ("--relief-ceiling", "1,0.1"), ("--relief-half", "-1")):
+                ("--relief-ceiling", "1,0.1"), ("--relief-half", "-1"), ("--relief-fields", "x")):
         with pytest.raises(SystemExit):
             T.relief_rule(options(*bad))
 

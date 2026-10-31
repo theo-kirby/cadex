@@ -2993,6 +2993,12 @@ def gate_training(task: dict[str, Any], host: Any, options: argparse.Namespace,
 #: in force; it never falls. Each episode stands on a level drawn uniformly in
 #: 0..top, so flat ground stays in every batch.
 RELIEF_LEVELS = 4
+#: How the fields are drawn (ADR-963): ``scaled`` (ADR-962) scales field
+#: ``k``'s draw to ``k / levels``; ``graded`` lays every field at the race's
+#: full amplitude, rough relief and all, with the hills' steepest grade fixed
+#: at ``low + (high - low) * k / levels`` of the race's ``grade_deg`` range,
+#: so the top field is as steep as the steepest held-out race.
+RELIEF_FIELDS = ("scaled", "graded")
 RELIEF_CEILING = {"start": 1, "falls": 0.1, "hold": 10}
 #: How far under the plane a field that is not the episode's stands (m), past
 #: its own top: a paw on the plane is then a metre clear of it.
@@ -3029,7 +3035,10 @@ def relief_rule(options: argparse.Namespace) -> dict[str, Any]:
                  else options.relief_half)
     if not half > 0.0:
         raise SystemExit("--relief-half is the field's half side in metres, above 0")
-    return {"kind": kind, "levels": levels, "half_m": half,
+    fields = str(getattr(options, "relief_fields", None) or RELIEF_FIELDS[0])
+    if fields not in RELIEF_FIELDS:
+        raise SystemExit(f"--relief-fields {fields!r} is not one of {RELIEF_FIELDS}")
+    return {"kind": kind, "levels": levels, "half_m": half, "fields": fields,
             "ceiling": {"start": int(start), "falls": falls, "hold": int(hold)}}
 
 
@@ -3051,15 +3060,26 @@ def relief_top_next(top: int, since: int, falls: float, rule: dict[str, Any]) ->
 def relief_fields(np: Any, rule: dict[str, Any], seed: int) -> list[dict[str, Any]]:
     """The run's fields (ADR-962): field ``k`` of ``levels`` is
     ``cadex_goto.field_terrain`` seeded ``seed * levels + k - 1``, its
-    heights scaled to ``k / levels``. Train split only: no field is a held-out
-    course's relief."""
+    heights scaled to ``k / levels``; or, with ``fields`` ``graded``
+    (ADR-963), unscaled, its hills' steepest grade fixed at ``k / levels`` of
+    the way up the race's ``grade_deg`` range. Train split only: no field is a
+    held-out course's relief."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import cadex_goto
 
     levels = int(rule["levels"])
+    graded = rule.get("fields", RELIEF_FIELDS[0]) == "graded"
+    low, high = (float(v) for v in cadex_goto.RACE_TERRAIN["grade_deg"])
     fields = []
     for k in range(1, levels + 1):
+        if graded:
+            grade = low + (high - low) * k / levels
+            field = cadex_goto.field_terrain(np, rule["kind"], int(seed) * levels + k - 1,
+                                             half_m=rule["half_m"], grade_deg=(grade, grade))
+            fields.append({**field, "level": k, "scale": 1.0,
+                           "rough_highest_mm": round(float(field["drawn"].get("rough_highest_mm", 0.0)), 3)})
+            continue
         field = cadex_goto.field_terrain(np, rule["kind"], int(seed) * levels + k - 1,
                                          half_m=rule["half_m"])
         heights = field["heights_mm"] * (k / levels)
@@ -5897,6 +5917,11 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         help="the relief curriculum (ADR-962): each episode stands on a level uniform in "
              "0..top; top starts at START and rises by one after an iteration with at most "
              "FALLS falls per horizon's worth of its env steps, once it has stood HOLD iterations")
+    parser.add_argument(
+        "--relief-fields", choices=RELIEF_FIELDS, default=RELIEF_FIELDS[0],
+        help="how the fields are drawn: scaled, field k at k/levels of its draw (ADR-962); "
+             "graded, every field at full amplitude with its hills' steepest grade k/levels "
+             "of the way up the race's range (ADR-963)")
     parser.add_argument(
         "--relief-half", type=float, default=None,
         help="the relief field's half side in metres (default cadex_goto.FIELD_HALF_M)")

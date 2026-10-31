@@ -292,6 +292,8 @@ mesh (ADR-853–855, `docs/MUJOCO.md` *The floor and terrain*).
    the top raised on few falls. Judge it with `cadex_goto.py race --terrain`
    on held-out courses and on flat ground. It costs about 0.5 s per field per
    8192-env iteration (4.1× flat at K = 4 on leon VI's cut).
+   `--relief-fields graded` (ADR-963) lays every field at the race's full
+   amplitude, its hills' grade climbing the race's range field by field.
 
 ## D. Defaults (from R1, RESEARCH.md §3 and §5)
 
