@@ -835,6 +835,151 @@ def terrain_model(mujoco: Any, xml: bytes, terrain: Mapping[str, Any]) -> Any:
     return spec.compile()
 
 
+#: A jump course (ADR-973): one box across a straight run along +x, built of
+#: the engine's own box records (``CadexDynamics.terrain_boxes``, a
+#: ``platform`` feature), so a model stands it as a box geom that the whole
+#: body collides with, the trunk's boxes too -- unlike race relief, a
+#: heightfield, which a trainer lets touch the paws only (ADR-962, ADR-854).
+#: ``over`` is a thin box to clear (Symon's J1: at least 80 mm tall, at most
+#: 150 mm deep); ``onto`` a deep one to climb, cross on its top and leave
+#: (J2: at least 100 mm). ``height_mm`` is a draw; a rung of +20 mm fixes it.
+#: The box's near face stands ``near_m`` along the run, its centre up to
+#: ``offset_mm`` aside, ``across_mm`` wide so the way past is over it.
+JUMP_KINDS = ("over", "onto")
+JUMP_SPLITS = ("train", "heldout")
+JUMP_SCHEMA = "cadex-jump-course-v1"
+JUMP_COURSE = {
+    "over": {"height_mm": (80.0, 80.0), "along_mm": (60.0, 150.0), "across_mm": (1000.0, 1600.0),
+             "near_m": (2.0, 4.0), "offset_mm": 50.0, "past_m": 2.0},
+    "onto": {"height_mm": (100.0, 100.0), "along_mm": (600.0, 1000.0), "across_mm": (1000.0, 1600.0),
+             "near_m": (2.0, 4.0), "offset_mm": 50.0, "past_m": 2.0},
+}
+#: The run in front of the box is clear for at least this far (m): the start's
+#: clearing and a body length or two to stride out before it.
+JUMP_CLEAR_M = 1.0
+#: How far under its top (mm) a contact on a jump box still counts as on its top.
+JUMP_TOP_TOLERANCE_MM = 5.0
+
+
+def _cadex_dynamics() -> Any:
+    """The engine's terrain module (pure Python, stdlib only), from this checkout."""
+
+    path = str(Path(__file__).resolve().parents[1] / "src" / "Mod" / "cadex")
+    if path not in sys.path:
+        sys.path.insert(0, path)
+    import CadexDynamics
+
+    return CadexDynamics
+
+
+def jump_course(kind: str, split: str, seed: int, **shape: Any) -> dict[str, Any]:
+    """A jump course (ADR-973), the same on every machine.
+
+    Every draw is :mod:`random`'s on the seed string
+    ``cadex-jump:<kind>:<split>:<seed>``, so a ``heldout`` course is never a
+    ``train`` one and a trainer drawing ``train`` never meets a held-out box.
+    ``shape`` overrides :data:`JUMP_COURSE`'s ranges (a pair ``(lo, hi)`` is a
+    uniform draw; equal ends fix it). The box is a ``platform`` feature,
+    ``along_mm`` along +x and ``across_mm`` across, ``height_mm`` tall, its
+    near face ``near_m`` from the start; its placed box is
+    ``CadexDynamics.terrain_boxes``'s ``block`` record (``centre_mm``,
+    ``quat``, ``half_mm``; ADR-852), so ``cadex_train.terrain_pool`` reads
+    the course as one of a bundle's pooled courses. ``goals_xy_m`` are where
+    a run is sent: ``over``, ``past_m`` beyond the far face; ``onto``, the
+    top's centre, then past the far face. ``sha256`` digests the box."""
+
+    import hashlib
+
+    if kind not in JUMP_KINDS:
+        raise SystemExit(f"a jump course's kind {kind!r} is not one of {JUMP_KINDS}")
+    if split not in JUMP_SPLITS:
+        raise SystemExit(f"a jump course's split {split!r} is not one of {JUMP_SPLITS}")
+    unknown = set(shape) - set(JUMP_COURSE[kind])
+    if unknown:
+        raise SystemExit(f"a jump course has no {sorted(unknown)}; it draws {sorted(JUMP_COURSE[kind])}")
+    options = {**JUMP_COURSE[kind], **shape}
+    for key in ("height_mm", "along_mm", "across_mm", "near_m"):
+        low, high = (float(v) for v in options[key])
+        if not 0.0 < low <= high:
+            raise SystemExit(f"a jump course's {key} {low:g}..{high:g} must be above 0, low to high")
+    if float(options["near_m"][0]) < JUMP_CLEAR_M:
+        raise SystemExit(f"a jump box's near face stands at least {JUMP_CLEAR_M:g} m from the start")
+    rng = random.Random(f"cadex-jump:{kind}:{split}:{int(seed)}")
+
+    def draw(key: str) -> float:
+        low, high = (float(v) for v in options[key])
+        return rng.uniform(low, high)
+
+    height, along, across = draw("height_mm"), draw("along_mm"), draw("across_mm")
+    near = 1000.0 * draw("near_m")
+    offset = rng.uniform(-1.0, 1.0) * float(options["offset_mm"])
+    x, far = near + along / 2.0, near + along
+    past = far + 1000.0 * float(options["past_m"])
+    feature = {"kind": "platform", "x_mm": round(x, 3), "y_mm": round(offset, 3),
+               "length_mm": round(along, 3), "width_mm": round(across, 3), "height_mm": round(height, 3)}
+    dynamics = _cadex_dynamics()
+    placed = dynamics.terrain_boxes([feature], [-1000.0, past + 1000.0],
+                                    [-across, across], context="the jump course")
+    goals = ([[round(x / 1000.0, 6), round(offset / 1000.0, 6)]] if kind == "onto" else []) \
+        + [[round(past / 1000.0, 6), 0.0]]
+    box = {"x_mm": feature["x_mm"], "y_mm": feature["y_mm"], "along_mm": feature["length_mm"],
+           "across_mm": feature["width_mm"], "height_mm": feature["height_mm"],
+           "near_mm": round(near, 3), "far_mm": round(far, 3)}
+    digest = hashlib.sha256(json.dumps({"kind": kind, "boxes": placed["boxes"]},
+                                       sort_keys=True).encode("utf-8")).hexdigest()
+    return {"schema": JUMP_SCHEMA, "kind": kind, "split": split, "seed": int(seed),
+            "shape": {key: list(value) if isinstance(value, tuple) else value
+                      for key, value in options.items()},
+            "box": box, "features": [feature], "boxes": placed["boxes"], "domes": placed["domes"],
+            "lowest_mm": placed["lowest_mm"], "highest_mm": placed["highest_mm"],
+            "goals_xy_m": goals, "sha256": digest}
+
+
+def jump_model(mujoco: Any, xml: bytes, course: Mapping[str, Any]) -> Any:
+    """The bundle's model with a jump course's boxes on its floor (ADR-973):
+    one box geom ``environment/jump/<i>`` per placed record, where
+    ``CadexDynamics.terrain_box_geoms`` stands it, taking the floor plane's
+    contact bits and parameters, so whatever touches the floor -- paws, legs
+    and trunk alike -- touches the box, face and top."""
+
+    dynamics = _cadex_dynamics()
+    spec = mujoco.MjSpec.from_string(xml.decode("utf-8"))
+    floor = next((g for g in spec.geoms if g.type == mujoco.mjtGeom.mjGEOM_PLANE), None)
+    if floor is None:
+        raise SystemExit("this model has no floor plane to stand a jump box on")
+    placed = dynamics.terrain_box_geoms(course["boxes"], course["lowest_mm"])
+    for k, (pos, quat, size) in enumerate(zip(placed["pos_m"], placed["quat"], placed["size_m"])):
+        geom = spec.worldbody.add_geom(name=f"environment/jump/{k}", type=mujoco.mjtGeom.mjGEOM_BOX,
+                                       pos=list(pos), quat=list(quat), size=list(size))
+        for attribute in ("contype", "conaffinity", "condim", "priority", "friction", "solref",
+                          "solimp", "solmix", "margin", "gap", "rgba"):
+            setattr(geom, attribute, getattr(floor, attribute))
+    return spec.compile()
+
+
+def jump_contacts(mujoco: Any, model: Any, data: Any, course: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Every contact on a jump box in ``data`` (ADR-973): the other geom's
+    name, and ``top`` when the contact stands within
+    :data:`JUMP_TOP_TOLERANCE_MM` of the box's top, ``face`` otherwise (its
+    near, far or side faces), with the contact's point in mm."""
+
+    names = {mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, f"environment/jump/{k}"): k
+             for k in range(len(course["boxes"]))}
+    out = []
+    for i in range(int(data.ncon)):
+        contact = data.contact[i]
+        g1, g2 = int(contact.geom1), int(contact.geom2)
+        if g1 not in names and g2 not in names:
+            continue
+        box, other = (g1, g2) if g1 in names else (g2, g1)
+        top = float(course["boxes"][names[box]]["top_mm"][0])
+        point = [1000.0 * float(v) for v in contact.pos]
+        out.append({"geom": mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, other) or str(other),
+                    "where": "top" if point[2] >= top - JUMP_TOP_TOLERANCE_MM else "face",
+                    "point_mm": [round(v, 3) for v in point]})
+    return out
+
+
 def terrain_drawing(np: Any, terrain: Mapping[str, Any], most: int = 129) -> dict[str, Any]:
     """The terrain as ``CadexDynamics.terrain_drawing`` draws a heightfield
     (ADR-734), sampled to at most ``most`` vertices a side, with the plane at 0."""

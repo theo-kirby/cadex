@@ -49499,3 +49499,62 @@ without `--gates` becomes the strip's rule.
 **Consequences.** A sprint policy can be trained, warm, over the relief it is
 judged on, and its training numbers compare with its flat ones. The training
 strip and the held-out strip share a distribution and never a draw.
+
+## ADR-973 — A jump course: one engine box across a straight run, that the whole body collides with (2026-10-31)
+
+**Context.** Symon's run sy2 asks for a jump over a box (J1: at least 80 mm tall,
+at most 150 mm deep, no paw on its top) and onto one (J2: at least 100 mm, on it
+and off the far side), each rung +20 mm, on held-out courses. Race relief
+(ADR-961, ADR-965) is a heightfield whose box faces rise over one 25 mm cell,
+and a trainer lets a heightfield touch the floor's spheres and capsules only
+(ADR-962; MJX refuses a box or mesh on a heightfield, ADR-854): a trunk box
+passes through a relief box. A jump trained there could land its belly on the
+box, or drag it through the face, without the physics saying so. The engine's
+box courses (ADR-716, ADR-852) stand real box geoms that every geom meets, and a
+trainer re-places them per episode (ADR-717); they draw platforms anywhere on the
+extent, with no split, not one across the path.
+
+**Decision.**
+- `cadex_goto.jump_course(kind, split, seed, **shape)`: `kind` `over` or `onto`,
+  `split` `train` or `heldout`, every draw `random`'s on
+  `cadex-jump:<kind>:<split>:<seed>`, a string no relief, race or field draws.
+  One box across a straight run along +x, its near face `near_m` (2–4 m) from
+  the start (never under `JUMP_CLEAR_M`, 1 m), its centre up to `offset_mm`
+  (50 mm) aside, `across_mm` 1.0–1.6 m wide so the way past is over it. `over`:
+  `height_mm` 80, `along_mm` 60–150 (J1's bar); `onto`: `height_mm` 100,
+  `along_mm` 600–1000. `shape` overrides a range (equal ends fix it: a rung).
+- The box is an engine `platform` feature placed by
+  `CadexDynamics.terrain_boxes` (a `block` record with `centre_mm`, `quat`,
+  `half_mm`), so the course is in a bundle pool's form and
+  `cadex_train.terrain_pool` reads it as the engine stands it. The course carries
+  `goals_xy_m` (`over`: 2 m past the far face; `onto`: the top's centre, then
+  past), the box's numbers and a `sha256` of its records.
+- `cadex_goto.jump_model(mujoco, xml, course)`: the bundle's model with each box
+  as a box geom `environment/jump/<i>` taking the floor plane's contact bits and
+  parameters, so paws, legs and trunk meet it, face and top.
+- `cadex_goto.jump_contacts(mujoco, model, data, course)`: every contact on a
+  jump box, its other geom and `top` (within 5 mm of the top) or `face`.
+- No training flag yet; the trainer's pooled-course path (ADR-717) is the route
+  that keeps the body's collision in training.
+
+**Evidence.** On Symon's export s18 (`physics-model.xml`, its collision as
+built), under `jump_model` on held-out `onto` course 0 at 120 mm: the robot
+dropped limp over the box rests with its four paws on its top; laid on its back
+over it, its three trunk boxes (`c_front_frame` ×2, `c_rear_frame`) rest on the
+top; sent at 3 m/s limp into the near face, its fore heels hit the face. Held-out
+`over` courses 0–2: 133.8, 84.9 and 73.6 mm deep, near faces at 3.74, 2.05 and
+3.78 m.
+
+**Tests.** `training/test_jump_course.py` (5): a course is its seed string's,
+deterministic, and no held-out course (10 seeds) is any of 200 train ones; bad
+kinds, splits, keys, ranges and a box nearer than 1 m are refused; an `over` box
+is J1's thin box across the path and an `onto` box carries its goal on top; the
+box is the engine's record and `terrain_pool` stands it where
+`terrain_box_geoms` does; a free box with a trunk's contact bits lands on the
+top (not through it), rests on the plane beside it, and a paw pressed into the
+near face reads `face`; the held-out digests of `over` 0 and `onto` 0 are pinned
+and the race relief's `b1` digest is unchanged. Training suite 210 passed.
+
+**Consequences.** A jump judge can be written against held-out boxes the whole
+body meets, and a training route has a course in the pool's form to carry. Every
+earlier draw and digest is unchanged.
