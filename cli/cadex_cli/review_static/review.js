@@ -36,7 +36,7 @@
   // (`cadex app`) it is `p/<name>/` under the index, and NAME is that project.
   var NAME = (location.pathname.match(/\/p\/([^/]+)\/(?:index\.html)?$/) || [null, null])[1];
   var POLL_MS = 2000;
-  var ORDER = ['view3d', 'version', 'status', 'training', 'view2d', 'outliner', 'activations', 'network', 'settings'];
+  var ORDER = ['view3d', 'version', 'status', 'training', 'view2d', 'outliner', 'activations', 'network', 'pose', 'settings'];
   // The 3D viewport over a strip of Version, as Blender has its timeline under the viewport, with
   // the Outliner over Status over Training beside them, as Blender has its Outliner over its
   // Properties; split an area for the 2D one.
@@ -287,11 +287,13 @@
     }).then(function (manifest) {
       if (ticket !== modelLoad) return;
       state.model = manifest;
+      posing = false;
       renderPrimitives();
       if (manifest.view === 'revision') renderRevisionTimeline();
       if (!manifest.available) {
         state.viewer.clear();
         state.outliner.setModel(null);
+        state.pose.setModel(manifest);
         status.dataset.state = 'missing';
         status.textContent = 'no model: ' + manifest.reason;
         return;
@@ -309,6 +311,7 @@
         if (ticket !== modelLoad) return;
         state.viewer.setTerrain(modelTerrain());
         state.outliner.setModel(manifest);
+        state.pose.setModel(manifest);
         if (manifest.view === 'revision') return state.viewer.loadGhost(ghostOf(manifest), fetchMesh, parseInt(token('--ink-2').slice(1), 16), 0.22);
       }).then(function () {
         if (ticket !== modelLoad) return;
@@ -584,7 +587,7 @@
     f = Math.max(0, Math.min(1, f));
     if (anyFollow() && track) state.viewer.followTo(trackAt(lo, hi, f));
     if (trailCourse.served === playback) state.viewer.showTrail(playT);
-    state.viewer.setPoses(blend(playback.frames[lo], playback.frames[hi], f));
+    if (!posing) state.viewer.setPoses(blend(playback.frames[lo], playback.frames[hi], f));
     state.activations.setFrame(lo, hi, f);
     if (playback.goto) showGoto(playback.goto, playback.goto.frames[lo]);
     $('play-time').value = String(playT);
@@ -605,6 +608,13 @@
       : 'point ' + (i + 1) + '/' + n + ' · ' + (p.band ? p.band + ' ' : '') + p.speed_mps.toFixed(2) + ' m/s'
         + (p.hold_s > 0 ? ' · hold ' + p.hold_s.toFixed(1) + ' s' + (at.arrived ? ' ' + Math.round(at.hold * 100) + '%' : '') : '');
   }
+  // Posing (ADR-969) holds the model: playback stops, and leaving puts back the frame it was at.
+  var posing = false;
+  function holdPose(on) {
+    posing = !!on;
+    if (posing) { stopPlayback(); return; }
+    if (playback) seek(playT); else state.viewer.setPoses(restPoses());
+  }
   function stopPlayback() {
     if (playing) cancelAnimationFrame(playing);
     playing = null;
@@ -612,6 +622,7 @@
   }
   function togglePlayback() {
     if (!playback) return;
+    if (posing) state.pose.leave();
     if (playing) { stopPlayback(); return; }
     var times = playback.times_s, end = times[times.length - 1];
     var from = playT >= end ? times[0] : playT, origin = performance.now();
@@ -899,7 +910,8 @@
     stopPlayback(); playback = null; ckpt.playing = null; state.activations.setPlayback(null); refreshTrail(); if (state.viewer) state.viewer.setTargets(null); $('play-goto').hidden = true;
     if (item.state !== 'ready') {
       $('playback').hidden = true;
-      state.viewer.setPoses(restPoses()); state.viewer.setTerrain(modelTerrain());
+      if (!posing) state.viewer.setPoses(restPoses());
+      state.viewer.setTerrain(modelTerrain());
       return null;
     }
     return json(item.url).then(function (served) {
@@ -1292,6 +1304,7 @@
     renderFreshness();
     if (!state.review) return;
     renderHeader(); renderRevisions(); renderSources(); followTraining(); renderStatus(); renderCheckpoints(); renderRevisionTimeline(); renderSheetSources();
+    state.pose.setSaved(state.review.poses || []);
   }
 
   function runModelKey(review, name) {
@@ -1415,6 +1428,12 @@
                                                          network: $('network'), networkStatus: $('network-status'),
                                                          layers: $('network-layers'), paths: $('network-paths'),
                                                          networkViews: $('network-views'), ramp: document.querySelector('.activations-ramp .ramp-bar') });
+    // The Pose editor (ADR-969): while it poses, playback leaves the model where the joints put it.
+    state.pose = window.CadexPose.create({ viewer: state.viewer, rest: restPoses,
+                                           selection: function () { return state.outliner ? state.outliner.state().selected : []; },
+                                           hold: holdPose, status: $('pose-status'), joints: $('pose-joints'),
+                                           on: $('pose-on'), restButton: $('pose-rest'), sweep: $('pose-sweep'), mirror: $('pose-mirror'),
+                                           saved: $('pose-saved'), name: $('pose-name'), copy: $('pose-copy'), download: $('pose-download') });
     state.settings = window.CadexSettings.create({ preset: $('settings-heat-preset'), count: $('settings-heat-count'),
                                                    low: $('settings-heat-low'), mid: $('settings-heat-mid'), high: $('settings-heat-high'),
                                                    preview: $('settings-heat-preview'), reset: $('settings-heat-reset') });
@@ -1507,6 +1526,7 @@
     layout: function () { return state.layout; },
     gizmo: function () { return state.gizmo; },
     activations: function () { return state.activations; },
+    pose: function () { return state.pose; },
     setStyle: applyStyle,
     renderStyle: function () { return renderStyle; },
     setMeshLines: applyMeshLines,

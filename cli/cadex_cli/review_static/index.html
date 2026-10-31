@@ -388,6 +388,27 @@
     </div>
   </section>
 
+  <!-- The Pose editor (ADR-969, §29): the model moved by its joints through their ranges, as view
+       state; a pose leaves the page only as JSON for `cadex pose save`. Drawn by pose.js. -->
+  <section class="editor" id="editor-pose" data-editor="pose" data-title="Pose" data-short="Pose">
+    <div class="editor-tools">
+      <button id="pose-on" type="button" aria-pressed="false" title="Pose the model by its joints; again to put it back">Pose</button>
+      <button id="pose-rest" type="button" title="Every joint back to where the model was built">Rest</button>
+      <button id="pose-sweep" type="button" aria-pressed="false" title="Swing the picked joint between its stops">Sweep</button>
+      <label class="toggle" title="Move a joint's partner on the other side with it"><input id="pose-mirror" type="checkbox"> Mirror</label>
+    </div>
+    <div class="editor-body" id="pose">
+      <p id="pose-status" data-state="empty">Load a model to pose it.</p>
+      <div class="pose-io">
+        <select id="pose-saved" aria-label="Saved poses"></select>
+        <input id="pose-name" type="text" value="pose" maxlength="64" aria-label="Pose name" spellcheck="false">
+        <button id="pose-copy" type="button" title="Copy the pose as JSON for cadex pose save">Copy</button>
+        <button id="pose-download" type="button" title="Download the pose as JSON for cadex pose save">Download</button>
+      </div>
+      <div id="pose-joints" role="list" aria-label="Joints"></div>
+    </div>
+  </section>
+
   <!-- This browser's preferences (ADR-728, §28); for now, the heat colours. Drawn by settings.js. -->
   <section class="editor" id="editor-settings" data-editor="settings" data-title="Settings" data-short="Settings">
     <div class="editor-tools"></div>
@@ -460,6 +481,7 @@
 <script src="trailcolours.js"></script>
 <script src="viewports.js"></script>
 <script src="activations.js"></script>
+<script src="pose.js"></script>
 <script src="settings.js"></script>
 <script type="module" src="viewer.js"></script>
 </body>

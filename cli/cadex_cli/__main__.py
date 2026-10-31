@@ -87,6 +87,7 @@ from .project_docs import (
     progress_numbers,
     scaffold_project_docs,
 )
+from .poses import POSE_NAME, POSES_DIRNAME, pose_listing, write_pose
 from .report import (
     EXIT_FAILURE,
     EXIT_OK,
@@ -815,6 +816,31 @@ def build_parser() -> argparse.ArgumentParser:
         "unsets one, leaving the engine's default in force.",
     )
 
+    pose_parser = subparsers.add_parser(
+        "pose",
+        help="Store, list or remove the project's saved poses (ADR-969): the "
+        "joint values the dashboard's Pose editor copies or downloads, kept as "
+        "poses/<name>.json. No engine, no tokens.",
+    )
+    _common(pose_parser, inherit=True)
+    pose_parser.add_argument(
+        "action", choices=("save", "list", "remove"),
+        help="save: store the pose in FILE ('-' reads stdin). list: every saved "
+        "pose. remove: delete the named one.",
+    )
+    pose_parser.add_argument(
+        "target", nargs="?", default="",
+        help="save: the pose's JSON file, or '-'. remove: the pose's name.",
+    )
+    pose_parser.add_argument(
+        "--name", dest="pose_name", default=None,
+        help="save: store it under this name rather than the one it carries.",
+    )
+    pose_parser.add_argument(
+        "--replace", action="store_true", default=False,
+        help="save: overwrite a saved pose of the same name.",
+    )
+
     revision_parser = subparsers.add_parser(
         "revision",
         help="Review the accepted revisions (ADR-506): list the trail, reject "
@@ -1171,6 +1197,42 @@ def command_budgets(args: argparse.Namespace, report: RunReport) -> int:
     else:
         stored = read_agent_state(root).budgets
     report.budgets = {"stored": dict(stored)}
+    report.ok = True
+    return EXIT_OK
+
+
+def command_pose(args: argparse.Namespace, report: RunReport) -> int:
+    """``cadex pose save FILE | list | remove NAME``: the project's saved poses (ADR-969).
+
+    The dashboard writes nothing (ADR-537), so a pose posed there reaches
+    the project through here: the page copies or downloads it, and this
+    checks it and stores it as ``poses/<name>.json``.
+    """
+
+    root = Path(args.project).expanduser()
+    if not root.is_dir():
+        raise ValueError(f"no project at {root}.")
+    if args.action == "save":
+        if not args.target:
+            raise ValueError("pose save wants a FILE, or '-' for stdin.")
+        text = sys.stdin.read() if args.target == "-" else Path(args.target).expanduser().read_text(encoding="utf-8")
+        try:
+            raw = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"the pose is not JSON: {exc}.") from None
+        pose, path = write_pose(root, raw, name=args.pose_name, replace=args.replace)
+        report.poses = [pose]
+        report.notes.append(f"stored {path.relative_to(root).as_posix()}.")
+    elif args.action == "remove":
+        path = root / POSES_DIRNAME / f"{args.target}.json"
+        if not POSE_NAME.fullmatch(args.target or "") or not path.is_file():
+            raise ValueError(f"no saved pose named {args.target!r}.")
+        path.unlink()
+        report.notes.append(f"removed {path.relative_to(root).as_posix()}.")
+    else:
+        report.poses = pose_listing(root)
+        if not report.poses:
+            report.notes.append("no saved poses.")
     report.ok = True
     return EXIT_OK
 
@@ -3277,6 +3339,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_style(args, report)
         elif command == "revision":
             code = command_revision(args, report)
+        elif command == "pose":
+            code = command_pose(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
     except (ValueError, ExportError, InventoryError, TrainError, SmokeError, EvaluateError,
@@ -3320,6 +3384,8 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
         )
     if command == "script":
         return f"script --set {Path(args.source_file).name}"
+    if command == "pose":
+        return f"pose {args.action} {(report.poses[0]['name'] if report.poses and args.action == 'save' else args.target)}".rstrip()
     if command == "revision":
         change = report.revisions
         return "revision {:s} → {:s} (#{}) from {:s}".format(
@@ -3486,6 +3552,8 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
         return
     if command == "revision" and args.action in ("list", "backfill"):  # a read; a store fill (ADR-548)
         return
+    if command == "pose" and args.action == "list":  # a read (ADR-969)
+        return
     # Read once, before the row is appended: both branches compare against
     # the last row that carried each number, and the walk branch is why
     # travel figures are comparable at all (ADR-260).
@@ -3533,6 +3601,8 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
     if command in ("review", "app", "budgets", "style", "hero", "hero-grid"):
         return
     if command == "revision" and args.action in ("list", "backfill"):
+        return
+    if command == "pose" and args.action == "list":
         return
     # A walk's legs each committed; what is left is its review.json, when
     # --out lies under the project, plus generated project review artifacts.

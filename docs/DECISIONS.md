@@ -48848,3 +48848,58 @@ dependency.
 
 **Consequences.** The guide shapes, it does not prescribe phase. Its pose
 and rate scales are constants (`REFERENCE_SCALE`), not tuned on any run.
+
+## ADR-969 — The Pose editor: the model moved by its joints, a pose handed to the CLI (2026-10-30, owner direction)
+
+**Context.** The owner asked for a pose mode in the dashboard to see each
+joint's limits and range and what poses a robot can reach, and to save
+poses for later use, such as training references. `docs/IDEAS.md` carried
+the posing half since 2026-10-19 (the joint gimbal). Saving runs into
+ADR-537: the dashboard writes nothing. Asked, the owner chose to keep it
+read-only: the page hands the pose over and the CLI stores it.
+
+**Decision.**
+- `review_server.py` `mjcf_kinematics` reads the joint tree from the MJCF
+  export the model's collision proxies already come from, and carries it as
+  `collision.kinematics`, beside `terrain`. It holds bodies and frames,
+  joints with their axes, anchors, ranges, `ref`, motor and rest value,
+  couplings (`<equality><joint>`) and loops (`<equality><connect>`). It
+  refuses, with a reason, any model it would pose wrongly: a frame set
+  other than by `pos` and `quat`, or `<default>` classes.
+- A **Pose** editor (`pose.js`, `docs/DASHBOARD.md` §29) walks the tree in
+  the page, holding each root where the model rests. Coupled joints follow
+  their drivers. Each closed loop is re-closed by its passive joints with
+  damped least squares. Each joint row has a slider over its range, a
+  readout and its stops. The editor also has Sweep (the picked joint from
+  stop to stop), Mirror (the partner on the other side), Rest, and the
+  saved poses. While it poses, playback leaves the model alone.
+- A pose leaves the page as `cadex-pose-v1` JSON, copied or downloaded.
+  It holds `name`, `note`, `joints` (MuJoCo units, by MJCF joint name) and
+  the `model` it was posed on. `cadex pose save FILE|-` checks it and
+  stores `poses/<name>.json`; `list` and `remove` go with it
+  (`cli/cadex_cli/poses.py`). `/api/project` gains `poses`.
+
+**Evidence.** On the owner's projects, across every motor set to 80% of its
+range, the loops stay closed:
+- cadex-quad's four rod linkages: the largest gap left is 0.01 mm;
+- leon VI's two hock linkages, with its ten tail couplings: 0.015 mm.
+
+On cadex-quad, leon VI, ball-plate and honey-badger, the walk at rest lands
+every body on the model's own placement, so no rest-offset note shows.
+Mirror's signs come out of the axes on cadex-quad as expected: the hips
+(+y and −y) get opposite values, which is the same physical pitch, and the
+abduction joints (both −x) mirror outward.
+
+**Tests.** `test_dashboard_read_only.py::test_a_pose_leaves_the_page_only_through_the_cli`:
+in Chromium, a hinged fixture is posed past its stop and held at the stop.
+Its pose JSON goes through `cadex pose save` and shows up in
+`/api/project`'s `poses` and in the page, and applying it after Rest puts
+the joint back. `test_http_api.py` pins `poses` as a key of `/api/project`.
+
+**Consequences.**
+- It does not detect collisions: a pose that drives one part through
+  another is shown as asked.
+- A ball joint is not posed. The root stays at rest, so a crouch can leave
+  the feet above the mat or through it.
+- Nothing yet reads `poses/` in training. The file names the MJCF joints a
+  trainer's reset keyframe or reference uses, so that is the next step.

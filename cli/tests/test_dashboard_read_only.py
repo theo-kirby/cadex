@@ -25,7 +25,7 @@ import pytest
 from cadex_cli.__main__ import main
 from cadex_cli.report import EXIT_OK
 from cadex_cli.review_server import serve, serve_projects
-from review_helpers import _projects
+from review_helpers import REVISION_B, _manifest, _project, _projects, _stage_accepted
 from review_helpers import _get, _json, _open, _model_state, browser, needs_browser  # noqa: F401
 
 PLATE = """
@@ -160,3 +160,53 @@ def test_remote_viewing_is_tailscale_serve_in_front_of_loopback() -> None:
     for command in ("app", "review"):
         argv = [command] + (["--project", "p"] if command == "review" else [])
         assert parser.parse_args(argv).host == "127.0.0.1", command
+
+
+#: The fixture's body on a hinge with stops and a motor, for the Pose editor (ADR-969).
+HINGED_MJCF = """<mujoco model="fixture">
+  <compiler angle="radian" autolimits="false"/>
+  <worldbody>
+    <body name="body">
+      <joint name="j_turn" pos="0 0 0" axis="0 0 1" limited="true" range="-1 1"/>
+      <geom name="body/collision0" type="box" size="0.03 0.03 0.03"/>
+    </body>
+  </worldbody>
+  <actuator><position name="j_turn/position" joint="j_turn" kp="10"/></actuator>
+</mujoco>
+"""
+
+
+@needs_browser
+def test_a_pose_leaves_the_page_only_through_the_cli(tmp_path, browser, capsys) -> None:
+    """The Pose editor poses the model in the page and hands the pose over as JSON; `cadex
+    pose save` stores it, the page lists it, and applying it puts the joint back (ADR-969)."""
+
+    root = _project(tmp_path)
+    _manifest(root, REVISION_B)
+    (_stage_accepted(root, REVISION_B) / "outputs" / "rig-model.xml").write_text(HINGED_MJCF)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        assert _model_state(page) == "loaded"
+        page.wait_for("window.cadexReview.pose().state().available", timeout=30)
+        joint = page.evaluate("window.cadexReview.pose().state().joints[0]")
+        assert (joint["name"], joint["range"], joint["actuated"]) == ("j_turn", [-1, 1], True)
+        # Past its stop, a joint stays at the stop.
+        assert page.evaluate("window.cadexReview.pose().set('j_turn', 2.0).j_turn") == 1.0
+        pose = page.evaluate("(() => { document.getElementById('pose-name').value = 'turned';"
+                             " return window.cadexReview.pose().pose(); })()")
+        assert pose["schema"] == "cadex-pose-v1" and pose["joints"] == {"j_turn": 1.0}
+        before = _snapshot(root)
+        (tmp_path / "turned.json").write_text(json.dumps(pose))
+        assert main(["pose", "save", str(tmp_path / "turned.json"), "--project", str(root), "--json"]) == EXIT_OK
+        capsys.readouterr()
+        assert _json(server.url + "api/project")["poses"][0]["joints"] == {"j_turn": 1.0}
+        assert "poses/turned.json" in set(_snapshot(root)) - set(before)
+        page.evaluate("window.cadexReview.refresh()", await_promise=True)
+        page.evaluate("window.cadexReview.pose().rest()")
+        assert page.evaluate("window.cadexReview.pose().state().joints[0].value") == 0
+        assert page.evaluate("window.cadexReview.pose().apply('turned')") == {"used": 1, "missing": 0}
+        assert page.evaluate("window.cadexReview.pose().state().joints[0].value") == 1.0
+    finally:
+        server.shutdown()
+        server.server_close()

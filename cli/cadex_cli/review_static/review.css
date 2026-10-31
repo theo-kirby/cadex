@@ -604,3 +604,25 @@ a.card:hover .thumb > .tile-frame, #spotlight:hover .thumb > .tile-frame { trans
                 min-width: 0; max-width: none; }
   body.app .menu-panel { top: auto; bottom: calc(var(--status-bar) + 4px); max-height: 60vh; }
 }
+
+/* The Pose editor (ADR-969, §29): one row a joint, its name, what moves it, a slider over its range,
+   its value and its stops; a row at a stop is in --warn, the picked one in --select. */
+#pose { padding: var(--s2) var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
+#pose-status { margin: 0; color: var(--ink-2); font-size: var(--fs-0); overflow-wrap: anywhere; }
+#pose-status[data-state="warn"] { color: var(--warn); }
+.pose-io { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s2); align-items: center; }
+.pose-io > * { font-size: var(--fs-0); min-height: var(--tool); height: var(--tool); padding: 0 var(--s2); border-radius: 6px; }
+#pose-name { width: 9em; }
+#pose-joints { display: grid; grid-template-columns: minmax(6em, max-content) minmax(4.5em, max-content) minmax(80px, 1fr) 4.5em minmax(5.5em, max-content);
+               gap: 2px var(--s2); align-items: center; font-size: var(--fs-0); }
+.pose-joint { display: contents; }
+.pose-name { justify-self: start; min-height: 0; padding: 1px var(--s1); border-color: transparent; background: transparent; color: var(--ink); font: inherit; text-align: left; }
+.pose-joint[data-picked="true"] .pose-name { background: var(--select); border-color: var(--select); }
+.pose-kind, .pose-stops { color: var(--ink-2); white-space: nowrap; }
+.pose-value { font-family: var(--mono); text-align: right; }
+.pose-joint[data-stop="true"] .pose-value { color: var(--warn); }
+.pose-joint input[type="range"] { width: 100%; min-width: 0; margin: 0; accent-color: var(--accent); }
+@media (max-width: 520px) {
+  #pose-joints { grid-template-columns: minmax(5em, max-content) minmax(60px, 1fr) 4.5em; }
+  .pose-kind, .pose-stops { display: none; }
+}

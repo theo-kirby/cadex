@@ -1,6 +1,6 @@
 # IDEAS.md — Parking Lot
 
-Verified against source: 2026-10-27
+Verified against source: 2026-10-30
 
 Uncommitted ideas surfaced during exploration. Nothing here is planned or
 approved — promoting an idea means writing a `docs/DECISIONS.md` entry and a
@@ -26,16 +26,10 @@ roadmap item. Add freely, prune ruthlessly.
 
 - **A joint gimbal in the viewport (owner, 2026-10-19).** Pick a joint (or a
   part, meaning the joint that moves it) and drag a rotation ring or slide
-  arrow on it, Blender-style, to move it through its range while the rest of
-  the mechanism follows: the tree below it, and a closed linkage re-solved,
-  the way the clearance sweep already drives one (ADR-593). Show the joint's
-  angle and its stops, and flag a pose that collides. It is posing, not
-  editing: the pose is view state like the camera, it never writes the
-  script, and a reset returns to the build pose, so the dashboard stays
-  read-only (ADR-537). It would have answered "render the foot in each
-  position" (the orun11 spring foot) without a script. It needs the
-  solver's poses on demand from the engine, or a client-side tree walk for
-  open chains.
+  arrow on it, Blender-style. (The Pose editor, ADR-969, built the posing:
+  sliders over each joint's range, the tree and closed linkages following,
+  the stops shown. Left: the in-viewport ring, and flagging a pose that
+  collides.)
 
 - **Script regions as undo/diff units.** If the one script is executed as
   content-hashed regions, region-level diffs between revisions and partial

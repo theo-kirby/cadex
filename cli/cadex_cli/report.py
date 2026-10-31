@@ -110,6 +110,8 @@ class RunReport:
     #: ``cadex style`` (ADR-560): the guidance style the project ``chosen``
     #: (empty for none) and the ``available`` ones the engine carries.
     style: dict[str, Any] = field(default_factory=dict)
+    #: ``cadex pose`` (ADR-969): the project's saved poses, or the one it stored.
+    poses: list[dict[str, Any]] = field(default_factory=list)
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
 
@@ -152,6 +154,8 @@ class RunReport:
             payload["budgets"] = dict(self.budgets)
         if self.style:
             payload["style"] = dict(self.style)
+        if self.poses:
+            payload["poses"] = [dict(pose) for pose in self.poses]
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:
@@ -382,6 +386,10 @@ def human_lines(report: RunReport) -> list[str]:
         lines.append("style  " + (report.style.get("chosen") or "none: the base guidance alone")
                      + "  (available: " + (", ".join(report.style.get("available") or ()) or "none")
                      + ")")
+    for pose in report.poses:
+        lines.append("pose   {:s}  {:s}".format(
+            str(pose.get("name")), f"error: {pose['error']}" if pose.get("error")
+            else f"{len(pose.get('joints') or {})} joints" + (f"  {pose['note']}" if pose.get("note") else "")))
     for note in report.notes:
         lines.append(f"note   {note}")
     if report.revision:

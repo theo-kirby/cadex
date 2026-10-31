@@ -58,6 +58,7 @@ from xml.etree import ElementTree
 from .activity import ACTIVITY_PATH, read_activity
 from .checkpoints import FAILURE_SUFFIX as CHECKPOINT_FAILURE_SUFFIX
 from .checkpoints import TRACE_SUFFIX as CHECKPOINT_TRACE_SUFFIX
+from .poses import pose_listing
 from .revision_meshes import revision_mesh_paths, revision_model, revision_models
 from .revisions import HISTORY_DIR, HISTORY_INDEX
 from .revisions import read_history as read_revision_history
@@ -90,7 +91,7 @@ STATIC_FILES = {
     "review.js": ("text/javascript; charset=utf-8", STATIC_DIR / "review.js"),
     **{name: ("text/javascript; charset=utf-8", STATIC_DIR / name) for name in
        ("three.module.js", "floor.js", "environment.js", "review_scene.js", "shading.js", "stl.js", "capture.js",
-        "layout.js", "theme.js", "status.js", "outliner.js", "gizmo.js", "viewports.js", "heat.js", "trailcolours.js", "activations.js", "settings.js", "hero.js")},
+        "layout.js", "theme.js", "status.js", "outliner.js", "gizmo.js", "viewports.js", "heat.js", "trailcolours.js", "activations.js", "pose.js", "settings.js", "hero.js")},
     "capture.html": ("text/html; charset=utf-8", STATIC_DIR / "capture.html"),
     "hero.html": ("text/html; charset=utf-8", STATIC_DIR / "hero.html"),
     "viewer.js": ("text/javascript; charset=utf-8", STATIC_DIR / "viewer.js"),
@@ -162,7 +163,7 @@ API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "project": (frozenset({
         "schema", "project", "accepted", "docs", "decisions", "runs", "presentation", "evaluations",
         "revisions", "stage", "exports", "sections", "drawings", "budgets", "activity", "references",
-        "served_at"}),
+        "poses", "served_at"}),
         frozenset()),
     "run/<run>": (frozenset({
         "run", "status", "error", "artifacts", "project_artifacts", "videos", "legs", "outcome",
@@ -1438,6 +1439,131 @@ def mjcf_terrain(root: ElementTree.Element) -> dict[str, Any] | None:
         "grid": {"rows": rows, "columns": columns, "heights_mm": heights}})
 
 
+#: The keyframe a Cadex export rests at (``CadexDynamics.MJCF_KEYFRAME_NAME``).
+MJCF_REST_KEYFRAME = "solved"
+#: How many qpos values each joint type takes, in MuJoCo's order.
+_QPOS_WIDTH = {"free": 7, "ball": 4, "hinge": 1, "slide": 1}
+
+
+def mjcf_kinematics(root: ElementTree.Element) -> dict[str, Any]:
+    """The joint tree an export declares, for the Pose editor (ADR-969).
+
+    Every body with its parent and its frame in the parent's, in MuJoCo's
+    order; every joint with its type, axis and anchor in its body's frame,
+    its range (radians for a hinge, metres for a slide, ``None`` when it is
+    not limited), whether a motor drives it, and its value at the rest
+    keyframe; the joint couplings (``<equality><joint>``) and the closed
+    loops (``<equality><connect>``) the page keeps while posing. Positions
+    are in mm, rotations xyzw, as the proxies are. Nothing is solved here:
+    the page walks the tree. A model that sets frames any other way than
+    ``pos`` and ``quat``, or leans on ``<default>`` classes, is declined
+    with its reason rather than posed wrongly.
+    """
+
+    def no(reason: str) -> dict[str, Any]:
+        return {"available": False, "reason": reason}
+
+    world = root.find("worldbody")
+    if world is None:
+        return no("the model has no worldbody")
+    if root.find("default") is not None:
+        return no("the model sets joint defaults (<default>), which the Pose editor does not read")
+    compiler = root.find("compiler")
+    if compiler is not None and compiler.get("angle", "degree") != "radian":
+        return no("the model's angles are not in radians")
+    autolimits = compiler is None or compiler.get("autolimits") != "false"
+    actuated = {str(a.get("joint")) for a in (root.find("actuator") if root.find("actuator") is not None else [])
+                if a.get("joint")}
+    bodies: list[dict[str, Any]] = []
+    joints: list[dict[str, Any]] = []
+    sites: dict[str, tuple[str, list[float]]] = {}
+
+    def frame(element: Any) -> tuple[list[float], list[float]] | None:
+        if any(element.get(key) for key in ("euler", "axisangle", "xyaxes", "zaxis")):
+            return None
+        pos = _floats(element.get("pos"), 3, [0.0, 0.0, 0.0])
+        quat = _floats(element.get("quat"), 4, [1.0, 0.0, 0.0, 0.0])
+        if pos is None or quat is None:
+            return None
+        w, x, y, z = quat
+        norm = math.sqrt(w * w + x * x + y * y + z * z) or 1.0
+        return [v * 1000.0 for v in pos], [x / norm, y / norm, z / norm, w / norm]
+
+    def walk(parent: Any, parent_name: str | None) -> str | None:
+        for body in parent.findall("body"):
+            name = str(body.get("name") or "")
+            placed = frame(body)
+            if not name or placed is None:
+                return f"body {name or '(unnamed)'} has no name or a frame set other than by pos and quat"
+            bodies.append({"name": name, "parent": parent_name, "pos_mm": placed[0], "rotation_xyzw": placed[1]})
+            for site in body.findall("site"):
+                at = _floats(site.get("pos"), 3, [0.0, 0.0, 0.0])
+                if site.get("name") and at is not None:
+                    sites[str(site.get("name"))] = (name, [v * 1000.0 for v in at])
+            for joint in body.findall("joint"):
+                kind = joint.get("type") or "hinge"
+                if kind not in _QPOS_WIDTH:
+                    return f"joint {joint.get('name')} is a {kind!r} joint"
+                axis = _floats(joint.get("axis"), 3, [0.0, 0.0, 1.0])
+                anchor = _floats(joint.get("pos"), 3, [0.0, 0.0, 0.0])
+                span = _floats(joint.get("range"), 2, []) if joint.get("range") else None
+                ref = _floats(joint.get("ref"), 1, [0.0])
+                if axis is None or anchor is None or ref is None or (joint.get("range") and span is None):
+                    return f"joint {joint.get('name')} has an unreadable axis, anchor, range or ref"
+                length = math.sqrt(sum(v * v for v in axis)) or 1.0
+                limited = joint.get("limited")
+                limited = limited == "true" or (limited is None and autolimits and bool(span))
+                joints.append({"name": str(joint.get("name") or f"{name}/joint{len(joints)}"), "body": name,
+                               "type": kind, "axis": [v / length for v in axis],
+                               "pos_mm": [v * 1000.0 for v in anchor],
+                               "range": span if limited and span and span[0] < span[1] else None,
+                               "ref": ref[0], "actuated": str(joint.get("name")) in actuated})
+            failed = walk(body, name)
+            if failed:
+                return failed
+        return None
+
+    failed = walk(world, None)
+    if failed:
+        return no(failed)
+    # The rest keyframe's qpos, joint by joint; a joint it leaves out rests at its ref.
+    key = next((k for k in root.iter("key") if k.get("name") == MJCF_REST_KEYFRAME), None)
+    try:
+        values = [float(v) for v in (key.get("qpos") or "").split()] if key is not None else []
+    except ValueError:
+        values = []
+    width = sum(_QPOS_WIDTH[j["type"]] for j in joints)
+    at = 0
+    for joint in joints:
+        size = _QPOS_WIDTH[joint["type"]]
+        if len(values) == width:
+            chunk = values[at:at + size]
+            joint["rest"] = chunk[0] if size == 1 else chunk
+        else:
+            joint["rest"] = joint["ref"] if size == 1 else None
+        at += size
+    couplings, loops = [], []
+    equality = root.find("equality")
+    for item in equality if equality is not None else []:
+        if item.tag == "joint" and item.get("joint1"):
+            coef = _floats(item.get("polycoef"), 5, [0.0, 1.0, 0.0, 0.0, 0.0])
+            if coef is not None:
+                couplings.append({"name": item.get("name"), "joint": item.get("joint1"),
+                                  "driver": item.get("joint2"), "polycoef": coef})
+        elif item.tag == "connect":
+            if item.get("site1") in sites and item.get("site2") in sites:
+                (b1, p1), (b2, p2) = sites[item.get("site1")], sites[item.get("site2")]
+                loops.append({"name": item.get("name"), "body1": b1, "point1_mm": p1, "body2": b2, "point2_mm": p2})
+            elif item.get("body1"):
+                anchor = _floats(item.get("anchor"), 3, [0.0, 0.0, 0.0]) or [0.0, 0.0, 0.0]
+                # The second body's point is where the anchor sits at qpos0; the page finds it.
+                loops.append({"name": item.get("name"), "body1": item.get("body1"),
+                              "point1_mm": [v * 1000.0 for v in anchor], "body2": item.get("body2"),
+                              "point2_mm": None})
+    return {"available": True, "keyframe": MJCF_REST_KEYFRAME if len(values) == width and values else None,
+            "bodies": bodies, "joints": joints, "couplings": couplings, "loops": loops}
+
+
 def collision_proxies(path: Path, *, source: str, expected_sha256: str | None = None) -> dict[str, Any]:
     """The collision proxies a retained MJCF declares, per body, in mm and xyzw.
 
@@ -1550,7 +1676,9 @@ def collision_proxies(path: Path, *, source: str, expected_sha256: str | None = 
                  components=sorted({g["component"] for g in geoms}),
                  # The course the model stands on, drawn whether or not the
                  # proxies are shown (ADR-734).
-                 terrain=mjcf_terrain(root))
+                 terrain=mjcf_terrain(root),
+                 # The joint tree the Pose editor walks (ADR-969).
+                 kinematics=mjcf_kinematics(root))
     return block
 
 
@@ -3182,6 +3310,8 @@ class ReviewProject:
         review["budgets"] = {"stored": dict(read_agent_state(self.root).budgets)}
         # Each accepted task's gait reference, played before anything trains (ADR-703).
         review["references"] = gait_references(self.root)
+        # The poses `cadex pose save` stored, for the Pose editor (ADR-969).
+        review["poses"] = pose_listing(self.root)
         review["served_at"] = _now()
         return review
 

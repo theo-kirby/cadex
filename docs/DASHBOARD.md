@@ -1,6 +1,6 @@
 # DASHBOARD.md — The dashboard, Cadex's only UI
 
-Verified against source: 2026-10-29. [Cadex-new]
+Verified against source: 2026-10-30. [Cadex-new]
 
 This is the design specification for the dashboard: the pages `cadex app`
 and `cadex review` serve (`cli/cadex_cli/review_server.py` and
@@ -117,6 +117,7 @@ the status bar (`#screen[data-mode]`), which `layout.js` tiles with areas
 | **Outliner** | `outliner` | `#editor-outliner`, `#outliner`, `#outliner-filter`, `#outliner-group`, `#outliner-show-all`, `#outliner-tree`, `#outliner-summary` | Every part of the model the 3D viewport shows, grouped by type or role, to show, hide, isolate, select and frame (§25, ADR-676). |
 | **Activations** | `activations` | `#editor-activations`, `#activations-views button[data-view]`, `#activations[data-match][data-gauges][data-bars][data-drivers]`, `#activations-status[data-state]`, `#activations-motors`, `#activations-bars`, `#activations-detail` | What the motors are doing at the moment the 3D viewport's rollout shows (§27, ADR-727): a gauge per motor, the same as a bar a row, the inputs that drive the picked motor, each view on its own switch, and **Show in viewport**, which paints each motor's parts by its load. |
 | **Network** | `network` | `#editor-network`, `#network-views button[data-view]`, `#network[data-layers][data-paths][data-max]`, `#network-status[data-state]`, `#network-layers`, `#network-paths`, `.net-view[data-view] .view-max[data-max][aria-pressed]` | The rollout's policy network (§27, ADR-728): its layers as a heat map, and the strongest paths through them to the picked motor, each on its own switch. Each view's corner button (shown on hover) maximizes it to fill the editor, the other view and the status line stepping aside, and restores it (ADR-770); each panel's own, for the page's life. |
+| **Pose** | `pose` | `#editor-pose`, `#pose-on[aria-pressed]`, `#pose-rest`, `#pose-sweep[aria-pressed]`, `#pose-mirror`, `#pose-status[data-state]`, `#pose-saved`, `#pose-name`, `#pose-copy`, `#pose-download`, `#pose-joints .pose-joint[data-joint][data-stop][data-picked]` | The model moved by its joints through their ranges, as view state (§29, ADR-969); a pose leaves the page only as JSON for `cadex pose save`. |
 | **Settings** | `settings` | `#editor-settings`, `#settings`, `#settings-heat-preset`, `#settings-heat-count button[data-count]`, `#settings-heat-low`, `#settings-heat-mid`, `#settings-heat-high`, `#settings-heat-preview`, `#settings-heat-reset` | This browser's preferences (§28, ADR-728): for now the heat colours the Activations and Network editors and Show in viewport paint in. |
 | **Menu bar** | — | `#menubar`; `#file-panel` (`#project-select`, `#project-open`, `#project-all`); `#revision-panel` (`#revision-list li[data-revision][data-ordinal][data-current]`, `#revision-empty`); `#view-panel` (`#theme-choice`, `#style-choice`, `#look-choice`, `#occlusion`, `#detail`, `#mesh-lines`, `#mesh-strength`, `#reflections`, `#layout-reset`, `#layout-presets button[data-preset]`) | File, Revisions and View in the status bar, each a `<details class="menu">` dropdown opening upwards (ADR-539, ADR-728): open another project; the revision trail, read-only (§18), where a row (`data-retained` says whether its model was kept) opens that revision on the 3D viewport's revision timeline — a view, never a restore; the theme, the render style, the lighting, ambient occlusion and surface detail, the wireframe's mesh lines (on or off, and a strength slider) and the shaded solids' reflections (a strength slider), each this browser's own (§10), and the layout: Reset, and eight one-click presets (§12). One opens at a time; a click outside or Escape closes it, and with one open, hovering another opens that one. On a phone the dropdown spans the screen between the gutters. |
 
@@ -1171,4 +1172,69 @@ newest, at the design, through a preset (`#settings-trail-preset`) —
 the activation colours are. By age the ramp stretches over the trail as far
 as it is shown, so the newest end is always the last colour. **Reset**
 returns white; a preview bar shows the colour or the ramp.
+
+## 29. Pose (ADR-969)
+
+An editor (`pose.js`) that moves the model shown by its joints, to see the
+range each one has and what poses the design can reach. Posing is view
+state, like the camera: it never writes the script, and **Rest** puts every
+joint back where the model was built (ADR-537).
+
+**What it reads.** The model's MJCF export, the one its collision proxies
+come from: `collision.kinematics` on `api/model/accepted` and
+`api/model/run/<run>` (`review_server.py` `mjcf_kinematics`). It carries
+every body with its parent and its frame (`pos_mm`, `rotation_xyzw`), every
+joint with its `type`, `axis`, anchor (`pos_mm`), `range` (radians for a
+hinge, metres for a slide; `null` when it is not limited), `ref`, whether a
+motor drives it (`actuated`) and its value at the `solved` keyframe
+(`rest`); the joint couplings (`<equality><joint>`: `joint`, `driver`,
+`polycoef`) and the closed loops (`<equality><connect>`: two bodies and a
+point on each, in mm). A model that sets a frame other than by `pos` and
+`quat`, uses `<default>` classes, or has a joint the editor cannot read is
+`available: false` with its `reason`, and the editor says it. A revision
+from the history carries no export, so it is not posed.
+
+**The walk.** The page walks the tree itself, MuJoCo's way: each body's
+frame in its parent's, then each of its joints about its anchor. Each root
+body is held where the model shown rests it, so a robot is posed where it
+stands. A coupled joint follows its driver by the polynomial
+(`y − y₀ = Σ cᵢ (x − x₀)ⁱ`, chains resolved in turn). A closed loop is closed
+again after every move by its passive joints — those on the two bodies'
+paths up to where they meet that no motor drives and nothing couples —
+with damped least squares on the gap and a numerical Jacobian, each step
+held inside the joints' stops; when the gap left exceeds 0.5 mm the status
+says how far apart the linkage is (`data-state="warn"`). When the model
+shown rests more than 1 mm from its export's rest (a run's model rests at
+its trace's first frame), the status says so and the pose is the export's.
+
+**The rows** (`#pose-joints`): one per hinge and slide, in the export's
+order: its name (a button that picks it and lights the parts it moves in
+every viewport, the Outliner's selection coming back when it is unpicked),
+what moves it — `motor`, `passive`, `follows <joint>` or `linkage` — a
+slider over its range (±180°, or ±100 mm, where it has none; disabled for
+a joint that follows or closes a linkage), its value in degrees or mm (in
+`--warn` at a stop, `data-stop="true"`) and its stops. Moving any slider
+poses the model: **Pose** (`#pose-on`) is pressed, playback stops and
+leaves the model where the joints put it, and pressing **Play** or Pose
+again leaves posing and puts back the frame the rollout was at.
+
+**Sweep** (`#pose-sweep`) swings the picked joint from stop to stop and back
+every 3 s, coupled joints and linkages following, until it is pressed again
+or a slider moves. **Mirror** (`#pose-mirror`) moves a joint's partner on
+the other side with it — the name with each `l`/`r`, `left`/`right` or
+leg token (`fl`/`fr`, `hl`/`hr`, `rl`/`rr`) swapped — the same way when the
+two axes, at rest, are mirror images in the XZ plane and the other way when
+they are opposed.
+
+**Saved poses.** `#pose-saved` lists `/api/project`'s `poses`, the ones
+`cadex pose save` stored under `poses/` (`docs/CLI.md`); picking one sets
+every joint it names that the model has (the status counts the rest) and
+puts its name in `#pose-name`. **Copy** (`#pose-copy`) puts the pose on the
+clipboard as `cadex-pose-v1` JSON — `name` from `#pose-name`, `note`,
+`joints` (every hinge and slide, radians or metres, to 1e-6) and `model`
+(the export's `source` and `sha256`) — and **Download** (`#pose-download`)
+saves the same as `<name>.json`; where the clipboard is not offered (a page
+not served over HTTPS or from localhost) Copy downloads. The status then
+says the command that stores it. The page keeps nothing of a pose in the
+browser.
 
