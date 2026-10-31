@@ -425,6 +425,65 @@ def test_a_race_terrain_keeps_its_bounds_and_a_flat_start_under_every_gate() -> 
         assert both["drawn"]["rough_highest_mm"] <= shape["rough_mm"]
 
 
+def test_box_terrain_stands_a_box_or_step_across_each_leg_on_u1s_relief() -> None:
+    """ADR-965: b1 is u1's relief outside its boxes, each box's top flat over the
+    hills inside it, and boxes stands the same boxes on the plane."""
+
+    shape = G.RACE_TERRAIN
+    low, high = shape["box_mm"]
+    kinds_seen = set()
+    for seed in range(10):
+        course = G.gate_course(seed, split="heldout")
+        b1, u1, boxes = (G.race_terrain(np, course, kind) for kind in ("b1", "u1", "boxes"))
+        hills = G.race_terrain(np, course, "u1", rough_mm=0.0)  # u1's hills, its rough relief clipped away
+        obstacles = b1["drawn"]["obstacles"]
+        assert obstacles == boxes["drawn"]["obstacles"] and 0 < len(obstacles) <= len(course["gates"])
+        assert b1["sha256"] != u1["sha256"] and boxes["hill_grade_deg"] == 0.0
+        ground = G.terrain_ground(np, b1)
+        assert ground(0.0, 0.0) == 0.0 and ground(300.0, -200.0) == 0.0
+        gx = b1["x_range_mm"][0] + b1["cell_mm"] * np.arange(b1["ncol"])
+        gy = b1["y_range_mm"][0] + b1["cell_mm"] * np.arange(b1["nrow"])
+        covered = np.zeros(b1["heights_mm"].shape, dtype=bool)
+        ends = [(0.0, 0.0)] + [tuple(1000.0 * v for v in g["xy_m"]) for g in course["gates"]]
+        for box in obstacles:
+            kinds_seen.add(box["kind"])
+            assert low <= box["height_mm"] <= high
+            (ax, ay), (bx, by) = ends[box["leg"]], ends[box["leg"] + 1]
+            length = math.hypot(bx - ax, by - ay)
+            assert box["along_mm"] <= shape["obstacle_leg_share"] * length + 1e-3
+            # On its leg, between obstacle_at's fractions, at most the offset aside.
+            cx, cy = box["centre_mm"]
+            t = ((cx - ax) * (bx - ax) + (cy - ay) * (by - ay)) / length ** 2
+            aside = abs((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / length
+            assert shape["obstacle_at"][0] - 1e-5 <= t <= shape["obstacle_at"][1] + 1e-5
+            assert aside <= shape["obstacle_offset_mm"] + 1e-3
+            yaw = math.radians(box["yaw_deg"])
+            px, py = gx[None, :] - cx, gy[:, None] - cy
+            inside = ((np.abs(px * math.cos(yaw) + py * math.sin(yaw)) <= 0.5 * box["along_mm"])
+                      & (np.abs(-px * math.sin(yaw) + py * math.cos(yaw)) <= 0.5 * box["across_mm"]))
+            assert inside.any()
+            # The box covers the rough relief: inside it, b1 stands at least its height over the hills.
+            lift = b1["heights_mm"][inside] - hills["heights_mm"][inside]
+            assert lift.min() >= box["height_mm"] - 2e-3 and lift.max() <= high + 2e-3
+            assert np.all(boxes["heights_mm"][inside] >= box["height_mm"] - 1e-3)
+            covered |= inside
+        # Off every box by a cell (the recorded centre and yaw are rounded), b1 is u1.
+        near = covered.copy()
+        for axis in (0, 1):
+            for shift in (-1, 1):
+                near |= np.roll(covered, shift, axis=axis)
+        assert np.array_equal(b1["heights_mm"][~near], u1["heights_mm"][~near])
+        assert np.all(boxes["heights_mm"][~near] == 0.0)
+        assert boxes["highest_mm"] == pytest.approx(b1["drawn"]["box_highest_mm"])
+        assert b1["drawn"]["boxes"] + b1["drawn"]["steps"] == len(obstacles)
+    assert kinds_seen == {"box", "step"}
+    course = G.gate_course(3, split="heldout")
+    assert G.race_terrain(np, course, "b1")["sha256"] == G.race_terrain(np, course, "b1")["sha256"]
+    assert len({G.race_terrain(np, other, "b1")["sha256"]
+                for other in (course, G.gate_course(3, split="train"), G.sprint_course(3, split="heldout"),
+                              G.gate_course(4, split="heldout"))}) == 4
+
+
 #: A floor and a ball that collides with it as a paw does.
 FLOOR = """
 <mujoco><worldbody>

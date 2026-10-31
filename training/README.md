@@ -798,6 +798,11 @@ and the course's kind, split and seed, so a held-out course has held-out relief;
 the start stands on a flat clearing 0.5 m round the origin. A fall is the
 base's height over the ground under it. `gates.json` carries the terrain's
 draw, its measured steepest grade and its sha256, and the view its drawing.
+`race --terrain boxes|b1` (ADR-965) stands a flat-topped box (0.3–0.6 m by
+0.4–1.0 m) or a step platform (0.8–1.6 m by 1.5–3.0 m) 20–60 mm high across
+every leg, on the plane or on the course's own `u1` relief; `b1` is `u1`
+outside its boxes, and `gates.json` lists every box's leg, place, size, yaw
+and height. The trainer does not lay boxes yet.
 
 **Race terrain in training (ADR-962).** `--race-terrain rough|hills|u1` (with
 `--gates`) lays `--relief-levels` K fields of that relief round the start,

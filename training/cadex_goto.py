@@ -45,6 +45,7 @@ held-out course and writes ``view/`` and ``gates.json``:
     python training/cadex_goto.py gates --sprint --seed 0 --split heldout   # ADR-960
     python training/cadex_goto.py race POLICY --task outputs/T-task.json --seed 0 --rated-nm 1.6
     python training/cadex_goto.py race POLICY --task outputs/T-task.json --seed 0 --terrain u1  # ADR-961
+    python training/cadex_goto.py race POLICY --task outputs/T-task.json --seed 0 --terrain b1  # ADR-965
 
 Standard library at module scope (ADR-084); numpy and mujoco only inside ``play``.
 """
@@ -488,8 +489,13 @@ def course_length_m(course: Mapping[str, Any]) -> float:
 #: Counts are per square metre of the grid. The start stands on flat ground
 #: out to ``start_clear_m``, and the relief rises over ``blend_m`` from it and
 #: falls to the plane over ``blend_m`` at the grid's edge, ``margin_m`` past
-#: the outermost gate.
-TERRAIN_KINDS = ("rough", "hills", "u1")
+#: the outermost gate. ``boxes`` (ADR-965) stands a flat-topped box or a wide
+#: step platform across the path of every leg, ``box_mm`` high, for leon VI's
+#: B1; ``b1`` stands the same boxes on the course's ``u1`` relief.
+TERRAIN_KINDS = ("rough", "hills", "u1", "boxes", "b1")
+#: The relief each kind lays under its boxes (ADR-965), and so whose seed
+#: string draws it: ``b1``'s relief is the course's ``u1`` relief.
+TERRAIN_RELIEF = {"rough": "rough", "hills": "hills", "u1": "u1", "boxes": None, "b1": "u1"}
 #: How many centres a hill is tried at before it is left out (ADR-961).
 TERRAIN_PLACE_TRIES = 8
 TERRAIN_SCHEMA = "cadex-race-terrain-v1"
@@ -498,7 +504,12 @@ RACE_TERRAIN = {"cell_mm": 25.0, "margin_m": 3.0, "start_clear_m": 0.5, "blend_m
                 "bumps_per_m2": 0.25, "bump_sigma_mm": (40.0, 120.0),
                 "rocks_per_m2": 0.25, "rock_mm": (60.0, 200.0),
                 "tiles_per_m2": 0.04, "tile_patch_mm": (600.0, 1500.0), "tile_cell_mm": (100.0, 250.0),
-                "grade_deg": (8.0, 15.0), "hills_per_m2": 0.05, "hill_sigma_mm": (500.0, 1200.0)}
+                "grade_deg": (8.0, 15.0), "hills_per_m2": 0.05, "hill_sigma_mm": (500.0, 1200.0),
+                "box_mm": (20.0, 60.0), "step_share": 0.5,
+                "box_along_mm": (300.0, 600.0), "box_across_mm": (400.0, 1000.0),
+                "step_along_mm": (800.0, 1600.0), "step_across_mm": (1500.0, 3000.0),
+                "obstacle_at": (0.35, 0.65), "obstacle_offset_mm": 150.0, "obstacle_yaw_deg": 20.0,
+                "obstacle_leg_share": 0.6}
 
 
 def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) -> dict[str, Any]:
@@ -518,7 +529,22 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
     ``relief_mm``, and keeps the highest of them, clipped to ``rough_mm``.
     ``hills`` sums gaussian hills (``hill_sigma_mm``) and scales them so the
     steepest grade between grid points is the course's draw in ``grade_deg``.
-    ``u1`` lays ``rough`` on ``hills``. The returned dict carries ``heights_mm``
+    ``u1`` lays ``rough`` on ``hills``.
+
+    ``boxes`` and ``b1`` (ADR-965) stand one obstacle across each leg (the
+    start to the first gate, then gate to gate): a box (``box_along_mm`` by
+    ``box_across_mm``) or, on ``step_share`` of legs, a step platform
+    (``step_along_mm`` by ``step_across_mm``, wide enough that the way across
+    is up a step and down one), its along-side at most ``obstacle_leg_share``
+    of the leg. Its centre is a draw in ``obstacle_at`` along the leg, up to
+    ``obstacle_offset_mm`` aside, turned up to ``obstacle_yaw_deg`` off the
+    leg, and its top a flat draw in ``box_mm`` over the relief's hills,
+    covering the rough relief under it; one that would reach the start's
+    clearing is left out. Boxes are drawn on their own seed string
+    (``cadex-race-terrain:boxes:...``) and the relief on its kind's
+    (:data:`TERRAIN_RELIEF`), so ``b1`` is ``u1``'s relief outside its boxes
+    and ``boxes`` stands ``b1``'s boxes on the plane. A box's face rises over
+    one grid cell. The returned dict carries ``heights_mm``
     (an ``(nrow, ncol)`` array), the grid's extent, and what was drawn and
     measured: the steepest hill grade, the highest rough relief, the highest
     point and the grid's sha256.
@@ -540,8 +566,9 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
     gx = x0 + cell * np.arange(ncol)
     gy = y0 + cell * np.arange(nrow)
     area_m2 = (x1 - x0) * (y1 - y0) * 1e-6
-    rng = random.Random(f"cadex-race-terrain:{kind}:{course.get('kind', 'gates')}:"
-                        f"{course['split']}:{int(course['seed'])}")
+    seed_tail = f"{course.get('kind', 'gates')}:{course['split']}:{int(course['seed'])}"
+    relief = TERRAIN_RELIEF[kind]
+    rng = random.Random(f"cadex-race-terrain:{relief}:{seed_tail}")
 
     # The start's clearing and the edge's fall, 0 to 1 by smoothstep.
     def smooth(t: Any) -> Any:
@@ -569,7 +596,7 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
     drawn: dict[str, Any] = {}
     hills = np.zeros((nrow, ncol))
     rough = np.zeros((nrow, ncol))
-    if kind in ("hills", "u1"):
+    if relief in ("hills", "u1"):
         count = max(1, int(round(float(options["hills_per_m2"]) * area_m2)))
         placed = 0
         for _ in range(count):
@@ -594,7 +621,7 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
         steepest = float(np.hypot(dx, dy).max())
         hills *= math.tan(math.radians(grade)) / steepest if steepest > 0 else 0.0
         drawn.update(hills=placed, grade_deg=round(grade, 3))
-    if kind in ("rough", "u1"):
+    if relief in ("rough", "u1"):
         counts = {}
         for name in ("bumps", "rocks", "tiles"):
             counts[name] = max(1, int(round(float(options[f"{name}_per_m2"]) * area_m2)))
@@ -620,7 +647,46 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
                             rough[rows, cols] = np.maximum(rough[rows, cols], rng.uniform(0.0, top))
         rough = np.minimum(rough, float(options["rough_mm"])) * (mask >= 0.5)
         drawn.update(counts, rough_highest_mm=round(float(rough.max()), 3))
-    heights = np.round(hills + rough, 3)
+    if relief is not None and kind == relief:
+        heights = np.round(hills + rough, 3)
+    else:
+        # ADR-965: a box or step across every leg, its flat top over the hills.
+        boxes_rng = random.Random(f"cadex-race-terrain:boxes:{seed_tail}")
+        top = np.zeros((nrow, ncol))
+        covered = np.zeros((nrow, ncol), dtype=bool)
+        obstacles = []
+        ends = [(0.0, 0.0)] + [(1000.0 * g["xy_m"][0], 1000.0 * g["xy_m"][1]) for g in course["gates"]]
+        for leg, ((ax, ay), (bx, by)) in enumerate(zip(ends, ends[1:])):
+            draw = lambda key: boxes_rng.uniform(*(float(v) for v in options[key]))  # noqa: E731
+            step = boxes_rng.random() < float(options["step_share"])
+            name = "step" if step else "box"
+            length = math.hypot(bx - ax, by - ay)
+            along = min(draw(f"{name}_along_mm"), float(options["obstacle_leg_share"]) * length)
+            across = draw(f"{name}_across_mm")
+            at = draw("obstacle_at")
+            offset = boxes_rng.uniform(-1.0, 1.0) * float(options["obstacle_offset_mm"])
+            yaw = math.atan2(by - ay, bx - ax) + math.radians(
+                boxes_rng.uniform(-1.0, 1.0) * float(options["obstacle_yaw_deg"]))
+            height = draw("box_mm")
+            ux, uy = (bx - ax) / length, (by - ay) / length
+            cx, cy = ax + at * (bx - ax) - offset * uy, ay + at * (by - ay) + offset * ux
+            if math.hypot(cx, cy) - 0.5 * math.hypot(along, across) < clear + blend:
+                continue
+            rows, cols = window(cx, cy, 0.5 * math.hypot(along, across))
+            px = gx[cols][None, :] - cx
+            py = gy[rows][:, None] - cy
+            inside = ((np.abs(px * math.cos(yaw) + py * math.sin(yaw)) <= 0.5 * along)
+                      & (np.abs(-px * math.sin(yaw) + py * math.cos(yaw)) <= 0.5 * across))
+            top[rows, cols] = np.where(inside, np.maximum(top[rows, cols], height), top[rows, cols])
+            covered[rows, cols] |= inside
+            obstacles.append({"leg": leg, "kind": name, "centre_mm": [round(cx, 3), round(cy, 3)],
+                              "along_mm": round(along, 3), "across_mm": round(across, 3),
+                              "yaw_deg": round(math.degrees(yaw), 3), "height_mm": round(height, 3)})
+        heights = np.round(hills + np.where(covered, top, rough), 3)
+        drawn.update(boxes=sum(o["kind"] == "box" for o in obstacles),
+                     steps=sum(o["kind"] == "step" for o in obstacles),
+                     box_highest_mm=round(max((o["height_mm"] for o in obstacles), default=0.0), 3),
+                     obstacles=obstacles)
     dy, dx = np.gradient(hills, cell)
     return {"schema": TERRAIN_SCHEMA, "kind": kind, "course_kind": course.get("kind", "gates"),
             "split": course["split"], "seed": int(course["seed"]),
@@ -1608,7 +1674,9 @@ def main(argv: Sequence[str]) -> int:
             verb.add_argument("--terrain", choices=TERRAIN_KINDS, default=None,
                               help="race over the course's own relief (ADR-961): rough (bumps, rocks, "
                                    f"tiles to {RACE_TERRAIN['rough_mm']:g} mm), hills (to "
-                                   f"{RACE_TERRAIN['grade_deg'][1]:g}°) or u1 (both); default flat")
+                                   f"{RACE_TERRAIN['grade_deg'][1]:g}°) or u1 (both); boxes (a box or "
+                                   f"step to {RACE_TERRAIN['box_mm'][1]:g} mm across every leg) or b1 "
+                                   "(the boxes on u1's relief, ADR-965); default flat")
     options = parser.parse_args(argv[1:])
     if options.verb == "gates":
         radius = GATES["radius_m"] if options.radius is None else options.radius

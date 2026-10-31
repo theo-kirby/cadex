@@ -296,6 +296,8 @@ mesh (ADR-853–855, `docs/MUJOCO.md` *The floor and terrain*).
    amplitude, its hills' grade climbing the race's range field by field.
    `--relief-fields graded-rough` (ADR-964) keeps a rough-only field below
    the graded hills, so rough ground without hills is never missing.
+   `race --terrain b1` (ADR-965) judges boxes and steps to 60 mm across
+   every leg on that relief, `boxes` the same boxes on the plane.
 
 ## D. Defaults (from R1, RESEARCH.md §3 and §5)
 

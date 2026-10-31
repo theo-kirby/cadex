@@ -49099,3 +49099,56 @@ is the rough field alone; a `hills` run with `graded-rough` is refused.
 
 **Consequences.** One more field costs one more heightfield in every
 environment's model; the grids are the same size.
+
+## ADR-965 — Race terrain with boxes and steps (2026-10-30)
+
+**Context.** leon VI's l6r1 charter judges B1 on held-out gate courses with
+boxes and steps up and down to 60 mm in the path, mixed with U1's relief, the
+terrain seeds split like `gate_course`'s. `race --terrain` (ADR-961) lays
+relief only: rough to 30 mm and hills, nothing flat-topped to step onto.
+
+**Decision.** Two more `cadex_goto.TERRAIN_KINDS`, drawn by `race_terrain` on
+the same 25 mm grid:
+- `boxes`: one obstacle across every leg (the start to the first gate, then
+  gate to gate), on the plane. With probability `step_share` 0.5 it is a step
+  platform 0.8–1.6 m along by 1.5–3.0 m across, wide enough that the way over
+  is a step up and a step down; otherwise a box 0.3–0.6 m by 0.4–1.0 m. Its
+  along-side is at most 0.6 of the leg, its centre a draw in 0.35–0.65 along
+  the leg and up to 150 mm aside, turned up to ±20° off it, its top a flat
+  draw in `box_mm` 20–60 mm. One that would reach the start's clearing is
+  left out; where two overlap the higher top stands.
+- `b1`: the same boxes on the course's `u1` relief. A box's top is flat over
+  the hills under it (it follows their grade) and covers the rough relief
+  there; outside the boxes `b1` is `u1`.
+
+The boxes are drawn from their own seed string
+`cadex-race-terrain:boxes:<course kind>:<split>:<seed>`, and the relief from
+its kind's (`TERRAIN_RELIEF`: `b1` draws `u1`'s), so a held-out course's
+boxes are held out and the `rough`, `hills` and `u1` draws are unchanged to
+the digest. A box's face rises over one grid cell (67° at 60 mm), which is
+the heightfield's edge. `drawn` carries the counts of boxes and steps, the
+highest top, and every obstacle's leg, kind, centre, size, yaw and height;
+`gates.json` carries them. The trainer's `--race-terrain` choices are
+unchanged: it lays no boxes yet.
+
+**Evidence.** Held-out gate courses 0–9: 7–11 obstacles a course (2–9 boxes,
+2–7 steps), the highest 46.9–60.0 mm. leon VI's lu3 final (l6r1 ADR-050,
+`4e094815…`), blind, on its export bundle `f6292526…`: `b1` 0/10 (9 falls,
+25/120 gates, 1.68 m/s), `boxes` 0/10 (10 falls, 39/120 gates, 1.59 m/s);
+every fall a tumble (trunk up-axis under 0.5) at trunk height, not the
+height-over-ground rule. The same policy races `u1` 7/10.
+
+**Tests.** `training/test_gate_race.py`: over 10 held-out courses, `b1` and
+`boxes` draw the same obstacles; every obstacle is on its leg within 0.35–0.65
+and the offset, no longer along than 0.6 of the leg, 20–60 mm high; inside it
+`b1` stands at least its height and at most 60 mm over `u1`'s hills and
+`boxes` at least its height; a cell off every box, `b1` is `u1` and `boxes`
+the plane; the start's clearing is flat; both kinds of obstacle occur; the
+draw repeats to the digest and the train split, a sprint course and the next
+seed differ. The existing kinds' draws are unchanged (checked against
+112ed9e4's `race_terrain` and `field_terrain` to the digest). Training suite
+162 passed.
+
+**Consequences.** B1 has its judge. Training over boxes needs the trainer's
+fields to carry them next; a heightfield keeps MJX's paws-only contact
+(ADR-854, ADR-962).
