@@ -36,10 +36,22 @@ no others:
   ``implicitfast`` at the same step and iterations (``LADDER``). Naming any
   solver option tries that one setting only.
 
-Masses, inertias, joints, actuators, equalities, sensors and keyframes are kept.
+* **A held, cable-coupled chain welded, if asked** (``--weld``, ADR-959).
+  Each named joint (``fnmatch`` patterns) goes, and so does every joint
+  equality that names one, so the chain is rigid at its build pose and its
+  bodies fuse. A welded joint must be unactuated, coupled by a joint
+  equality, named by no sensor or tendon, and at ``qpos0`` in every
+  keyframe; otherwise the cut is refused. Its use is a chain whose driving
+  joints are held, not the policy's (leon VI's tail): the export's judge
+  still plays the full chain.
+
+Masses, inertias, joints, actuators, equalities, sensors and keyframes are kept,
+less only what ``--weld`` names.
 ``cut`` compiles both models and refuses to write unless total mass,
 nq/nv/nu/neq, the actuated joint order, the sensor count and the joint-space
-mass matrix at qpos0 (to 1e-9) match, and unless the cut passes ``fidelity``
+mass matrix at qpos0 (to 1e-9) match (with ``--weld``: less the welded
+joints' coordinates and the equalities dropped, the matrix compared on the
+kept DoFs), and unless the cut passes ``fidelity``
 (``--no-check`` skips that). The model is marked
 ``cadex:tier = training`` so the dashboard and ``cadex_train.py`` know it.
 
@@ -57,6 +69,7 @@ sensor's site, or those holding the ``--feet`` geoms when given.
     python training/cadex_training_model.py cut --project DIR --out MODEL.xml [--json REPORT]
         [--engine MJCF] [--timestep S] [--iterations N] [--ls-iterations N]
         [--integrator Euler|implicitfast] [--feet G,...] [--fall-geoms G,...] [--fall-condim 1]
+        [--weld 'j_tail[3-7]_*',...]
     python training/cadex_training_model.py fidelity MODEL.xml [...] --project DIR [--json OUT] [--feet G,...]
 
 ``--project`` reads the accepted attempt's MJCF export; ``--engine`` names one.
@@ -67,6 +80,7 @@ Each prints one JSON report and exits 0 only on a pass. Needs ``mujoco`` and
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import sys
@@ -163,6 +177,17 @@ def merged_inertial(inertials) -> dict[str, str]:
             "diaginertia": fmt(np.maximum(diag, 0.0))}
 
 
+def _framed(body) -> bool:
+    """Whether a body has a frame of its own: one that is not the identity (``pos="0 0 0"`` is not)."""
+
+    identity = {"pos": [0.0] * 3, "quat": [1.0, 0.0, 0.0, 0.0], "euler": [0.0] * 3}
+    for key in ("pos", "quat", "euler", "axisangle", "xyaxes", "zaxis"):
+        text = body.get(key)
+        if text is not None and [float(v) for v in text.split()] != identity.get(key):
+            return True
+    return False
+
+
 def fuse_static(root, keep: Iterable[str] = ()) -> int:
     """Fuse every joint-free body nothing names, and not in ``keep``, into its parent; return how many."""
 
@@ -181,7 +206,7 @@ def fuse_static(root, keep: Iterable[str] = ()) -> int:
             static = child.find("joint") is None and child.find("freejoint") is None
             if not static or child.get("name") in named or body.tag == "worldbody":
                 continue
-            if any(child.get(k) for k in ("pos", "quat", "euler", "axisangle")):
+            if _framed(child):
                 raise ValueError(f"static body {child.get('name')} has its own frame; fusion needs world-frame bodies")
             index = list(body).index(child)
             inertials = [el for el in (body.find("inertial"), child.find("inertial")) if el is not None]
@@ -225,10 +250,75 @@ def default_fall_geoms(root, colliding: set[str], feet: set[str]) -> list[str]:
     return out
 
 
+def weld_chain(xml: str, root, patterns: Iterable[str]) -> dict[str, Any]:
+    """Remove the joints ``patterns`` match, and every joint equality naming one, from ``root``.
+
+    ``xml`` is ``root``'s text, compiled to read the keyframes. Returns the
+    welded joints, the engine DoF and qpos indices they held, and the
+    equalities dropped. Refuses a joint that is actuated, coupled by no joint
+    equality, named by a sensor or tendon, or off ``qpos0`` in a keyframe.
+    """
+
+    import mujoco as mj
+    import numpy as np
+
+    joints = {j.get("name"): j for b in root.iter("body") for j in b.findall("joint") if j.get("name")}
+    chosen: list[str] = []
+    for pattern in patterns:
+        hits = [n for n in joints if fnmatch.fnmatchcase(n, pattern)]
+        if not hits:
+            raise ValueError(f"--weld {pattern!r} matches no joint")
+        chosen += [n for n in hits if n not in chosen]
+
+    def naming(sections, keys=("joint", "joint1", "joint2", "objname", "jointinparent")) -> set[str]:
+        return {el.get(k) for sec in sections for el in sec.iter() for k in keys if el.get(k)}
+
+    actuated = naming(root.findall("actuator"))
+    sensed = naming(root.findall("sensor"))
+    tendons = naming(root.findall("tendon"))
+    equalities = [(sec, el) for sec in root.findall("equality") for el in sec.findall("joint")]
+    coupled = {el.get(k) for _, el in equalities for k in ("joint1", "joint2") if el.get(k)}
+    m = mj.MjModel.from_xml_string(xml)
+    for name in chosen:
+        j = joints[name]
+        why = ("it is actuated" if name in actuated else
+               "a sensor names it" if name in sensed else
+               "a tendon names it" if name in tendons else
+               "no joint equality couples it" if name not in coupled else
+               "it is not a hinge or slide" if j.get("type", "hinge") not in ("hinge", "slide") else None)
+        if why:
+            raise ValueError(f"cannot weld {name}: {why}")
+        adr = int(m.jnt_qposadr[mj.mj_name2id(m, mj.mjtObj.mjOBJ_JOINT, name)])
+        for k in range(m.nkey):
+            if abs(float(m.key_qpos[k, adr]) - float(m.qpos0[adr])) > 1e-9:
+                raise ValueError(f"cannot weld {name}: keyframe {k} holds it at {m.key_qpos[k, adr]:.6g}, "
+                                 f"not its build pose {m.qpos0[adr]:.6g}")
+    ids = [mj.mj_name2id(m, mj.mjtObj.mjOBJ_JOINT, n) for n in chosen]
+    qpos = sorted(int(m.jnt_qposadr[i]) for i in ids)
+    dofs = sorted(int(m.jnt_dofadr[i]) for i in ids)
+
+    for key in root.iter("key"):
+        for attr, drop in (("qpos", set(qpos)), ("qvel", set(dofs))):
+            if key.get(attr):
+                values = key.get(attr).split()
+                key.set(attr, " ".join(v for i, v in enumerate(values) if i not in drop))
+    dropped = []
+    for sec, el in equalities:
+        if el.get("joint1") in chosen or el.get("joint2") in chosen:
+            sec.remove(el)
+            dropped.append(el.get("name") or f"{el.get('joint1')}~{el.get('joint2')}")
+    for sec in [s for s in root.findall("equality") if len(s) == 0]:
+        root.remove(sec)
+    for body in root.iter("body"):
+        for j in [j for j in body.findall("joint") if j.get("name") in chosen]:
+            body.remove(j)
+    return {"joints": chosen, "dofs": dofs, "qpos": qpos, "equalities": dropped}
+
+
 def derive(xml: str, *, timestep: float, iterations: int, ls_iterations: int, integrator: str,
            feet: Iterable[str] | None = None, fall_geoms: Iterable[str] | None = None,
-           fall_condim: int = 1) -> tuple[str, dict[str, list[str]]]:
-    """The training MJCF text for an engine MJCF text, and the feet and fall geoms it kept."""
+           fall_condim: int = 1, weld: Iterable[str] | None = None) -> tuple[str, dict[str, Any]]:
+    """The training MJCF text for an engine MJCF text, and the feet and fall geoms it kept (and what it welded)."""
 
     colliding = colliding_geoms(xml)
     root = ET.fromstring(xml)
@@ -245,6 +335,7 @@ def derive(xml: str, *, timestep: float, iterations: int, ls_iterations: int, in
 
     for contact in root.findall("contact"):
         root.remove(contact)
+    welded = weld_chain(xml, root, weld) if weld else None
     floor_geoms = {*feet, *(fall_geoms or ())}
     fuse_static(root, keep=_bodies_holding(root, floor_geoms))
     fall = list(fall_geoms) if fall_geoms is not None else default_fall_geoms(root, colliding, set(feet))
@@ -288,7 +379,10 @@ def derive(xml: str, *, timestep: float, iterations: int, ls_iterations: int, in
     ET.SubElement(custom, "text", name="cadex:tier", data="training")
 
     ET.indent(root, space="  ")
-    return ET.tostring(root, encoding="unicode") + "\n", {"feet": feet, "fall_geoms": fall}
+    kept: dict[str, Any] = {"feet": feet, "fall_geoms": fall}
+    if welded:
+        kept["welded"] = welded
+    return ET.tostring(root, encoding="unicode") + "\n", kept
 
 
 def compiled(xml: str) -> dict[str, Any]:
@@ -316,17 +410,21 @@ def compiled(xml: str) -> dict[str, Any]:
     }
 
 
-def compare(engine: dict, train: dict) -> list[str]:
-    """What the cut must not have changed."""
+def compare(engine: dict, train: dict, welded: dict | None = None) -> list[str]:
+    """What the cut must not have changed (less what ``welded``, ``weld_chain``'s report, took out)."""
 
     import numpy as np
 
-    problems = [f"{k}: engine {engine[k]}, training {train[k]}"
-                for k in ("nq", "nv", "nu", "neq", "nsensor", "actuated_joints") if engine[k] != train[k]]
+    welded = welded or {"qpos": [], "dofs": [], "equalities": []}
+    expect = {**engine, "nq": engine["nq"] - len(welded["qpos"]), "nv": engine["nv"] - len(welded["dofs"]),
+              "neq": engine["neq"] - len(welded["equalities"])}
+    problems = [f"{k}: engine {expect[k]}, training {train[k]}"
+                for k in ("nq", "nv", "nu", "neq", "nsensor", "actuated_joints") if expect[k] != train[k]]
     if abs(engine["mass_kg"] - train["mass_kg"]) > 1e-6 * engine["mass_kg"]:
         problems.append(f"mass_kg: engine {engine['mass_kg']}, training {train['mass_kg']}")
     if not problems:
-        a, b = np.array(engine["mass_matrix"]), np.array(train["mass_matrix"])
+        keep = [i for i in range(engine["nv"]) if i not in set(welded["dofs"])]
+        a, b = np.array(engine["mass_matrix"])[np.ix_(keep, keep)], np.array(train["mass_matrix"])
         if np.abs(a - b).max() > 1e-9 * max(1.0, np.abs(a).max()):
             problems.append(f"mass matrix at qpos0 differs by {np.abs(a - b).max():.3g}")
     return problems
@@ -501,9 +599,10 @@ def cmd_cut(args) -> int:
     tried = []
     for options in ladder:
         train_xml, kept = derive(engine_xml, **options, feet=_names(args.feet),
-                                 fall_geoms=_names(args.fall_geoms), fall_condim=args.fall_condim)
+                                 fall_geoms=_names(args.fall_geoms), fall_condim=args.fall_condim,
+                                 weld=_names(args.weld))
         train = compiled(train_xml)
-        problems = compare(engine, train)
+        problems = compare(engine, train, kept.get("welded"))
         verdict = None
         if not problems and not args.no_check:
             verdict = judge(engine_xml, {"training": train_xml}, args.tolerance, args.converged,
@@ -572,6 +671,8 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--fall-geoms", help="comma-separated geoms kept against the floor besides the "
                                                 "feet (default: the root's and multi-foot bodies')")
             p.add_argument("--fall-condim", type=int, default=1, choices=(1, 3))
+            p.add_argument("--weld", help="comma-separated joint patterns (fnmatch) of a held, cable-coupled "
+                                          "chain to weld at its build pose, with its couplings (ADR-959)")
         else:
             p.add_argument("models", nargs="+", type=Path, help="training MJCFs to judge")
         p.add_argument("--feet", help="comma-separated foot geoms (default: on the touch sensors' bodies)")

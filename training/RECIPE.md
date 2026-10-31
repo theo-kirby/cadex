@@ -89,7 +89,9 @@ line names the run that showed it.
    root's path within 5 mm of the export and stands (ADR-841). No one
    setting suits every robot: the fastest passes on leon V and blows up on
    the biped's stiff servos (`sandy-acorn-7218`), which is why the cut
-   searches. If no setting passes, the cut refuses. Then train on the
+   searches. A chain whose drives only hold it (leon VI's tail) can be
+   welded at its build pose with `--weld` (ADR-959) when the bench needs it;
+   the export's judge still plays the chain. If no setting passes, the cut refuses. Then train on the
    export instead, and say so.
 7. **Relay.** `cadex_relay.py EXPORT-TASK.json cut.xml --out DIR` re-lays
    the export's task by name, so the policy reads the export's channels
@@ -146,7 +148,9 @@ ends, not on a clock. This replaces separate stand, sprint and turn tasks.
    --out DIR` writes G2's task onto any `cadex-training-task-v1` bundle: an
    export's, or a relay's onto a concept or a cut (ADR-862). It reads the
    root, drives, joint ranges, keyframe, feet and floor from the model, and
-   the substeps from its timestep. It writes Playground's terms (§D) with
+   the substeps from its timestep. Its actions are the source bundle's: a
+   drive the source leaves out (leon VI's tail) is held at its keyframe
+   command, which must be 0 (ADR-958). It writes Playground's terms (§D) with
    the Go1's speeds (±1.5, ±0.8 m/s, ±1.2 rad/s; `--speeds` changes them).
    On the Go1 it writes orun18's bundle back again, up to channel names.
    The task names nothing robot-specific beyond the model. Slower
@@ -281,6 +285,27 @@ mesh (ADR-853–855, `docs/MUJOCO.md` *The floor and terrain*).
    never draws, and `--flat` plays the empty course (ADR-858). Report flat
    ground with every terrain row: training on terrain can cost flat speed
    (`go1-scan/run2`'s final checkpoint fell from 10/10 to 6/10 on flat).
+
+9. **A gate race over relief** (ADR-962). `--race-terrain u1` with `--gates`
+   lays K train-split fields of race terrain round the start (the trainer's
+   own heightfields, paws only), each episode on a level uniform in 0..top,
+   the top raised on few falls. Judge it with `cadex_goto.py race --terrain`
+   on held-out courses and on flat ground. It costs about 0.5 s per field per
+   8192-env iteration (4.1× flat at K = 4 on leon VI's cut).
+   `--relief-fields graded` (ADR-963) lays every field at the race's full
+   amplitude, its hills' grade climbing the race's range field by field.
+   `--relief-fields graded-rough` (ADR-964) keeps a rough-only field below
+   the graded hills, so rough ground without hills is never missing.
+   `race --terrain b1` (ADR-965) judges boxes and steps to 60 mm across
+   every leg on that relief, `boxes` the same boxes on the plane.
+   `--race-terrain b1` (ADR-966) trains over them: each field scatters
+   0.2 boxes and steps per m², about one every 3 m of a run.
+   `--race-scan default` (ADR-967) lets the actor see them: the base's
+   height over the ground on 18 points up to 0.8 m ahead, warmed in at zero
+   weight from a blind racer.
+   `--gate-backward 1` (ADR-968) makes the racer lead with its fore end:
+   a body that runs hind end first carries its scan, its fore shoulders
+   and its stance load the wrong way round.
 
 ## D. Defaults (from R1, RESEARCH.md §3 and §5)
 

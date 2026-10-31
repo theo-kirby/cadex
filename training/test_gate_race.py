@@ -86,6 +86,56 @@ def test_a_gate_course_honours_its_shape_and_carries_no_speed_or_hold() -> None:
         G.gate_course(0, split="test")
 
 
+def test_a_sprint_course_is_its_seed_and_split_and_meets_no_other_course() -> None:
+    # ADR-960.
+    a = G.sprint_course(3, split="heldout")
+    assert a == G.sprint_course(3, split="heldout")
+    train = {json.dumps(G.sprint_course(s, split="train")["gates"]) for s in range(200)}
+    heldout = {json.dumps(G.sprint_course(s, split="heldout")["gates"]) for s in range(200)}
+    assert len(train) == len(heldout) == 200 and not train & heldout
+    gates = {json.dumps(G.gate_course(s, split=sp, gates=8)["gates"]) for s in range(200)
+             for sp in G.SPLITS}
+    assert not (train | heldout) & gates
+
+
+def test_a_sprint_course_turns_within_its_bound_and_spaces_its_gates() -> None:
+    turns = []
+    for seed in range(100):
+        course = G.sprint_course(seed, split="train")
+        assert course["kind"] == "sprint" and course["schema"] == G.GATE_SCHEMA
+        assert course["radius_m"] == 0.25 and len(course["gates"]) == 8
+        x = y = heading = 0.0
+        for gate in course["gates"]:
+            assert set(gate) == {"xy_m", "bearing"} and gate["bearing"] == "ahead"
+            dx, dy = gate["xy_m"][0] - x, gate["xy_m"][1] - y
+            assert 2.0 - 1e-3 <= math.hypot(dx, dy) <= 4.0 + 1e-3
+            leg = math.atan2(dy, dx)
+            turn = math.degrees(math.atan2(math.sin(leg - heading), math.cos(leg - heading)))
+            assert abs(turn) <= 30.0 + 0.01
+            turns.append(turn)
+            x, y, heading = gate["xy_m"][0], gate["xy_m"][1], leg
+    # Both ways, and out to the bound.
+    assert min(turns) < -25.0 and max(turns) > 25.0
+    course = G.sprint_course(0, split="heldout", gates=5, turn_deg=10.0, radius_m=0.3)
+    assert len(course["gates"]) == 5 and course["radius_m"] == 0.3
+    with pytest.raises(SystemExit):
+        G.sprint_course(0, split="heldout", radius_m=1.0)  # gates would overlap
+    with pytest.raises(SystemExit):
+        G.sprint_course(0, split="test")
+    with pytest.raises(SystemExit):
+        G.sprint_course(0, split="train", turn_deg=120.0)
+
+
+def test_the_gates_verb_draws_either_kind_at_its_own_default_length(capsys) -> None:
+    assert G.main(["cadex_goto.py", "gates", "--sprint", "--seed", "4", "--split", "train"]) == 0
+    assert json.loads(capsys.readouterr().out) == G.sprint_course(4, split="train")
+    assert G.main(["cadex_goto.py", "gates", "--seed", "4", "--split", "train"]) == 0
+    assert json.loads(capsys.readouterr().out) == G.gate_course(4, split="train")
+    assert G.main(["cadex_goto.py", "gates", "--sprint", "--gates", "3", "--radius", "0.3"]) == 0
+    assert json.loads(capsys.readouterr().out) == G.sprint_course(0, split="heldout", gates=3,
+                                                                  radius_m=0.3)
+
+
 # -- the race's logic ---------------------------------------------------------
 
 
@@ -163,7 +213,10 @@ def test_a_race_is_told_gates_not_speeds_and_keeps_the_regularisers() -> None:
 
 def test_the_ceiling_rises_only_when_the_population_reaches_it_and_the_guide_fades() -> None:
     rule = T.gate_rule(gate_options())
-    assert rule["weights"] == {"progress": 1.0, "entry": 0.5, "time": 0.1}
+    assert rule["weights"] == {"progress": 1.0, "entry": 0.5, "time": 0.1, "backward": 0.0}
+    assert T.gate_rule(gate_options("--gate-backward", "1"))["weights"]["backward"] == 1.0
+    with pytest.raises(SystemExit):
+        T.gate_rule(gate_options("--gate-backward", "-0.5"))
     ceiling = rule["ceiling"]
     assert ceiling == {"start": 0.5, "step": 0.25, "max": 6.0, "promote": 0.7}
     assert T.gate_ceiling_next(0.5, 0.34, ceiling) == 0.5
@@ -222,6 +275,38 @@ def test_the_trainer_pays_capped_progress_an_entry_and_time_and_shows_the_next_g
     raised = state.replace(info={**state.info, "gate_ceiling": jnp.full((2,), 3.0)})
     assert float(env.step(raised, jnp.zeros((2, 1))).reward[0]) == pytest.approx(
         1.0 * dt * 2.0 - 0.25 * dt, abs=1e-4)
+
+
+def test_lead_is_the_speed_along_the_bases_own_heading() -> None:
+    lead = lambda yaw, vx, vy: float(G.gate_lead(np, np.array([yaw]), np.array([vx]),  # noqa: E731
+                                                 np.array([vy]))[0])
+    assert lead(0.0, 2.0, 0.0) == pytest.approx(2.0)  # fore end first
+    assert lead(0.0, -2.0, 0.0) == pytest.approx(-2.0)  # hind end first
+    assert lead(math.pi / 2, 0.0, 1.5) == pytest.approx(1.5)
+    assert lead(math.pi, 1.0, 0.0) == pytest.approx(-1.0)
+    assert lead(0.0, 0.0, 3.0) == pytest.approx(0.0)  # sideways
+
+
+def test_the_backward_cost_charges_only_hind_first_speed() -> None:
+    env, jax, jnp = _environment("--gate-backward", "0.8")
+    state = env.reset(jax.random.PRNGKey(0))
+    gates = {**state.info["gates"], "pick": jnp.zeros(2, jnp.int32), "turn": jnp.zeros(2),
+             "start": jnp.zeros((2, 2))}
+    data = state.pipeline_state
+    far = jnp.asarray([[-50.0, -50.0], [-50.0, -50.0]])  # far from every gate: no entry
+    # Both environments head +x in the world, unturned: 0 runs fore end first
+    # at 1 m/s, 1 hind end first at 1 m/s.
+    qvel = data.qvel.at[:, :2].set(jnp.asarray([[1.0, 0.0], [-1.0, 0.0]]))
+    state = state.replace(pipeline_state=data.replace(qpos=data.qpos.at[:, :2].set(far), qvel=qvel),
+                          info={**state.info, "gates": gates})
+    off_env, _, _ = _environment()
+    after = env.step(state, jnp.zeros((2, 1)))
+    plain = off_env.step(state, jnp.zeros((2, 1)))
+    lead = np.asarray(after.info["gate_lead"])
+    assert lead[0] > 0.0 > lead[1]
+    paid, base = np.asarray(after.reward), np.asarray(plain.reward)
+    assert paid[0] == pytest.approx(base[0], abs=1e-6)  # fore first: no cost
+    assert paid[1] == pytest.approx(base[1] - 0.8 * 0.02 * -lead[1], abs=1e-5)
 
 
 def test_a_policy_header_names_the_race_and_no_other_header_changes() -> None:
@@ -330,3 +415,153 @@ def test_the_gallop_guide_pays_the_nearest_stride_sample_in_pose_and_rate(tmp_pa
                               T.arguments(["b", "--out", "x", "--gait-reference", str(path)]),
                               __import__("mujoco"), np)
     assert np.allclose(guide["dq"][:, 0], [0.0, 5.0, 0.0, -5.0]) and guide["joints"] == ["j"]
+
+
+# -- race terrain (ADR-961) ---------------------------------------------------
+
+
+def test_a_race_terrain_is_its_kind_course_split_and_seed() -> None:
+    course = G.gate_course(3, split="heldout")
+    first = G.race_terrain(np, course, "u1")
+    assert G.race_terrain(np, course, "u1")["sha256"] == first["sha256"]
+    others = {G.race_terrain(np, G.gate_course(3, split="train"), "u1")["sha256"],
+              G.race_terrain(np, G.gate_course(4, split="heldout"), "u1")["sha256"],
+              G.race_terrain(np, G.sprint_course(3, split="heldout"), "u1")["sha256"],
+              G.race_terrain(np, course, "hills")["sha256"],
+              G.race_terrain(np, course, "rough")["sha256"]}
+    assert first["sha256"] not in others and len(others) == 5
+    with pytest.raises(SystemExit):
+        G.race_terrain(np, course, "stairs")
+
+
+def test_a_race_terrain_keeps_its_bounds_and_a_flat_start_under_every_gate() -> None:
+    shape = G.RACE_TERRAIN
+    for seed in range(10):
+        course = G.gate_course(seed, split="heldout")
+        rough, hills, both = (G.race_terrain(np, course, kind) for kind in ("rough", "hills", "u1"))
+        for terrain in (rough, hills, both):
+            heights = terrain["heights_mm"]
+            assert heights.shape == (terrain["nrow"], terrain["ncol"])
+            assert heights.min() >= 0.0 and terrain["highest_mm"] == pytest.approx(heights.max())
+            ground = G.terrain_ground(np, terrain)
+            for x, y in [(0.0, 0.0), (300.0, -200.0), (-450.0, 100.0)]:
+                assert ground(x, y) == 0.0  # the start's clearing
+            (x0, x1), (y0, y1) = terrain["x_range_mm"], terrain["y_range_mm"]
+            for gate in course["gates"]:
+                gx, gy = (1000.0 * v for v in gate["xy_m"])
+                assert x0 + 1000.0 * shape["margin_m"] - 1e-6 <= gx <= x1 - 1000.0 * shape["margin_m"] + 1e-6
+                assert y0 + 1000.0 * shape["margin_m"] - 1e-6 <= gy <= y1 - 1000.0 * shape["margin_m"] + 1e-6
+        assert 0.0 < rough["highest_mm"] <= shape["rough_mm"] and rough["hill_grade_deg"] == 0.0
+        low, high = shape["grade_deg"]
+        for terrain in (hills, both):
+            assert terrain["drawn"]["hills"] >= 1
+            assert terrain["hill_grade_deg"] == pytest.approx(terrain["drawn"]["grade_deg"], abs=1e-3)
+            assert low - 1e-3 <= terrain["hill_grade_deg"] <= high + 1e-3
+        assert both["drawn"]["rough_highest_mm"] <= shape["rough_mm"]
+
+
+def test_box_terrain_stands_a_box_or_step_across_each_leg_on_u1s_relief() -> None:
+    """ADR-965: b1 is u1's relief outside its boxes, each box's top flat over the
+    hills inside it, and boxes stands the same boxes on the plane."""
+
+    shape = G.RACE_TERRAIN
+    low, high = shape["box_mm"]
+    kinds_seen = set()
+    for seed in range(10):
+        course = G.gate_course(seed, split="heldout")
+        b1, u1, boxes = (G.race_terrain(np, course, kind) for kind in ("b1", "u1", "boxes"))
+        hills = G.race_terrain(np, course, "u1", rough_mm=0.0)  # u1's hills, its rough relief clipped away
+        obstacles = b1["drawn"]["obstacles"]
+        assert obstacles == boxes["drawn"]["obstacles"] and 0 < len(obstacles) <= len(course["gates"])
+        assert b1["sha256"] != u1["sha256"] and boxes["hill_grade_deg"] == 0.0
+        ground = G.terrain_ground(np, b1)
+        assert ground(0.0, 0.0) == 0.0 and ground(300.0, -200.0) == 0.0
+        gx = b1["x_range_mm"][0] + b1["cell_mm"] * np.arange(b1["ncol"])
+        gy = b1["y_range_mm"][0] + b1["cell_mm"] * np.arange(b1["nrow"])
+        covered = np.zeros(b1["heights_mm"].shape, dtype=bool)
+        ends = [(0.0, 0.0)] + [tuple(1000.0 * v for v in g["xy_m"]) for g in course["gates"]]
+        for box in obstacles:
+            kinds_seen.add(box["kind"])
+            assert low <= box["height_mm"] <= high
+            (ax, ay), (bx, by) = ends[box["leg"]], ends[box["leg"] + 1]
+            length = math.hypot(bx - ax, by - ay)
+            assert box["along_mm"] <= shape["obstacle_leg_share"] * length + 1e-3
+            # On its leg, between obstacle_at's fractions, at most the offset aside.
+            cx, cy = box["centre_mm"]
+            t = ((cx - ax) * (bx - ax) + (cy - ay) * (by - ay)) / length ** 2
+            aside = abs((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / length
+            assert shape["obstacle_at"][0] - 1e-5 <= t <= shape["obstacle_at"][1] + 1e-5
+            assert aside <= shape["obstacle_offset_mm"] + 1e-3
+            yaw = math.radians(box["yaw_deg"])
+            px, py = gx[None, :] - cx, gy[:, None] - cy
+            inside = ((np.abs(px * math.cos(yaw) + py * math.sin(yaw)) <= 0.5 * box["along_mm"])
+                      & (np.abs(-px * math.sin(yaw) + py * math.cos(yaw)) <= 0.5 * box["across_mm"]))
+            assert inside.any()
+            # The box covers the rough relief: inside it, b1 stands at least its height over the hills.
+            lift = b1["heights_mm"][inside] - hills["heights_mm"][inside]
+            assert lift.min() >= box["height_mm"] - 2e-3 and lift.max() <= high + 2e-3
+            assert np.all(boxes["heights_mm"][inside] >= box["height_mm"] - 1e-3)
+            covered |= inside
+        # Off every box by a cell (the recorded centre and yaw are rounded), b1 is u1.
+        near = covered.copy()
+        for axis in (0, 1):
+            for shift in (-1, 1):
+                near |= np.roll(covered, shift, axis=axis)
+        assert np.array_equal(b1["heights_mm"][~near], u1["heights_mm"][~near])
+        assert np.all(boxes["heights_mm"][~near] == 0.0)
+        assert boxes["highest_mm"] == pytest.approx(b1["drawn"]["box_highest_mm"])
+        assert b1["drawn"]["boxes"] + b1["drawn"]["steps"] == len(obstacles)
+    assert kinds_seen == {"box", "step"}
+    course = G.gate_course(3, split="heldout")
+    assert G.race_terrain(np, course, "b1")["sha256"] == G.race_terrain(np, course, "b1")["sha256"]
+    assert len({G.race_terrain(np, other, "b1")["sha256"]
+                for other in (course, G.gate_course(3, split="train"), G.sprint_course(3, split="heldout"),
+                              G.gate_course(4, split="heldout"))}) == 4
+
+
+#: A floor and a ball that collides with it as a paw does.
+FLOOR = """
+<mujoco><worldbody>
+  <geom name="environment/floor" type="plane" size="0 0 0.1" solref="0.004" contype="1" conaffinity="1"/>
+  <body name="ball" pos="0 0 1"><freejoint/>
+    <geom type="sphere" size="0.015" mass="0.1" contype="2" conaffinity="3"/></body>
+</worldbody></mujoco>"""
+
+
+def test_the_terrain_stands_on_the_floor_where_its_ground_says_and_collides_as_the_floor() -> None:
+    import mujoco
+
+    course = G.gate_course(1, split="heldout")
+    terrain = G.race_terrain(np, course, "u1")
+    model = G.terrain_model(mujoco, FLOOR.encode(), terrain)
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    field = model.geom("environment/race_terrain")
+    floor = model.geom("environment/floor")
+    assert int(field.type[0]) == int(mujoco.mjtGeom.mjGEOM_HFIELD)
+    for name in ("contype", "conaffinity", "solref", "friction"):
+        assert np.allclose(getattr(field, name), getattr(floor, name)), name
+    ground = G.terrain_ground(np, terrain)
+    heights, cell = terrain["heights_mm"], terrain["cell_mm"]
+    x0, y0 = terrain["x_range_mm"][0], terrain["y_range_mm"][0]
+    rng = np.random.default_rng(0)
+    geomid = np.zeros(1, dtype=np.int32)
+    for _ in range(50):
+        r, c = int(rng.integers(1, terrain["nrow"] - 1)), int(rng.integers(1, terrain["ncol"] - 1))
+        x, y = x0 + c * cell, y0 + r * cell
+        assert ground(x, y) == pytest.approx(heights[r, c])
+        hit = mujoco.mj_ray(model, data, np.array([x / 1000.0, y / 1000.0, 2.0]), np.array([0.0, 0.0, -1.0]),
+                            None, 1, -1, geomid)
+        assert 2.0 - hit == pytest.approx(heights[r, c] / 1000.0, abs=1e-6)
+    with pytest.raises(SystemExit):
+        G.terrain_model(mujoco, b"<mujoco><worldbody/></mujoco>", terrain)
+
+
+def test_a_terrain_drawing_is_a_heightfield_the_dashboard_reads() -> None:
+    terrain = G.race_terrain(np, G.gate_course(0, split="heldout"), "hills")
+    drawing = G.terrain_drawing(np, terrain)
+    grid = drawing["grid"]
+    assert drawing["kind"] == "heightfield" and grid["rows"] <= 129 and grid["columns"] <= 129
+    assert len(grid["heights_mm"]) == grid["rows"] * grid["columns"]
+    assert max(grid["heights_mm"]) <= terrain["highest_mm"]
+    assert drawing["course"]["sha256"] == terrain["sha256"]

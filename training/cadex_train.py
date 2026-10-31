@@ -790,6 +790,11 @@ def body_layout(task: dict[str, Any]) -> dict[str, Any] | None:
             name, gain, centre = f"command.{channel}", 1.0, 0.0
         elif channel in gate_channels(task):
             name, gain, centre = f"gate.{channel}", 1.0, 0.0
+        elif channel in race_scan_channels(task):
+            # ADR-967: by its index on a grid named by its offsets, in metres.
+            record = task["race_scan"]
+            grid = hashlib.sha256(json.dumps(record["offsets_mm"]).encode("ascii")).hexdigest()[:12]
+            name, gain, centre = f"racescan.{grid}.{record['channels'].index(channel)}", 0.001, 0.0
         else:
             grid = name = None
             for record in task.get("scans") or ():
@@ -1206,6 +1211,10 @@ def check_policy_fits(
             and set(gained) <= set(scan_channels(bundle["task"], policy_only=True))):
         curriculum = curriculum + ["scans.actor"]
         wanted_channels = read
+    elif race_scan_gained(read, bundle["task"]) and not family_morph_names(bundle):
+        # ADR-967: a race scan joins after every input the source read, at
+        # zero weight, as ADR-859's scan does.
+        wanted_channels = read
     if read != wanted_channels:
         refuse(
             "the observation channels, in order",
@@ -1543,6 +1552,69 @@ def gate_channels(task: dict[str, Any]) -> list[str]:
     """
 
     return [str(channel) for channel in (task.get("gates") or {}).get("channels") or ()]
+
+
+def race_scan_channels(task: dict[str, Any]) -> list[str]:
+    """The race scan's channels under ``--race-scan`` (ADR-967), after the gates'.
+
+    ``rscan<i>``: the base's height in mm over the ground at the scan's
+    ``i``-th point, ahead of and to the left of the base along its heading.
+    The policy and the critic read them; a task without a ``race_scan``
+    block has none.
+    """
+
+    return [str(channel) for channel in (task.get("race_scan") or {}).get("channels") or ()]
+
+
+def race_scan_gained(read: Sequence[str], task: dict[str, Any]) -> int:
+    """How many race-scan inputs a warm start gains (ADR-967): the count of
+    ``race_scan_channels`` when the source read every other actor channel in
+    order and none of them, else 0."""
+
+    wanted = actor_channels(task)
+    scan = race_scan_channels(task)
+    read = list(read)
+    if scan and wanted[:len(read)] == read and wanted[len(read):] == scan:
+        return len(scan)
+    return 0
+
+
+def race_scan_vector(xp: Any, offsets_mm: Any, x_m: Any, y_m: Any, z_m: Any, yaw: Any,
+                     grids: Any, level: Any, field: dict[str, Any] | None) -> Any:
+    """The race scan (ADR-967), ``(..., P)``: the base's height in mm over
+    the ground at each of ``offsets_mm`` ``(P, 2)`` (ahead, left of the base
+    along ``yaw``). ``grids`` ``(K, nrow, ncol)`` holds the run's relief
+    fields in mm, ``level`` ``(...)`` the field each environment stands on
+    (0 the plane), ``field`` the fields' shared ``x_range_mm``, ``y_range_mm``
+    and ``cell_mm``; ``None`` reads the plane. A field is read bilinearly
+    between its grid points (``cadex_goto.terrain_ground``) and is the plane
+    beyond them."""
+
+    offsets = xp.asarray(offsets_mm, dtype=x_m.dtype)
+    cos, sin = xp.cos(yaw)[..., None], xp.sin(yaw)[..., None]
+    px = 1000.0 * x_m[..., None] + cos * offsets[:, 0] - sin * offsets[:, 1]
+    py = 1000.0 * y_m[..., None] + sin * offsets[:, 0] + cos * offsets[:, 1]
+    top = 1000.0 * z_m[..., None]
+    if field is None or grids is None:
+        return top - 0.0 * px
+    cell = float(field["cell_mm"])
+    nrow, ncol = int(grids.shape[1]), int(grids.shape[2])
+    u = (px - float(field["x_range_mm"][0])) / cell
+    v = (py - float(field["y_range_mm"][0])) / cell
+    inside = (u >= 0.0) & (u <= ncol - 1) & (v >= 0.0) & (v <= nrow - 1)
+    u, v = xp.clip(u, 0.0, ncol - 1), xp.clip(v, 0.0, nrow - 1)
+    c = xp.minimum(xp.floor(u), ncol - 2).astype(xp.int32)
+    r = xp.minimum(xp.floor(v), nrow - 2).astype(xp.int32)
+    fu, fv = u - c, v - r
+    k = xp.clip(level - 1, 0, int(grids.shape[0]) - 1)[..., None] * xp.ones_like(c)
+
+    def at(rr, cc):
+        return grids[k, rr, cc]
+
+    ground = ((1.0 - fv) * ((1.0 - fu) * at(r, c) + fu * at(r, c + 1))
+              + fv * ((1.0 - fu) * at(r + 1, c) + fu * at(r + 1, c + 1)))
+    ground = xp.where(inside & (level[..., None] > 0), ground, 0.0)
+    return top - ground
 
 
 def waypoint_vector(xp: Any, task: dict[str, Any], told: Any, xipos: Any,
@@ -1959,7 +2031,8 @@ def channels(task: dict[str, Any]) -> list[str]:
         for record in task["observations"]
         for channel in record["channels"]
     ] + (goal_channels(task) + command_channels(task) + acceleration_channels(task)
-         + tracking_channels(task) + scan_channels(task) + gate_channels(task))
+         + tracking_channels(task) + scan_channels(task) + gate_channels(task)
+         + race_scan_channels(task))
 
 
 def actor_channels(task: dict[str, Any]) -> list[str]:
@@ -1976,7 +2049,7 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
     to do, so the policy always reads it. Then the policy's command channels
     (ADR-696), then a gait reference's clock (ADR-706), then a height scan
     marked ``role: policy`` (ADR-748), then the next gates under ``--gates``
-    (ADR-955).
+    (ADR-955), then a race scan under ``--race-scan`` (ADR-967).
     """
 
     return [
@@ -1986,7 +2059,8 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
         for channel in record["channels"]
     ] + (goal_channels(task) + command_channels(task, policy_only=True)
          + tracking_channels(task, policy_only=True)
-         + scan_channels(task, policy_only=True) + gate_channels(task))
+         + scan_channels(task, policy_only=True) + gate_channels(task)
+         + race_scan_channels(task))
 
 
 def tracker_reading(xp: Any, true_mm: Any, tracker: dict[str, Any],
@@ -2103,7 +2177,8 @@ def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
                 floor.append(0.25)
     return floor + [0.0] * (len(goal_channels(task)) + len(command_channels(task))
                             + len(acceleration_channels(task)) + len(tracking_channels(task))
-                            + len(scan_channels(task)) + len(gate_channels(task)))
+                            + len(scan_channels(task)) + len(gate_channels(task))
+                            + len(race_scan_channels(task)))
 
 
 def sensor_noise_std(task: dict[str, Any]) -> list[float]:
@@ -2883,6 +2958,8 @@ def gate_task(task: dict[str, Any], options: argparse.Namespace) -> dict[str, An
     """
 
     if not getattr(options, "gates", False):
+        if getattr(options, "race_scan", None):
+            raise SystemExit("--race-scan reads the ground under a gate race; give --gates")
         return task
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import cadex_goto
@@ -2908,12 +2985,50 @@ def gate_task(task: dict[str, Any], options: argparse.Namespace) -> dict[str, An
     ahead = int(options.gate_ahead)
     if ahead < 1:
         raise SystemExit("--gate-ahead is how many gates the policy sees, from 1")
-    return {**task, "goal": [],
-            "reward": [term for term in task["reward"] if not reads_goal(term["expression"])],
-            "gates": {"ahead": ahead, "unit": "m", "radius_m": float(options.gate_radius),
-                      "channels": cadex_goto.gate_channel_names(ahead),
-                      "dropped_reward": [str(term["label"]) for term in task["reward"]
-                                         if reads_goal(term["expression"])]}}
+    raced = {**task, "goal": [],
+             "reward": [term for term in task["reward"] if not reads_goal(term["expression"])],
+             "gates": {"ahead": ahead, "unit": "m", "radius_m": float(options.gate_radius),
+                       "channels": cadex_goto.gate_channel_names(ahead),
+                       "dropped_reward": [str(term["label"]) for term in task["reward"]
+                                          if reads_goal(term["expression"])]}}
+    grid = race_scan_grid(getattr(options, "race_scan", None))
+    if grid is not None:
+        if task.get("scans"):
+            raise SystemExit("--race-scan: this bundle already carries a height scan (ADR-715)")
+        raced["race_scan"] = grid
+    return raced
+
+
+#: The race scan's default grid (ADR-967): points ahead of the base's
+#: centre along its heading, -0.2 to 0.8 m every 0.2 m, by points to its
+#: left, -0.12, 0 and 0.12 m, in mm. At 2 m/s the farthest row is 0.4 s ahead.
+RACE_SCAN_AHEAD_MM = (-200.0, 0.0, 200.0, 400.0, 600.0, 800.0)
+RACE_SCAN_LEFT_MM = (-120.0, 0.0, 120.0)
+
+
+def race_scan_grid(text: str | None) -> dict[str, Any] | None:
+    """``--race-scan`` resolved (ADR-967): ``default`` is
+    :data:`RACE_SCAN_AHEAD_MM` by :data:`RACE_SCAN_LEFT_MM`; ``A,B,..:L,M,..``
+    names the rows ahead and the columns left in mm. The block names its
+    points (ahead outer, left inner) and channels ``rscan<i>``; None without
+    the flag."""
+
+    if not text:
+        return None
+    if str(text) == "default":
+        ahead, left = RACE_SCAN_AHEAD_MM, RACE_SCAN_LEFT_MM
+    else:
+        parts = str(text).split(":")
+        if len(parts) != 2:
+            raise SystemExit(f"--race-scan {text!r} is 'default' or AHEAD,..:LEFT,.. in mm")
+        ahead = parse_floats(parts[0], len(parts[0].split(",")), "--race-scan ahead")
+        left = parse_floats(parts[1], len(parts[1].split(",")), "--race-scan left")
+    offsets = [[float(a), float(b)] for a in ahead for b in left]
+    return {"body": "base", "unit": "mm", "offsets_mm": offsets,
+            "channels": [f"rscan{i}" for i in range(len(offsets))],
+            "reads": "the base's height over the ground at each point, ahead of and left of "
+                     "the base's centre along its heading; the episode's relief field, or "
+                     "the plane"}
 
 
 def parse_floats(text: str, count: int, flag: str) -> tuple[float, ...]:
@@ -2933,11 +3048,14 @@ def gate_rule(options: argparse.Namespace) -> dict[str, Any]:
     environment, the curriculum and the policy header alike."""
 
     progress, entry, cost = parse_floats(options.gate_weights, 3, "--gate-weights")
+    backward = float(getattr(options, "gate_backward", 0.0) or 0.0)
+    if not math.isfinite(backward) or backward < 0.0:
+        raise SystemExit("--gate-backward is a cost per m/s, from 0")
     start, step, top, promote = parse_floats(options.gate_ceiling, 4, "--gate-ceiling")
     if not 0.0 < start <= top or step < 0.0 or not 0.0 < promote <= 1.0:
         raise SystemExit("--gate-ceiling is START,STEP,MAX,PROMOTE with 0 < START <= MAX, "
                          "STEP >= 0 and PROMOTE in (0, 1]")
-    return {"weights": {"progress": progress, "entry": entry, "time": cost},
+    return {"weights": {"progress": progress, "entry": entry, "time": cost, "backward": backward},
             "ceiling": {"start": start, "step": step, "max": top, "promote": promote},
             "radius_m": float(options.gate_radius), "ahead": int(options.gate_ahead),
             "courses": GATE_COURSES, "gates": GATE_TRAIN_GATES}
@@ -2982,6 +3100,235 @@ def gate_training(task: dict[str, Any], host: Any, options: argparse.Namespace,
         for i in range(GATE_COURSES)])
     return {"module": cadex_goto, "plans": plans, "rule": rule,
             "qpos": int(host.jnt_qposadr[free[0]]), "dof": int(host.jnt_dofadr[free[0]])}
+
+
+#: Race terrain in training (ADR-962): ``levels`` fields of relief, field
+#: ``k`` (1..levels) its own train-split draw scaled to ``k / levels`` of the
+#: race's; level 0 is the plane. The curriculum's ``top`` starts at ``start``
+#: and rises by one after an iteration with at most ``falls`` falls per
+#: horizon's worth of its env steps (the share of full-length episodes that
+#: would fall at that rate), once ``hold`` iterations have passed at the top
+#: in force; it never falls. Each episode stands on a level drawn uniformly in
+#: 0..top, so flat ground stays in every batch.
+RELIEF_LEVELS = 4
+#: How the fields are drawn (ADR-963): ``scaled`` (ADR-962) scales field
+#: ``k``'s draw to ``k / levels``; ``graded`` lays every field at the race's
+#: full amplitude, rough relief and all, with the hills' steepest grade fixed
+#: at ``low + (high - low) * k / levels`` of the race's ``grade_deg`` range,
+#: so the top field is as steep as the steepest held-out race; ``graded-rough``
+#: (ADR-964) makes field 1 the race's ``rough`` relief alone at full height and
+#: grades fields 2..levels' hills from ``low + (high - low) / (levels - 1)``
+#: to ``high``, rough relief on each, so rough ground without hills stays in
+#: every batch that stands on relief; with ``--race-terrain b1`` (ADR-966)
+#: fields 2..levels also carry the field's boxes and steps.
+RELIEF_FIELDS = ("scaled", "graded", "graded-rough")
+RELIEF_CEILING = {"start": 1, "falls": 0.1, "hold": 10}
+#: How far under the plane a field that is not the episode's stands (m), past
+#: its own top: a paw on the plane is then a metre clear of it.
+RELIEF_SINK_M = 1.0
+
+
+def relief_rule(options: argparse.Namespace) -> dict[str, Any]:
+    """``--race-terrain``, ``--relief-levels`` and ``--relief-ceiling``
+    resolved (ADR-962), once, for the environment, the curriculum and the
+    policy header alike; None without ``--race-terrain``."""
+
+    kind = getattr(options, "race_terrain", None)
+    if not kind:
+        return None
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import cadex_goto
+
+    if kind not in cadex_goto.TERRAIN_KINDS:
+        raise SystemExit(f"--race-terrain {kind!r} is not one of {cadex_goto.TERRAIN_KINDS}")
+    if not getattr(options, "gates", False):
+        raise SystemExit("--race-terrain lays relief under a gate race; give --gates")
+    levels = int(getattr(options, "relief_levels", RELIEF_LEVELS))
+    if levels < 1:
+        raise SystemExit("--relief-levels is how many fields of relief, from 1")
+    start, falls, hold = parse_floats(
+        getattr(options, "relief_ceiling", None)
+        or ",".join(f"{RELIEF_CEILING[k]:g}" for k in ("start", "falls", "hold")),
+        3, "--relief-ceiling")
+    if start != int(start) or not 0 <= start <= levels or not 0.0 <= falls <= 1.0 \
+            or hold != int(hold) or hold < 0:
+        raise SystemExit(f"--relief-ceiling is START,FALLS,HOLD with START a level in 0..{levels}, "
+                         "FALLS in [0, 1] and HOLD a count of iterations from 0")
+    half = float(cadex_goto.FIELD_HALF_M if getattr(options, "relief_half", None) is None
+                 else options.relief_half)
+    if not half > 0.0:
+        raise SystemExit("--relief-half is the field's half side in metres, above 0")
+    fields = str(getattr(options, "relief_fields", None) or RELIEF_FIELDS[0])
+    if fields not in RELIEF_FIELDS:
+        raise SystemExit(f"--relief-fields {fields!r} is not one of {RELIEF_FIELDS}")
+    if fields == "graded-rough" and kind not in ("u1", "b1"):
+        raise SystemExit("--relief-fields graded-rough lays rough and hilly fields; give "
+                         "--race-terrain u1 or b1")
+    return {"kind": kind, "levels": levels, "half_m": half, "fields": fields,
+            "ceiling": {"start": int(start), "falls": falls, "hold": int(hold)}}
+
+
+def relief_top_next(top: int, since: int, falls: float, rule: dict[str, Any]) -> tuple[int, int]:
+    """The curriculum's top level after an iteration (ADR-962), and the
+    iterations it has stood: up one when the iteration fell at most
+    ``rule['ceiling']['falls']`` times per horizon's worth of its env steps and
+    the top in force has stood ``hold`` iterations, never past ``levels``,
+    never down. A ``falls`` of None or NaN (no reading) moves nothing."""
+
+    since += 1
+    ceiling = rule["ceiling"]
+    if (top < rule["levels"] and since >= ceiling["hold"] and falls is not None
+            and math.isfinite(falls) and falls <= ceiling["falls"]):
+        return top + 1, 0
+    return top, since
+
+
+def relief_fields(np: Any, rule: dict[str, Any], seed: int) -> list[dict[str, Any]]:
+    """The run's fields (ADR-962): field ``k`` of ``levels`` is
+    ``cadex_goto.field_terrain`` seeded ``seed * levels + k - 1``, its
+    heights scaled to ``k / levels``; or, with ``fields`` ``graded``
+    (ADR-963), unscaled, its hills' steepest grade fixed at ``k / levels`` of
+    the way up the race's ``grade_deg`` range; or, with ``graded-rough``
+    (ADR-964), field 1 the ``rough`` relief alone, unscaled, and field ``k``
+    above it graded at ``(k - 1) / (levels - 1)`` of the way up. A ``boxes``
+    or ``b1`` field (ADR-966) stands ``cadex_goto``'s field obstacles, about
+    one every 3 m of a run, scaled with the field's heights in ``scaled``
+    mode. Train split only: no field is a held-out course's relief."""
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import cadex_goto
+
+    levels = int(rule["levels"])
+    mode = rule.get("fields", RELIEF_FIELDS[0])
+    low, high = (float(v) for v in cadex_goto.RACE_TERRAIN["grade_deg"])
+    fields = []
+    for k in range(1, levels + 1):
+        if mode == "graded-rough" and k == 1:
+            field = cadex_goto.field_terrain(np, "rough", int(seed) * levels,
+                                             half_m=rule["half_m"])
+            fields.append({**field, "level": k, "scale": 1.0,
+                           "rough_highest_mm": round(float(field["drawn"].get("rough_highest_mm", 0.0)), 3)})
+            continue
+        if mode in ("graded", "graded-rough"):
+            grade = (low + (high - low) * k / levels if mode == "graded"
+                     else low + (high - low) * (k - 1) / (levels - 1))
+            field = cadex_goto.field_terrain(np, rule["kind"], int(seed) * levels + k - 1,
+                                             half_m=rule["half_m"], grade_deg=(grade, grade))
+            fields.append({**field, "level": k, "scale": 1.0,
+                           "rough_highest_mm": round(float(field["drawn"].get("rough_highest_mm", 0.0)), 3)})
+            continue
+        field = cadex_goto.field_terrain(np, rule["kind"], int(seed) * levels + k - 1,
+                                         half_m=rule["half_m"])
+        heights = field["heights_mm"] * (k / levels)
+        # The draw's grade and rough relief, scaled with it; ``drawn`` is the
+        # unscaled draw's.
+        grade = math.degrees(math.atan(k / levels * math.tan(math.radians(field["hill_grade_deg"]))))
+        fields.append({**field, "level": k, "scale": k / levels, "heights_mm": heights,
+                       "highest_mm": round(float(heights.max()), 3),
+                       "hill_grade_deg": round(grade, 3),
+                       "rough_highest_mm": round(k / levels * float(
+                           field["drawn"].get("rough_highest_mm", 0.0)), 3),
+                       "sha256": hashlib.sha256(
+                           np.ascontiguousarray(heights, dtype="<f8").tobytes()).hexdigest()})
+    return fields
+
+
+def relief_drawn_record(drawn: dict[str, Any]) -> dict[str, Any]:
+    """A field's ``drawn`` as the policy header records it (ADR-966): its
+    obstacles counted, not listed, since a field stands some hundreds and its
+    seed redraws them."""
+
+    return {key: (len(value) if key == "obstacles" else value) for key, value in drawn.items()}
+
+
+def relief_model(mujoco: Any, np: Any, xml: bytes, fields: Sequence[dict[str, Any]]) -> tuple[Any, dict[str, Any]]:
+    """The bundle's model with the run's relief (ADR-962), and where it is.
+
+    A static body ``environment/relief``, the model's last, holds one
+    heightfield geom ``environment/relief/<k>`` per field, so no body's or
+    other geom's index moves and every index the bundle's randomisation names
+    still holds. Each takes the floor plane's contact parameters. It touches
+    only the floor's sphere and capsule geoms (the paws), through a contact
+    bit no geom carried: MJX collides a heightfield with spheres and capsules
+    and a box or mesh on one is refused (ADR-854), so a trunk box keeps the
+    plane only (feet-only contact, ADR-739). Every field stands
+    :data:`RELIEF_SINK_M` under the plane past its top until an episode's
+    level raises it to z = 0 (:func:`lay_relief` inside the step)."""
+
+    spec = mujoco.MjSpec.from_string(xml.decode("utf-8"))
+    floor = next((g for g in spec.geoms if g.type == mujoco.mjtGeom.mjGEOM_PLANE), None)
+    if floor is None:
+        raise SystemExit("--race-terrain: this model has no floor plane to lay relief on")
+    touching = [g for g in spec.geoms if g is not floor
+                and (int(g.contype) & int(floor.conaffinity) or int(floor.contype) & int(g.conaffinity))]
+    paws = [g for g in touching if g.type in (mujoco.mjtGeom.mjGEOM_SPHERE, mujoco.mjtGeom.mjGEOM_CAPSULE)]
+    if not paws:
+        raise SystemExit("--race-terrain: no sphere or capsule touches the floor; MJX collides a "
+                         "heightfield with spheres and capsules only (ADR-854)")
+    used = 0
+    for g in spec.geoms:
+        used |= int(g.contype) | int(g.conaffinity)
+    bit = next((1 << b for b in range(31) if not used & (1 << b)), 0)
+    if not bit:
+        raise SystemExit("--race-terrain: every contact bit is in use")
+    for paw in paws:
+        paw.conaffinity = int(paw.conaffinity) | bit
+    sink = 0.001 * max(float(f["highest_mm"]) for f in fields) + RELIEF_SINK_M
+    body = spec.worldbody.add_body(name="environment/relief")
+    for field in fields:
+        k = int(field["level"])
+        top = max(float(field["highest_mm"]), 1e-3)
+        (x0, x1), (y0, y1) = field["x_range_mm"], field["y_range_mm"]
+        spec.add_hfield(name=f"relief/{k}", nrow=int(field["nrow"]), ncol=int(field["ncol"]),
+                        size=[0.0005 * (x1 - x0), 0.0005 * (y1 - y0), 0.001 * top, 0.05],
+                        userdata=(np.asarray(field["heights_mm"], dtype=np.float32) / top).ravel())
+        geom = body.add_geom(name=f"environment/relief/{k}", type=mujoco.mjtGeom.mjGEOM_HFIELD,
+                             hfieldname=f"relief/{k}",
+                             pos=[0.0005 * (x0 + x1), 0.0005 * (y0 + y1), -sink])
+        for attribute in ("condim", "priority", "friction", "solref", "solimp", "solmix",
+                          "margin", "gap", "rgba"):
+            setattr(geom, attribute, getattr(floor, attribute))
+        geom.contype, geom.conaffinity = bit, 0
+    model = spec.compile()
+    for field in fields:
+        h = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_HFIELD, f"relief/{int(field['level'])}")
+        adr, count = int(model.hfield_adr[h]), int(model.hfield_nrow[h]) * int(model.hfield_ncol[h])
+        top = max(float(field["highest_mm"]), 1e-3)
+        model.hfield_data[adr:adr + count] = (np.asarray(field["heights_mm"]) / top).ravel()
+    geoms = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, f"environment/relief/{int(f['level'])}")
+             for f in fields]
+    return model, {"geoms": geoms, "sink_m": sink, "bit": bit,
+                   "floor": mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, floor.name),
+                   "paws": [str(p.name) for p in paws]}
+
+
+def relief_randomised(mujoco: Any, np: Any, xml: bytes, task: dict[str, Any], fields: Sequence[dict[str, Any]],
+                      *, base_seed: int, count: int) -> tuple[Any, dict[str, Any], dict[str, Any]]:
+    """:func:`randomised_models` on the relief's model (ADR-962): the draws
+    are made on the bundle's own model, as without relief, and each drawn
+    field gains the relief's rows -- a geom field the floor's drawn row, so a
+    field's friction follows the floor's draw, any other the relief model's
+    value. Environment 0's draw is applied to the returned host."""
+
+    _host, drawn = randomised_models(mujoco, np, xml, task, base_seed=base_seed, count=count)
+    model, placed = relief_model(mujoco, np, xml, fields)
+    padded = {}
+    for name, values in drawn.items():
+        target = getattr(model, name)
+        extra = target.shape[0] - values.shape[1]
+        if extra < 0 or tuple(target.shape[1:]) != tuple(values.shape[2:]):
+            raise SystemExit(f"--race-terrain: randomised field {name!r} does not extend to the relief's model")
+        if extra:
+            if name.startswith("geom_"):
+                rows = np.repeat(values[:, placed["floor"]:placed["floor"] + 1], extra, axis=1)
+            else:
+                rows = np.broadcast_to(target[values.shape[1]:], (count, *target[values.shape[1]:].shape))
+            values = np.concatenate([values, rows.astype(values.dtype)], axis=1)
+        padded[name] = values
+        target[...] = values[0]
+    if padded:
+        mujoco.mj_setConst(model, mujoco.MjData(model))
+    return model, padded, placed
 
 
 def reference_legs(task: dict[str, Any], text: str) -> dict[str, str]:
@@ -3277,8 +3624,23 @@ def build_environment(
     )
 
     envs = int(count)
-    host, drawn = randomised_models(mujoco, np, bundle["model_xml"], task,
-                                    base_seed=int(seed), count=envs)
+    # ADR-962: race terrain under the gate race. A PYTHON bool, so a run
+    # without --race-terrain builds and traces as before.
+    relief = relief_rule(options)
+    relieving = relief is not None
+    if relieving:
+        if task.get("scans") or (task.get("terrain") or {}).get("pool"):
+            raise SystemExit("--race-terrain is blind relief on a plane's bundle; this bundle "
+                             "carries a height scan or a terrain pool")
+        relief_drawn = relief_fields(np, relief, int(seed))
+        host, drawn, relief_placed = relief_randomised(
+            mujoco, np, bundle["model_xml"], task, relief_drawn, base_seed=int(seed), count=envs)
+        relief_geoms = jnp.asarray(relief_placed["geoms"], dtype=jnp.int32)
+        relief_sink = float(relief_placed["sink_m"])
+        relief_levels = int(relief["levels"])
+    else:
+        host, drawn = randomised_models(mujoco, np, bundle["model_xml"], task,
+                                        base_seed=int(seed), count=envs)
     key_id = mujoco.mj_name2id(host, mujoco.mjtObj.mjOBJ_KEY,
                                str(episode["reset_keyframe"]))
     if key_id < 0:
@@ -3375,6 +3737,13 @@ def build_environment(
     def placed(m, course):
         return place_course(m, pool_device, slot_geoms, plane_geom, course, dome_geoms)
 
+    def lay_relief(m, level):
+        """ADR-962: the field of ``level`` (1..levels) raised to the plane and
+        every other sunk under it; level 0 leaves only the plane."""
+
+        z = jnp.where(jnp.arange(1, relief_levels + 1) == level, 0.0, -relief_sink)
+        return m.replace(geom_pos=m.geom_pos.at[relief_geoms, 2].set(z.astype(m.geom_pos.dtype)))
+
     def scanned_course(course):
         """``height_scan_vector``'s ``course`` for these course indices."""
 
@@ -3466,6 +3835,20 @@ def build_environment(
         guide_q, guide_dq = jnp.asarray(guide["q"]), jnp.asarray(guide["dq"])
         guide_qpos, guide_dof = jnp.asarray(guide["qpos"]), jnp.asarray(guide["dof"])
     paying = gating or referencing
+    # ADR-967: the race scan, a PYTHON bool on the same terms; it reads the
+    # episode's relief field (ADR-962), or the plane without --race-terrain.
+    race_scanning = bool(task.get("race_scan"))
+    race_scan_field = race_scan_grids = None
+    if race_scanning:
+        race_scan_offsets = jnp.asarray(task["race_scan"]["offsets_mm"], dtype=jnp.float32)
+        if relieving:
+            shapes = {(int(f["nrow"]), int(f["ncol"]), float(f["cell_mm"]),
+                       tuple(f["x_range_mm"]), tuple(f["y_range_mm"])) for f in relief_drawn}
+            if len(shapes) != 1:
+                raise SystemExit("--race-scan: the relief fields do not share one grid")
+            race_scan_field = relief_drawn[0]
+            race_scan_grids = jnp.asarray(np.stack([np.asarray(f["heights_mm"], dtype=np.float32)
+                                                    for f in relief_drawn]))
 
     def gate_plan(state):
         """Each environment's course, turned by its heading about where its
@@ -3838,6 +4221,10 @@ def build_environment(
         to keep that true.
         """
 
+        if relieving:
+            # ADR-962: this environment's relief level, in front of everything.
+            level, *extra = extra
+            m = lay_relief(m, level)
         if redrawing:
             # ADR-717: this environment's course, in front of the goal.
             course, *extra = extra
@@ -3937,14 +4324,18 @@ def build_environment(
     if tracking:
         _goal_axes = _goal_axes + (0,)
     # ADR-717's course is per environment, in front of the goal.
-    _course_axes = (0,) if redrawing else ()
+    _course_axes = ((0,) if relieving else ()) + ((0,) if redrawing else ())
     batched_step = (
         jax.vmap(step_env, in_axes=(None, 0, 0) + _course_axes + _goal_axes + _filter_axes)
         if model_axes is None
         else jax.vmap(step_env,
                       in_axes=(model_axes, 0, 0) + _course_axes + _goal_axes + _filter_axes)
     )
-    if redrawing:
+    if relieving:
+        batched_forward = jax.vmap(
+            lambda m, d, level: mjx.forward(lay_relief(m, level), d),
+            in_axes=(model_axes, 0, 0))
+    elif redrawing:
         batched_forward = jax.vmap(
             lambda m, d, course: mjx.forward(placed(m, course), d),
             in_axes=(model_axes, 0, 0))
@@ -3960,7 +4351,7 @@ def build_environment(
     bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
 
     def sensed(key, data, picks, steps, origin, carry, course=None, turned=None, going_state=None,
-               gate_state=None):
+               gate_state=None, relief_level=None):
         """The observation the policy acts on, in the state ``data`` holds.
 
         What the policy acts on carries its sensors' noise; the reward and
@@ -4006,6 +4397,15 @@ def build_environment(
         if gating:
             # ADR-955: the gates the policy races to, last in every vector.
             vector = jnp.concatenate([vector, gate_reading(gate_state, data)], axis=-1)
+        if race_scanning:
+            # ADR-967: the ground ahead on the episode's own field, after the gates.
+            x, y, yaw, _vx, _vy = gate_pose(data)
+            z = data.qpos[:, race["qpos"] + 2]
+            level = (relief_level if relief_level is not None
+                     else jnp.zeros((envs,), dtype=jnp.int32))
+            vector = jnp.concatenate([vector, race_scan_vector(
+                jnp, race_scan_offsets, x, y, z, yaw, race_scan_grids, level,
+                race_scan_field)], axis=-1)
         return key, vector
 
     def observation(vector):
@@ -4044,6 +4444,12 @@ def build_environment(
         course = (draw_course(jax.random.fold_in(start_key, 717), level)
                   if redrawing else None)
         course_args = (course,) if redrawing else ()
+        relief_level = None
+        if relieving:
+            # ADR-962: every environment's level, uniform in 0..the top in force.
+            relief_level = jax.random.randint(jax.random.fold_in(start_key, 962), (envs,),
+                                              0, relief["ceiling"]["start"] + 1)
+            course_args = (relief_level,)
         data = batched_forward(model, make.replace(qpos=qpos, qvel=qvel), *course_args)
         steps = jnp.zeros((envs,), dtype=jnp.int32)
         info = {"forces": forces, "starts": starts,
@@ -4063,6 +4469,9 @@ def build_environment(
             info["course"] = course
         if leveled:
             info["level"] = level
+        if relieving:
+            info["relief"] = relief_level
+            info["relief_top"] = jnp.full((envs,), relief["ceiling"]["start"], jnp.int32)
         turned = jnp.zeros((envs,), dtype=jnp.float32) if cadenced else None
         if cadenced:
             info["turned"] = turned
@@ -4099,11 +4508,12 @@ def build_environment(
             info["gate_ceiling"] = jnp.full((envs,), race["rule"]["ceiling"]["start"], jnp.float32)
             info["gate_entered"] = jnp.zeros((envs,), jnp.float32)
             info["gate_speed"] = jnp.zeros((envs,), jnp.float32)
+            info["gate_lead"] = jnp.zeros((envs,), jnp.float32)
         if referencing:
             # ADR-957: the guide's weight, faded by the train loop.
             info["reference_weight"] = jnp.full((envs,), float(options.reference_weight), jnp.float32)
         key, vector = sensed(key, data, picks, steps, origin, carry, course, turned,
-                             info.get("goto"), info.get("gates"))
+                             info.get("goto"), info.get("gates"), info.get("relief"))
         info["key"] = key
         return State(pipeline_state=data, obs=observation(vector),
                      reward=jnp.zeros((envs,), dtype=jnp.float32),
@@ -4138,7 +4548,8 @@ def build_environment(
         if going:
             # ADR-840: the command the layer gave from where this step starts.
             told = goto_told(told, info["goto"])
-        goal_args = ((course,) if redrawing else ()) + ((told,) if goaled else ())
+        goal_args = (((info["relief"],) if relieving else ()) + ((course,) if redrawing else ())
+                     + ((told,) if goaled else ()))
         turned = None
         if cadenced:
             # ADR-752: the clock turns at the cadence of the command in force.
@@ -4182,13 +4593,17 @@ def build_environment(
             # lit when it was taken: speed made good toward it up to the
             # curriculum's ceiling, a gate entered, the second spent.
             plan = gate_plan(info["gates"])
-            x, y, _yaw, vx, vy = gate_pose(data)
+            x, y, yaw, vx, vy = gate_pose(data)
             made = race["module"].gate_speed(jnp, plan, info["gates"]["index"], x, y, vx, vy)
             rewarded = jnp.minimum(made, info["gate_ceiling"])
             raced, entered = race["module"].gate_step(jnp, plan, info["gates"], x, y)
+            # ADR-968: speed along the base's own heading; with --gate-backward
+            # the hind-first share of it costs per m/s per second.
+            lead = race["module"].gate_lead(jnp, yaw, vx, vy)
             reward = reward + (gate_pay["progress"] * gate_dt * rewarded
                                + gate_pay["entry"] * entered.astype(jnp.float32)
-                               - gate_pay["time"] * gate_dt)
+                               - gate_pay["time"] * gate_dt
+                               - gate_pay["backward"] * gate_dt * jnp.maximum(-lead, 0.0))
         if referencing:
             reward = reward + info["reference_weight"] * control_interval * reference_pay(data)
         if reward_floor is not None and (feet or paying):
@@ -4229,6 +4644,12 @@ def build_environment(
             course = jnp.where(done, draw_course(
                 jax.random.fold_in(reset_key, 717), info.get("level")), course)
         course_args = (course,) if redrawing else ()
+        if relieving:
+            # ADR-962: an episode that ended starts its next on a fresh level.
+            relief_level = jnp.where(done, jax.random.randint(
+                jax.random.fold_in(reset_key, 962), (envs,), 0, info["relief_top"] + 1),
+                info["relief"])
+            course_args = (relief_level,)
 
         def where_done(new, old):
             return jnp.where(done.reshape((-1,) + (1,) * (new.ndim - 1)), new, old)
@@ -4266,6 +4687,8 @@ def build_environment(
             info["origin"] = origin
         if redrawing:
             info["course"] = course
+        if relieving:
+            info["relief"] = relief_level
         if cadenced:
             turned = jnp.where(done, 0.0, turned)
             info["turned"] = turned
@@ -4289,8 +4712,9 @@ def build_environment(
                                        {**info["gates"], **raced}, data, done)
             info["gate_entered"] = jnp.where(blown, 0.0, entered.astype(jnp.float32))
             info["gate_speed"] = jnp.where(blown, 0.0, rewarded).astype(jnp.float32)
+            info["gate_lead"] = jnp.where(blown, 0.0, lead).astype(jnp.float32)
         key, vector = sensed(key, data, picks, steps, origin, carry, course, turned,
-                             info.get("goto"), info.get("gates"))
+                             info.get("goto"), info.get("gates"), info.get("relief"))
         info.update(key=key, forces=forces, starts=starts, elapsed=elapsed,
                     steps=steps, carry=carry,
                     truncation=truncation.astype(jnp.float32),
@@ -4323,6 +4747,14 @@ def build_environment(
             self.levels = levels
             # ADR-955, ADR-957: what the train loop moves between iterations.
             self.race = race["rule"] if gating else None
+            # ADR-962: the relief's rule and its fields' record, or None.
+            self.relief = ({**relief, "fields": [
+                {key: field[key] for key in ("level", "scale", "seed", "nrow", "ncol", "cell_mm",
+                                             "x_range_mm", "y_range_mm", "highest_mm",
+                                             "hill_grade_deg", "rough_highest_mm", "sha256")}
+                | {"drawn": relief_drawn_record(field["drawn"])}
+                for field in relief_drawn], "paws": relief_placed["paws"]}
+                if relieving else None)
             self.guide = guide["summary"] if referencing else None
             self.action_size = len(actions)
             self.observation_size = {"state": (len(actor_names),),
@@ -4469,6 +4901,8 @@ def train(
     # ADR-955, ADR-957: a race's rule and a guide's stride, or None (a
     # family's batch has neither).
     race_rule, guided = getattr(env, "race", None), getattr(env, "guide", None)
+    # ADR-962: the relief's rule and fields, or None.
+    relief_rule_in_force = getattr(env, "relief", None)
     # The witness batch is drawn from the run's own seed, so the goals it
     # shows the policy are rows of the pool the run trained on.
     witness_env = environment(options, count=WITNESS_ENVS,
@@ -4625,7 +5059,8 @@ def train(
                 f"{activation_name!r}. Weights do not carry across an "
                 f"activation; pass --activation {trained_with} to continue it.")
         gained = (len(env.actor_names) - len(source_header.get("observations") or ())
-                  if "scans.actor" in (curriculum_keys or ()) else 0)
+                  if "scans.actor" in (curriculum_keys or ())
+                  else race_scan_gained(source_header.get("observations") or (), bundle["task"]))
         restored = unflatten_parameters(
             np, decoded["weights"], [(shapes[0][0] - gained, shapes[0][1])] + list(shapes[1:]))
         if gained:
@@ -4813,7 +5248,7 @@ def train(
         env_state, data = acting.generate_unroll(
             env, env_state, policy, unroll_key, unroll,
             extra_fields=("truncation", "terminated")
-            + (("gate_entered", "gate_speed") if race_rule else ()))
+            + (("gate_entered", "gate_speed", "gate_lead") if race_rule else ()))
         # [unroll, envs] -> [envs, unroll]: a minibatch is whole unrolls.
         data = jax.tree.map(lambda x: jnp.swapaxes(x, 0, 1), data)
         normaliser = floored(update_normaliser(normaliser, data.observation))
@@ -4846,8 +5281,20 @@ def train(
             # gates entered per second of simulated time.
             extras = data.extras["state_extras"]
             report["gate_progress_mps"] = jnp.mean(extras["gate_speed"])
+            # ADR-968: the mean speed along the base's heading; negative runs
+            # hind end first.
+            report["gate_lead_mps"] = jnp.mean(extras["gate_lead"])
             report["gates_per_s"] = jnp.sum(extras["gate_entered"]) / jnp.float32(
                 unroll * envs * float(bundle["task"]["episode"]["control_interval_s"]))
+        if relief_rule_in_force:
+            # ADR-962: falls in this batch per horizon's worth of its steps --
+            # the share of full-length episodes that would fall at this rate,
+            # read the same whether or not time-outs fell in the batch -- and
+            # how many environments stand on each level.
+            fell = jnp.sum(data.extras["state_extras"]["terminated"])
+            report["relief_falls"] = fell * jnp.float32(env.horizon) / jnp.float32(unroll * envs)
+            report["relief_levels"] = jnp.bincount(env_state.info["relief"],
+                                                   length=relief_rule_in_force["levels"] + 1)
         return optimizer_state, params, normaliser, env_state, key, report
 
     view_steps = 0
@@ -4993,6 +5440,7 @@ def train(
             "init_from": init_from_provenance,
             "distill": distill,
             "guide": guided,
+            "relief": relief_rule_in_force,
             "backend": jax.default_backend(),
             "devices": [str(device) for device in jax.devices()],
             "versions": {
@@ -5021,6 +5469,9 @@ def train(
     # and written into the batch's state before each iteration: values, not
     # shapes, so the compiled iteration is reused.
     ceiling = race_rule["ceiling"]["start"] if race_rule else None
+    # ADR-962: the relief curriculum's top level and the iterations it has stood.
+    relief_top = relief_rule_in_force["ceiling"]["start"] if relief_rule_in_force else None
+    relief_since = 0
     guide_weight = float(getattr(options, "reference_weight", 0.0) or 0.0)
     guide_fade = int(getattr(options, "reference_fade", 0) or 0)
     if guided and not options.quiet:
@@ -5030,6 +5481,8 @@ def train(
         moved = {}
         if race_rule:
             moved["gate_ceiling"] = jnp.full((envs,), ceiling, jnp.float32)
+        if relief_rule_in_force:
+            moved["relief_top"] = jnp.full((envs,), relief_top, jnp.int32)
         if guided:
             moved["reference_weight"] = jnp.full(
                 (envs,), reference_weight_at(iteration, guide_weight, guide_fade), jnp.float32)
@@ -5044,6 +5497,10 @@ def train(
         if race_rule:
             entry["gate_ceiling_mps"] = float(ceiling)
             ceiling = gate_ceiling_next(ceiling, entry["gate_progress_mps"], race_rule["ceiling"])
+        if relief_rule_in_force:
+            entry["relief_top"] = int(relief_top)
+            relief_top, relief_since = relief_top_next(relief_top, relief_since,
+                                                       entry["relief_falls"], relief_rule_in_force)
         if guided:
             entry["reference_weight"] = reference_weight_at(iteration, guide_weight, guide_fade)
         curve.append(entry)
@@ -5068,7 +5525,10 @@ def train(
                 + (f"  levels {entry['levels']}" if "levels" in entry else "")
                 + (f"  gates {entry['gates_per_s']:.3f}/s at {entry['gate_progress_mps']:.3f}"
                    f" of {entry['gate_ceiling_mps']:.2f} m/s" if "gates_per_s" in entry else "")
-                + (f"  guide {entry['reference_weight']:.3g}" if "reference_weight" in entry else ""),
+                + (f"  lead {entry['gate_lead_mps']:+.3f} m/s" if "gate_lead_mps" in entry else "")
+                + (f"  guide {entry['reference_weight']:.3g}" if "reference_weight" in entry else "")
+                + (f"  relief top {entry['relief_top']} falls {entry['relief_falls']:.3f}"
+                   f" levels {entry['relief_levels']}" if "relief_top" in entry else ""),
                 file=sys.stderr,
             )
         # Stop at the first non-finite number: diverged parameters do not
@@ -5423,6 +5883,16 @@ def policy_header(
                                         "after an iteration whose mean rewarded speed "
                                         "reached PROMOTE of it, up to MAX; it never falls"}}
                if task.get("gates") else {}),
+            # ADR-967: the race scan the actor reads, so a judge reads it too.
+            **({"race_scan": dict(task["race_scan"])} if task.get("race_scan") else {}),
+            # ADR-962: the relief the race ran over, and how it was dealt.
+            **({"race_terrain": {**trained["relief"],
+                                 "curriculum": "each episode stands on a level drawn uniformly in "
+                                               "0..top (0 the plane); top starts at START and rises "
+                                               "by one after an iteration with at most FALLS falls per "
+                                               "horizon's worth of its env steps, once it has stood "
+                                               "HOLD iterations; it never falls"}}
+               if trained.get("relief") else {}),
             # ADR-957: the guide, and how it faded.
             **({"gait_reference": {"source": str(options.gait_reference),
                                    "weight": float(options.reference_weight),
@@ -5614,6 +6084,43 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         metavar="PROGRESS,ENTRY,TIME",
         help="the race's reward: per m/s made good toward the lit gate per "
              "second, per gate entered, and the cost of a second (ADR-955)")
+    parser.add_argument(
+        "--gate-backward", type=float, default=0.0, metavar="W",
+        help="the race's cost per m/s per second of the base's speed backward along "
+             "its own heading, the hind end leading (ADR-968); 1 matches the progress "
+             "weight, so hind-first progress earns nothing. 0, off, by default")
+    parser.add_argument(
+        "--race-terrain", choices=("rough", "hills", "u1", "boxes", "b1"), default=None,
+        help="race the gates over relief (ADR-962): --relief-levels train-split fields "
+             "of cadex_goto's race terrain round the start, field k scaled to k/levels; "
+             "boxes and b1 (ADR-966) scatter boxes and steps over each field; "
+             "the paws (the floor's spheres and capsules) touch it, a box does not")
+    parser.add_argument(
+        "--race-scan", default=None, metavar="default|AHEAD,..:LEFT,..",
+        help="the actor reads the base's height over the ground ahead (ADR-967): a grid of "
+             "points ahead and left of the base along its heading in mm, after the gate "
+             "channels, read over the episode's relief field; 'default' is "
+             "-200..800 every 200 by -120,0,120. A warm start gains them at zero weight")
+    parser.add_argument(
+        "--relief-levels", type=int, default=RELIEF_LEVELS,
+        help="how many fields of relief --race-terrain lays, each a level of amplitude")
+    parser.add_argument(
+        "--relief-ceiling",
+        default=",".join(f"{RELIEF_CEILING[k]:g}" for k in ("start", "falls", "hold")),
+        metavar="START,FALLS,HOLD",
+        help="the relief curriculum (ADR-962): each episode stands on a level uniform in "
+             "0..top; top starts at START and rises by one after an iteration with at most "
+             "FALLS falls per horizon's worth of its env steps, once it has stood HOLD iterations")
+    parser.add_argument(
+        "--relief-fields", choices=RELIEF_FIELDS, default=RELIEF_FIELDS[0],
+        help="how the fields are drawn: scaled, field k at k/levels of its draw (ADR-962); "
+             "graded, every field at full amplitude with its hills' steepest grade k/levels "
+             "of the way up the race's range (ADR-963); graded-rough, field 1 rough relief "
+             "alone at full height, fields 2..levels graded from (high-low)/(levels-1) above "
+             "low to high (ADR-964)")
+    parser.add_argument(
+        "--relief-half", type=float, default=None,
+        help="the relief field's half side in metres (default cadex_goto.FIELD_HALF_M)")
     parser.add_argument(
         "--gate-ceiling",
         default=",".join(f"{GATE_CEILING[k]:g}" for k in ("start", "step", "max", "promote")),
@@ -6224,6 +6731,10 @@ def main(argv: Sequence[str]) -> int:
                 "gate_progress_curve": decimated_curve(curve, key="gate_progress_mps"),
                 "gates_per_s_curve": decimated_curve(curve, key="gates_per_s")}
                if curve and "gate_ceiling_mps" in curve[-1] else {}),
+            # Additive (ADR-968): the mean speed along the base's heading.
+            **({"gate_lead_mps": curve[-1]["gate_lead_mps"],
+                "gate_lead_curve": decimated_curve(curve, key="gate_lead_mps")}
+               if curve and "gate_lead_mps" in curve[-1] else {}),
             # Additive (ADR-957): the gallop guide's weight as it fades.
             **({"reference_weight": curve[-1]["reference_weight"],
                 "reference_weight_curve": decimated_curve(curve, key="reference_weight")}

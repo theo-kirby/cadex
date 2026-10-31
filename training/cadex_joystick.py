@@ -18,9 +18,11 @@ stated generically:
   default), held 250 steps, four segments; ``cadex_train.py --goto`` drives
   them from ``cadex_goto``'s layer;
 - **actor**: the root body's body-frame velocity, gyro and gravity, every
-  driven joint's position and velocity, and the last command;
-- **actions**: home + 0.5 rad, clipped to the joint's range, on every
-  position drive;
+  action's joint's position and velocity, and the last command;
+- **actions**: home + 0.5 rad, clipped to the joint's range, on each
+  position drive among the source bundle's actions (every drive when it lists
+  none); a drive outside them is held at its keyframe command, which must be
+  0, the ctrl the trainer and players leave it at (ADR-958);
 - **reward**: Playground's terms and weights, times the control interval; the
   tracking widths, like the reset kick, scale with ``--speeds`` against the
   Go1's (squared for the widths);
@@ -137,8 +139,24 @@ def write(task_path: Path, out: Path, speeds: tuple[float, float, float], label:
     episode.update(solver_step_s=float(plain.opt.timestep), solver_steps_per_action=int(round(per)),
                    episode_seconds=20.0, max_steps=int(round(20.0 / dt)))
 
+    # ADR-958: the source bundle's actions are the drives the policy moves; any
+    # other drive is held. The trainer and the players write only the actions'
+    # ctrl, so a held drive keeps the ctrl MjData starts with, 0, which must be
+    # its keyframe command (leon VI's tail root pitch and yaw).
+    listed = [str(a["actuator"]) for a in source.get("actions") or ()]
+    names = [plain.actuator(a).name for a in range(plain.nu)]
+    missing = sorted(set(listed) - set(names))
+    if missing:
+        raise SystemExit(f"the bundle's actions {missing} are not actuators in its model")
+    held = [a for a in range(plain.nu) if listed and names[a] not in listed]
+    for a in held:
+        if abs(float(home.ctrl[a])) > 1e-9:
+            raise SystemExit(f"held drive {names[a]!r} has keyframe command {float(home.ctrl[a]):g}, "
+                             "but a drive outside the actions is held at 0")
     drives = []
     for a in range(plain.nu):
+        if a in held:
+            continue
         joint = int(plain.actuator_trnid[a][0])
         if (int(plain.actuator_trntype[a]) != mujoco.mjtTrn.mjTRN_JOINT
                 or int(plain.jnt_type[joint]) not in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE)
@@ -329,6 +347,7 @@ def write(task_path: Path, out: Path, speeds: tuple[float, float, float], label:
     (outputs / f"{name}-model.xml").write_bytes(text)
     (outputs / f"{name}-task.json").write_text(json.dumps(task, indent=1, sort_keys=True), encoding="utf-8")
     return {"task": str(outputs / f"{name}-task.json"), "root": root, "feet": feet, "joints": joints,
+            "actions": len(actions), "held": [names[a] for a in held],
             "mass_kg": round(float(check.body_subtreemass[trunk]), 3), "episode": episode,
             "reward_terms": [r["label"] for r in reward], "randomisation_entries": len(randomisation),
             "actor_channels": sum(len(r["channels"]) for r in observations if r["role"] == "policy")

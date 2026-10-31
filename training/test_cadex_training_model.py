@@ -118,6 +118,10 @@ def test_a_moved_inertia_or_a_framed_static_body_is_refused():
     assert T.compare(T.compiled(EXPORT), T.compiled(moved))[0].startswith("mass matrix")
     with pytest.raises(ValueError, match="own frame"):
         T.derive(EXPORT.replace('<body name="c_panel">', '<body name="c_panel" pos="0 0 0.1">'), **T.DEFAULTS)
+    # An identity frame is the world frame: such a body fuses (leon VI's tail links write pos="0 0 0").
+    xml, _ = T.derive(EXPORT.replace('<body name="c_panel">', '<body name="c_panel" pos="0 0 0" quat="1 0 0 0">'),
+                      **T.DEFAULTS)
+    assert "c_panel" not in {b.get("name") for b in ET.fromstring(xml).iter("body")}
 
 
 def test_the_bench_times_the_setting_the_cut_writes():
@@ -149,3 +153,75 @@ def test_the_comparison_finds_the_legs_and_the_cut_unchanged(tmp_path):
     rows = C.compare(export, cut)
     assert len(rows) == 5 + 2 * 5 + 2 * 5 and not any(r["flag"] for r in rows)
     assert max(abs(r["diff"]) for r in rows) < 1e-9
+
+
+TAIL = """
+      <body name="c_tail_1">
+        <inertial pos="-0.2 0 0.42" mass="0.1" diaginertia="1e-4 1e-4 1e-5"/>
+        <joint name="j_tail_pitch" pos="-0.15 0 0.42" axis="0 1 0" range="-0.3 0.5" damping="0.1"/>
+        <body name="c_tail_2">
+          <inertial pos="-0.3 0 0.41" mass="0.05" diaginertia="5e-5 5e-5 5e-6"/>
+          <joint name="j_tail2_pitch" pos="-0.25 0 0.42" axis="0 1 0" range="-0.1 0.2"/>
+          <body name="c_tail_3">
+            <inertial pos="-0.4 0 0.40" mass="0.04" diaginertia="4e-5 4e-5 4e-6"/>
+            <joint name="j_tail3_pitch" pos="-0.35 0 0.41" axis="0 1 0" range="-0.1 0.2"/>
+            <geom name="c_tail_3/collision0" size="0.01 0.04" pos="-0.4 0 0.40" type="capsule" contype="4" conaffinity="11"/>
+          </body>
+        </body>
+      </body>"""
+COUPLED = """
+  <equality>
+    <joint name="coupling/cable_tail2" joint1="j_tail2_pitch" joint2="j_tail_pitch" polycoef="0 0.4 0 0 0"/>
+    <joint name="coupling/cable_tail3" joint1="j_tail3_pitch" joint2="j_tail2_pitch" polycoef="0 1 0 0 0"/>
+  </equality>
+  <actuator>"""
+TAILED = (EXPORT.replace('<body name="c_imu">', TAIL + '\n      <body name="c_imu">', 1)
+          .replace("\n  <actuator>", COUPLED, 1)
+          .replace("</actuator>", '  <general name="j_tail_pitch/position" joint="j_tail_pitch" biastype="affine" '
+                   'gainprm="90" biasprm="0 -90 -1"/>\n  </actuator>'))
+
+
+def test_a_held_cable_coupled_chain_is_welded_at_its_build_pose():
+    """ADR-959: ``--weld`` takes the chain's hinges and their cables out; the rest of the dynamics is the export's."""
+
+    xml, kept = T.derive(TAILED, **T.DEFAULTS, weld=["j_tail[23]_*"])
+    welded = kept["welded"]
+    assert welded["joints"] == ["j_tail2_pitch", "j_tail3_pitch"]
+    assert welded["equalities"] == ["coupling/cable_tail2", "coupling/cable_tail3"]
+    root = ET.fromstring(xml)
+    assert root.find("equality") is None
+    bodies = {b.get("name") for b in root.iter("body")}
+    assert "c_tail_1" in bodies and not bodies & {"c_tail_2", "c_tail_3"}  # rigid now, fused into the root link
+    engine, train = T.compiled(TAILED), T.compiled(xml)
+    assert (train["nv"], train["neq"], train["nu"]) == (engine["nv"] - 2, engine["neq"] - 2, engine["nu"])
+    assert T.compare(engine, train, welded) == []
+    assert T.compare(engine, train)[0].startswith("nq")  # read as an unwelded cut, it is refused
+    # The root drive still moves the whole tail, now one body, with the export's inertia about its hinge.
+    m = mujoco.MjModel.from_xml_string(xml)
+    assert "j_tail_pitch" in [m.joint(i).name for i in range(m.njnt)]
+    # A keyframe drops the welded coordinates and keeps the others.
+    keyed = TAILED.replace("</mujoco>", '  <keyframe><key name="home" qpos="0 0 0.02 1 0 0 0 0.1 0 0 0.2 -0.2"/></keyframe>\n</mujoco>')
+    xml, _ = T.derive(keyed, **T.DEFAULTS, weld=["j_tail2_pitch", "j_tail3_pitch"])
+    assert next(ET.fromstring(xml).iter("key")).get("qpos").split() == "0 0 0.02 1 0 0 0 0.1 0.2 -0.2".split()
+
+
+@pytest.mark.parametrize("weld, why", [
+    (["j_tail_pitch"], "actuated"),
+    (["j_hip_r"], "actuated"),
+    (["j_nothing*"], "matches no joint"),
+])
+def test_a_driven_or_unnamed_joint_is_not_welded(weld, why):
+    with pytest.raises(ValueError, match=why):
+        T.derive(TAILED, **T.DEFAULTS, weld=weld)
+
+
+def test_an_uncoupled_sensed_or_posed_joint_is_not_welded():
+    free = TAILED.replace('<joint name="coupling/cable_tail3" joint1="j_tail3_pitch" joint2="j_tail2_pitch" polycoef="0 1 0 0 0"/>', "")
+    with pytest.raises(ValueError, match="no joint equality"):
+        T.derive(free, **T.DEFAULTS, weld=["j_tail3_pitch"])
+    sensed = TAILED.replace("</sensor>", '  <jointpos joint="j_tail3_pitch" name="obs/9"/>\n  </sensor>')
+    with pytest.raises(ValueError, match="sensor"):
+        T.derive(sensed, **T.DEFAULTS, weld=["j_tail3_pitch"])
+    posed = TAILED.replace("</mujoco>", '  <keyframe><key qpos="0 0 0.02 1 0 0 0 0.1 0.05 0 0 0"/></keyframe>\n</mujoco>')
+    with pytest.raises(ValueError, match="build pose"):
+        T.derive(posed, **T.DEFAULTS, weld=["j_tail[23]_pitch"])

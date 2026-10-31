@@ -48849,6 +48849,529 @@ dependency.
 **Consequences.** The guide shapes, it does not prescribe phase. Its pose
 and rate scales are constants (`REFERENCE_SCALE`), not tuned on any run.
 
+## ADR-958 — The go-to-point task's actions are its source bundle's; the other drives are held (2026-10-30)
+
+**Context.** `cadex_joystick.py` (ADR-862) made every position actuator in
+the model an action. leon VI's new body (l6r1 revision 2) has sixteen drives,
+and two of them, the tail root's pitch and yaw, are position servos that hold
+the build pose and are not the policy's. The engine export's task and
+`cadex_relay.py`'s re-laying onto the cut both list fourteen actions. The
+go-to-point and gate bundles built on them had sixteen (76 actor channels),
+so a policy trained on them would move the tail.
+
+**Decision.** The drives the task acts on are the source bundle's `actions`,
+by actuator name, in model order. A source that lists none keeps the old rule:
+every position drive. A listed actuator that is not in the model is refused.
+Every other drive is **held**. It gets no action, no command, no joint or
+torque observation, and no reward term (limits, pose, torque, energy, action
+rate) or friction and armature randomisation. The trainer (`ctrl_index`) and
+the players (`cadex_goto.Player`, `g2_judge.py`) write only the actions'
+ctrl, so a held drive keeps MjData's initial ctrl of 0. A held drive whose
+keyframe command is not 0 is therefore refused, not silently moved. The
+report gains `actions` and `held`.
+
+**Evidence.** leon VI's relay task `19e75738…` (14 actions) on cut
+`ec34dc12…` now gives goto bundle `46df09ee…` (model `f189f9d6…`) with
+**14 actions**. `j_tail_pitch/position` and `j_tail_yaw/position` are held,
+with 68 actor channels (76 − 2 positions − 2 velocities − 2×2 command
+channels). `cadex_train.py --gates` loads it with 14 actions and 4 gate
+channels. Over a 3 s stand on that model, with only the 14 actions' ctrl
+written, the 12 tail hinges stay within 0.257° of the keyframe, the figure
+ADR-031 measured on the cut.
+
+**Tests.** `training/test_cadex_joystick.py` covers four cases:
+- a source with two of three drives listed gives two actions, and the
+  held tail is out of the observations, reward and randomisation;
+- a source with none listed drives all three;
+- a held drive with a non-zero keyframe command is refused;
+- an action naming no actuator is refused.
+
+All four fail on the previous code.
+
+**Consequences.** A source whose actions list every drive, or none, gives
+the same task as before. T1 (the tail in the policy) needs a source bundle
+that lists the tail drives.
+
+## ADR-959 — The training cut can weld a held, cable-coupled chain at its build pose (2026-10-30)
+
+**Context.** leon VI's new body (l6r1 revision 2) has a cable-coupled tail:
+two held root drives, then ten unactuated chain hinges tied by ten joint
+equalities. The policy does not drive the tail. On the cut (ADR-841) those
+ten hinges cut 8192-env MJX throughput from 210k to 123k env steps/s, under
+the 150k bar. The equality rows alone cost nothing. The welded variant was
+measured by a scratch XML edit, which is not a cut.
+
+**Decision.** `cadex_training_model.py cut --weld PATTERNS` (comma-separated
+`fnmatch` patterns of joint names) removes each matched joint and every
+joint equality that names one, before static bodies are fused. The chain is
+then rigid at its build pose and its bodies fuse into the first jointed
+body above them. The cut refuses a welded joint that is:
+- actuated;
+- coupled by no joint equality (a passive joint welded would change the
+  dynamics, not drop a held chain);
+- named by a sensor or tendon;
+- not a hinge or slide;
+- off its `qpos0` in any keyframe (the weld is at the build pose only).
+
+Keyframe `qpos` and `qvel` lose the welded coordinates. `compare` expects
+nq and nv less the welded coordinates and neq less the dropped equalities,
+and checks the mass matrix at qpos0 on the kept DoFs, to the same 1e-9.
+At qpos0 a welded joint is the joint locked, so the kept block is exact.
+The report gains `welded` (joints, DoF and qpos indices, equalities).
+
+Static-body fusion now accepts an identity frame (`pos="0 0 0"`,
+`quat="1 0 0 0"`) as the world frame. leon VI's export writes one on two tail
+links, and fusing them was refused. A non-identity frame is still refused.
+
+**Evidence.** leon VI, export `73f73bbf…`, `--weld 'j_tail[3-7]_*'` with
+the paws named and Euler 3 / 4 at 2 ms: cut `5998738d…`, nv 36 → 26, neq
+12 → 2, nbody 37 → 27, 5.599 kg, the mass matrix matching. Fidelity worst
+gated 3.748 mm (tolerance 5 mm; unwelded 2.945 mm), 6 of 12 gated. 10 s
+stand: tilt 0.077°, drift 0.74 mm, the paws carrying 54.9 of 54.9 N. Bench at
+8192 envs, RTX 5090: 239,065 and 237,023 env steps/s, against the unwelded
+cut's 123,200 in the same session. The goto bundle built from it
+(`cadex_relay.py` then `cadex_joystick.py`) has 14 actions, the two tail
+drives held. Over a 3 s stand on its model the tail root holds within 0.174°.
+
+**Tests.** `training/test_cadex_training_model.py`:
+- a toy's held tail chain welded keeps the root drive, drops the cables and
+  fuses the links, `compare` passes with the weld and refuses without it, and
+  a keyframe loses the welded coordinates;
+- an actuated joint and a pattern matching nothing are refused;
+- an uncoupled, a sensed and a posed joint are refused;
+- an identity-framed static body fuses.
+
+The five weld cases fail on the previous code.
+
+**Consequences.** A welded cut trains a body whose tail cannot flex. The
+export's judge still plays the full cable chain, so a gait the flex would
+break is caught there. T1 (the tail in the policy's actions) needs the
+unwelded cut, or a weld of the chain alone with the root drives as actions.
+
+## ADR-960 — Sprint courses: gate courses laid out for speed (2026-10-30)
+
+**Context.** Gate courses (ADR-955) put a gate behind or to the side every few
+legs, 1–4 m apart: a test of turning at a run, not of top speed. leon VI's l6r1
+charter judges its speed ladder (SP1–SP5) and its gallop-guide A/B (GG) on
+**sprint courses**: 8 gates, each within ±30° of the leg before, 2–4 m apart,
+seeded and split like `gate_course`, and raced on the export by the same judge.
+
+**Decision.** `cadex_goto.sprint_course(seed, split=, **shape)` draws one, from
+`SPRINT` (`gates` 8, `turn_deg` 30, `distance_m` 2–4, `radius_m` the gate
+course's 0.25): from the origin facing +x, each leg turned a uniform angle in
+±`turn_deg` from the leg before (the first from +x), each gate's `bearing`
+`ahead`. It is seeded by `cadex-sprint:{split}:{seed}`, its own stream, so the
+splits never meet and no sprint course is a gate course. The course has the
+gate course's schema and gates, with `"kind": "sprint"`, so `gate_stack`,
+`gate_step`, `judge_race` and the view take it unchanged.
+
+The `gates` and `race` verbs take `--sprint`; `--gates` defaults to the kind's
+length (12, or 8 with `--sprint`). Without `--sprint` both verbs draw exactly
+the courses they drew before. The trainer is unchanged: it plays no sprint
+course.
+
+**Evidence.** leon VI, export bundle `771851bf…`, gscreen1's final policy
+`4dac2fa9…` raced `--sprint` on train seeds 50000–50009: 10/10, 80/80 gates,
+no fall, 2.75–2.83 m/s (mean 2.79), each race under 0.5 s of CPU.
+
+**Tests.** `training/test_gate_race.py`:
+- a sprint course is its seed and split; 200 train and 200 held-out courses
+  are all distinct and none is an 8-gate gate course;
+- over 100 courses every leg is 2–4 m and turns within ±30°, both ways, out
+  to the bound; a named shape is honoured; overlapping gates, an unknown split
+  and a turn over 90° are refused;
+- the `gates` verb prints the sprint and gate courses at their own default
+  lengths, and honours `--gates` and `--radius`.
+
+**Consequences.** A speed claim names sprint seeds beside gate seeds. A
+trainer that should practise sprints would need its own flag; none is added.
+
+## ADR-961 — Race terrain: a gate course over its own seeded relief (2026-10-30)
+
+**Context.** leon VI's l6r1 charter judges U1 (rough ground and hills) on
+held-out gate courses over bumps, rocks and tiles to 30 mm and hills with
+slopes to 15° up and down, with held-out terrain seeds split like
+`gate_course`'s. `race` (ADR-955) raced on the bundle's plane only. The box
+courses of ADR-717/718 are laid along x (or round the start) and drawn into a
+model's terrain slots; a gate course runs every way, behind and to the side, up
+to some 20 m out, and leon VI's export carries a plane and no slots.
+
+**Decision.** `cadex_goto.race_terrain(np, course, kind)` draws a heightfield
+of 25 mm cells over the course's gates and the start, with 3 m of margin, every
+height at or above the plane. Every draw is `random`'s, seeded by
+`cadex-race-terrain:<kind>:<course kind>:<split>:<seed>`, so the relief follows
+the course's split and the `train` split never meets a held-out one; numpy only
+evaluates what was drawn. `RACE_TERRAIN` holds the shape:
+- `rough`: bumps (gaussian, σ 40–120 mm), rocks (square blocks 60–200 mm a
+  side) and tile patches (0.6–1.5 m in 100–250 mm cells, each its own height),
+  0.25, 0.25 and 0.04 per m², each up to a draw of 10–30 mm, the highest kept
+  and clipped to `rough_mm` 30;
+- `hills`: gaussian hills (σ 0.5–1.2 m, 0.05 per m²) among the gates, clear of
+  the start by 2.5 σ, summed and scaled so the steepest grade between grid
+  points is the course's draw in `grade_deg` 8–15°;
+- `u1`: the rough relief laid on the hills.
+
+The start stands on a flat clearing of 0.5 m, from which the relief rises over
+0.5 m; it falls to the plane over 0.5 m at the grid's edge.
+`terrain_model` adds the grid as a heightfield `environment/race_terrain` that
+takes the floor plane's contact bits, friction, solref and solimp, so whatever
+touched the floor touches it; the plane stays beyond it. `terrain_ground` reads
+the ground bilinearly between grid points, and `terrain_drawing` writes it in
+`CadexDynamics.terrain_drawing`'s heightfield form (≤ 129 vertices a side).
+
+`race --terrain rough|hills|u1` races over it: a fall is the base's height
+over the ground under it (and a policy's height scan, if it has one, reads the
+same ground); `gates.json` carries the terrain's draw, measured steepest grade,
+highest point and sha256; the view carries its drawing. Without `--terrain`
+`race` is unchanged. The trainer plays no race terrain yet.
+
+**Evidence.** leon VI's FAST policy (l6r1 ADR-045, `457381c4…`), blind, on its
+export bundle `f6292526…`, held-out seeds 0–9, CPU, each race under 1 s:
+flat 10/10, no fall, 2.00 m/s; `u1` 0/10 (6 falls, 4 stalls, 50/120 gates);
+`rough` 3/10 (7 falls); `hills` 1/10 (6 falls, 3 stalls). Over 10 held-out
+courses the hills stand 183–343 mm high at their 8.3–14.7° steepest.
+
+**Tests.** `training/test_gate_race.py`:
+- a terrain is its kind, course kind, split and seed: the same draw repeats to
+  the digest, and the train split, the next seed, a sprint course and the other
+  kinds each differ; an unknown kind is refused;
+- over 10 held-out courses of each kind: every height ≥ 0, the start's clearing
+  flat, every gate inside the grid by the margin, rough relief ≤ 30 mm, and the
+  hills' measured steepest grade the course's draw within 8–15°;
+- on a compiled model the heightfield takes the floor's contact parameters, a
+  ray down meets it at the grid's height at 50 grid points to 1 µm, and a model
+  with no floor plane is refused;
+- the drawing is a heightfield of ≤ 129 vertices a side the dashboard reads.
+
+**Consequences.** U1's judge exists. Training over race terrain (the trainer's
+own heightfield, MJX's sphere- and capsule-only contact on one, ADR-854) is the
+next step; leon VI's paws are spheres. Films do not yet draw the relief.
+
+## ADR-962 — The trainer races gates over race terrain, with a curriculum on relief (2026-10-30)
+
+**Context.** ADR-961 gave `race --terrain` a judge for leon VI's U1 (rough
+ground and hills); FAST's flat policy, blind, finished 0/10 held-out `u1`
+courses. The trainer played no race terrain. A race's relief is drawn per
+course over its own extent, but MJX holds a heightfield's size (`hfield_size`)
+and the pair's subgrid as static numpy, so neither a per-episode grid nor a
+per-environment amplitude can be traced; and batching `hfield_data` per
+environment is 8192 copies of the grid. `geom_pos` is traced.
+
+**Decision.** `cadex_train.py --race-terrain rough|hills|u1` (with `--gates`):
+- **Fields.** `--relief-levels` K fields (default 4). Field k is
+  `cadex_goto.field_terrain(kind, seed·K + k − 1)`: `race_terrain`'s relief
+  over the square ±`--relief-half` m (default `FIELD_HALF_M` 15; a 20 s train
+  episode at 2.8 m/s ends within 12 m of the start on half the 256 train
+  courses, 18.6 m on nine in ten) and the race's 3 m margin, scaled to k/K. Its
+  seed string names the course kind `field` on the `train` split, so no field
+  is any race's relief, held-out or train.
+- **Model.** `relief_model` adds a static body `environment/relief`, the
+  model's last, holding one heightfield geom per field, so no body, geom or
+  other index the bundle names moves. Each takes the floor plane's contact
+  parameters. It touches only the floor's spheres and capsules (the paws),
+  through a contact bit no geom carried; a box or mesh that touched the floor
+  keeps the plane only (feet-only contact, ADR-739; MJX's heightfield contact,
+  ADR-854). A model with no sphere or capsule on the floor is refused.
+  `relief_randomised` makes the bundle's draws on its own model and extends
+  each drawn field with the relief's rows, a geom field with the floor's drawn
+  row, so a field's friction follows the floor's draw.
+- **Levels.** Each episode stands on a level drawn uniformly in 0..top, level
+  0 the plane: inside the step, `lay_relief` raises that level's field to
+  z = 0 and sinks every other one `RELIEF_SINK_M` (1 m) under the plane past
+  the highest top. Flat ground stays in every batch. The start is the race's
+  flat 0.5 m clearing.
+- **Curriculum.** The train loop's top starts at START and rises by one after
+  an iteration with at most FALLS falls per horizon's worth of its env steps,
+  once it has stood HOLD iterations (`--relief-ceiling START,FALLS,HOLD`,
+  default `1,0.1,10`); it never falls. A share of ended episodes was tried
+  first and refused: before the first time-outs (the first 50 iterations of a
+  1000-step episode) every ending is a fall, and it read 1.0.
+- **Records.** `progress.json`'s curve carries `relief_top`, `relief_falls`
+  and `relief_levels`; the policy header `training.race_terrain` carries the
+  rule and each field's seed, scale, grade, rough relief, highest point and
+  sha256, and the paws.
+- The actor stays blind: a bundle with a height scan or a terrain pool is
+  refused. Films and dashboard views stay flat.
+
+**Evidence.** leon VI's cut gate bundle `4cb0e956…`, warm from l6r1 lfast2's
+final `457381c4…`, 8192 environments, 20 iterations of lfast2's recipe at a
+fixed 4.0 m/s ceiling, `--race-terrain u1 --relief-ceiling 1,0.1,0`, RTX 5090:
+0.64 s per iteration flat (254,804 env steps/s, the matched control without
+`--race-terrain`), 1.71 s at K = 2 (95,734), 2.66 s at K = 4 (61,645); the top
+rose 1 → 4 over iterations 0–3 (0.000, 0.018, 0.049 falls per horizon), read
+0.018–0.104 at level 4 over the 16 iterations after, and the witness agrees to
+2.4e-7. The four fields of seed 1: 1441 × 1441 cells, highest 70,
+140, 223 and 300 mm, scaled grade 2.7–10.6°, rough relief to 7.5–30 mm.
+
+**Tests.** `training/test_race_terrain_training.py`:
+- a field is train-split relief round a flat start that no gate or sprint
+  course of either split meets, the same draw to the digest;
+- field k is its own draw scaled to k/K, its grade and rough relief scaled;
+- the rule needs `--gates` and is refused out of its bounds; the top rises one
+  level on few falls after its hold, never with no reading, never past K;
+- the relief is the last body and moves no other index, takes the floor's
+  contact parameters and holds the field's heights; only the floor's spheres
+  and capsules touch it (a box keeps the plane), and a box paw is refused;
+- in MJX a paw 5 mm into field 2's peak meets field 2 at level 2 and nothing
+  at levels 0 and 1;
+- drawn fields extend to the relief, its friction the floor's drawn row;
+- in the environment a level-2 episode is held up by the relief where a
+  level-0 one falls freely; a fresh episode draws its level up to the top the
+  loop wrote; without `--race-terrain` nothing changes; a pooled bundle is
+  refused; the header and the loop carry the rule.
+
+**Consequences.** RECIPE §T.9: U1's training is a warm extension from the flat
+policy with `--race-terrain u1`, judged on held-out `race --terrain` and flat
+courses. A 49.2 M screen at K = 4 costs about 800 s of training against
+lfast2's 342 s. A field is fixed for the run, so a policy may learn its
+features; the held-out judge measures that. Films do not draw the relief.
+
+## ADR-963 — Graded relief fields: every field at the race's full amplitude (2026-10-30)
+
+**Context.** ADR-962 scales field k of K to k/K of its draw, so of leon VI's
+four fields (seed 1) only the top one is full amplitude: hill grades 2.7, 5.0,
+6.6 and 10.6°, rough relief 7.5–30 mm. A held-out `u1` race draws hills
+8–15° (`RACE_TERRAIN["grade_deg"]`) under full 30 mm rough relief everywhere.
+l6r1 lu1 (leon VI ADR-048), trained so, finishes 5/10 held-out `u1` courses
+with four falls where hills and rough relief add.
+
+**Decision.** `cadex_train.py --relief-fields scaled|graded` (default
+`scaled`, ADR-962 unchanged). `graded` lays every field unscaled — rough
+relief at the race's full height — and fixes field k's hills' steepest grade
+at `low + (high − low)·k/K` of the race's `grade_deg` range by passing
+`grade_deg=(g, g)` to `cadex_goto.field_terrain`. The draw stream is the
+scaled field's (the fixed range still consumes its draw), so the seed string,
+the layout of hills, bumps, rocks and tiles and the train-only split are as
+ADR-962's; only the hills' amplitude and the rough relief's scale differ. The
+top field is as steep as the steepest held-out race. The rule carries
+`fields`, so the policy header `training.race_terrain` names it. The
+curriculum, levels, model and contact are ADR-962's.
+
+**Evidence.** Seed 1, K = 4, `u1`: grades 9.75, 11.5, 13.25 and 15.0°,
+highest 254, 324, 442 and 420 mm, rough relief 29.8–30.0 mm on every field.
+
+**Tests.** `training/test_race_terrain_training.py`: graded fields are their
+own unscaled draws on the same seed stream (the heights and the digest of
+`field_terrain` with the fixed grade), every one carries full rough relief, at
+least the scaled field's, hills alone climb the race's grade range to its top;
+the rule carries `fields` (`scaled` by default) and refuses another name.
+
+**Consequences.** RECIPE §T.9: a U1 screen may train on held-out's full
+amplitude from the first level. A graded field's cost per iteration is the
+scaled field's: the grids are the same size.
+
+## ADR-964 — Graded relief with a rough-only field (2026-10-30)
+
+**Context.** ADR-963's graded fields lay full 30 mm rough relief only over
+hills of 9.75° and steeper; no field is rough ground alone. l6r1 lu2 (leon VI
+ADR-049), warm from lu1 on graded fields, lifts held-out `u1` from 5/10 to
+7/10 and keeps hills 10/10, but held-out `rough` courses fall from 9/10 to
+6/10.
+
+**Decision.** `cadex_train.py --relief-fields graded-rough`, `u1` runs only
+(another kind is refused). Field 1 is `cadex_goto.field_terrain(np, "rough",
+seed·K, …)`: the race's rough relief alone, unscaled, no hills; its seed
+string names `rough`, so it is no `u1` field's draw and still train-split.
+Fields k = 2..K are `graded`'s fields with the steepest hill grade
+`low + (high − low)·(k − 1)/(K − 1)`, so at K = 5 the hill grades are
+`graded`'s four at K = 4 (9.75, 11.5, 13.25, 15°). The curriculum is ADR-962's:
+level 1, the first relief an episode meets, is the rough field. `scaled` and
+`graded` are unchanged.
+
+**Evidence.** Seed 1, K = 5: field 1 rough, 0° hills, highest 29.96 mm;
+fields 2–5 grades 9.75, 11.5, 13.25, 15.0°, rough relief 29.9–30.0 mm, highest
+329, 324, 405, 405 mm.
+
+**Tests.** `training/test_race_terrain_training.py`: field 1 is
+`field_terrain`'s rough draw on seed·K (heights and digest), at full height
+and no higher than the race's rough cap; fields 2..5 are `u1` with `graded`'s
+four grades at K = 4 and full rough relief; five distinct digests; one level
+is the rough field alone; a `hills` run with `graded-rough` is refused.
+
+**Consequences.** One more field costs one more heightfield in every
+environment's model; the grids are the same size.
+
+## ADR-965 — Race terrain with boxes and steps (2026-10-30)
+
+**Context.** leon VI's l6r1 charter judges B1 on held-out gate courses with
+boxes and steps up and down to 60 mm in the path, mixed with U1's relief, the
+terrain seeds split like `gate_course`'s. `race --terrain` (ADR-961) lays
+relief only: rough to 30 mm and hills, nothing flat-topped to step onto.
+
+**Decision.** Two more `cadex_goto.TERRAIN_KINDS`, drawn by `race_terrain` on
+the same 25 mm grid:
+- `boxes`: one obstacle across every leg (the start to the first gate, then
+  gate to gate), on the plane. With probability `step_share` 0.5 it is a step
+  platform 0.8–1.6 m along by 1.5–3.0 m across, wide enough that the way over
+  is a step up and a step down; otherwise a box 0.3–0.6 m by 0.4–1.0 m. Its
+  along-side is at most 0.6 of the leg, its centre a draw in 0.35–0.65 along
+  the leg and up to 150 mm aside, turned up to ±20° off it, its top a flat
+  draw in `box_mm` 20–60 mm. One that would reach the start's clearing is
+  left out; where two overlap the higher top stands.
+- `b1`: the same boxes on the course's `u1` relief. A box's top is flat over
+  the hills under it (it follows their grade) and covers the rough relief
+  there; outside the boxes `b1` is `u1`.
+
+The boxes are drawn from their own seed string
+`cadex-race-terrain:boxes:<course kind>:<split>:<seed>`, and the relief from
+its kind's (`TERRAIN_RELIEF`: `b1` draws `u1`'s), so a held-out course's
+boxes are held out and the `rough`, `hills` and `u1` draws are unchanged to
+the digest. A box's face rises over one grid cell (67° at 60 mm), which is
+the heightfield's edge. `drawn` carries the counts of boxes and steps, the
+highest top, and every obstacle's leg, kind, centre, size, yaw and height;
+`gates.json` carries them. The trainer's `--race-terrain` choices are
+unchanged: it lays no boxes yet.
+
+**Evidence.** Held-out gate courses 0–9: 7–11 obstacles a course (2–9 boxes,
+2–7 steps), the highest 46.9–60.0 mm. leon VI's lu3 final (l6r1 ADR-050,
+`4e094815…`), blind, on its export bundle `f6292526…`: `b1` 0/10 (9 falls,
+25/120 gates, 1.68 m/s), `boxes` 0/10 (10 falls, 39/120 gates, 1.59 m/s);
+every fall a tumble (trunk up-axis under 0.5) at trunk height, not the
+height-over-ground rule. The same policy races `u1` 7/10.
+
+**Tests.** `training/test_gate_race.py`: over 10 held-out courses, `b1` and
+`boxes` draw the same obstacles; every obstacle is on its leg within 0.35–0.65
+and the offset, no longer along than 0.6 of the leg, 20–60 mm high; inside it
+`b1` stands at least its height and at most 60 mm over `u1`'s hills and
+`boxes` at least its height; a cell off every box, `b1` is `u1` and `boxes`
+the plane; the start's clearing is flat; both kinds of obstacle occur; the
+draw repeats to the digest and the train split, a sprint course and the next
+seed differ. The existing kinds' draws are unchanged (checked against
+112ed9e4's `race_terrain` and `field_terrain` to the digest). Training suite
+162 passed.
+
+**Consequences.** B1 has its judge. Training over boxes needs the trainer's
+fields to carry them next; a heightfield keeps MJX's paws-only contact
+(ADR-854, ADR-962).
+
+## ADR-966 — The trainer stands boxes and steps on its relief fields (2026-10-30)
+
+**Context.** ADR-965 judges B1's boxes, but the trainer could not train over
+them: `cadex_train.py --race-terrain`'s parser offered `rough`, `hills` and
+`u1` only, and `relief_rule`'s own check (against `cadex_goto.TERRAIN_KINDS`)
+would have passed `b1`. Had the parser taken it, a field would have been u1 in
+effect: `field_terrain` lays its relief over the square's four corners as a
+course's gates, so ADR-965's one-obstacle-per-leg drew four obstacles over a
+36 m field, two of them on its edges (seed 3: 2 boxes, 2 steps).
+
+**Decision.**
+- `--race-terrain` takes every `TERRAIN_KINDS` kind, `boxes` and `b1`
+  included.
+- A training field (course kind `field`) of a box kind scatters
+  `field_obstacles_per_m2` 0.2 legs per square metre of its square, each at a
+  uniform centre over it, any heading, a draw in `field_leg_m` 2–4 m long, and
+  stands one ADR-965 obstacle across each with the race's own draws (box or
+  step, size, place along and aside, yaw, 20–60 mm). At 0.2 per m² and a mean
+  obstacle across of about 1.5 m, a straight run meets one about every 3 m, as
+  a race meets one per 1–4 m leg. A race's draws (course kind `gates` or
+  `sprint`) are unchanged to the digest.
+- `--relief-fields graded-rough` takes `b1`: field 1 is the rough relief
+  alone, without boxes; fields 2..K are b1, ADR-964's graded hills under
+  rough relief with the field's boxes. `scaled` b1 fields scale the boxes with
+  the relief.
+- The policy header records a field's obstacles as their count.
+
+**Evidence.** A 15 m field (`field_terrain(np, "b1", 3)`): 176 obstacles
+(91 boxes, 85 steps), drawn in 0.11 s; 18% of the grid's cells (margin
+included) differ from the same seed's `u1` field.
+
+**Tests.** `training/test_race_terrain_training.py`: the parser takes every
+`TERRAIN_KINDS` kind and refuses another; a `b1` graded-rough run at K=5 lays
+`rough, b1, b1, b1, b1`; every b1 field stands between 0.75 and 1 of
+0.2 per m² of its square in obstacles, boxes and steps both, 20–60 mm, inside
+the field, its hill grade the u1 field's, more than 10% of its square's cells
+changed from u1's and none more than 60 mm over it; the header counts the
+obstacles; a scaled b1 field is the raw field at k/levels; held-out `b1` and
+`boxes` races keep ADR-965's digests. Training suite 164 passed.
+
+**Consequences.** A `b1` field costs the same heightfield as a `u1` one. The
+fields stay paws-only contact (ADR-854, ADR-962): a trunk that strikes a box
+face passes through it in training though not in the judge's MuJoCo, so a
+blind policy's tumble at a box face is not trained against directly.
+
+## ADR-967 — A racer reads a height scan of the ground ahead (2026-10-31)
+
+**Context.** ADR-966's boxes train, but the actor is blind: under
+`--race-terrain` the trainer refused a bundle's height scan (ADR-715), and a
+bundle's scan reads the bundle's own terrain, not the trainer's relief fields
+(ADR-962). A blind racer meets a 20–60 mm box when a paw strikes it, about
+0.2 s before it falls (leon VI's lb1: 0.76 falls per horizon at its top level).
+
+**Decision.**
+- `cadex_train.py --race-scan default|AHEAD,..:LEFT,..` (with `--gates`) adds
+  a `race_scan` block to the race's task: points ahead of and left of the
+  base's centre along its heading, in mm (`default` −200..800 every 200 by
+  −120, 0, 120: 18 points), channels `rscan<i>` after the gate channels in the
+  actor's and the critic's vectors.
+- Each channel is the base's height over the ground at its point in mm, read
+  bilinearly from the episode's own relief field (the plane on level 0, and
+  beyond the field), as `cadex_goto.terrain_ground` reads a race's terrain.
+  No noise is added.
+- A warm start from a policy that read every other actor channel in order
+  gains the scan's inputs at zero weight with fresh statistics (ADR-859's
+  rule), so the warmed actor plays its source until training moves them.
+- The policy header carries `training.race_scan`; `cadex_goto.Player` reads it
+  and plays the scan from the base over its ground, which `race --terrain`
+  stands as the course's relief (the plane without it).
+- A bundle that carries its own scan is refused with `--race-scan`.
+
+**Evidence.** A warm start from leon VI's lb1 on its 12-action gate bundle at
+1024 envs: "the actor gains 18 height-scan inputs at zero weight", two
+iterations, witness 2.7e-7; its policy races a train b1 course on the export
+through `race --terrain b1`.
+
+**Tests.** `training/test_race_scan.py`: the grid's default and parsed forms
+and its refusals; the scan follows the gate channels and a warm start gains
+only it; `race_scan_vector` equals `terrain_ground` over a b1 field at random
+poses and the plane on level 0; the built environment's actor reads it over
+each episode's own field across fresh episodes; the player reads the header's
+grid over its ground. Training suite 170 passed.
+
+**Consequences.** A scanned racer is judged with the same terrain it is
+raced over. The scan is a simulated elevation map: a robot needs a depth
+sensor, odometry and a map to read it (the project's sensor spec).
+
+## ADR-968 — A racer can be told which end leads (2026-10-31)
+
+**Context.** Under `--gates` (ADR-955) a racer is paid for speed made good
+toward the lit gate, whatever way its trunk faces. leon VI's light body
+learned to run hind end first: its base travels along its own −x on 0.91–0.97
+of the path on every flat course, from its first gate screen on. Its fore
+shoulders then trail and carry the push (the fore-right RS00 at 1.6× rated),
+and a height scan laid along +x (ADR-967) reads ground already crossed.
+
+**Decision.**
+- `cadex_train.py --gate-backward W` (with `--gates`, default 0, off) charges
+  `W` per m/s per second of the base's speed backward along its own heading
+  (`max(0, −lead)`), where `cadex_goto.gate_lead` is the world planar velocity
+  projected on the base's x axis on the ground. At `W` = 1, the progress
+  weight's default, hind-first progress toward a gate earns nothing.
+- Only backward speed is charged: running fore end first, sideways or
+  standing costs nothing more, so the term picks the leading end and nothing
+  else.
+- The weight is part of the race's rule (`weights.backward`), so the policy
+  header records it. The iteration's report and `progress.json` carry
+  `gate_lead_mps`, the mean speed along the heading (negative running
+  backward), with its curve. The judge and the player are unchanged.
+
+**Evidence.** leon VI's light body, its first gate screen's command (49.2 M,
+seed 1, from scratch) with `--gate-backward 1`: the 75th iteration already
+runs fore end first (travel +0.98 of the path on three train courses on the
+export), and the final runs held-out flat gate and sprint courses 10/10 with
+no fall at +0.97 and +0.99, sprints at 2.68 m/s. Without the term the same
+command ran −0.93 to −0.96.
+
+**Tests.** `training/test_gate_race.py`: `gate_lead` is the speed along the
+heading at any yaw, zero sideways; the rule's weights carry `backward` (0 by
+default) and refuse a negative one; the built environment charges a hind-first
+step `W·dt·|lead|` and a fore-first step nothing, against the same step
+without the term.
+
+**Consequences.** Which end leads is a choice a race can make for the robot
+when its body's front matters: a scan, a head, or legs built to push from
+behind. A racer warm-started from a backward policy under this term has to
+relearn its gait; leon VI's was trained from scratch.
+
 ## ADR-969 — The Pose editor: the model moved by its joints, a pose handed to the CLI (2026-10-30, owner direction)
 
 **Context.** The owner asked for a pose mode in the dashboard to see each

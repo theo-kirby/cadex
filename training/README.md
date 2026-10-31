@@ -188,6 +188,7 @@ Go1 benchmark that Brax learns to trot in under six minutes (docs/MUJOCO.md
 | `--terrain-curriculum`, `--terrain-promote` | off, `1` | deal a leveled pool by level and move each environment by points reached (ADR-856, below) |
 | `--gates`, `--gate-ahead`, `--gate-radius` | off, `2`, `0.25` | race through gates: the policy sees the next K gates instead of speed goals (ADR-955, below) |
 | `--gate-weights`, `--gate-ceiling` | `1,0.5,0.1`, `0.5,0.25,6,0.7` | the race's progress, entry and time weights; the speed curriculum's START,STEP,MAX,PROMOTE (ADR-955) |
+| `--race-terrain`, `--relief-levels`, `--relief-ceiling`, `--relief-half`, `--relief-fields` | off, `4`, `1,0.1,10`, `15`, `scaled` | race the gates over race terrain: `rough`, `hills` or `u1` relief in train-split fields, dealt by a curriculum on amplitude (ADR-962, below); `graded` lays every field at full amplitude, grade rising field by field (ADR-963); `graded-rough` makes field 1 rough relief alone (ADR-964) |
 | `--gait-reference`, `--reference-weight`, `--reference-fade` | off, `0.5`, `0` | a gait guide that fades: a CadexGait name (`gallop`) or a clip JSON (ADR-957, below) |
 | `--reference-speed`, `--reference-legs` | `1.5`, the task's feet | a named guide's speed and feet |
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
@@ -784,6 +785,63 @@ python training/cadex_goto.py gates --seed 0 --split heldout
     --task s4/joy-export/outputs/goto-task.json --other-model --seed 0 --rated-nm 1.6
 ```
 
+**Sprint courses (ADR-960).** `--sprint` on `gates` and `race` draws a sprint
+course in place of a gate course: 8 gates (`--gates`), each turned within ±30°
+of the leg before, 2–4 m apart, the same 0.25 m gate, seeded under its own name
+(`cadex_goto.sprint_course`). They judge top speed; the trainer plays none.
+
+**Race terrain (ADR-961).** `race --terrain rough|hills|u1` lays the course's
+own relief on the floor as a heightfield: `rough` is bumps, rocks and tile
+patches to 30 mm, `hills` smooth hills whose steepest grade is a draw in 8–15°,
+`u1` both (`cadex_goto.race_terrain`). The relief is seeded by the terrain kind
+and the course's kind, split and seed, so a held-out course has held-out relief;
+the start stands on a flat clearing 0.5 m round the origin. A fall is the
+base's height over the ground under it. `gates.json` carries the terrain's
+draw, its measured steepest grade and its sha256, and the view its drawing.
+`race --terrain boxes|b1` (ADR-965) stands a flat-topped box (0.3–0.6 m by
+0.4–1.0 m) or a step platform (0.8–1.6 m by 1.5–3.0 m) 20–60 mm high across
+every leg, on the plane or on the course's own `u1` relief; `b1` is `u1`
+outside its boxes, and `gates.json` lists every box's leg, place, size, yaw
+and height. The trainer lays them too (ADR-966): `--race-terrain b1` scatters
+0.2 obstacles per m² over each training field, boxes on the graded hills with
+`--relief-fields graded-rough` (field 1 stays rough alone).
+`--race-scan default` (ADR-967) gives the actor the base's height over the
+ground on 18 points ahead (−0.2 to 0.8 m by −0.12 to 0.12 m), read over the
+episode's own field, after the gate channels; a warm start gains them at zero
+weight, and `race` reads them over the course's terrain.
+`--gate-backward W` (ADR-968) charges W per m/s per second of the base's speed
+backward along its own heading (hind end first), so a racer that would pick
+either end to lead runs fore end first; the log's `lead` is the mean speed
+along the heading, negative running backward. 0, off, by default.
+
+**Race terrain in training (ADR-962).** `--race-terrain rough|hills|u1` (with
+`--gates`) lays `--relief-levels` K fields of that relief round the start,
+each `cadex_goto.field_terrain`'s train-split draw over ±`--relief-half` m
+(15) and the race's margin, field k scaled to k/K of the race's amplitude. No
+field is a race's relief: its course kind is `field`. The fields are
+heightfields on a static body `environment/relief` added last, so no index the
+bundle names moves; each takes the floor's contact parameters and its friction
+follows the floor's draw. They touch only the floor's spheres and capsules
+(the paws), through a contact bit no geom carried; a box keeps the plane only
+(feet-only contact, ADR-739; MJX's heightfield contact, ADR-854). Every
+episode stands on a level drawn uniformly in 0..top (0 the plane): the step
+raises that level's field to z = 0 and sinks the rest under the plane. The
+train loop's top starts at START and rises by one after an iteration with at
+most FALLS falls per horizon's worth of its env steps, once it has stood HOLD
+iterations (`--relief-ceiling START,FALLS,HOLD`, default `1,0.1,10`); it never
+falls. `progress.json`'s curve carries `relief_top`, `relief_falls` and
+`relief_levels`, and the policy header `training.race_terrain` (each field's
+seed, scale, grade, highest point and sha256). The actor is blind: a bundle
+with a height scan or a terrain pool is refused. Each field costs about 0.5 s
+per 8192 × 20-step iteration on an RTX 5090 (leon VI's cut: 0.64 s flat, 1.71 s
+at K = 2, 2.66 s at K = 4).
+`--relief-fields graded` (ADR-963) lays every field unscaled, full rough relief
+and all, with field k's steepest hill grade k/K of the way up the race's
+`grade_deg` range.
+`--relief-fields graded-rough` (ADR-964, `u1` only) makes field 1 the race's
+rough relief alone at full height and grades fields 2..K's hills from
+(high − low)/(K − 1) above `low` to `high`: at K = 5 they are `graded`'s four.
+
 `race` judges a racer on stock MuJoCo (here the export's bundle, by channel
 name): it runs to the last gate, a fall, 30 s with no gate, or the course at
 0.25 m/s plus 10 s, and writes `view/` (the gates in the `goto` shape the
@@ -805,7 +863,8 @@ task the Go1 passed G2 on (Playground's joystick: `cx`/`cy`/`cw` goals, body-fra
 velocity, gyro, gravity, joint positions and velocities and the last command for
 the actor, home + 0.5 rad actions, Playground's reward terms and randomisation,
 upside-down termination) onto the model of any bundle, a concept's, a cut's or
-an export's. The root, the driven joints, their ranges and keyframe pose, the
+an export's. The root, the driven joints (the source bundle's actions; any other
+drive is held at its keyframe command, ADR-958), their ranges and keyframe pose, the
 feet (bodies with colliding geoms and none below them) and the floor are read
 from the model; substeps come from the model's own timestep. On the Go1 it
 writes every reward expression, randomisation entry, reset and termination of
@@ -892,6 +951,13 @@ export and checks it moves like the export, which stays the judge:
   (leon V: worst 1.88 mm; implicitfast there is 8.5 mm) and falls back to
   implicitfast at the same step (the biped's stiff servos blow up under
   explicit Euler damping). The report lists each setting tried.
+- **A held chain can be welded** (`--weld 'j_tail[3-7]_*'`, ADR-959). The
+  named joints and every joint equality naming them go, so a cable-coupled
+  chain whose drives only hold it is one rigid body at its build pose. A
+  welded joint must be unactuated, cable-coupled, unsensed and at qpos0 in
+  every keyframe. The mass matrix is then checked on the kept DoFs. leon VI's
+  tail chain welded: 123k → 239k env steps/s at 8192 envs, fidelity
+  2.945 → 3.748 mm.
 
 Pass the export as `--cad-model` to `cadex_train.py` and the dashboard draws
 the CAD on the cut's bodies (ADR-838).
