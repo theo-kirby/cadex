@@ -49437,3 +49437,65 @@ header names the flag and divisor only when given and is otherwise unchanged.
 **Consequences.** A policy can be trained across the contact stiffness its
 judge cuts. The divisor is global, not per environment, so a run randomising
 stiffness pays for the finer step on every environment.
+
+## ADR-972 — Relief under a sprint: a train-split strip along +x without `--gates` (2026-10-31)
+
+**Context.** Symon's G1 (its ADR-087) trains its blind two-term sprint policy over
+rough and uneven ground, warm from its counted sprint policy, and judges it on a
+held-out straight strip of `race_terrain` on the export (course kind `straight`,
+split `heldout`, origin to (125 m, 0)). The trainer laid relief only under a
+gate race (ADR-962 refused `--race-terrain` without `--gates`), on a square
+field of half side 15 m round the start: a sprint at 5.6 m/s leaves it in under
+3 s of a 20 s episode. A gate race is another task (its own observation and
+pay), so a sprint policy cannot be warm-started there.
+
+**Decision.**
+- `cadex_train.py --race-terrain KIND` without `--gates` lays each relief level
+  as a strip under the bundle's own task: `cadex_goto.strip_terrain(np, kind,
+  seed, length_m=...)`, `race_terrain` over a straight run from the start to
+  (`length_m`, 0) with `margin_m` (3 m) either side and past each end, split
+  `train`, course kind `strip` (seed string
+  `cadex-race-terrain:<kind>:strip:train:<seed>`, which no race, field or
+  held-out straight strip draws). `--relief-strip L` sets its length
+  (default `cadex_goto.STRIP_LENGTH_M`, 125 m: 20 s at up to 6.25 m/s, the
+  held-out strip's length); past it is the plane.
+- Everything else is ADR-962 to ADR-966's: the levels, the field seeds
+  (`seed * levels + k - 1`), the three ways of drawing them
+  (`--relief-fields`), the curriculum (`--relief-ceiling`), the relief model
+  (one heightfield per level, paws only), friction following the floor's draw.
+  A `boxes`/`b1` strip cuts its run into legs laid end to end from the start's
+  clearing, each a draw in `field_leg_m` (2–4 m), one obstacle across each as a
+  race's leg has.
+- `--relief-half` without `--gates` and `--relief-strip` with `--gates` are
+  refused. The rule (and the policy header's `race_terrain`) carries
+  `strip_m` and `half_m: null` for a strip; a gate race's rule is unchanged.
+- The bundle's terminations stand as written; a collapse ending that reads the
+  base's absolute height is permissive on a hill (the base stands higher), as
+  under a gate race on relief. The held-out judge reads it over the ground.
+
+**Evidence.** A CPU MJX smoke on Symon's sprint bundle (s19relay, 64
+environments, 20 control steps after compiling, its run's flags:
+`--no-load-speed 33 --randomise-drive-torque 0.8 1.0 --randomise-friction 0.6 1.0
+--action-filter-alpha 0.715`): flat 188.6 env steps/s; with `--race-terrain u1
+--relief-levels 4 --relief-fields graded-rough --relief-ceiling 4,0.1,0` (every
+level in force) on the 125 m strip 116.1 (0.62 of flat), on a 30 m strip 117.2;
+every environment finite. The strip's length does not set its cost (each level
+is a 241 x 5241 grid, 1.26 M points, under the 15 m field's 1441 x 1441); the
+heightfield collision does. Its four levels: rough alone (29.7 mm), then u1 with
+hills graded 10.3°, 12.7° and 15.0° (highest point 419 mm).
+
+**Tests.** `training/test_sprint_strip.py` (9): a strip is train-split relief
+along +x, its extent the run and its margin, its start clear, deterministic,
+and not a race's, a field's or the held-out straight strip's draw; a b1 strip
+stands an obstacle across the path every 2–4 m within the box heights; a
+field's and a race's draws are unchanged to the digest; the rule without
+`--gates` is a strip and refuses a field's size (and a gate race refuses a
+strip's); the scaled, graded and graded-rough strip levels are the strip's
+draws on the fields' seeds; a sprint environment stands on its strip, a paw
+held up by its episode's level only; a sprint without `--race-terrain` is
+unchanged. `test_race_terrain_training.py`'s refusal of `--race-terrain`
+without `--gates` becomes the strip's rule.
+
+**Consequences.** A sprint policy can be trained, warm, over the relief it is
+judged on, and its training numbers compare with its flat ones. The training
+strip and the held-out strip share a distribution and never a draw.

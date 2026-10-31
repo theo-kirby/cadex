@@ -3300,8 +3300,16 @@ def relief_rule(options: argparse.Namespace) -> dict[str, Any]:
 
     if kind not in cadex_goto.TERRAIN_KINDS:
         raise SystemExit(f"--race-terrain {kind!r} is not one of {cadex_goto.TERRAIN_KINDS}")
-    if not getattr(options, "gates", False):
-        raise SystemExit("--race-terrain lays relief under a gate race; give --gates")
+    # ADR-972: without --gates the relief is a strip along +x under the
+    # bundle's own task (a sprint), not a square field round the start.
+    gated = bool(getattr(options, "gates", False))
+    strip = getattr(options, "relief_strip", None)
+    if gated and strip is not None:
+        raise SystemExit("--relief-strip lays relief along a sprint; a gate race (--gates) "
+                         "stands on a square field, sized by --relief-half")
+    if not gated and getattr(options, "relief_half", None) is not None:
+        raise SystemExit("--relief-half sizes a gate race's field; without --gates the relief "
+                         "is a strip along +x, sized by --relief-strip")
     levels = int(getattr(options, "relief_levels", RELIEF_LEVELS))
     if levels < 1:
         raise SystemExit("--relief-levels is how many fields of relief, from 1")
@@ -3313,6 +3321,10 @@ def relief_rule(options: argparse.Namespace) -> dict[str, Any]:
             or hold != int(hold) or hold < 0:
         raise SystemExit(f"--relief-ceiling is START,FALLS,HOLD with START a level in 0..{levels}, "
                          "FALLS in [0, 1] and HOLD a count of iterations from 0")
+    if not gated:
+        length = float(cadex_goto.STRIP_LENGTH_M if strip is None else strip)
+        if not length > 0.0:
+            raise SystemExit("--relief-strip is the strip's length along +x in metres, above 0")
     half = float(cadex_goto.FIELD_HALF_M if getattr(options, "relief_half", None) is None
                  else options.relief_half)
     if not half > 0.0:
@@ -3323,8 +3335,11 @@ def relief_rule(options: argparse.Namespace) -> dict[str, Any]:
     if fields == "graded-rough" and kind not in ("u1", "b1"):
         raise SystemExit("--relief-fields graded-rough lays rough and hilly fields; give "
                          "--race-terrain u1 or b1")
-    return {"kind": kind, "levels": levels, "half_m": half, "fields": fields,
+    rule = {"kind": kind, "levels": levels, "half_m": half, "fields": fields,
             "ceiling": {"start": int(start), "falls": falls, "hold": int(hold)}}
+    if not gated:
+        rule = {**rule, "half_m": None, "strip_m": length}
+    return rule
 
 
 def relief_top_next(top: int, since: int, falls: float, rule: dict[str, Any]) -> tuple[int, int]:
@@ -3352,32 +3367,39 @@ def relief_fields(np: Any, rule: dict[str, Any], seed: int) -> list[dict[str, An
     above it graded at ``(k - 1) / (levels - 1)`` of the way up. A ``boxes``
     or ``b1`` field (ADR-966) stands ``cadex_goto``'s field obstacles, about
     one every 3 m of a run, scaled with the field's heights in ``scaled``
-    mode. Train split only: no field is a held-out course's relief."""
+    mode. Without ``--gates`` (ADR-972) each field is
+    ``cadex_goto.strip_terrain`` on the same seeds, a strip ``strip_m`` long
+    along +x, drawn the same three ways. Train split only: no field is a
+    held-out course's relief."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import cadex_goto
 
     levels = int(rule["levels"])
     mode = rule.get("fields", RELIEF_FIELDS[0])
+    if rule.get("strip_m") is not None:
+        # ADR-972: a strip along +x under a sprint, drawn as a field is.
+        def field_terrain(np: Any, kind: str, seed: int, *, half_m: Any = None, **shape: Any):
+            return cadex_goto.strip_terrain(np, kind, seed, length_m=float(rule["strip_m"]), **shape)
+    else:
+        field_terrain = cadex_goto.field_terrain
     low, high = (float(v) for v in cadex_goto.RACE_TERRAIN["grade_deg"])
     fields = []
     for k in range(1, levels + 1):
         if mode == "graded-rough" and k == 1:
-            field = cadex_goto.field_terrain(np, "rough", int(seed) * levels,
-                                             half_m=rule["half_m"])
+            field = field_terrain(np, "rough", int(seed) * levels, half_m=rule["half_m"])
             fields.append({**field, "level": k, "scale": 1.0,
                            "rough_highest_mm": round(float(field["drawn"].get("rough_highest_mm", 0.0)), 3)})
             continue
         if mode in ("graded", "graded-rough"):
             grade = (low + (high - low) * k / levels if mode == "graded"
                      else low + (high - low) * (k - 1) / (levels - 1))
-            field = cadex_goto.field_terrain(np, rule["kind"], int(seed) * levels + k - 1,
-                                             half_m=rule["half_m"], grade_deg=(grade, grade))
+            field = field_terrain(np, rule["kind"], int(seed) * levels + k - 1,
+                                  half_m=rule["half_m"], grade_deg=(grade, grade))
             fields.append({**field, "level": k, "scale": 1.0,
                            "rough_highest_mm": round(float(field["drawn"].get("rough_highest_mm", 0.0)), 3)})
             continue
-        field = cadex_goto.field_terrain(np, rule["kind"], int(seed) * levels + k - 1,
-                                         half_m=rule["half_m"])
+        field = field_terrain(np, rule["kind"], int(seed) * levels + k - 1, half_m=rule["half_m"])
         heights = field["heights_mm"] * (k / levels)
         # The draw's grade and rough relief, scaled with it; ``drawn`` is the
         # unscaled draw's.
@@ -6279,6 +6301,7 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         help="race the gates over relief (ADR-962): --relief-levels train-split fields "
              "of cadex_goto's race terrain round the start, field k scaled to k/levels; "
              "boxes and b1 (ADR-966) scatter boxes and steps over each field; "
+             "without --gates, each field is a strip along +x under a sprint (ADR-972); "
              "the paws (the floor's spheres and capsules) touch it, a box does not")
     parser.add_argument(
         "--race-scan", default=None, metavar="default|AHEAD,..:LEFT,..",
@@ -6306,6 +6329,11 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--relief-half", type=float, default=None,
         help="the relief field's half side in metres (default cadex_goto.FIELD_HALF_M)")
+    parser.add_argument(
+        "--relief-strip", type=float, default=None,
+        help="without --gates, --race-terrain lays each level's relief as a train-split strip "
+             "from the start along +x under the bundle's own task (a sprint), this long in "
+             "metres, margin_m either side (ADR-972; default cadex_goto.STRIP_LENGTH_M)")
     parser.add_argument(
         "--gate-ceiling",
         default=",".join(f"{GATE_CEILING[k]:g}" for k in ("start", "step", "max", "promote")),

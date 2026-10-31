@@ -159,15 +159,17 @@ def test_graded_rough_lays_rough_alone_below_the_graded_hills() -> None:
                                    "hills", "--relief-fields", "graded-rough"]))
 
 
-def test_the_rule_needs_a_race_and_is_refused_out_of_its_bounds() -> None:
+def test_the_rule_is_refused_out_of_its_bounds() -> None:
     rule = T.relief_rule(options())
     assert rule == {"kind": "u1", "levels": T.RELIEF_LEVELS, "half_m": 2.0, "fields": "scaled",
                     "ceiling": {"start": 1, "falls": 0.1, "hold": 10}}
     assert T.relief_rule(T.arguments(["b.json", "--out", "x.cxpolicy", "--gates"])) is None
     assert T.relief_rule(T.arguments(["b.json", "--out", "x.cxpolicy", "--gates",
                                       "--race-terrain", "hills"]))["half_m"] == G.FIELD_HALF_M
-    with pytest.raises(SystemExit):
-        T.relief_rule(T.arguments(["b.json", "--out", "x.cxpolicy", "--race-terrain", "u1"]))
+    # ADR-972: without --gates the relief is a strip under the bundle's own task.
+    assert T.relief_rule(T.arguments(["b.json", "--out", "x.cxpolicy", "--race-terrain", "u1"]))[
+        "strip_m"] == G.STRIP_LENGTH_M
+    assert "strip_m" not in rule
     for bad in (("--relief-levels", "0"), ("--relief-ceiling", "5,0.1,10"),
                 ("--relief-ceiling", "1.5,0.1,10"), ("--relief-ceiling", "1,1.5,10"),
                 ("--relief-ceiling", "1,0.1"), ("--relief-half", "-1"), ("--relief-fields", "x")):

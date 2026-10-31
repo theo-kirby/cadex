@@ -660,7 +660,20 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
         obstacles = []
         ends = [(0.0, 0.0)] + [(1000.0 * g["xy_m"][0], 1000.0 * g["xy_m"][1]) for g in course["gates"]]
         legs = list(zip(ends, ends[1:]))
-        if course.get("kind") == "field":
+        if course.get("kind") == "strip":
+            # ADR-972: a training strip runs one long leg along +x, so it is
+            # cut into legs laid end to end from the start's clearing, each a
+            # draw in ``field_leg_m`` long, and one obstacle stands across each
+            # as a race's leg does: about one every 3 m of the run.
+            legs = []
+            ax = clear + blend
+            while True:
+                bx = ax + 1000.0 * boxes_rng.uniform(*(float(v) for v in options["field_leg_m"]))
+                if bx > max(xs):
+                    break
+                legs.append(((ax, 0.0), (bx, 0.0)))
+                ax = bx
+        elif course.get("kind") == "field":
             # ADR-966: a training field has no legs to stand boxes across, so
             # it scatters ``field_obstacles_per_m2`` legs over its gates' square,
             # each a draw in ``field_leg_m`` long at any heading, and stands one
@@ -744,6 +757,33 @@ def field_terrain(np: Any, kind: str, seed: int, *, half_m: float = FIELD_HALF_M
     corners = [{"xy_m": [sx * half, sy * half]} for sx in (-1.0, 1.0) for sy in (-1.0, 1.0)]
     return race_terrain(np, {"kind": "field", "split": "train", "seed": int(seed),
                              "gates": corners}, kind, **shape)
+
+
+#: The trainer's relief strip under a sprint (ADR-972): how far along +x a
+#: ``--race-terrain`` run without ``--gates`` lays relief, in metres. A 20 s
+#: sprint episode at up to 6.25 m/s runs 125 m, as the held-out straight
+#: strip a sprint is judged on does; past it is the plane.
+STRIP_LENGTH_M = 125.0
+
+
+def strip_terrain(np: Any, kind: str, seed: int, *, length_m: float = STRIP_LENGTH_M,
+                  **shape: Any) -> dict[str, Any]:
+    """A training strip of race terrain (ADR-972): :func:`race_terrain`'s
+    relief over a straight run from the start to ``(length_m, 0)`` (and its
+    margin, ``margin_m`` either side and past each end), on the ``train``
+    split under the course kind ``strip``.
+
+    Its seed string, ``cadex-race-terrain:<kind>:strip:train:<seed>``, is no
+    race's and no field's: a race's course kind is ``gates`` or ``sprint``, a
+    field's ``field``, and the held-out straight strip a sprint is judged on
+    is ``straight`` on the ``heldout`` split. A ``boxes`` or ``b1`` strip
+    stands an obstacle across each of its legs, laid end to end along it."""
+
+    length = float(length_m)
+    if not length > 0.0:
+        raise SystemExit(f"a strip's length {length:g} m must be above 0")
+    return race_terrain(np, {"kind": "strip", "split": "train", "seed": int(seed),
+                             "gates": [{"xy_m": [length, 0.0]}]}, kind, **shape)
 
 
 def terrain_ground(np: Any, terrain: Mapping[str, Any]) -> Any:
