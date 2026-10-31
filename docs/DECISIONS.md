@@ -49558,3 +49558,70 @@ and the race relief's `b1` digest is unchanged. Training suite 210 passed.
 **Consequences.** A jump judge can be written against held-out boxes the whole
 body meets, and a training route has a course in the pool's form to carry. Every
 earlier draw and digest is unchanged.
+
+## ADR-974 — A drive is held to its rating by its heat (2026-10-31)
+
+**Context.** ADR-969 bounds a drive by its peak torque and its torque–speed curve.
+Nothing bounds it by its continuous rating: a policy may hold a drive at its peak
+for a whole episode. Symon's counted sprint policy (sy2, sp3 s3) runs its spine
+pitch RS00 at 2.06× its 5 N·m rating RMS over 20 s, which a real RS00 would only
+do until its winding overheats and its firmware cuts its current. The owner wants
+the environment to enforce what a drive can do, so that a policy is free to push
+for its goals without being paid or priced for the ratings.
+
+**Decision.**
+- `--drive-heat RATED_FRACTION PEAK_SECONDS`: each force-limited joint drive
+  carries a heat, an I²t integral, in the MJX data's `userdata`. Every solver
+  step it rises by `(torque² − rated²)·dt` and is kept between none and the
+  budget `(peak² − rated²)·PEAK_SECONDS`, so a drive cools only as fast as it
+  runs under its rating. Its torque ceiling falls in a straight line from its
+  peak at no heat to its rating at the budget, and the range at its speed
+  (ADR-969) is clipped to it: the lower of the two holds. The peak is the
+  drive's `forcerange` as it stands, which under `--randomise-drive-torque` is
+  scaled per environment, and the rating scales with it.
+- `--heat-start LOW HIGH`: an episode starts with each drive's heat uniform in
+  this share of its budget (cold, `0 0`, by default), so a policy does not learn
+  that its drives are always cold.
+- The header's `training` block carries `drive_heat` and `heat_start`, and
+  `cadex_goto.Player` plays a policy under the heat it was trained with, by the
+  same functions (`heat_budget`, `heat_range`, `heated`). A judge may pass
+  `drive_heat=` to judge any policy under one.
+- The policy does not observe its heat; it reads its joints as it did. An
+  observation of each drive's heat (a real drive reports its temperature) is
+  left for when it is needed.
+
+**Evidence.** In MuJoCo, a drive commanded far past its peak gives 14 N·m from
+cold, is under 10 N·m by 2 s and holds at its rating; with the linear foldback
+it approaches the rating with a time constant of about 4 s. A 6-iteration smoke
+run on Symon's s19relay sprint task with `--no-load-speed 33 --drive-heat 0.357
+2.0 --heat-start 0 0.5 --feet-air-limit 0.4 -1.0` trains, and its header carries
+all three. Symon's sp3 s3, trained without it, judged under `0.357 2.0` from
+cold: 3.33 m/s settled against 5.60 without, best 2 s 5.20, no fall on 3/3,
+worst RMS 1.29× rated.
+
+**Tests.** `training/test_drive_heat.py`: the budget, the ceiling from peak to
+rating, heat rising over the rating and falling under it, NumPy and JAX agreeing,
+a drive in MuJoCo folding back to its rating, and the flags' refusals. Without the
+flag the trainer's graph is the one it was.
+
+## ADR-975 — A foot that stays up costs (2026-10-31)
+
+**Context.** Symon's fastest sprint policies (sy2 sp4 f1 and f2, 6.40 and 5.94 m/s)
+bound on two same-side legs, and others ran on three; the charter counts a
+four-legged policy only, so the speed earned on two legs is lost. ADR-870's feet
+block pays at first contact only, so a foot that never lands is never priced by
+it.
+
+**Decision.** A task's feet block may carry `air_limit` (`limit_s`, `weight`):
+every step, `weight × Σ max(0, air_time − limit_s)` over the feet that are up, on
+ADR-870's air timer, so a foot up past the limit costs more each step it stays up
+and a gait that lands every foot within the limit pays nothing.
+`--feet-air-limit SECONDS WEIGHT` (WEIGHT < 0) adds it to the bundle's task at
+training: to the task's feet block, or to a new one reading every contact
+observation's `_down` channel. The header's `training` block names it. It does
+not say which gait; a foot that taps the ground each stride without bearing
+weight is not priced by it.
+
+**Tests.** `training/test_drive_heat.py`: the block built from the contacts and
+the flag's refusals; a foot that never lands is priced by how far it is past the
+limit every step and a foot that lands every fourth step is not.

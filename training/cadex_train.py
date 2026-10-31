@@ -2905,6 +2905,76 @@ def resolved_no_load_speed(options: Any) -> float:
     return value
 
 
+def heat_budget(xp: Any, limit: Any, rated_fraction: float, peak_seconds: float) -> tuple[Any, Any, Any]:
+    """ADR-974: each drive's peak, rating and heat budget from its torque range.
+
+    ``limit`` is ``(..., A, 2)``, the model's ``actuator_forcerange`` (scaled per
+    environment under ``--randomise-drive-torque``, so a weaker drive is rated
+    lower in proportion). The peak is the larger end; the rating is
+    ``rated_fraction`` of it; the budget is the heat a drive holds before it is
+    held to its rating, ``(peak**2 - rated**2) * peak_seconds``: from cold, at
+    peak, it folds back to its rating after about ``peak_seconds``.
+    """
+
+    peak = xp.maximum(xp.abs(limit[..., 0]), xp.abs(limit[..., 1]))
+    rated = rated_fraction * peak
+    budget = (peak * peak - rated * rated) * peak_seconds
+    return peak, rated, budget
+
+
+def heat_range(xp: Any, ranged: Any, limit: Any, heat: Any, enveloped: Any,
+               rated_fraction: float, peak_seconds: float) -> Any:
+    """ADR-974: a drive's torque range under its heat, as a drive's I^2 t limit.
+
+    The ceiling falls in a straight line from the peak at no heat to the
+    rating at the budget, ``rated + (peak - rated) * (1 - heat / budget)``, and
+    ``ranged`` (the range at this speed, ADR-969, or the model's) is clipped
+    to it either way. Only the drives ``enveloped`` names (force-limited, on a
+    joint) are held; every other actuator keeps ``ranged``.
+    """
+
+    peak, rated, budget = heat_budget(xp, limit, rated_fraction, peak_seconds)
+    left = xp.clip(1.0 - heat / xp.maximum(budget, 1e-12), 0.0, 1.0)
+    cap = rated + (peak - rated) * left
+    held = xp.stack([xp.maximum(ranged[..., 0], -cap), xp.minimum(ranged[..., 1], cap)], axis=-1)
+    return xp.where(enveloped[:, None], held, ranged)
+
+
+def heated(xp: Any, heat: Any, force: Any, limit: Any, enveloped: Any,
+           rated_fraction: float, peak_seconds: float, dt: float) -> Any:
+    """ADR-974: the heat after one solver step at ``force``: it rises by
+    ``(force**2 - rated**2) * dt`` and is kept between none and the budget, so
+    a drive cools only as fast as it runs under its rating."""
+
+    _, rated, budget = heat_budget(xp, limit, rated_fraction, peak_seconds)
+    grown = xp.clip(heat + (force * force - rated * rated) * dt, 0.0, budget)
+    return xp.where(enveloped, grown, 0.0)
+
+
+def resolved_drive_heat(options: Any) -> tuple[float, float] | None:
+    """``--drive-heat RATED_FRACTION PEAK_SECONDS`` (ADR-974), checked, or ``None``."""
+
+    values = getattr(options, "drive_heat", None)
+    if not values:
+        return None
+    fraction, seconds = (float(v) for v in values)
+    if not (math.isfinite(fraction) and math.isfinite(seconds)) or not 0.0 < fraction < 1.0 or seconds <= 0.0:
+        raise SystemExit("--drive-heat RATED_FRACTION PEAK_SECONDS: 0 < RATED_FRACTION < 1 and "
+                         f"PEAK_SECONDS > 0, not {fraction:g} {seconds:g}")
+    return fraction, seconds
+
+
+def resolved_heat_start(options: Any) -> tuple[float, float]:
+    """``--heat-start LOW HIGH`` (ADR-974): an episode starts with each drive's
+    heat drawn uniform in this share of its budget; ``0 0`` (the default) is cold."""
+
+    values = getattr(options, "heat_start", None) or (0.0, 0.0)
+    low, high = (float(v) for v in values)
+    if not 0.0 <= low <= high <= 1.0:
+        raise SystemExit(f"--heat-start LOW HIGH: 0 <= LOW <= HIGH <= 1, not {low:g} {high:g}")
+    return low, high
+
+
 def filtered_command(xp: Any, clamped: Any, previous: Any, first: Any, alpha: float) -> Any:
     """ADR-160's action filter on one clamped command, for the trainer and every player (ADR-953).
 
@@ -2943,6 +3013,40 @@ def resolved_command_slew_deg(options) -> float:
     return value if value > 0.0 else 0.0
 
 
+def with_feet_air_limit(task: dict[str, Any], options: Any) -> dict[str, Any]:
+    """``--feet-air-limit SECONDS WEIGHT`` (ADR-975) as the task's feet block's
+    ``air_limit``, or ``task`` unchanged when the flag is absent.
+
+    The cost is for a foot that stays off the ground: each step it pays
+    ``WEIGHT * sum(max(0, air_time - SECONDS))`` over the feet, so a leg that
+    stops landing costs more every step it stays up and a gait that lands
+    every foot within ``SECONDS`` pays nothing. ``WEIGHT`` is negative (a
+    cost). The feet are the task's own feet block's when it has one, else
+    every contact observation's ``_down`` channel, in the task's order. It
+    is training's, like the rest of the block (ADR-870).
+    """
+
+    values = getattr(options, "feet_air_limit", None)
+    if not values:
+        return task
+    seconds, weight = (float(v) for v in values)
+    if not (math.isfinite(seconds) and math.isfinite(weight)) or seconds <= 0.0 or weight >= 0.0:
+        raise SystemExit("--feet-air-limit SECONDS WEIGHT: SECONDS > 0 and WEIGHT < 0 (a cost), "
+                         f"not {seconds:g} {weight:g}")
+    feet = dict(task.get("feet") or {})
+    if feet.get("air_limit"):
+        raise SystemExit("--feet-air-limit: the task's feet block already has an air_limit")
+    if not feet.get("contacts"):
+        feet["contacts"] = [str(channel) for record in task.get("observations") or ()
+                            if record.get("kind") == "contact"
+                            for channel in record.get("channels") or ()
+                            if str(channel).endswith("_down")]
+        if not feet["contacts"]:
+            raise SystemExit("--feet-air-limit: the task has no contact observation to read the feet from")
+    feet["air_limit"] = {"limit_s": seconds, "weight": weight}
+    return {**task, "feet": feet}
+
+
 def feet_terms(task: dict[str, Any], names: Sequence[str]) -> dict[str, Any] | None:
     """ADR-870: the task's stateful foot terms, checked, or ``None`` for none.
 
@@ -2967,8 +3071,9 @@ def feet_terms(task: dict[str, Any], names: Sequence[str]) -> dict[str, Any] | N
         raise SystemExit(f"the task's feet block names channels the task lacks: {missing}")
     air = feet.get("air_time")
     swing = feet.get("swing_height")
-    if not air and not swing:
-        raise SystemExit("the task's feet block pays neither air_time nor swing_height")
+    limit = feet.get("air_limit")     # ADR-975
+    if not air and not swing and not limit:
+        raise SystemExit("the task's feet block pays none of air_time, swing_height, air_limit")
     if swing and len(heights) != len(contacts):
         raise SystemExit(
             f"swing_height needs one height channel per foot: {len(heights)} for "
@@ -2987,6 +3092,8 @@ def feet_terms(task: dict[str, Any], names: Sequence[str]) -> dict[str, Any] | N
         "air_threshold_s": float(air.get("threshold_s", 0.1)) if air else 0.0,
         "swing_weight": float(swing["weight"]) if swing else 0.0,
         "swing_target_m": float(swing["target_m"]) if swing else 1.0,
+        "limit_weight": float(limit["weight"]) if limit else 0.0,
+        "limit_s": float(limit["limit_s"]) if limit else 0.0,
     }
 
 
@@ -3009,6 +3116,10 @@ def feet_step(xp: Any, terms: dict[str, Any], memory: Sequence[Any], contact: An
     air = air + dt
     peak = xp.maximum(peak, height_m) if terms["swing_weight"] else peak
     pay = terms["air_weight"] * xp.sum((air - terms["air_threshold_s"]) * first, axis=-1)
+    if terms.get("limit_weight"):
+        # ADR-975: every step a foot is up and has been past the limit, by how far past.
+        up = air * (1.0 - contact.astype(air.dtype))
+        pay = pay + terms["limit_weight"] * xp.sum(xp.maximum(up - terms["limit_s"], 0.0), axis=-1)
     if terms["swing_weight"]:
         error = peak / terms["swing_target_m"] - 1.0
         pay = pay + terms["swing_weight"] * xp.sum(error * error * first, axis=-1)
@@ -3676,7 +3787,8 @@ def build_environment(
     from brax.envs.base import State
 
     table = globals_for(jnp)
-    task = bundle["task"]
+    # ADR-975: --feet-air-limit joins the task's feet block before anything reads it.
+    task = with_feet_air_limit(bundle["task"], options)
     episode = task["episode"]
     names = channels(task)
     # The actor reads the policy channels only; the critic and the running
@@ -3739,6 +3851,10 @@ def build_environment(
     # ADR-969: the drives' torque falls with their speed. A Python float, so
     # a run without the flag emits the graph it did.
     no_load_speed = resolved_no_load_speed(options)
+    # ADR-974: PYTHON values; without --drive-heat the graph is the one a
+    # trainer without the flag emitted.
+    drive_heat = resolved_drive_heat(options)
+    heat_start = resolved_heat_start(options)
     if slewing:
         # A limit wider than the box can never bind: the whole command range
         # is `high - low`, so any step is at most that. Refusing is better
@@ -3943,6 +4059,7 @@ def build_environment(
     if divisor != 1:
         host.opt.timestep = float(host.opt.timestep) / divisor
     speed_map = tuple(jnp.asarray(v) for v in actuator_speed_map(host))
+    solver_dt = float(host.opt.timestep)
     single = mjx.put_model(host)
     model = single
     if drawn and envs > 1:
@@ -3965,6 +4082,15 @@ def build_environment(
         model_axes = None
 
     per_action = int(episode["solver_steps_per_action"]) * divisor
+
+    def drawn_heat(key):
+        """ADR-974: each environment's drives' heat at an episode's start,
+        uniform in ``--heat-start``'s share of each one's budget."""
+
+        _, _, budget = heat_budget(jnp, model.actuator_forcerange, *drive_heat)
+        share = jax.random.uniform(key, (envs, int(host.nu)), minval=heat_start[0],
+                                   maxval=heat_start[1])
+        return jnp.where(speed_map[2], share * budget, 0.0).astype(jnp.float32)
     # The episode the *bundle* declares, and the only horizon this file may
     # use. It is read here and enforced in `rollout`'s scan; for two runs it
     # was read here and never used again, and an environment whose policy did
@@ -4465,11 +4591,19 @@ def build_environment(
         data = data.replace(ctrl=ctrl)
 
         def one(d, _):
-            if no_load_speed > 0.0:
-                # ADR-969: the drives' torque range at the speed they turn now.
-                return mjx.step(m.replace(actuator_forcerange=enveloped_range(
-                    jnp, m.actuator_forcerange, d.qvel, speed_map, no_load_speed)), d), None
-            return mjx.step(m, d), None
+            limit = m.actuator_forcerange
+            ranged = (enveloped_range(jnp, limit, d.qvel, speed_map, no_load_speed)
+                      if no_load_speed > 0.0 else limit)   # ADR-969: at the speed it turns now
+            if drive_heat is not None:
+                # ADR-974: held under its heat; the heat lives in `userdata`.
+                ranged = heat_range(jnp, ranged, limit, d.userdata, speed_map[2], *drive_heat)
+            if ranged is limit:
+                return mjx.step(m, d), None
+            d = mjx.step(m.replace(actuator_forcerange=ranged), d)
+            if drive_heat is not None:
+                d = d.replace(userdata=heated(jnp, d.userdata, d.actuator_force, limit,
+                                              speed_map[2], *drive_heat, solver_dt))
+            return d, None
 
         data, _ = jax.lax.scan(one, data, None, length=per_action)
         vector = observe(data)
@@ -4647,6 +4781,8 @@ def build_environment(
             relief_level = jax.random.randint(jax.random.fold_in(start_key, 962), (envs,),
                                               0, relief["ceiling"]["start"] + 1)
             course_args = (relief_level,)
+        if drive_heat is not None:
+            make = make.replace(userdata=drawn_heat(jax.random.fold_in(start_key, 974)))
         data = batched_forward(model, make.replace(qpos=qpos, qvel=qvel), *course_args)
         steps = jnp.zeros((envs,), dtype=jnp.int32)
         info = {"forces": forces, "starts": starts,
@@ -4851,6 +4987,10 @@ def build_environment(
         def where_done(new, old):
             return jnp.where(done.reshape((-1,) + (1,) * (new.ndim - 1)), new, old)
 
+        if drive_heat is not None:
+            # ADR-974: an episode that ended starts its next at a fresh heat.
+            data = data.replace(userdata=where_done(
+                drawn_heat(jax.random.fold_in(reset_key, 974)), data.userdata))
         reset_data = data.replace(qpos=where_done(fresh_qpos, data.qpos),
                                   qvel=where_done(fresh_qvel, data.qvel),
                                   # A blown environment's warm start is NaN
@@ -5953,6 +6093,12 @@ def policy_header(
             # ADR-969, its own key for ADR-160's reason: a policy trained
             # under a torque-speed curve has to be PLAYED under it. 0.0 is none.
             "no_load_speed_rad_s": resolved_no_load_speed(options),
+            # ADR-974, its own key for ADR-160's reason: [rated fraction, peak
+            # seconds] or null; cadex_goto plays the policy under it.
+            "drive_heat": list(resolved_drive_heat(options) or ()) or None,
+            "heat_start": list(resolved_heat_start(options)),
+            # ADR-975: not needed to play the policy; what it was paid under.
+            "feet_air_limit": list(options.feet_air_limit) if getattr(options, "feet_air_limit", None) else None,
             # ADR-700. Not needed to PLAY the policy, but a reward curve is
             # read against it: a floored run's reward/step cannot go below it.
             "reward_floor": resolved_reward_floor(options),
@@ -6382,6 +6528,27 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "curve and emits the graph a trainer without the flag does. Written "
              "into the .cxpolicy header, so cadex_goto plays the policy under it. "
              "An RS00 is 315 rpm, 33.0 rad/s")
+    parser.add_argument(
+        "--drive-heat", nargs=2, type=float, default=None,
+        metavar=("RATED_FRACTION", "PEAK_SECONDS"),
+        help="hold every force-limited joint drive to its continuous rating (ADR-974): "
+             "a heat per drive rises by (torque^2 - rated^2) every solver step and "
+             "falls only as fast as the drive runs under its rating, and the drive's "
+             "torque ceiling falls in a straight line from its peak (its forcerange) "
+             "at no heat to RATED_FRACTION of it at the budget, (peak^2 - rated^2) * "
+             "PEAK_SECONDS. Composes with --no-load-speed (the lower of the two holds). "
+             "Written into the .cxpolicy header, so cadex_goto plays the policy under "
+             "it. An RS00 is 5/14 = 0.357 rated")
+    parser.add_argument(
+        "--heat-start", nargs=2, type=float, default=None, metavar=("LOW", "HIGH"),
+        help="with --drive-heat, every episode starts with each drive's heat uniform "
+             "in this share of its budget (ADR-974); 0 0, the default, is cold")
+    parser.add_argument(
+        "--feet-air-limit", nargs=2, type=float, default=None, metavar=("SECONDS", "WEIGHT"),
+        help="a cost for a foot that stays up (ADR-975): every step, WEIGHT (< 0) times "
+             "the sum over the feet of how far each one that is up has been up past "
+             "SECONDS. The feet are the task's feet block's, else every contact "
+             "observation's _down channel. Training's, like ADR-870's feet block")
     parser.add_argument(
         "--randomise-drive-torque", type=float, nargs=2, default=None, metavar=("LOW", "HIGH"),
         help="ADR-970: each environment draws one factor uniform(LOW, HIGH), held for the "

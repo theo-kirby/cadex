@@ -1125,7 +1125,7 @@ class Player:
     gate_channels: list[str] = []
 
     def __init__(self, policy_path: Path, task_path: Path, goals: Sequence[str],
-                 other_model: bool = False) -> None:
+                 other_model: bool = False, drive_heat: Sequence[float] | None = None) -> None:
         import hashlib
 
         import mujoco
@@ -1150,6 +1150,13 @@ class Player:
         # ADR-969: the drives' torque-speed curve the policy was trained under.
         self.no_load_speed = float((header.get("training") or {}).get("no_load_speed_rad_s", 0.0) or 0.0)
         self._ranges: dict[int, tuple[Any, Any]] = {}
+        # ADR-974: the drives' heat limit the policy was trained under, or the
+        # one a judge asks for (``drive_heat``, to judge an older policy under it).
+        trained_heat = (header.get("training") or {}).get("drive_heat")
+        chosen = drive_heat if drive_heat is not None else trained_heat
+        self.drive_heat = tuple(float(v) for v in chosen) if chosen else None
+        self.heat_start = 0.0
+        self.heat = None
         self.filtered_command = cadex_train.filtered_command
         self.task, self.model_xml = task, xml
         self.model = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
@@ -1247,7 +1254,14 @@ class Player:
                 x = x / (1.0 + np.exp(-x))
         return np.tanh(x) * self.out_scale + self.out_bias
 
-    def reset(self) -> None:
+    def reset(self, heat_share: float | None = None) -> None:
+        """A fresh episode: the filter at the reset's command and, under a heat
+        limit (ADR-974), every drive at ``heat_share`` (else ``heat_start``) of
+        its budget."""
+
+        self.heat = None
+        if heat_share is not None:
+            self.heat_start = float(heat_share)
         self.issued = self.reset_command.copy()
         self.before = self.reset_command.copy()
         self.first = True
@@ -1258,15 +1272,29 @@ class Player:
         the speed it turns now, by ``cadex_train.drive_force_range``. Without
         one it is ``mj_step``."""
 
-        if self.no_load_speed > 0.0:
+        if self.no_load_speed > 0.0 or self.drive_heat:
             import cadex_train
 
             if id(model) not in self._ranges:
                 self._ranges[id(model)] = (model.actuator_forcerange.copy(),
                                            cadex_train.actuator_speed_map(model))
             limit, speed_map = self._ranges[id(model)]
-            model.actuator_forcerange[:] = cadex_train.enveloped_range(
-                self.np, limit, data.qvel, speed_map, self.no_load_speed)
+            ranged = (cadex_train.enveloped_range(self.np, limit, data.qvel, speed_map, self.no_load_speed)
+                      if self.no_load_speed > 0.0 else limit.copy())
+            if self.drive_heat:
+                # ADR-974: the trainer's heat, by the same arithmetic.
+                if self.heat is None:
+                    _, _, budget = cadex_train.heat_budget(self.np, limit, *self.drive_heat)
+                    self.heat = self.np.where(speed_map[2], self.heat_start * budget, 0.0)
+                ranged = cadex_train.heat_range(self.np, ranged, limit, self.heat, speed_map[2],
+                                                *self.drive_heat)
+            model.actuator_forcerange[:] = ranged
+            self.mujoco.mj_step(model, data)
+            if self.drive_heat:
+                self.heat = cadex_train.heated(self.np, self.heat, self.np.asarray(data.actuator_force),
+                                               limit, speed_map[2], *self.drive_heat,
+                                               float(model.opt.timestep))
+            return
         self.mujoco.mj_step(model, data)
 
     def control(self, data: Any, command: Sequence[float], gates: Sequence[float] = ()) -> Any:
