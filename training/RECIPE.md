@@ -286,6 +286,13 @@ mesh (ADR-853–855, `docs/MUJOCO.md` *The floor and terrain*).
    ground with every terrain row: training on terrain can cost flat speed
    (`go1-scan/run2`'s final checkpoint fell from 10/10 to 6/10 on flat).
 
+9. **A gate race over relief** (ADR-962). `--race-terrain u1` with `--gates`
+   lays K train-split fields of race terrain round the start (the trainer's
+   own heightfields, paws only), each episode on a level uniform in 0..top,
+   the top raised on few falls. Judge it with `cadex_goto.py race --terrain`
+   on held-out courses and on flat ground. It costs about 0.5 s per field per
+   8192-env iteration (4.1× flat at K = 4 on leon VI's cut).
+
 ## D. Defaults (from R1, RESEARCH.md §3 and §5)
 
 What `cadex_joystick.py` writes and §G's command sets. Each is

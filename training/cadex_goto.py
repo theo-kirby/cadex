@@ -634,6 +634,32 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
             "sha256": hashlib.sha256(np.ascontiguousarray(heights, dtype="<f8").tobytes()).hexdigest()}
 
 
+#: The trainer's relief field (ADR-962): half the side of the square a
+#: ``--race-terrain`` run lays round the start, in metres. A 20 s train
+#: episode at 2.8 m/s runs ~56 m of gate course, which ends within 12 m of
+#: the start (Chebyshev) on half of the 256 train courses and within 18.6 m
+#: on nine in ten; past the field is the plane.
+FIELD_HALF_M = 15.0
+
+
+def field_terrain(np: Any, kind: str, seed: int, *, half_m: float = FIELD_HALF_M,
+                  **shape: Any) -> dict[str, Any]:
+    """A training field of race terrain (ADR-962): :func:`race_terrain`'s
+    relief over the square ``±half_m`` round the start (and its margin), on the
+    ``train`` split under the course kind ``field``.
+
+    Its seed string, ``cadex-race-terrain:<kind>:field:train:<seed>``, is no
+    race's: a race's course kind is ``gates`` or ``sprint``, so no field is a
+    held-out course's relief, nor a train course's."""
+
+    half = float(half_m)
+    if not half > 0.0:
+        raise SystemExit(f"a field's half side {half:g} m must be above 0")
+    corners = [{"xy_m": [sx * half, sy * half]} for sx in (-1.0, 1.0) for sy in (-1.0, 1.0)]
+    return race_terrain(np, {"kind": "field", "split": "train", "seed": int(seed),
+                             "gates": corners}, kind, **shape)
+
+
 def terrain_ground(np: Any, terrain: Mapping[str, Any]) -> Any:
     """``ground(x_mm, y_mm)`` on a race's terrain (ADR-961): bilinear between
     its grid points, the plane (0) beyond it."""

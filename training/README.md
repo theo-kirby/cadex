@@ -188,6 +188,7 @@ Go1 benchmark that Brax learns to trot in under six minutes (docs/MUJOCO.md
 | `--terrain-curriculum`, `--terrain-promote` | off, `1` | deal a leveled pool by level and move each environment by points reached (ADR-856, below) |
 | `--gates`, `--gate-ahead`, `--gate-radius` | off, `2`, `0.25` | race through gates: the policy sees the next K gates instead of speed goals (ADR-955, below) |
 | `--gate-weights`, `--gate-ceiling` | `1,0.5,0.1`, `0.5,0.25,6,0.7` | the race's progress, entry and time weights; the speed curriculum's START,STEP,MAX,PROMOTE (ADR-955) |
+| `--race-terrain`, `--relief-levels`, `--relief-ceiling`, `--relief-half` | off, `4`, `1,0.1,10`, `15` | race the gates over race terrain: `rough`, `hills` or `u1` relief in train-split fields, dealt by a curriculum on amplitude (ADR-962, below) |
 | `--gait-reference`, `--reference-weight`, `--reference-fade` | off, `0.5`, `0` | a gait guide that fades: a CadexGait name (`gallop`) or a clip JSON (ADR-957, below) |
 | `--reference-speed`, `--reference-legs` | `1.5`, the task's feet | a named guide's speed and feet |
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
@@ -796,8 +797,29 @@ patches to 30 mm, `hills` smooth hills whose steepest grade is a draw in 8–15�
 and the course's kind, split and seed, so a held-out course has held-out relief;
 the start stands on a flat clearing 0.5 m round the origin. A fall is the
 base's height over the ground under it. `gates.json` carries the terrain's
-draw, its measured steepest grade and its sha256, and the view its drawing. The
-trainer plays none yet.
+draw, its measured steepest grade and its sha256, and the view its drawing.
+
+**Race terrain in training (ADR-962).** `--race-terrain rough|hills|u1` (with
+`--gates`) lays `--relief-levels` K fields of that relief round the start,
+each `cadex_goto.field_terrain`'s train-split draw over ±`--relief-half` m
+(15) and the race's margin, field k scaled to k/K of the race's amplitude. No
+field is a race's relief: its course kind is `field`. The fields are
+heightfields on a static body `environment/relief` added last, so no index the
+bundle names moves; each takes the floor's contact parameters and its friction
+follows the floor's draw. They touch only the floor's spheres and capsules
+(the paws), through a contact bit no geom carried; a box keeps the plane only
+(feet-only contact, ADR-739; MJX's heightfield contact, ADR-854). Every
+episode stands on a level drawn uniformly in 0..top (0 the plane): the step
+raises that level's field to z = 0 and sinks the rest under the plane. The
+train loop's top starts at START and rises by one after an iteration with at
+most FALLS falls per horizon's worth of its env steps, once it has stood HOLD
+iterations (`--relief-ceiling START,FALLS,HOLD`, default `1,0.1,10`); it never
+falls. `progress.json`'s curve carries `relief_top`, `relief_falls` and
+`relief_levels`, and the policy header `training.race_terrain` (each field's
+seed, scale, grade, highest point and sha256). The actor is blind: a bundle
+with a height scan or a terrain pool is refused. Each field costs about 0.5 s
+per 8192 × 20-step iteration on an RTX 5090 (leon VI's cut: 0.64 s flat, 1.71 s
+at K = 2, 2.66 s at K = 4).
 
 `race` judges a racer on stock MuJoCo (here the export's bundle, by channel
 name): it runs to the last gate, a fall, 30 s with no gate, or the course at

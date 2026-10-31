@@ -48955,3 +48955,82 @@ courses the hills stand 183–343 mm high at their 8.3–14.7° steepest.
 **Consequences.** U1's judge exists. Training over race terrain (the trainer's
 own heightfield, MJX's sphere- and capsule-only contact on one, ADR-854) is the
 next step; leon VI's paws are spheres. Films do not yet draw the relief.
+
+## ADR-962 — The trainer races gates over race terrain, with a curriculum on relief (2026-10-30)
+
+**Context.** ADR-961 gave `race --terrain` a judge for leon VI's U1 (rough
+ground and hills); FAST's flat policy, blind, finished 0/10 held-out `u1`
+courses. The trainer played no race terrain. A race's relief is drawn per
+course over its own extent, but MJX holds a heightfield's size (`hfield_size`)
+and the pair's subgrid as static numpy, so neither a per-episode grid nor a
+per-environment amplitude can be traced; and batching `hfield_data` per
+environment is 8192 copies of the grid. `geom_pos` is traced.
+
+**Decision.** `cadex_train.py --race-terrain rough|hills|u1` (with `--gates`):
+- **Fields.** `--relief-levels` K fields (default 4). Field k is
+  `cadex_goto.field_terrain(kind, seed·K + k − 1)`: `race_terrain`'s relief
+  over the square ±`--relief-half` m (default `FIELD_HALF_M` 15; a 20 s train
+  episode at 2.8 m/s ends within 12 m of the start on half the 256 train
+  courses, 18.6 m on nine in ten) and the race's 3 m margin, scaled to k/K. Its
+  seed string names the course kind `field` on the `train` split, so no field
+  is any race's relief, held-out or train.
+- **Model.** `relief_model` adds a static body `environment/relief`, the
+  model's last, holding one heightfield geom per field, so no body, geom or
+  other index the bundle names moves. Each takes the floor plane's contact
+  parameters. It touches only the floor's spheres and capsules (the paws),
+  through a contact bit no geom carried; a box or mesh that touched the floor
+  keeps the plane only (feet-only contact, ADR-739; MJX's heightfield contact,
+  ADR-854). A model with no sphere or capsule on the floor is refused.
+  `relief_randomised` makes the bundle's draws on its own model and extends
+  each drawn field with the relief's rows, a geom field with the floor's drawn
+  row, so a field's friction follows the floor's draw.
+- **Levels.** Each episode stands on a level drawn uniformly in 0..top, level
+  0 the plane: inside the step, `lay_relief` raises that level's field to
+  z = 0 and sinks every other one `RELIEF_SINK_M` (1 m) under the plane past
+  the highest top. Flat ground stays in every batch. The start is the race's
+  flat 0.5 m clearing.
+- **Curriculum.** The train loop's top starts at START and rises by one after
+  an iteration with at most FALLS falls per horizon's worth of its env steps,
+  once it has stood HOLD iterations (`--relief-ceiling START,FALLS,HOLD`,
+  default `1,0.1,10`); it never falls. A share of ended episodes was tried
+  first and refused: before the first time-outs (the first 50 iterations of a
+  1000-step episode) every ending is a fall, and it read 1.0.
+- **Records.** `progress.json`'s curve carries `relief_top`, `relief_falls`
+  and `relief_levels`; the policy header `training.race_terrain` carries the
+  rule and each field's seed, scale, grade, rough relief, highest point and
+  sha256, and the paws.
+- The actor stays blind: a bundle with a height scan or a terrain pool is
+  refused. Films and dashboard views stay flat.
+
+**Evidence.** leon VI's cut gate bundle `4cb0e956…`, warm from l6r1 lfast2's
+final `457381c4…`, 8192 environments, 20 iterations of lfast2's recipe at a
+fixed 4.0 m/s ceiling, `--race-terrain u1 --relief-ceiling 1,0.1,0`, RTX 5090:
+0.64 s per iteration flat (254,804 env steps/s, the matched control without
+`--race-terrain`), 1.71 s at K = 2 (95,734), 2.66 s at K = 4 (61,645); the top
+rose 1 → 4 over iterations 0–3 (0.000, 0.018, 0.049 falls per horizon), read
+0.018–0.104 at level 4 over the 16 iterations after, and the witness agrees to
+2.4e-7. The four fields of seed 1: 1441 × 1441 cells, highest 70,
+140, 223 and 300 mm, scaled grade 2.7–10.6°, rough relief to 7.5–30 mm.
+
+**Tests.** `training/test_race_terrain_training.py`:
+- a field is train-split relief round a flat start that no gate or sprint
+  course of either split meets, the same draw to the digest;
+- field k is its own draw scaled to k/K, its grade and rough relief scaled;
+- the rule needs `--gates` and is refused out of its bounds; the top rises one
+  level on few falls after its hold, never with no reading, never past K;
+- the relief is the last body and moves no other index, takes the floor's
+  contact parameters and holds the field's heights; only the floor's spheres
+  and capsules touch it (a box keeps the plane), and a box paw is refused;
+- in MJX a paw 5 mm into field 2's peak meets field 2 at level 2 and nothing
+  at levels 0 and 1;
+- drawn fields extend to the relief, its friction the floor's drawn row;
+- in the environment a level-2 episode is held up by the relief where a
+  level-0 one falls freely; a fresh episode draws its level up to the top the
+  loop wrote; without `--race-terrain` nothing changes; a pooled bundle is
+  refused; the header and the loop carry the rule.
+
+**Consequences.** RECIPE §T.9: U1's training is a warm extension from the flat
+policy with `--race-terrain u1`, judged on held-out `race --terrain` and flat
+courses. A 49.2 M screen at K = 4 costs about 800 s of training against
+lfast2's 342 s. A field is fixed for the run, so a policy may learn its
+features; the held-out judge measures that. Films do not draw the relief.
