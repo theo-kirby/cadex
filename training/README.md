@@ -802,7 +802,9 @@ draw, its measured steepest grade and its sha256, and the view its drawing.
 0.4–1.0 m) or a step platform (0.8–1.6 m by 1.5–3.0 m) 20–60 mm high across
 every leg, on the plane or on the course's own `u1` relief; `b1` is `u1`
 outside its boxes, and `gates.json` lists every box's leg, place, size, yaw
-and height. The trainer does not lay boxes yet.
+and height. The trainer lays them too (ADR-966): `--race-terrain b1` scatters
+0.2 obstacles per m² over each training field, boxes on the graded hills with
+`--relief-fields graded-rough` (field 1 stays rough alone).
 
 **Race terrain in training (ADR-962).** `--race-terrain rough|hills|u1` (with
 `--gates`) lays `--relief-levels` K fields of that relief round the start,

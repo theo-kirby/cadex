@@ -49152,3 +49152,48 @@ seed differ. The existing kinds' draws are unchanged (checked against
 **Consequences.** B1 has its judge. Training over boxes needs the trainer's
 fields to carry them next; a heightfield keeps MJX's paws-only contact
 (ADR-854, ADR-962).
+
+## ADR-966 — The trainer stands boxes and steps on its relief fields (2026-10-30)
+
+**Context.** ADR-965 judges B1's boxes, but the trainer could not train over
+them: `cadex_train.py --race-terrain`'s parser offered `rough`, `hills` and
+`u1` only, and `relief_rule`'s own check (against `cadex_goto.TERRAIN_KINDS`)
+would have passed `b1`. Had the parser taken it, a field would have been u1 in
+effect: `field_terrain` lays its relief over the square's four corners as a
+course's gates, so ADR-965's one-obstacle-per-leg drew four obstacles over a
+36 m field, two of them on its edges (seed 3: 2 boxes, 2 steps).
+
+**Decision.**
+- `--race-terrain` takes every `TERRAIN_KINDS` kind, `boxes` and `b1`
+  included.
+- A training field (course kind `field`) of a box kind scatters
+  `field_obstacles_per_m2` 0.2 legs per square metre of its square, each at a
+  uniform centre over it, any heading, a draw in `field_leg_m` 2–4 m long, and
+  stands one ADR-965 obstacle across each with the race's own draws (box or
+  step, size, place along and aside, yaw, 20–60 mm). At 0.2 per m² and a mean
+  obstacle across of about 1.5 m, a straight run meets one about every 3 m, as
+  a race meets one per 1–4 m leg. A race's draws (course kind `gates` or
+  `sprint`) are unchanged to the digest.
+- `--relief-fields graded-rough` takes `b1`: field 1 is the rough relief
+  alone, without boxes; fields 2..K are b1, ADR-964's graded hills under
+  rough relief with the field's boxes. `scaled` b1 fields scale the boxes with
+  the relief.
+- The policy header records a field's obstacles as their count.
+
+**Evidence.** A 15 m field (`field_terrain(np, "b1", 3)`): 176 obstacles
+(91 boxes, 85 steps), drawn in 0.11 s; 18% of the grid's cells (margin
+included) differ from the same seed's `u1` field.
+
+**Tests.** `training/test_race_terrain_training.py`: the parser takes every
+`TERRAIN_KINDS` kind and refuses another; a `b1` graded-rough run at K=5 lays
+`rough, b1, b1, b1, b1`; every b1 field stands between 0.75 and 1 of
+0.2 per m² of its square in obstacles, boxes and steps both, 20–60 mm, inside
+the field, its hill grade the u1 field's, more than 10% of its square's cells
+changed from u1's and none more than 60 mm over it; the header counts the
+obstacles; a scaled b1 field is the raw field at k/levels; held-out `b1` and
+`boxes` races keep ADR-965's digests. Training suite 164 passed.
+
+**Consequences.** A `b1` field costs the same heightfield as a `u1` one. The
+fields stay paws-only contact (ADR-854, ADR-962): a trunk that strikes a box
+face passes through it in training though not in the judge's MuJoCo, so a
+blind policy's tumble at a box face is not trained against directly.

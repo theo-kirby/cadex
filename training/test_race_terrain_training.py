@@ -408,3 +408,64 @@ def test_the_loop_reads_falls_per_horizon_of_steps_and_moves_the_top_between_ite
     assert 'report["relief_falls"] = fell * jnp.float32(env.horizon) / jnp.float32(unroll * envs)' in source
     assert 'moved["relief_top"] = jnp.full((envs,), relief_top, jnp.int32)' in source
     assert "relief_top_next(relief_top, relief_since," in source
+
+
+def test_b1_fields_stand_boxes_over_the_field_not_u1_alone() -> None:
+    """ADR-966: ``--race-terrain b1`` parses (ADR-965's kinds were refused by
+    the parser before) and lays no field that is u1 without its boxes: a field scatters ``field_obstacles_per_m2``
+    obstacles over its square, each 20-60 mm over the hills; graded-rough keeps
+    field 1 rough alone and stands boxes on every graded field above it."""
+
+    half = 6.0
+    rule = T.relief_rule(T.arguments(["b.json", "--out", "x.cxpolicy", "--gates", "--race-terrain", "b1",
+                                      "--relief-half", str(half), "--relief-levels", "5",
+                                      "--relief-fields", "graded-rough"]))
+    assert rule["kind"] == "b1" and rule["fields"] == "graded-rough"
+    # The parser takes every race terrain kind, and only those.
+    for kind in G.TERRAIN_KINDS:
+        assert T.arguments(["b.json", "--out", "x.cxpolicy", "--gates", "--race-terrain", kind]).race_terrain == kind
+    with pytest.raises(SystemExit):
+        T.arguments(["b.json", "--out", "x.cxpolicy", "--gates", "--race-terrain", "pits"])
+    fields = T.relief_fields(np, rule, 5)
+    assert [f["kind"] for f in fields] == ["rough", "b1", "b1", "b1", "b1"]
+    assert "obstacles" not in fields[0]["drawn"]
+    low, high = G.RACE_TERRAIN["box_mm"]
+    expected = G.RACE_TERRAIN["field_obstacles_per_m2"] * (2.0 * half) ** 2
+    for f, g in zip(fields[1:], T.relief_fields(np, T.relief_rule(T.arguments(
+            ["b.json", "--out", "x.cxpolicy", "--gates", "--race-terrain", "u1", "--relief-half", str(half),
+             "--relief-levels", "5", "--relief-fields", "graded-rough"])), 5)[1:]):
+        obstacles = f["drawn"]["obstacles"]
+        # Most of the scattered legs stand an obstacle; a few fall in the start's clearing.
+        assert 0.75 * expected <= len(obstacles) <= expected + 1
+        assert {o["kind"] for o in obstacles} == {"box", "step"}
+        assert all(low <= o["height_mm"] <= high for o in obstacles)
+        assert all(abs(c) <= half * 1000.0 + 2000.0 for o in obstacles for c in o["centre_mm"])
+        # The same seed and grade without boxes is u1: b1 differs from it over a real share of the field.
+        assert f["drawn"]["grade_deg"] == pytest.approx(g["drawn"]["grade_deg"])
+        gx = f["x_range_mm"][0] + f["cell_mm"] * np.arange(f["ncol"])
+        gy = f["y_range_mm"][0] + f["cell_mm"] * np.arange(f["nrow"])
+        square = (np.abs(gx)[None, :] <= 1000.0 * half) & (np.abs(gy)[:, None] <= 1000.0 * half)
+        changed = f["heights_mm"] != g["heights_mm"]
+        assert changed[square].mean() > 0.1 and f["sha256"] != g["sha256"]
+        assert (f["heights_mm"] - g["heights_mm"]).max() <= high + 1e-3
+    # The policy header counts a field's obstacles rather than listing them.
+    record = T.relief_drawn_record(fields[1]["drawn"])
+    assert record["obstacles"] == len(fields[1]["drawn"]["obstacles"])
+    assert record["grade_deg"] == fields[1]["drawn"]["grade_deg"]
+    # Scaled b1 fields scale their boxes with the relief.
+    scaled = T.relief_fields(np, T.relief_rule(T.arguments(
+        ["b.json", "--out", "x.cxpolicy", "--gates", "--race-terrain", "b1", "--relief-half", str(half),
+         "--relief-levels", "2"])), 5)
+    raw = G.field_terrain(np, "b1", 5 * 2, half_m=half)
+    assert len(raw["drawn"]["obstacles"]) > 0
+    assert np.allclose(scaled[0]["heights_mm"], raw["heights_mm"] / 2)
+
+
+def test_field_obstacles_leave_a_races_terrain_as_it_was() -> None:
+    """ADR-966 scatters obstacles only on a field: a race's b1 and boxes are
+    ADR-965's draws to the digest."""
+
+    course = G.gate_course(0, split="heldout")
+    assert G.race_terrain(np, course, "b1")["sha256"].startswith("d828152bfdcd2e74")
+    assert G.race_terrain(np, course, "boxes")["sha256"].startswith("6657d0a20cf0cddb")
+    assert G.race_terrain(np, G.sprint_course(5, split="heldout"), "b1")["sha256"].startswith("71cc8c22c0639134")

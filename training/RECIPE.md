@@ -298,6 +298,8 @@ mesh (ADR-853–855, `docs/MUJOCO.md` *The floor and terrain*).
    the graded hills, so rough ground without hills is never missing.
    `race --terrain b1` (ADR-965) judges boxes and steps to 60 mm across
    every leg on that relief, `boxes` the same boxes on the plane.
+   `--race-terrain b1` (ADR-966) trains over them: each field scatters
+   0.2 boxes and steps per m², about one every 3 m of a run.
 
 ## D. Defaults (from R1, RESEARCH.md §3 and §5)
 

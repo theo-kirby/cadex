@@ -3001,7 +3001,8 @@ RELIEF_LEVELS = 4
 #: (ADR-964) makes field 1 the race's ``rough`` relief alone at full height and
 #: grades fields 2..levels' hills from ``low + (high - low) / (levels - 1)``
 #: to ``high``, rough relief on each, so rough ground without hills stays in
-#: every batch that stands on relief.
+#: every batch that stands on relief; with ``--race-terrain b1`` (ADR-966)
+#: fields 2..levels also carry the field's boxes and steps.
 RELIEF_FIELDS = ("scaled", "graded", "graded-rough")
 RELIEF_CEILING = {"start": 1, "falls": 0.1, "hold": 10}
 #: How far under the plane a field that is not the episode's stands (m), past
@@ -3042,9 +3043,9 @@ def relief_rule(options: argparse.Namespace) -> dict[str, Any]:
     fields = str(getattr(options, "relief_fields", None) or RELIEF_FIELDS[0])
     if fields not in RELIEF_FIELDS:
         raise SystemExit(f"--relief-fields {fields!r} is not one of {RELIEF_FIELDS}")
-    if fields == "graded-rough" and kind != "u1":
+    if fields == "graded-rough" and kind not in ("u1", "b1"):
         raise SystemExit("--relief-fields graded-rough lays rough and hilly fields; give "
-                         "--race-terrain u1")
+                         "--race-terrain u1 or b1")
     return {"kind": kind, "levels": levels, "half_m": half, "fields": fields,
             "ceiling": {"start": int(start), "falls": falls, "hold": int(hold)}}
 
@@ -3071,8 +3072,10 @@ def relief_fields(np: Any, rule: dict[str, Any], seed: int) -> list[dict[str, An
     (ADR-963), unscaled, its hills' steepest grade fixed at ``k / levels`` of
     the way up the race's ``grade_deg`` range; or, with ``graded-rough``
     (ADR-964), field 1 the ``rough`` relief alone, unscaled, and field ``k``
-    above it graded at ``(k - 1) / (levels - 1)`` of the way up. Train split
-    only: no field is a held-out course's relief."""
+    above it graded at ``(k - 1) / (levels - 1)`` of the way up. A ``boxes``
+    or ``b1`` field (ADR-966) stands ``cadex_goto``'s field obstacles, about
+    one every 3 m of a run, scaled with the field's heights in ``scaled``
+    mode. Train split only: no field is a held-out course's relief."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import cadex_goto
@@ -3110,6 +3113,14 @@ def relief_fields(np: Any, rule: dict[str, Any], seed: int) -> list[dict[str, An
                        "sha256": hashlib.sha256(
                            np.ascontiguousarray(heights, dtype="<f8").tobytes()).hexdigest()})
     return fields
+
+
+def relief_drawn_record(drawn: dict[str, Any]) -> dict[str, Any]:
+    """A field's ``drawn`` as the policy header records it (ADR-966): its
+    obstacles counted, not listed, since a field stands some hundreds and its
+    seed redraws them."""
+
+    return {key: (len(value) if key == "obstacles" else value) for key, value in drawn.items()}
 
 
 def relief_model(mujoco: Any, np: Any, xml: bytes, fields: Sequence[dict[str, Any]]) -> tuple[Any, dict[str, Any]]:
@@ -4593,7 +4604,8 @@ def build_environment(
             self.relief = ({**relief, "fields": [
                 {key: field[key] for key in ("level", "scale", "seed", "nrow", "ncol", "cell_mm",
                                              "x_range_mm", "y_range_mm", "highest_mm",
-                                             "hill_grade_deg", "rough_highest_mm", "drawn", "sha256")}
+                                             "hill_grade_deg", "rough_highest_mm", "sha256")}
+                | {"drawn": relief_drawn_record(field["drawn"])}
                 for field in relief_drawn], "paws": relief_placed["paws"]}
                 if relieving else None)
             self.guide = guide["summary"] if referencing else None
@@ -5919,9 +5931,10 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         help="the race's reward: per m/s made good toward the lit gate per "
              "second, per gate entered, and the cost of a second (ADR-955)")
     parser.add_argument(
-        "--race-terrain", choices=("rough", "hills", "u1"), default=None,
+        "--race-terrain", choices=("rough", "hills", "u1", "boxes", "b1"), default=None,
         help="race the gates over relief (ADR-962): --relief-levels train-split fields "
              "of cadex_goto's race terrain round the start, field k scaled to k/levels; "
+             "boxes and b1 (ADR-966) scatter boxes and steps over each field; "
              "the paws (the floor's spheres and capsules) touch it, a box does not")
     parser.add_argument(
         "--relief-levels", type=int, default=RELIEF_LEVELS,

@@ -491,7 +491,10 @@ def course_length_m(course: Mapping[str, Any]) -> float:
 #: falls to the plane over ``blend_m`` at the grid's edge, ``margin_m`` past
 #: the outermost gate. ``boxes`` (ADR-965) stands a flat-topped box or a wide
 #: step platform across the path of every leg, ``box_mm`` high, for leon VI's
-#: B1; ``b1`` stands the same boxes on the course's ``u1`` relief.
+#: B1; ``b1`` stands the same boxes on the course's ``u1`` relief. A training
+#: field (:func:`field_terrain`) has no race's legs: it stands its obstacles
+#: across ``field_obstacles_per_m2`` legs scattered over it (ADR-966), about
+#: one obstacle every 3 m of a run, as a race meets one per leg.
 TERRAIN_KINDS = ("rough", "hills", "u1", "boxes", "b1")
 #: The relief each kind lays under its boxes (ADR-965), and so whose seed
 #: string draws it: ``b1``'s relief is the course's ``u1`` relief.
@@ -509,7 +512,7 @@ RACE_TERRAIN = {"cell_mm": 25.0, "margin_m": 3.0, "start_clear_m": 0.5, "blend_m
                 "box_along_mm": (300.0, 600.0), "box_across_mm": (400.0, 1000.0),
                 "step_along_mm": (800.0, 1600.0), "step_across_mm": (1500.0, 3000.0),
                 "obstacle_at": (0.35, 0.65), "obstacle_offset_mm": 150.0, "obstacle_yaw_deg": 20.0,
-                "obstacle_leg_share": 0.6}
+                "obstacle_leg_share": 0.6, "field_obstacles_per_m2": 0.2, "field_leg_m": (2.0, 4.0)}
 
 
 def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) -> dict[str, Any]:
@@ -656,7 +659,22 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
         covered = np.zeros((nrow, ncol), dtype=bool)
         obstacles = []
         ends = [(0.0, 0.0)] + [(1000.0 * g["xy_m"][0], 1000.0 * g["xy_m"][1]) for g in course["gates"]]
-        for leg, ((ax, ay), (bx, by)) in enumerate(zip(ends, ends[1:])):
+        legs = list(zip(ends, ends[1:]))
+        if course.get("kind") == "field":
+            # ADR-966: a training field has no legs to stand boxes across, so
+            # it scatters ``field_obstacles_per_m2`` legs over its gates' square,
+            # each a draw in ``field_leg_m`` long at any heading, and stands one
+            # obstacle across each as a race does.
+            legs = []
+            count = max(1, int(round(float(options["field_obstacles_per_m2"])
+                                     * (max(xs) - min(xs)) * (max(ys) - min(ys)) * 1e-6)))
+            for _ in range(count):
+                mx, my = boxes_rng.uniform(min(xs), max(xs)), boxes_rng.uniform(min(ys), max(ys))
+                heading = boxes_rng.uniform(-math.pi, math.pi)
+                half = 500.0 * boxes_rng.uniform(*(float(v) for v in options["field_leg_m"]))
+                legs.append(((mx - half * math.cos(heading), my - half * math.sin(heading)),
+                             (mx + half * math.cos(heading), my + half * math.sin(heading))))
+        for leg, ((ax, ay), (bx, by)) in enumerate(legs):
             draw = lambda key: boxes_rng.uniform(*(float(v) for v in options[key]))  # noqa: E731
             step = boxes_rng.random() < float(options["step_share"])
             name = "step" if step else "box"
@@ -716,7 +734,9 @@ def field_terrain(np: Any, kind: str, seed: int, *, half_m: float = FIELD_HALF_M
 
     Its seed string, ``cadex-race-terrain:<kind>:field:train:<seed>``, is no
     race's: a race's course kind is ``gates`` or ``sprint``, so no field is a
-    held-out course's relief, nor a train course's."""
+    held-out course's relief, nor a train course's. A ``boxes`` or ``b1``
+    field scatters its obstacles over the square (ADR-966), not across the
+    corners' legs."""
 
     half = float(half_m)
     if not half > 0.0:
