@@ -126,6 +126,39 @@ def test_graded_fields_are_full_amplitude_and_climb_the_races_grades() -> None:
     assert len({f["sha256"] for f in fields}) == 4
 
 
+def test_graded_rough_lays_rough_alone_below_the_graded_hills() -> None:
+    """ADR-964: field 1 is the race's rough relief alone at full height (no
+    hills); fields 2..levels are u1, their hills graded from one step above
+    ``low`` to ``high``, so at 5 levels they are graded's four at 4 levels."""
+
+    rule = T.relief_rule(options("--relief-levels", "5", "--relief-fields", "graded-rough"))
+    assert rule["fields"] == "graded-rough"
+    low, high = G.RACE_TERRAIN["grade_deg"]
+    fields = T.relief_fields(np, rule, 5)
+    assert [f["level"] for f in fields] == [1, 2, 3, 4, 5]
+    rough = fields[0]
+    raw = G.field_terrain(np, "rough", 5 * 5, half_m=2.0)
+    assert rough["kind"] == "rough" and rough["scale"] == 1.0
+    assert np.array_equal(rough["heights_mm"], raw["heights_mm"]) and rough["sha256"] == raw["sha256"]
+    assert rough["rough_highest_mm"] > 0.9 * G.RACE_TERRAIN["rough_mm"]
+    assert rough["highest_mm"] <= G.RACE_TERRAIN["rough_mm"] + 1e-6
+    graded = T.relief_fields(np, T.relief_rule(options("--relief-levels", "4", "--relief-fields",
+                                                       "graded")), 5)
+    for f, g in zip(fields[1:], graded):
+        assert f["kind"] == "u1" and f["scale"] == 1.0
+        assert f["drawn"]["grade_deg"] == pytest.approx(g["drawn"]["grade_deg"])
+        assert f["rough_highest_mm"] > 0.9 * G.RACE_TERRAIN["rough_mm"]
+    assert fields[-1]["drawn"]["grade_deg"] == pytest.approx(high)
+    assert len({f["sha256"] for f in fields}) == 5
+    # One level is the rough field alone; a run that is not u1 is refused.
+    only = T.relief_fields(np, T.relief_rule(options("--relief-levels", "1", "--relief-fields",
+                                                     "graded-rough")), 5)
+    assert [f["kind"] for f in only] == ["rough"]
+    with pytest.raises(SystemExit):
+        T.relief_rule(T.arguments(["b.json", "--out", "x.cxpolicy", "--gates", "--race-terrain",
+                                   "hills", "--relief-fields", "graded-rough"]))
+
+
 def test_the_rule_needs_a_race_and_is_refused_out_of_its_bounds() -> None:
     rule = T.relief_rule(options())
     assert rule == {"kind": "u1", "levels": T.RELIEF_LEVELS, "half_m": 2.0, "fields": "scaled",

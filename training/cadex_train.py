@@ -2997,8 +2997,12 @@ RELIEF_LEVELS = 4
 #: ``k``'s draw to ``k / levels``; ``graded`` lays every field at the race's
 #: full amplitude, rough relief and all, with the hills' steepest grade fixed
 #: at ``low + (high - low) * k / levels`` of the race's ``grade_deg`` range,
-#: so the top field is as steep as the steepest held-out race.
-RELIEF_FIELDS = ("scaled", "graded")
+#: so the top field is as steep as the steepest held-out race; ``graded-rough``
+#: (ADR-964) makes field 1 the race's ``rough`` relief alone at full height and
+#: grades fields 2..levels' hills from ``low + (high - low) / (levels - 1)``
+#: to ``high``, rough relief on each, so rough ground without hills stays in
+#: every batch that stands on relief.
+RELIEF_FIELDS = ("scaled", "graded", "graded-rough")
 RELIEF_CEILING = {"start": 1, "falls": 0.1, "hold": 10}
 #: How far under the plane a field that is not the episode's stands (m), past
 #: its own top: a paw on the plane is then a metre clear of it.
@@ -3038,6 +3042,9 @@ def relief_rule(options: argparse.Namespace) -> dict[str, Any]:
     fields = str(getattr(options, "relief_fields", None) or RELIEF_FIELDS[0])
     if fields not in RELIEF_FIELDS:
         raise SystemExit(f"--relief-fields {fields!r} is not one of {RELIEF_FIELDS}")
+    if fields == "graded-rough" and kind != "u1":
+        raise SystemExit("--relief-fields graded-rough lays rough and hilly fields; give "
+                         "--race-terrain u1")
     return {"kind": kind, "levels": levels, "half_m": half, "fields": fields,
             "ceiling": {"start": int(start), "falls": falls, "hold": int(hold)}}
 
@@ -3062,19 +3069,28 @@ def relief_fields(np: Any, rule: dict[str, Any], seed: int) -> list[dict[str, An
     ``cadex_goto.field_terrain`` seeded ``seed * levels + k - 1``, its
     heights scaled to ``k / levels``; or, with ``fields`` ``graded``
     (ADR-963), unscaled, its hills' steepest grade fixed at ``k / levels`` of
-    the way up the race's ``grade_deg`` range. Train split only: no field is a
-    held-out course's relief."""
+    the way up the race's ``grade_deg`` range; or, with ``graded-rough``
+    (ADR-964), field 1 the ``rough`` relief alone, unscaled, and field ``k``
+    above it graded at ``(k - 1) / (levels - 1)`` of the way up. Train split
+    only: no field is a held-out course's relief."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import cadex_goto
 
     levels = int(rule["levels"])
-    graded = rule.get("fields", RELIEF_FIELDS[0]) == "graded"
+    mode = rule.get("fields", RELIEF_FIELDS[0])
     low, high = (float(v) for v in cadex_goto.RACE_TERRAIN["grade_deg"])
     fields = []
     for k in range(1, levels + 1):
-        if graded:
-            grade = low + (high - low) * k / levels
+        if mode == "graded-rough" and k == 1:
+            field = cadex_goto.field_terrain(np, "rough", int(seed) * levels,
+                                             half_m=rule["half_m"])
+            fields.append({**field, "level": k, "scale": 1.0,
+                           "rough_highest_mm": round(float(field["drawn"].get("rough_highest_mm", 0.0)), 3)})
+            continue
+        if mode in ("graded", "graded-rough"):
+            grade = (low + (high - low) * k / levels if mode == "graded"
+                     else low + (high - low) * (k - 1) / (levels - 1))
             field = cadex_goto.field_terrain(np, rule["kind"], int(seed) * levels + k - 1,
                                              half_m=rule["half_m"], grade_deg=(grade, grade))
             fields.append({**field, "level": k, "scale": 1.0,
@@ -5921,7 +5937,9 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         "--relief-fields", choices=RELIEF_FIELDS, default=RELIEF_FIELDS[0],
         help="how the fields are drawn: scaled, field k at k/levels of its draw (ADR-962); "
              "graded, every field at full amplitude with its hills' steepest grade k/levels "
-             "of the way up the race's range (ADR-963)")
+             "of the way up the race's range (ADR-963); graded-rough, field 1 rough relief "
+             "alone at full height, fields 2..levels graded from (high-low)/(levels-1) above "
+             "low to high (ADR-964)")
     parser.add_argument(
         "--relief-half", type=float, default=None,
         help="the relief field's half side in metres (default cadex_goto.FIELD_HALF_M)")

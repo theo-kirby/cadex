@@ -49068,3 +49068,34 @@ the rule carries `fields` (`scaled` by default) and refuses another name.
 **Consequences.** RECIPE §T.9: a U1 screen may train on held-out's full
 amplitude from the first level. A graded field's cost per iteration is the
 scaled field's: the grids are the same size.
+
+## ADR-964 — Graded relief with a rough-only field (2026-10-30)
+
+**Context.** ADR-963's graded fields lay full 30 mm rough relief only over
+hills of 9.75° and steeper; no field is rough ground alone. l6r1 lu2 (leon VI
+ADR-049), warm from lu1 on graded fields, lifts held-out `u1` from 5/10 to
+7/10 and keeps hills 10/10, but held-out `rough` courses fall from 9/10 to
+6/10.
+
+**Decision.** `cadex_train.py --relief-fields graded-rough`, `u1` runs only
+(another kind is refused). Field 1 is `cadex_goto.field_terrain(np, "rough",
+seed·K, …)`: the race's rough relief alone, unscaled, no hills; its seed
+string names `rough`, so it is no `u1` field's draw and still train-split.
+Fields k = 2..K are `graded`'s fields with the steepest hill grade
+`low + (high − low)·(k − 1)/(K − 1)`, so at K = 5 the hill grades are
+`graded`'s four at K = 4 (9.75, 11.5, 13.25, 15°). The curriculum is ADR-962's:
+level 1, the first relief an episode meets, is the rough field. `scaled` and
+`graded` are unchanged.
+
+**Evidence.** Seed 1, K = 5: field 1 rough, 0° hills, highest 29.96 mm;
+fields 2–5 grades 9.75, 11.5, 13.25, 15.0°, rough relief 29.9–30.0 mm, highest
+329, 324, 405, 405 mm.
+
+**Tests.** `training/test_race_terrain_training.py`: field 1 is
+`field_terrain`'s rough draw on seed·K (heights and digest), at full height
+and no higher than the race's rough cap; fields 2..5 are `u1` with `graded`'s
+four grades at K = 4 and full rough relief; five distinct digests; one level
+is the rough field alone; a `hills` run with `graded-rough` is refused.
+
+**Consequences.** One more field costs one more heightfield in every
+environment's model; the grids are the same size.

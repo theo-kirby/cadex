@@ -294,6 +294,8 @@ mesh (ADR-853–855, `docs/MUJOCO.md` *The floor and terrain*).
    8192-env iteration (4.1× flat at K = 4 on leon VI's cut).
    `--relief-fields graded` (ADR-963) lays every field at the race's full
    amplitude, its hills' grade climbing the race's range field by field.
+   `--relief-fields graded-rough` (ADR-964) keeps a rough-only field below
+   the graded hills, so rough ground without hills is never missing.
 
 ## D. Defaults (from R1, RESEARCH.md §3 and §5)
 
