@@ -2565,8 +2565,68 @@ def goal_pool(mujoco: Any, xml: bytes, task: dict[str, Any], *,
     return tables
 
 
+#: ADR-970: the run's own randomisation flags, each one draw per environment
+#: held for the run, appended AFTER the bundle's entries so the bundle's draws
+#: are unchanged. Flag attribute, entry label, the model field it scales.
+FLAG_RANDOMISATION = (
+    ("randomise_drive_torque", "drive_torque", "actuator_forcerange"),
+    ("randomise_friction", "friction", "geom_friction"),
+)
+
+
+def flag_randomisation(model: Any, options: Any) -> list[dict[str, Any]]:
+    """ADR-970: ``--randomise-drive-torque`` and ``--randomise-friction`` as
+    randomisation entries in the bundle's own form, on ``model``.
+
+    - ``drive_torque LOW HIGH``: one factor per environment scales both ends of
+      every force-limited actuator's ``actuator_forcerange``. Under
+      ``--no-load-speed`` the curve falls from the scaled limit to none at the
+      same no-load speed (ADR-969 reads the batched range).
+    - ``friction LOW HIGH``: one factor per environment scales every geom's
+      sliding friction (column 0 of ``geom_friction``). MuJoCo takes the larger
+      of a contact's two geoms, so with every geom at one friction the floor
+      contact's friction is that friction times the factor.
+
+    Neither flag given (the default) is an empty list: the run draws, builds
+    and traces as a trainer without them did.
+    """
+
+    entries: list[dict[str, Any]] = []
+    for attribute, label, field in FLAG_RANDOMISATION:
+        bounds = getattr(options, attribute, None)
+        if not bounds:
+            continue
+        low, high = (float(v) for v in bounds)
+        flag = "--" + attribute.replace("_", "-")
+        if not (math.isfinite(low) and math.isfinite(high)) or low <= 0.0 or high < low:
+            raise SystemExit(f"{flag} LOW HIGH is two factors with 0 < LOW <= HIGH, not {low:g} {high:g}")
+        if field == "actuator_forcerange":
+            indices = [2 * a + side for a in range(int(model.nu))
+                       if bool(model.actuator_forcelimited[a]) for side in (0, 1)]
+            if not indices:
+                raise SystemExit(f"{flag}: this model has no force-limited actuator to scale")
+        else:
+            indices = [3 * g for g in range(int(model.ngeom))]
+        entries.append({"label": label, "low": low, "high": high, "mode": "scale", "flag": flag,
+                        "fields": [{"field": field, "index": i} for i in indices]})
+    return entries
+
+
+def flag_randomisation_header(options: Any) -> dict[str, Any]:
+    """ADR-970: ``{"flag_entries": [...]}`` for the policy header's
+    ``randomisation`` block when a flag is given, else ``{}``."""
+
+    rows = [{"label": label, "field": field,
+             "low": float(getattr(options, attribute)[0]),
+             "high": float(getattr(options, attribute)[1])}
+            for attribute, label, field in FLAG_RANDOMISATION
+            if getattr(options, attribute, None)]
+    return {"flag_entries": rows} if rows else {}
+
+
 def randomised_models(mujoco: Any, np: Any, xml: bytes, task: dict[str, Any], *,
-                      base_seed: int, count: int) -> tuple[Any, dict[str, Any]]:
+                      base_seed: int, count: int,
+                      options: Any = None) -> tuple[Any, dict[str, Any]]:
     """Environment 0's host ``MjModel``, and each drawn field for every environment.
 
     The second value maps each field a randomisation entry moves to an array
@@ -2589,6 +2649,10 @@ def randomised_models(mujoco: Any, np: Any, xml: bytes, task: dict[str, Any], *,
 
     base = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
     entries = list(task.get("randomisation") or ())
+    # ADR-970: the run's flag entries after the bundle's, so environment i
+    # draws the bundle's factors first, as before, then the flags'.
+    if options is not None:
+        entries += flag_randomisation(base, options)
     if not entries:
         return base, {}
     fields = sorted({str(field["field"]) for entry in entries for field in entry["fields"]})
@@ -3361,14 +3425,16 @@ def relief_model(mujoco: Any, np: Any, xml: bytes, fields: Sequence[dict[str, An
 
 
 def relief_randomised(mujoco: Any, np: Any, xml: bytes, task: dict[str, Any], fields: Sequence[dict[str, Any]],
-                      *, base_seed: int, count: int) -> tuple[Any, dict[str, Any], dict[str, Any]]:
+                      *, base_seed: int, count: int,
+                      options: Any = None) -> tuple[Any, dict[str, Any], dict[str, Any]]:
     """:func:`randomised_models` on the relief's model (ADR-962): the draws
     are made on the bundle's own model, as without relief, and each drawn
     field gains the relief's rows -- a geom field the floor's drawn row, so a
     field's friction follows the floor's draw, any other the relief model's
     value. Environment 0's draw is applied to the returned host."""
 
-    _host, drawn = randomised_models(mujoco, np, xml, task, base_seed=base_seed, count=count)
+    _host, drawn = randomised_models(mujoco, np, xml, task, base_seed=base_seed, count=count,
+                                     options=options)
     model, placed = relief_model(mujoco, np, xml, fields)
     padded = {}
     for name, values in drawn.items():
@@ -3695,13 +3761,14 @@ def build_environment(
                              "carries a height scan or a terrain pool")
         relief_drawn = relief_fields(np, relief, int(seed))
         host, drawn, relief_placed = relief_randomised(
-            mujoco, np, bundle["model_xml"], task, relief_drawn, base_seed=int(seed), count=envs)
+            mujoco, np, bundle["model_xml"], task, relief_drawn, base_seed=int(seed), count=envs,
+            options=options)
         relief_geoms = jnp.asarray(relief_placed["geoms"], dtype=jnp.int32)
         relief_sink = float(relief_placed["sink_m"])
         relief_levels = int(relief["levels"])
     else:
         host, drawn = randomised_models(mujoco, np, bundle["model_xml"], task,
-                                        base_seed=int(seed), count=envs)
+                                        base_seed=int(seed), count=envs, options=options)
     key_id = mujoco.mj_name2id(host, mujoco.mjtObj.mjOBJ_KEY,
                                str(episode["reset_keyframe"]))
     if key_id < 0:
@@ -5856,6 +5923,8 @@ def policy_header(
                 and (not key.startswith("reference")
                      or getattr(options, "gait_reference", None))
                 and (key != "gait_reference" or getattr(options, "gait_reference", None))
+                # ADR-970: only a run that randomises by flag names the flag.
+                and (not key.startswith("randomise_") or getattr(options, key, None))
             },
             "init_from": trained.get("init_from"),
             # The iterations this policy actually saw, which for a
@@ -5874,6 +5943,9 @@ def policy_header(
                 "environments": int(options.envs),
                 "entries": [str(entry["label"])
                             for entry in task.get("randomisation") or ()],
+                # ADR-970: the run's flag entries, drawn after the bundle's;
+                # absent when no flag is given, so other headers are unchanged.
+                **flag_randomisation_header(options),
             },
             # The second stream, recorded beside the first because it is a
             # *different* algorithm and a reader has to be able to tell which
@@ -6238,6 +6310,18 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "curve and emits the graph a trainer without the flag does. Written "
              "into the .cxpolicy header, so cadex_goto plays the policy under it. "
              "An RS00 is 315 rpm, 33.0 rad/s")
+    parser.add_argument(
+        "--randomise-drive-torque", type=float, nargs=2, default=None, metavar=("LOW", "HIGH"),
+        help="ADR-970: each environment draws one factor uniform(LOW, HIGH), held for the "
+             "run, scaling every force-limited actuator's forcerange (the curve of "
+             "--no-load-speed falls from the scaled limit). Drawn after the bundle's own "
+             "randomisation, which is unchanged. Off by default")
+    parser.add_argument(
+        "--randomise-friction", type=float, nargs=2, default=None, metavar=("LOW", "HIGH"),
+        help="ADR-970: each environment draws one factor uniform(LOW, HIGH), held for the "
+             "run, scaling every geom's sliding friction (with every geom at one friction, "
+             "the floor contact's friction is scaled by the factor). Drawn after the "
+             "bundle's own randomisation and --randomise-drive-torque. Off by default")
     parser.add_argument(
         "--command-slew-deg", type=float, default=0.0,
         help="cap the per-step change of the ISSUED command at this many "

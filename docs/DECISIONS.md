@@ -49331,3 +49331,58 @@ passes (177).
 do. The curve is linear and per-drive-type only through `forcerange`; a
 model mixing drives with different no-load speeds needs a per-actuator value
 before it can use this.
+
+## ADR-970 — A run can randomise its drives' torque and its friction (2026-10-31)
+
+**Context.** Symon's sprint policies (its ADR-068 to ADR-071) are judged under
+harder physics before their speed counts. sp1's two seeds lost 17-20% of their
+speed with every drive's torque 15% lower, and seed 1 fell to 0/10 kept with the
+floor's friction at 0.6; an interim read of sp2 seed 1 (checkpoint 1100) kept
+its speed on 0/10 under the torque cut and 3/10 at friction 0.6. A policy
+trained on one exact drive strength and one friction runs right at both; the
+lever is to train it across them. The bundle's `randomisation` would do it, but
+a bundle is the script's and a randomisation range is a training condition, so
+it belongs with the run's other flags and leaves the task's digest alone.
+
+**Decision.**
+- `cadex_train.py --randomise-drive-torque LOW HIGH` and
+  `--randomise-friction LOW HIGH` (both off by default). Each is one
+  randomisation entry in the bundle's own form (`flag_randomisation`),
+  `uniform(LOW, HIGH)` per environment, held for the run, drawn by the same
+  `random.Random(base_seed + e)` **after** the bundle's entries, so the bundle's
+  draws are unchanged; drive torque before friction.
+  - drive torque scales both ends of every force-limited actuator's
+    `actuator_forcerange`; under `--no-load-speed` (ADR-969) the curve falls
+    from the scaled limit to none at the same no-load speed, as the judge's
+    `torque` condition does.
+  - friction scales column 0 (sliding) of every geom's `geom_friction`. MuJoCo
+    takes the larger of a contact's two geoms, so with every geom at friction 1
+    (Symon's cut and export) the floor contact's friction is the factor. With
+    `--race-terrain` the relief's fields follow the floor's draw (ADR-962).
+- `LOW` must be above 0 and at most `HIGH`; a model with no force-limited drive
+  refuses the torque flag.
+- The header names a flag only when it is given: `training.hyperparameters`
+  gains `randomise_*` and `training.randomisation.flag_entries` lists label,
+  field and bounds. A run without either flag draws, builds, traces and writes
+  the header it did.
+
+**Not covered.** The draw is per environment for the run, not per episode
+(`RANDOMISATION_MODE`); 8192 environments are 8192 mechanisms. Contact
+stiffness is not randomised here.
+
+**Evidence.** A CPU smoke on Symon's sprint bundle (s18relay, 32 environments,
+2 iterations, both flags, `--no-load-speed 33`) builds and trains; the batched
+model carries each environment's drawn `actuator_forcerange` and `geom_friction`.
+
+**Tests.** `training/test_flag_randomisation.py` (12): off by default draws and
+writes nothing; the bundle's own draws are unchanged by the flags; each
+environment scales every force-limited drive by its own draw after the
+bundle's and leaves an unlimited one alone; friction scales the sliding column
+only; bad ranges and a model with no limited drive are refused; the header
+names the flags only when given and is otherwise unchanged; end to end, the
+trainer's step clamps a drive asked past its range to its drawn limit under the
+curve (2.0 N·m nominal, 1.0 at a 0.5 draw).
+
+**Consequences.** A sprint policy can be trained against the drive strength and
+friction its judge cuts, and its speed re-earned there; the speed it reaches is
+the speed of the weakest drive and slipperiest floor it was trained to expect.
