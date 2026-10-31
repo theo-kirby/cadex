@@ -49280,3 +49280,54 @@ without the term.
 when its body's front matters: a scan, a head, or legs built to push from
 behind. A racer warm-started from a backward policy under this term has to
 relearn its gait; leon VI's was trained from scratch.
+
+## ADR-969 — A drive's torque falls with its speed (2026-10-31)
+
+**Context.** Every Cadex servo is a force-limited PD actuator: MuJoCo clamps
+its torque to `forcerange` at any speed. A real drive has a torque-speed
+curve: an RS00 gives its 14 N·m only near rest and nothing at its 315 rpm
+(33.0 rad/s) no-load speed. A task that pays only for speed (Symon's sprint,
+its ADR-068) finds that gap: it can hold peak torque at joint speeds the motor
+cannot reach with any torque, so the top speed it learns is not one the robot
+can make. A reward term would only discourage it; the limit belongs in the
+physics.
+
+**Decision.**
+- `cadex_train.py --no-load-speed RAD_S` (default 0, off): before every
+  solver step each force-limited joint drive's range is
+  `cadex_train.drive_force_range`: in the direction it turns, its limit times
+  `clip(1 − |ω|/ω₀, 0, 1)`; against it (braking), its whole limit. `ω` is
+  `gear · qvel` at the drive's dof (`actuator_speed_map`), read at the start
+  of the solver step, so the model's `actuator_forcerange` is replaced per
+  environment (`enveloped_range`) and MJX clamps to it. ADR-465's derivative
+  rule reads the same replaced range.
+- The value is written into the policy header (`training.no_load_speed_rad_s`
+  and the hyperparameters), as ADR-160's filter is, because a policy trained
+  under the curve has to be played under it.
+- `cadex_goto.Player.step(model, data)` is that solver step in numpy on stock
+  MuJoCo, under the header's curve, by the same functions; the walk and race
+  judges step through it. Without a curve it is `mj_step`.
+- `Player` plays a task that declares no goals (a sprint) with none.
+
+**Not covered.** `cadex evaluate`, the engine's own evaluator, and the
+dashboard's playback do not apply the curve: a policy trained under it is
+judged with `cadex_goto` (or a tool built on `Player`). A drive's heating (its
+RMS over rating) is not limited, only measured by the judges.
+
+**Evidence.** Symon's sprint bundle (s17 cut, 13 RS00s, 8192 envs, unroll 20):
+six iterations take 55.0 s with `--no-load-speed 33` and 56.1 s without,
+compile included; the curve's cost does not show. The smoke policy's header
+reads `no_load_speed_rad_s` 33.0, and `cadex_goto.Player` plays it on the
+export by name.
+
+**Tests.** `training/test_drive_envelope.py`: the range at rest, half and full
+no-load speed and past it, in both directions; numpy and JAX agree; only a
+force-limited drive on a joint is enveloped; a MuJoCo drive at its no-load
+speed asked for its whole range forward gives 0 N·m and 14 N·m at rest; the
+flag is off by default and refuses a negative speed. The training suite
+passes (177).
+
+**Consequences.** A speed-only reward is judged against what the motors can
+do. The curve is linear and per-drive-type only through `forcerange`; a
+model mixing drives with different no-load speeds needs a per-actuator value
+before it can use this.

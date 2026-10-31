@@ -962,6 +962,9 @@ class Player:
         if hashlib.sha256(xml).hexdigest() != self.trained_on and not other_model:
             raise SystemExit("the policy was not trained on this bundle's model (--other-model plays it by name)")
         self.filter_alpha = played_filter_alpha(header)
+        # ADR-969: the drives' torque-speed curve the policy was trained under.
+        self.no_load_speed = float((header.get("training") or {}).get("no_load_speed_rad_s", 0.0) or 0.0)
+        self._ranges: dict[int, tuple[Any, Any]] = {}
         self.filtered_command = cadex_train.filtered_command
         self.task, self.model_xml = task, xml
         self.model = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
@@ -995,7 +998,10 @@ class Player:
         declared = {str(g["name"]): g for g in task.get("goal") or ()}
         if self.gate_ahead and goals:
             raise SystemExit("a racer reads gates, not speed goals; give it no --goals")
-        if not self.gate_ahead and (len(goals) != 3 or any(name not in declared for name in goals)):
+        # ADR-969: a task with no goals (a sprint) is played with none.
+        if not self.gate_ahead and not declared and goals:
+            raise SystemExit("this task declares no goals; give it no --goals")
+        if not self.gate_ahead and declared and (len(goals) != 3 or any(name not in declared for name in goals)):
             raise SystemExit(f"--goals names the forward, lateral and yaw-rate goals; "
                              f"this task declares {sorted(declared)}")
         self.goals = list(goals)
@@ -1060,6 +1066,23 @@ class Player:
         self.issued = self.reset_command.copy()
         self.before = self.reset_command.copy()
         self.first = True
+
+    def step(self, model: Any, data: Any) -> None:
+        """One solver step of ``model``, under the torque-speed curve the policy
+        was trained with (ADR-969): each force-limited joint drive's range at
+        the speed it turns now, by ``cadex_train.drive_force_range``. Without
+        one it is ``mj_step``."""
+
+        if self.no_load_speed > 0.0:
+            import cadex_train
+
+            if id(model) not in self._ranges:
+                self._ranges[id(model)] = (model.actuator_forcerange.copy(),
+                                           cadex_train.actuator_speed_map(model))
+            limit, speed_map = self._ranges[id(model)]
+            model.actuator_forcerange[:] = cadex_train.enveloped_range(
+                self.np, limit, data.qvel, speed_map, self.no_load_speed)
+        self.mujoco.mj_step(model, data)
 
     def control(self, data: Any, command: Sequence[float], gates: Sequence[float] = ()) -> Any:
         """``data.ctrl`` for this step. ``command`` is the layer's (vx, vy, wz);
@@ -1384,7 +1407,7 @@ def play(options: argparse.Namespace) -> int:
         step += 1
         data.ctrl[:] = player.control(data, [command["vx"][0], command["vy"][0], command["wz"][0]])
         for _ in range(player.substeps):
-            mujoco.mj_step(model, data)
+            player.step(model, data)
             drives.add(data)
         if not np.all(np.isfinite(data.qpos)):
             fell = True
@@ -1605,7 +1628,7 @@ def race(options: argparse.Namespace) -> int:
         step += 1
         data.ctrl[:] = player.control(data, (), view)
         for _ in range(player.substeps):
-            mujoco.mj_step(model, data)
+            player.step(model, data)
             drives.add(data)
         if not np.all(np.isfinite(data.qpos)):
             fell, fell_at = True, step * player.dt

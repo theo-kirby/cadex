@@ -2746,6 +2746,64 @@ def match_engine_actuator_derivative(mujoco: Any, jax: Any, jnp: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
+def drive_force_range(xp: Any, limit: Any, omega: Any, no_load: float) -> Any:
+    """ADR-969: each force-limited drive's torque range at its present speed.
+
+    A drive's torque falls in a straight line from its limit at rest to none
+    at its no-load speed, in the direction it is turning; against its turning
+    (braking) it keeps its whole limit. ``limit`` is ``(A, 2)``, the model's
+    ``actuator_forcerange``; ``omega`` the actuators' speeds (rad/s), any
+    leading axes; the result is ``omega``'s shape with a trailing ``2``.
+    ``xp`` is ``jax.numpy`` in the trainer's step and ``numpy`` in
+    ``cadex_goto.Player.step``, so a policy is judged under the curve it was
+    trained under by the same arithmetic. Past the no-load speed the drive
+    gives nothing forward and is not driven backward by this rule.
+    """
+
+    room = xp.clip(1.0 - xp.abs(omega) / no_load, 0.0, 1.0)
+    low = xp.where(omega < 0.0, limit[..., 0] * room, limit[..., 0])
+    high = xp.where(omega > 0.0, limit[..., 1] * room, limit[..., 1])
+    return xp.stack([low, high], axis=-1)
+
+
+def actuator_speed_map(model: Any) -> tuple[Any, Any, Any]:
+    """ADR-969: for each actuator, its joint's dof, its gear and whether it is
+    force-limited on a joint, from a stock ``MjModel``. A drive's speed is
+    ``gear * qvel[dof]``; an actuator off a joint (none in a Cadex servo
+    model) is left at its range."""
+
+    import numpy as np
+
+    dof, gear, enveloped = [], [], []
+    for a in range(int(model.nu)):
+        joint = int(model.actuator_trnid[a, 0])
+        on_joint = int(model.actuator_trntype[a]) == 0 and joint >= 0
+        dof.append(int(model.jnt_dofadr[joint]) if on_joint else 0)
+        gear.append(float(model.actuator_gear[a, 0]))
+        enveloped.append(bool(on_joint and model.actuator_forcelimited[a]))
+    return np.asarray(dof), np.asarray(gear), np.asarray(enveloped)
+
+
+def enveloped_range(xp: Any, limit: Any, qvel: Any, speed_map: tuple[Any, Any, Any],
+                    no_load: float) -> Any:
+    """``drive_force_range`` on the drives ``actuator_speed_map`` names, read
+    from ``qvel``; every other actuator keeps ``limit``."""
+
+    dof, gear, enveloped = speed_map
+    omega = gear * xp.take(qvel, dof, axis=-1)
+    ranged = drive_force_range(xp, limit, omega, no_load)
+    return xp.where(enveloped[:, None], ranged, limit)
+
+
+def resolved_no_load_speed(options: Any) -> float:
+    """``--no-load-speed`` (ADR-969) as a float; 0.0 is no curve."""
+
+    value = float(getattr(options, "no_load_speed", 0.0) or 0.0)
+    if not math.isfinite(value) or value < 0.0:
+        raise SystemExit("--no-load-speed is a drive's no-load speed in rad/s, above 0 (0 is off)")
+    return value
+
+
 def filtered_command(xp: Any, clamped: Any, previous: Any, first: Any, alpha: float) -> Any:
     """ADR-160's action filter on one clamped command, for the trainer and every player (ADR-953).
 
@@ -3553,6 +3611,9 @@ def build_environment(
     # graph a trainer without this flag emits.
     command_slew_deg = resolved_command_slew_deg(options)
     slewing = command_slew_deg > 0.0
+    # ADR-969: the drives' torque falls with their speed. A Python float, so
+    # a run without the flag emits the graph it did.
+    no_load_speed = resolved_no_load_speed(options)
     if slewing:
         # A limit wider than the box can never bind: the whole command range
         # is `high - low`, so any step is at most that. Refusing is better
@@ -3750,6 +3811,7 @@ def build_environment(
         return ((pool_device["scan"][course], pool_device["lowest"][course],
                  pool_device["dome_scan"][course]) if redrawing else None)
 
+    speed_map = tuple(jnp.asarray(v) for v in actuator_speed_map(host))
     single = mjx.put_model(host)
     model = single
     if drawn and envs > 1:
@@ -4272,6 +4334,10 @@ def build_environment(
         data = data.replace(ctrl=ctrl)
 
         def one(d, _):
+            if no_load_speed > 0.0:
+                # ADR-969: the drives' torque range at the speed they turn now.
+                return mjx.step(m.replace(actuator_forcerange=enveloped_range(
+                    jnp, m.actuator_forcerange, d.qvel, speed_map, no_load_speed)), d), None
             return mjx.step(m, d), None
 
         data, _ = jax.lax.scan(one, data, None, length=per_action)
@@ -5753,6 +5819,9 @@ def policy_header(
             # driver that had to be told separately is a driver somebody will
             # forget to tell. 0.0 is no limit.
             "command_slew_deg": resolved_command_slew_deg(options),
+            # ADR-969, its own key for ADR-160's reason: a policy trained
+            # under a torque-speed curve has to be PLAYED under it. 0.0 is none.
+            "no_load_speed_rad_s": resolved_no_load_speed(options),
             # ADR-700. Not needed to PLAY the policy, but a reward curve is
             # read against it: a floored run's reward/step cannot go below it.
             "reward_floor": resolved_reward_floor(options),
@@ -6160,6 +6229,15 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "The resolved value is written into the .cxpolicy header, so an "
              "evaluator plays the policy with the filter it was trained "
              "with instead of being told separately")
+    parser.add_argument(
+        "--no-load-speed", type=float, default=0.0,
+        help="the drives' no-load speed in rad/s (ADR-969): every force-limited "
+             "joint drive's torque falls in a straight line from its forcerange "
+             "at rest to none at this speed, in the direction it turns (braking "
+             "keeps the whole range), every solver step. 0.0 (the default) is no "
+             "curve and emits the graph a trainer without the flag does. Written "
+             "into the .cxpolicy header, so cadex_goto plays the policy under it. "
+             "An RS00 is 315 rpm, 33.0 rad/s")
     parser.add_argument(
         "--command-slew-deg", type=float, default=0.0,
         help="cap the per-step change of the ISSUED command at this many "
