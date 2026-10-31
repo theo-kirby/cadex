@@ -892,6 +892,14 @@ def gate_speed(xp: Any, plan: Mapping[str, Any], index: Any, x: Any, y: Any,
     return xp.where(index < plan["gates"].shape[-2], made, 0.0)
 
 
+def gate_lead(xp: Any, yaw: Any, vx: Any, vy: Any) -> Any:
+    """The base's planar speed along its own heading (m/s, ADR-968): its world
+    planar velocity projected on its x axis on the ground. Positive with the
+    +x (fore) end leading, negative running hind end first."""
+
+    return xp.cos(yaw) * vx + xp.sin(yaw) * vy
+
+
 def played_filter_alpha(header: Mapping[str, Any]) -> float:
     """The action filter a policy was trained with, from its header (ADR-160, ADR-953).
 

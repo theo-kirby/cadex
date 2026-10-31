@@ -49239,3 +49239,44 @@ grid over its ground. Training suite 170 passed.
 **Consequences.** A scanned racer is judged with the same terrain it is
 raced over. The scan is a simulated elevation map: a robot needs a depth
 sensor, odometry and a map to read it (the project's sensor spec).
+
+## ADR-968 — A racer can be told which end leads (2026-10-31)
+
+**Context.** Under `--gates` (ADR-955) a racer is paid for speed made good
+toward the lit gate, whatever way its trunk faces. leon VI's light body
+learned to run hind end first: its base travels along its own −x on 0.91–0.97
+of the path on every flat course, from its first gate screen on. Its fore
+shoulders then trail and carry the push (the fore-right RS00 at 1.6× rated),
+and a height scan laid along +x (ADR-967) reads ground already crossed.
+
+**Decision.**
+- `cadex_train.py --gate-backward W` (with `--gates`, default 0, off) charges
+  `W` per m/s per second of the base's speed backward along its own heading
+  (`max(0, −lead)`), where `cadex_goto.gate_lead` is the world planar velocity
+  projected on the base's x axis on the ground. At `W` = 1, the progress
+  weight's default, hind-first progress toward a gate earns nothing.
+- Only backward speed is charged: running fore end first, sideways or
+  standing costs nothing more, so the term picks the leading end and nothing
+  else.
+- The weight is part of the race's rule (`weights.backward`), so the policy
+  header records it. The iteration's report and `progress.json` carry
+  `gate_lead_mps`, the mean speed along the heading (negative running
+  backward), with its curve. The judge and the player are unchanged.
+
+**Evidence.** leon VI's light body, its first gate screen's command (49.2 M,
+seed 1, from scratch) with `--gate-backward 1`: the 75th iteration already
+runs fore end first (travel +0.98 of the path on three train courses on the
+export), and the final runs held-out flat gate and sprint courses 10/10 with
+no fall at +0.97 and +0.99, sprints at 2.68 m/s. Without the term the same
+command ran −0.93 to −0.96.
+
+**Tests.** `training/test_gate_race.py`: `gate_lead` is the speed along the
+heading at any yaw, zero sideways; the rule's weights carry `backward` (0 by
+default) and refuse a negative one; the built environment charges a hind-first
+step `W·dt·|lead|` and a fore-first step nothing, against the same step
+without the term.
+
+**Consequences.** Which end leads is a choice a race can make for the robot
+when its body's front matters: a scan, a head, or legs built to push from
+behind. A racer warm-started from a backward policy under this term has to
+relearn its gait; leon VI's was trained from scratch.

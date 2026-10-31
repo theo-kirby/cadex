@@ -3048,11 +3048,14 @@ def gate_rule(options: argparse.Namespace) -> dict[str, Any]:
     environment, the curriculum and the policy header alike."""
 
     progress, entry, cost = parse_floats(options.gate_weights, 3, "--gate-weights")
+    backward = float(getattr(options, "gate_backward", 0.0) or 0.0)
+    if not math.isfinite(backward) or backward < 0.0:
+        raise SystemExit("--gate-backward is a cost per m/s, from 0")
     start, step, top, promote = parse_floats(options.gate_ceiling, 4, "--gate-ceiling")
     if not 0.0 < start <= top or step < 0.0 or not 0.0 < promote <= 1.0:
         raise SystemExit("--gate-ceiling is START,STEP,MAX,PROMOTE with 0 < START <= MAX, "
                          "STEP >= 0 and PROMOTE in (0, 1]")
-    return {"weights": {"progress": progress, "entry": entry, "time": cost},
+    return {"weights": {"progress": progress, "entry": entry, "time": cost, "backward": backward},
             "ceiling": {"start": start, "step": step, "max": top, "promote": promote},
             "radius_m": float(options.gate_radius), "ahead": int(options.gate_ahead),
             "courses": GATE_COURSES, "gates": GATE_TRAIN_GATES}
@@ -4505,6 +4508,7 @@ def build_environment(
             info["gate_ceiling"] = jnp.full((envs,), race["rule"]["ceiling"]["start"], jnp.float32)
             info["gate_entered"] = jnp.zeros((envs,), jnp.float32)
             info["gate_speed"] = jnp.zeros((envs,), jnp.float32)
+            info["gate_lead"] = jnp.zeros((envs,), jnp.float32)
         if referencing:
             # ADR-957: the guide's weight, faded by the train loop.
             info["reference_weight"] = jnp.full((envs,), float(options.reference_weight), jnp.float32)
@@ -4589,13 +4593,17 @@ def build_environment(
             # lit when it was taken: speed made good toward it up to the
             # curriculum's ceiling, a gate entered, the second spent.
             plan = gate_plan(info["gates"])
-            x, y, _yaw, vx, vy = gate_pose(data)
+            x, y, yaw, vx, vy = gate_pose(data)
             made = race["module"].gate_speed(jnp, plan, info["gates"]["index"], x, y, vx, vy)
             rewarded = jnp.minimum(made, info["gate_ceiling"])
             raced, entered = race["module"].gate_step(jnp, plan, info["gates"], x, y)
+            # ADR-968: speed along the base's own heading; with --gate-backward
+            # the hind-first share of it costs per m/s per second.
+            lead = race["module"].gate_lead(jnp, yaw, vx, vy)
             reward = reward + (gate_pay["progress"] * gate_dt * rewarded
                                + gate_pay["entry"] * entered.astype(jnp.float32)
-                               - gate_pay["time"] * gate_dt)
+                               - gate_pay["time"] * gate_dt
+                               - gate_pay["backward"] * gate_dt * jnp.maximum(-lead, 0.0))
         if referencing:
             reward = reward + info["reference_weight"] * control_interval * reference_pay(data)
         if reward_floor is not None and (feet or paying):
@@ -4704,6 +4712,7 @@ def build_environment(
                                        {**info["gates"], **raced}, data, done)
             info["gate_entered"] = jnp.where(blown, 0.0, entered.astype(jnp.float32))
             info["gate_speed"] = jnp.where(blown, 0.0, rewarded).astype(jnp.float32)
+            info["gate_lead"] = jnp.where(blown, 0.0, lead).astype(jnp.float32)
         key, vector = sensed(key, data, picks, steps, origin, carry, course, turned,
                              info.get("goto"), info.get("gates"), info.get("relief"))
         info.update(key=key, forces=forces, starts=starts, elapsed=elapsed,
@@ -5239,7 +5248,7 @@ def train(
         env_state, data = acting.generate_unroll(
             env, env_state, policy, unroll_key, unroll,
             extra_fields=("truncation", "terminated")
-            + (("gate_entered", "gate_speed") if race_rule else ()))
+            + (("gate_entered", "gate_speed", "gate_lead") if race_rule else ()))
         # [unroll, envs] -> [envs, unroll]: a minibatch is whole unrolls.
         data = jax.tree.map(lambda x: jnp.swapaxes(x, 0, 1), data)
         normaliser = floored(update_normaliser(normaliser, data.observation))
@@ -5272,6 +5281,9 @@ def train(
             # gates entered per second of simulated time.
             extras = data.extras["state_extras"]
             report["gate_progress_mps"] = jnp.mean(extras["gate_speed"])
+            # ADR-968: the mean speed along the base's heading; negative runs
+            # hind end first.
+            report["gate_lead_mps"] = jnp.mean(extras["gate_lead"])
             report["gates_per_s"] = jnp.sum(extras["gate_entered"]) / jnp.float32(
                 unroll * envs * float(bundle["task"]["episode"]["control_interval_s"]))
         if relief_rule_in_force:
@@ -5513,6 +5525,7 @@ def train(
                 + (f"  levels {entry['levels']}" if "levels" in entry else "")
                 + (f"  gates {entry['gates_per_s']:.3f}/s at {entry['gate_progress_mps']:.3f}"
                    f" of {entry['gate_ceiling_mps']:.2f} m/s" if "gates_per_s" in entry else "")
+                + (f"  lead {entry['gate_lead_mps']:+.3f} m/s" if "gate_lead_mps" in entry else "")
                 + (f"  guide {entry['reference_weight']:.3g}" if "reference_weight" in entry else "")
                 + (f"  relief top {entry['relief_top']} falls {entry['relief_falls']:.3f}"
                    f" levels {entry['relief_levels']}" if "relief_top" in entry else ""),
@@ -6071,6 +6084,11 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         metavar="PROGRESS,ENTRY,TIME",
         help="the race's reward: per m/s made good toward the lit gate per "
              "second, per gate entered, and the cost of a second (ADR-955)")
+    parser.add_argument(
+        "--gate-backward", type=float, default=0.0, metavar="W",
+        help="the race's cost per m/s per second of the base's speed backward along "
+             "its own heading, the hind end leading (ADR-968); 1 matches the progress "
+             "weight, so hind-first progress earns nothing. 0, off, by default")
     parser.add_argument(
         "--race-terrain", choices=("rough", "hills", "u1", "boxes", "b1"), default=None,
         help="race the gates over relief (ADR-962): --relief-levels train-split fields "
@@ -6713,6 +6731,10 @@ def main(argv: Sequence[str]) -> int:
                 "gate_progress_curve": decimated_curve(curve, key="gate_progress_mps"),
                 "gates_per_s_curve": decimated_curve(curve, key="gates_per_s")}
                if curve and "gate_ceiling_mps" in curve[-1] else {}),
+            # Additive (ADR-968): the mean speed along the base's heading.
+            **({"gate_lead_mps": curve[-1]["gate_lead_mps"],
+                "gate_lead_curve": decimated_curve(curve, key="gate_lead_mps")}
+               if curve and "gate_lead_mps" in curve[-1] else {}),
             # Additive (ADR-957): the gallop guide's weight as it fades.
             **({"reference_weight": curve[-1]["reference_weight"],
                 "reference_weight_curve": decimated_curve(curve, key="reference_weight")}

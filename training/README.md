@@ -809,6 +809,10 @@ and height. The trainer lays them too (ADR-966): `--race-terrain b1` scatters
 ground on 18 points ahead (−0.2 to 0.8 m by −0.12 to 0.12 m), read over the
 episode's own field, after the gate channels; a warm start gains them at zero
 weight, and `race` reads them over the course's terrain.
+`--gate-backward W` (ADR-968) charges W per m/s per second of the base's speed
+backward along its own heading (hind end first), so a racer that would pick
+either end to lead runs fore end first; the log's `lead` is the mean speed
+along the heading, negative running backward. 0, off, by default.
 
 **Race terrain in training (ADR-962).** `--race-terrain rough|hills|u1` (with
 `--gates`) lays `--relief-levels` K fields of that relief round the start,

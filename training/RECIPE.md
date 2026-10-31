@@ -303,6 +303,9 @@ mesh (ADR-853–855, `docs/MUJOCO.md` *The floor and terrain*).
    `--race-scan default` (ADR-967) lets the actor see them: the base's
    height over the ground on 18 points up to 0.8 m ahead, warmed in at zero
    weight from a blind racer.
+   `--gate-backward 1` (ADR-968) makes the racer lead with its fore end:
+   a body that runs hind end first carries its scan, its fore shoulders
+   and its stance load the wrong way round.
 
 ## D. Defaults (from R1, RESEARCH.md §3 and §5)
 

@@ -213,7 +213,10 @@ def test_a_race_is_told_gates_not_speeds_and_keeps_the_regularisers() -> None:
 
 def test_the_ceiling_rises_only_when_the_population_reaches_it_and_the_guide_fades() -> None:
     rule = T.gate_rule(gate_options())
-    assert rule["weights"] == {"progress": 1.0, "entry": 0.5, "time": 0.1}
+    assert rule["weights"] == {"progress": 1.0, "entry": 0.5, "time": 0.1, "backward": 0.0}
+    assert T.gate_rule(gate_options("--gate-backward", "1"))["weights"]["backward"] == 1.0
+    with pytest.raises(SystemExit):
+        T.gate_rule(gate_options("--gate-backward", "-0.5"))
     ceiling = rule["ceiling"]
     assert ceiling == {"start": 0.5, "step": 0.25, "max": 6.0, "promote": 0.7}
     assert T.gate_ceiling_next(0.5, 0.34, ceiling) == 0.5
@@ -272,6 +275,38 @@ def test_the_trainer_pays_capped_progress_an_entry_and_time_and_shows_the_next_g
     raised = state.replace(info={**state.info, "gate_ceiling": jnp.full((2,), 3.0)})
     assert float(env.step(raised, jnp.zeros((2, 1))).reward[0]) == pytest.approx(
         1.0 * dt * 2.0 - 0.25 * dt, abs=1e-4)
+
+
+def test_lead_is_the_speed_along_the_bases_own_heading() -> None:
+    lead = lambda yaw, vx, vy: float(G.gate_lead(np, np.array([yaw]), np.array([vx]),  # noqa: E731
+                                                 np.array([vy]))[0])
+    assert lead(0.0, 2.0, 0.0) == pytest.approx(2.0)  # fore end first
+    assert lead(0.0, -2.0, 0.0) == pytest.approx(-2.0)  # hind end first
+    assert lead(math.pi / 2, 0.0, 1.5) == pytest.approx(1.5)
+    assert lead(math.pi, 1.0, 0.0) == pytest.approx(-1.0)
+    assert lead(0.0, 0.0, 3.0) == pytest.approx(0.0)  # sideways
+
+
+def test_the_backward_cost_charges_only_hind_first_speed() -> None:
+    env, jax, jnp = _environment("--gate-backward", "0.8")
+    state = env.reset(jax.random.PRNGKey(0))
+    gates = {**state.info["gates"], "pick": jnp.zeros(2, jnp.int32), "turn": jnp.zeros(2),
+             "start": jnp.zeros((2, 2))}
+    data = state.pipeline_state
+    far = jnp.asarray([[-50.0, -50.0], [-50.0, -50.0]])  # far from every gate: no entry
+    # Both environments head +x in the world, unturned: 0 runs fore end first
+    # at 1 m/s, 1 hind end first at 1 m/s.
+    qvel = data.qvel.at[:, :2].set(jnp.asarray([[1.0, 0.0], [-1.0, 0.0]]))
+    state = state.replace(pipeline_state=data.replace(qpos=data.qpos.at[:, :2].set(far), qvel=qvel),
+                          info={**state.info, "gates": gates})
+    off_env, _, _ = _environment()
+    after = env.step(state, jnp.zeros((2, 1)))
+    plain = off_env.step(state, jnp.zeros((2, 1)))
+    lead = np.asarray(after.info["gate_lead"])
+    assert lead[0] > 0.0 > lead[1]
+    paid, base = np.asarray(after.reward), np.asarray(plain.reward)
+    assert paid[0] == pytest.approx(base[0], abs=1e-6)  # fore first: no cost
+    assert paid[1] == pytest.approx(base[1] - 0.8 * 0.02 * -lead[1], abs=1e-5)
 
 
 def test_a_policy_header_names_the_race_and_no_other_header_changes() -> None:
