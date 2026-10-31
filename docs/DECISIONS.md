@@ -49386,3 +49386,54 @@ curve (2.0 N·m nominal, 1.0 at a 0.5 draw).
 **Consequences.** A sprint policy can be trained against the drive strength and
 friction its judge cuts, and its speed re-earned there; the speed it reaches is
 the speed of the weakest drive and slipperiest floor it was trained to expect.
+
+## ADR-971 — A run can randomise its contact stiffness, on a finer solver step (2026-10-31)
+
+**Context.** Symon's first straight sprint policy (its ADR-082, trained under
+ADR-970's drive-torque and friction randomisation) keeps its speed under every
+harder condition but one: with every geom's `solref` time constant halved it
+loses a uniform 17% (ratio 0.83 on 10/10 episodes). Its judge's `step` control,
+the solver step halved alone, keeps 0.98, so the loss is the stiffer contact.
+ADR-970 named contact stiffness as not covered. Symon's contacts are 4 ms on a
+2 ms step: already two steps, the shortest time constant MuJoCo honours
+(`refsafe` clamps a shorter one silently, in MJX's `_kbi` as in MuJoCo), so a
+time-constant draw below 1 does nothing on the bundle's own step.
+
+**Decision.**
+- `cadex_train.py --randomise-contact-timeconst LOW HIGH` (off by default): a
+  third flag entry in ADR-970's form, drawn after the drive-torque and friction
+  flags, `uniform(LOW, HIGH)` per environment for the run, scaling column 0 of
+  every geom's `geom_solref` that is a time constant (positive); a negative
+  solref (a direct stiffness) and the damping ratio are left alone. With every
+  geom scaled, the solmix-mixed contact time constant is scaled by the factor;
+  0.5 is the K3 judge's `stiff`.
+- `--solver-step-divisor N` (default 1): the host model's `opt.timestep` is
+  divided by N before `put_model` and the episode's solver steps per action
+  multiplied by N, so the control interval, the horizon and every per-action
+  quantity are unchanged and the physics costs N times as much.
+- A `LOW` that would put the shortest time constant under two solver steps (the
+  model's step over N) is refused, naming the divisor it needs, rather than
+  trained on a clamp that would make the flag a no-op.
+- The header names `randomise_contact_timeconst` (and its `flag_entries` row)
+  and `solver_step_divisor` only when given (divisor != 1). Runs without them
+  draw, build, trace and write the header they did; earlier draws are
+  unchanged because the entry is appended last.
+
+**Evidence.** A CPU smoke on Symon's sprint bundle (s19relay, 32 environments,
+2 iterations, all three flags, `--solver-step-divisor 2`, `--no-load-speed 33`)
+builds and trains. A MuJoCo check (in the tests) shows why the divisor is
+needed: at a 2 ms step a 2 ms floor sinks a resting box exactly as a 4 ms one
+does; at 1 ms it sinks a quarter as far.
+
+**Tests.** `training/test_contact_randomisation.py` (7): off by default; each
+environment scales every time constant by its own draw after the bundle's and
+the other flags' draws, keeping damping ratios and a direct-stiffness geom;
+the bundle's and other flags' draws unchanged; a time constant under two steps
+refused naming the divisor (2 for 0.5, 4 for 0.25 at divisor 2), bad ranges
+and a divisor under 1 refused; refsafe shown clamping without the finer step;
+end to end, one action is 20 ms of simulated time at divisor 1 and 2; the
+header names the flag and divisor only when given and is otherwise unchanged.
+
+**Consequences.** A policy can be trained across the contact stiffness its
+judge cuts. The divisor is global, not per environment, so a run randomising
+stiffness pays for the finer step on every environment.

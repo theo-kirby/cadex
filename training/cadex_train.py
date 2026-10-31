@@ -2571,7 +2571,20 @@ def goal_pool(mujoco: Any, xml: bytes, task: dict[str, Any], *,
 FLAG_RANDOMISATION = (
     ("randomise_drive_torque", "drive_torque", "actuator_forcerange"),
     ("randomise_friction", "friction", "geom_friction"),
+    # ADR-971: contact stiffness, as the time constant of every geom's solref.
+    ("randomise_contact_timeconst", "contact_timeconst", "geom_solref"),
 )
+
+
+def solver_step_divisor(options: Any) -> int:
+    """ADR-971: ``--solver-step-divisor N`` (1 when absent): the solver step is
+    the model's divided by N, and the solver steps per action multiplied by N,
+    so the control interval is unchanged."""
+
+    divisor = int(getattr(options, "solver_step_divisor", 1))
+    if divisor < 1:
+        raise SystemExit(f"--solver-step-divisor N is a whole number >= 1, not {divisor}")
+    return divisor
 
 
 def flag_randomisation(model: Any, options: Any) -> list[dict[str, Any]]:
@@ -2587,7 +2600,17 @@ def flag_randomisation(model: Any, options: Any) -> list[dict[str, Any]]:
       of a contact's two geoms, so with every geom at one friction the floor
       contact's friction is that friction times the factor.
 
-    Neither flag given (the default) is an empty list: the run draws, builds
+    - ``contact_timeconst LOW HIGH`` (ADR-971): one factor per environment
+      scales the time constant (column 0) of every geom's ``geom_solref`` that
+      is a time constant (positive; a negative solref is a stiffness). MuJoCo
+      mixes a contact's two solrefs by solmix, so with every geom scaled the
+      contact's time constant is scaled by the factor: 0.5 is the judge's
+      ``stiff``. MuJoCo will not use a time constant under two solver steps
+      (``refsafe``) and would clamp it silently, so a ``LOW`` that would put
+      one under two steps -- of the model's step divided by
+      ``--solver-step-divisor`` -- is refused, naming the divisor it needs.
+
+    No flag given (the default) is an empty list: the run draws, builds
     and traces as a trainer without them did.
     """
 
@@ -2605,6 +2628,20 @@ def flag_randomisation(model: Any, options: Any) -> list[dict[str, Any]]:
                        if bool(model.actuator_forcelimited[a]) for side in (0, 1)]
             if not indices:
                 raise SystemExit(f"{flag}: this model has no force-limited actuator to scale")
+        elif field == "geom_solref":
+            timed = [g for g in range(int(model.ngeom)) if float(model.geom_solref[g, 0]) > 0.0]
+            if not timed:
+                raise SystemExit(f"{flag}: this model has no geom whose solref is a time constant")
+            indices = [2 * g for g in timed]
+            divisor = solver_step_divisor(options)
+            step = float(model.opt.timestep) / divisor
+            shortest = low * min(float(model.geom_solref[g, 0]) for g in timed)
+            if shortest < 2.0 * step - 1e-12:
+                needed = math.ceil(2.0 * float(model.opt.timestep) / shortest - 1e-9)
+                raise SystemExit(
+                    f"{flag} {low:g}: the shortest time constant would be {shortest * 1e3:g} ms, "
+                    f"under two solver steps of {step * 1e3:g} ms, which MuJoCo clamps "
+                    f"(refsafe); give --solver-step-divisor {needed} or more")
         else:
             indices = [3 * g for g in range(int(model.ngeom))]
         entries.append({"label": label, "low": low, "high": high, "mode": "scale", "flag": flag,
@@ -3878,6 +3915,11 @@ def build_environment(
         return ((pool_device["scan"][course], pool_device["lowest"][course],
                  pool_device["dome_scan"][course]) if redrawing else None)
 
+    # ADR-971: a finer solver step, the control interval unchanged (the steps
+    # per action are multiplied below). A divisor of 1 leaves the model alone.
+    divisor = solver_step_divisor(options)
+    if divisor != 1:
+        host.opt.timestep = float(host.opt.timestep) / divisor
     speed_map = tuple(jnp.asarray(v) for v in actuator_speed_map(host))
     single = mjx.put_model(host)
     model = single
@@ -3900,7 +3942,7 @@ def build_environment(
     else:
         model_axes = None
 
-    per_action = int(episode["solver_steps_per_action"])
+    per_action = int(episode["solver_steps_per_action"]) * divisor
     # The episode the *bundle* declares, and the only horizon this file may
     # use. It is read here and enforced in `rollout`'s scan; for two runs it
     # was read here and never used again, and an environment whose policy did
@@ -5925,6 +5967,8 @@ def policy_header(
                 and (key != "gait_reference" or getattr(options, "gait_reference", None))
                 # ADR-970: only a run that randomises by flag names the flag.
                 and (not key.startswith("randomise_") or getattr(options, key, None))
+                # ADR-971: only a run on a finer solver step names its divisor.
+                and (key != "solver_step_divisor" or solver_step_divisor(options) != 1)
             },
             "init_from": trained.get("init_from"),
             # The iterations this policy actually saw, which for a
@@ -6322,6 +6366,18 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "run, scaling every geom's sliding friction (with every geom at one friction, "
              "the floor contact's friction is scaled by the factor). Drawn after the "
              "bundle's own randomisation and --randomise-drive-torque. Off by default")
+    parser.add_argument(
+        "--randomise-contact-timeconst", type=float, nargs=2, default=None, metavar=("LOW", "HIGH"),
+        help="ADR-971: each environment draws one factor uniform(LOW, HIGH), held for the "
+             "run, scaling the solref time constant of every geom that has one (0.5 is "
+             "contact twice as stiff, the K3 judge's 'stiff'). Drawn after the drive-torque "
+             "and friction flags. A LOW that puts a time constant under two solver steps is "
+             "refused (MuJoCo would clamp it); see --solver-step-divisor. Off by default")
+    parser.add_argument(
+        "--solver-step-divisor", type=int, default=1, metavar="N",
+        help="ADR-971: the solver step is the model's divided by N and the solver steps "
+             "per action multiplied by N, so the control interval is unchanged and the "
+             "physics costs N times as much. 1 (the default) leaves the model alone")
     parser.add_argument(
         "--command-slew-deg", type=float, default=0.0,
         help="cap the per-step change of the ISSUED command at this many "
