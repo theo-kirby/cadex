@@ -44,6 +44,7 @@ held-out course and writes ``view/`` and ``gates.json``:
     python training/cadex_goto.py gates --seed 0 --split heldout
     python training/cadex_goto.py gates --sprint --seed 0 --split heldout   # ADR-960
     python training/cadex_goto.py race POLICY --task outputs/T-task.json --seed 0 --rated-nm 1.6
+    python training/cadex_goto.py race POLICY --task outputs/T-task.json --seed 0 --terrain u1  # ADR-961
 
 Standard library at module scope (ADR-084); numpy and mujoco only inside ``play``.
 """
@@ -478,6 +479,226 @@ def course_length_m(course: Mapping[str, Any]) -> float:
         total += math.hypot(gx - x, gy - y)
         x, y = gx, gy
     return total
+
+
+#: A race's terrain (ADR-961): relief under a gate course, for leon VI's U1.
+#: ``rough`` is bumps, rocks and tile patches up to ``rough_mm`` over the
+#: ground; ``hills`` is smooth hills whose steepest grade on the grid is a
+#: draw in ``grade_deg``; ``u1`` is both, the rough relief laid on the hills.
+#: Counts are per square metre of the grid. The start stands on flat ground
+#: out to ``start_clear_m``, and the relief rises over ``blend_m`` from it and
+#: falls to the plane over ``blend_m`` at the grid's edge, ``margin_m`` past
+#: the outermost gate.
+TERRAIN_KINDS = ("rough", "hills", "u1")
+#: How many centres a hill is tried at before it is left out (ADR-961).
+TERRAIN_PLACE_TRIES = 8
+TERRAIN_SCHEMA = "cadex-race-terrain-v1"
+RACE_TERRAIN = {"cell_mm": 25.0, "margin_m": 3.0, "start_clear_m": 0.5, "blend_m": 0.5,
+                "rough_mm": 30.0, "relief_mm": (10.0, 30.0),
+                "bumps_per_m2": 0.25, "bump_sigma_mm": (40.0, 120.0),
+                "rocks_per_m2": 0.25, "rock_mm": (60.0, 200.0),
+                "tiles_per_m2": 0.04, "tile_patch_mm": (600.0, 1500.0), "tile_cell_mm": (100.0, 250.0),
+                "grade_deg": (8.0, 15.0), "hills_per_m2": 0.05, "hill_sigma_mm": (500.0, 1200.0)}
+
+
+def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) -> dict[str, Any]:
+    """The relief a race over ``course`` stands on (ADR-961), the same on every machine.
+
+    A heightfield of ``cell_mm`` cells over the course's gates and the start
+    with ``margin_m`` round them, every height at or above the plane (z = 0),
+    row 0 at -y and column 0 at -x as MuJoCo reads one. Every draw is
+    :mod:`random`'s, seeded by the terrain kind and the course's kind, split
+    and seed (``cadex-race-terrain:<kind>:<course kind>:<split>:<seed>``), so
+    a held-out gate course has its own held-out relief and the ``train``
+    split never meets it. numpy only evaluates what was drawn.
+
+    ``rough`` places bumps (gaussian, ``bump_sigma_mm``), rocks (square
+    blocks, ``rock_mm`` a side) and tile patches (``tile_patch_mm`` a side in
+    ``tile_cell_mm`` cells, each its own height), each up to a draw in
+    ``relief_mm``, and keeps the highest of them, clipped to ``rough_mm``.
+    ``hills`` sums gaussian hills (``hill_sigma_mm``) and scales them so the
+    steepest grade between grid points is the course's draw in ``grade_deg``.
+    ``u1`` lays ``rough`` on ``hills``. The returned dict carries ``heights_mm``
+    (an ``(nrow, ncol)`` array), the grid's extent, and what was drawn and
+    measured: the steepest hill grade, the highest rough relief, the highest
+    point and the grid's sha256.
+    """
+
+    import hashlib
+
+    if kind not in TERRAIN_KINDS:
+        raise SystemExit(f"terrain {kind!r} is not one of {TERRAIN_KINDS}")
+    options = {**RACE_TERRAIN, **shape}
+    cell = float(options["cell_mm"])
+    xs = [0.0] + [1000.0 * g["xy_m"][0] for g in course["gates"]]
+    ys = [0.0] + [1000.0 * g["xy_m"][1] for g in course["gates"]]
+    margin = 1000.0 * float(options["margin_m"])
+    ncol = int(math.ceil((max(xs) - min(xs) + 2.0 * margin) / cell)) + 1
+    nrow = int(math.ceil((max(ys) - min(ys) + 2.0 * margin) / cell)) + 1
+    x0, y0 = min(xs) - margin, min(ys) - margin
+    x1, y1 = x0 + (ncol - 1) * cell, y0 + (nrow - 1) * cell
+    gx = x0 + cell * np.arange(ncol)
+    gy = y0 + cell * np.arange(nrow)
+    area_m2 = (x1 - x0) * (y1 - y0) * 1e-6
+    rng = random.Random(f"cadex-race-terrain:{kind}:{course.get('kind', 'gates')}:"
+                        f"{course['split']}:{int(course['seed'])}")
+
+    # The start's clearing and the edge's fall, 0 to 1 by smoothstep.
+    def smooth(t: Any) -> Any:
+        t = np.clip(t, 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    blend = 1000.0 * float(options["blend_m"])
+    clear = 1000.0 * float(options["start_clear_m"])
+    radius = np.hypot(gx[None, :], gy[:, None])
+    edge = np.minimum(np.minimum(gx - x0, x1 - gx)[None, :], np.minimum(gy - y0, y1 - gy)[:, None])
+    mask = smooth((radius - clear) / blend) * smooth(edge / blend)
+
+    def window(cx: float, cy: float, half: float) -> tuple[slice, slice]:
+        c0, c1 = int(math.floor((cx - half - x0) / cell)), int(math.ceil((cx + half - x0) / cell)) + 1
+        r0, r1 = int(math.floor((cy - half - y0) / cell)), int(math.ceil((cy + half - y0) / cell)) + 1
+        return slice(max(r0, 0), max(min(r1, nrow), 0)), slice(max(c0, 0), max(min(c1, ncol), 0))
+
+    def uniform(key: str) -> float:
+        low, high = options[key]
+        return rng.uniform(float(low), float(high))
+
+    def place() -> tuple[float, float]:
+        return rng.uniform(x0, x1), rng.uniform(y0, y1)
+
+    drawn: dict[str, Any] = {}
+    hills = np.zeros((nrow, ncol))
+    rough = np.zeros((nrow, ncol))
+    if kind in ("hills", "u1"):
+        count = max(1, int(round(float(options["hills_per_m2"]) * area_m2)))
+        placed = 0
+        for _ in range(count):
+            sigma = uniform("hill_sigma_mm")
+            # A hill stands among the gates, clear of the start by 2.5 sigma
+            # and of the grid's edge by the margin, so the clearing and the
+            # edge's fall do not set the steepest grade.
+            for _ in range(TERRAIN_PLACE_TRIES):
+                cx = rng.uniform(min(xs) - 1000.0, max(xs) + 1000.0)
+                cy = rng.uniform(min(ys) - 1000.0, max(ys) + 1000.0)
+                if math.hypot(cx, cy) >= clear + blend + 2.5 * sigma:
+                    break
+            else:
+                continue
+            placed += 1
+            rows, cols = window(cx, cy, 4.0 * sigma)
+            hills[rows, cols] += np.exp(-((gx[cols][None, :] - cx) ** 2 + (gy[rows][:, None] - cy) ** 2)
+                                        / (2.0 * sigma * sigma)) * sigma
+        hills *= mask
+        grade = uniform("grade_deg")
+        dy, dx = np.gradient(hills, cell)
+        steepest = float(np.hypot(dx, dy).max())
+        hills *= math.tan(math.radians(grade)) / steepest if steepest > 0 else 0.0
+        drawn.update(hills=placed, grade_deg=round(grade, 3))
+    if kind in ("rough", "u1"):
+        counts = {}
+        for name in ("bumps", "rocks", "tiles"):
+            counts[name] = max(1, int(round(float(options[f"{name}_per_m2"]) * area_m2)))
+            for _ in range(counts[name]):
+                (cx, cy), top = place(), uniform("relief_mm")
+                if name == "bumps":
+                    sigma = uniform("bump_sigma_mm")
+                    rows, cols = window(cx, cy, 3.0 * sigma)
+                    bump = top * np.exp(-((gx[cols][None, :] - cx) ** 2 + (gy[rows][:, None] - cy) ** 2)
+                                        / (2.0 * sigma * sigma))
+                    rough[rows, cols] = np.maximum(rough[rows, cols], bump)
+                elif name == "rocks":
+                    rows, cols = window(cx, cy, 0.5 * uniform("rock_mm"))
+                    rough[rows, cols] = np.maximum(rough[rows, cols], top)
+                else:
+                    half, step = 0.5 * uniform("tile_patch_mm"), uniform("tile_cell_mm")
+                    tiles = int(max(1, round(2.0 * half / step)))
+                    for i in range(tiles):
+                        for j in range(tiles):
+                            tx = cx - half + (i + 0.5) * step
+                            ty = cy - half + (j + 0.5) * step
+                            rows, cols = window(tx, ty, 0.5 * step)
+                            rough[rows, cols] = np.maximum(rough[rows, cols], rng.uniform(0.0, top))
+        rough = np.minimum(rough, float(options["rough_mm"])) * (mask >= 0.5)
+        drawn.update(counts, rough_highest_mm=round(float(rough.max()), 3))
+    heights = np.round(hills + rough, 3)
+    dy, dx = np.gradient(hills, cell)
+    return {"schema": TERRAIN_SCHEMA, "kind": kind, "course_kind": course.get("kind", "gates"),
+            "split": course["split"], "seed": int(course["seed"]),
+            "shape": {key: list(value) if isinstance(value, tuple) else value
+                      for key, value in options.items()},
+            "cell_mm": cell, "nrow": nrow, "ncol": ncol,
+            "x_range_mm": [round(x0, 3), round(x1, 3)], "y_range_mm": [round(y0, 3), round(y1, 3)],
+            "lowest_mm": 0.0, "highest_mm": round(float(heights.max()), 3),
+            "hill_grade_deg": round(math.degrees(math.atan(float(np.hypot(dx, dy).max()))), 3),
+            "drawn": drawn, "heights_mm": heights,
+            "sha256": hashlib.sha256(np.ascontiguousarray(heights, dtype="<f8").tobytes()).hexdigest()}
+
+
+def terrain_ground(np: Any, terrain: Mapping[str, Any]) -> Any:
+    """``ground(x_mm, y_mm)`` on a race's terrain (ADR-961): bilinear between
+    its grid points, the plane (0) beyond it."""
+
+    heights = terrain["heights_mm"]
+    cell = float(terrain["cell_mm"])
+    x0, y0 = float(terrain["x_range_mm"][0]), float(terrain["y_range_mm"][0])
+    nrow, ncol = int(terrain["nrow"]), int(terrain["ncol"])
+
+    def ground(x_mm: float, y_mm: float) -> float:
+        u, v = (x_mm - x0) / cell, (y_mm - y0) / cell
+        if not (0.0 <= u <= ncol - 1 and 0.0 <= v <= nrow - 1):
+            return 0.0
+        c, r = min(int(u), ncol - 2), min(int(v), nrow - 2)
+        fu, fv = u - c, v - r
+        return float((1 - fv) * ((1 - fu) * heights[r, c] + fu * heights[r, c + 1])
+                     + fv * ((1 - fu) * heights[r + 1, c] + fu * heights[r + 1, c + 1]))
+
+    return ground
+
+
+def terrain_model(mujoco: Any, xml: bytes, terrain: Mapping[str, Any]) -> Any:
+    """The bundle's model with a race's terrain on its floor (ADR-961): a
+    heightfield ``environment/race_terrain`` over the grid, taking the floor
+    plane's contact bits and parameters, so whatever touched the floor touches
+    it; the plane stays at z = 0 beyond it, where the grid has fallen to it.
+    The heightfield's lowest point is the plane, its highest the terrain's."""
+
+    spec = mujoco.MjSpec.from_string(xml.decode("utf-8"))
+    floor = next((g for g in spec.geoms if g.type == mujoco.mjtGeom.mjGEOM_PLANE), None)
+    if floor is None:
+        raise SystemExit("this model has no floor plane to lay a terrain on")
+    top = float(terrain["highest_mm"])
+    if top <= 0.0:
+        raise SystemExit("the terrain has no relief")
+    heights = terrain["heights_mm"]
+    (x0, x1), (y0, y1) = terrain["x_range_mm"], terrain["y_range_mm"]
+    spec.add_hfield(name="race_terrain", nrow=int(terrain["nrow"]), ncol=int(terrain["ncol"]),
+                    size=[0.0005 * (x1 - x0), 0.0005 * (y1 - y0), 0.001 * top, 0.05],
+                    userdata=[float(h) / top for h in heights.ravel()])
+    geom = spec.worldbody.add_geom(name="environment/race_terrain", type=mujoco.mjtGeom.mjGEOM_HFIELD,
+                                   hfieldname="race_terrain",
+                                   pos=[0.0005 * (x0 + x1), 0.0005 * (y0 + y1), 0.0])
+    for attribute in ("contype", "conaffinity", "condim", "priority", "friction", "solref", "solimp",
+                      "solmix", "margin", "gap", "rgba"):
+        setattr(geom, attribute, getattr(floor, attribute))
+    return spec.compile()
+
+
+def terrain_drawing(np: Any, terrain: Mapping[str, Any], most: int = 129) -> dict[str, Any]:
+    """The terrain as ``CadexDynamics.terrain_drawing`` draws a heightfield
+    (ADR-734), sampled to at most ``most`` vertices a side, with the plane at 0."""
+
+    heights = terrain["heights_mm"]
+    nrow, ncol = heights.shape
+    rows = np.linspace(0, nrow - 1, min(nrow, most)).round().astype(int)
+    cols = np.linspace(0, ncol - 1, min(ncol, most)).round().astype(int)
+    grid = heights[np.ix_(rows, cols)]
+    return {"kind": "heightfield", "x_range_mm": list(terrain["x_range_mm"]),
+            "y_range_mm": list(terrain["y_range_mm"]), "lowest_mm": 0.0,
+            "highest_mm": float(terrain["highest_mm"]), "plane_z_mm": 0.0,
+            "course": {"schema": TERRAIN_SCHEMA, "kind": terrain["kind"], "split": terrain["split"],
+                       "seed": terrain["seed"], "sha256": terrain["sha256"]},
+            "grid": {"rows": int(len(rows)), "columns": int(len(cols)),
+                     "heights_mm": [round(float(h), 3) for h in grid.ravel()]}}
 
 
 def gate_channel_names(ahead: int) -> list[str]:
@@ -1170,6 +1391,10 @@ def race(options: argparse.Namespace) -> int:
     motors did (ADR-956); and ``gates.json``: :func:`judge_race`, the drives'
     load (:func:`drive_load`) and each foot's slip, its centre of mass's mean
     horizontal speed while it touches the ground.
+
+    ``--terrain`` lays the course's own relief (:func:`race_terrain`) on the
+    floor as a heightfield (ADR-961); a fall is then the base's height over
+    the ground under it, and ``gates.json`` names the terrain and its digest.
     """
 
     import hashlib
@@ -1189,6 +1414,13 @@ def race(options: argparse.Namespace) -> int:
                    else (trained.get("gates") or {}).get("radius_m") or GATES["radius_m"])
     course = race_course(options, radius)
     plan = gate_stack(np, [course])
+    # ADR-961: the course's own relief on the floor, and the fall and any
+    # height scan read over it.
+    terrain = race_terrain(np, course, options.terrain) if options.terrain else None
+    ground = (lambda x_mm, y_mm: 0.0)
+    if terrain is not None:
+        player.model = terrain_model(mujoco, player.model_xml, terrain)
+        ground = player.ground = terrain_ground(np, terrain)
     model, data = player.model, mujoco.MjData(player.model)
     free = [j for j in range(model.njnt) if int(model.jnt_type[j]) == 0][0]
     qadr = int(model.jnt_qposadr[free])
@@ -1249,8 +1481,9 @@ def race(options: argparse.Namespace) -> int:
             fell, fell_at = True, step * player.dt
             break
         R = data.xmat[player.base].reshape(3, 3)
-        if R[2, 2] < JUDGE["fall_up_z"] or float(data.xipos[player.base][2]) \
-                < JUDGE["fall_height_share"] * home_height:
+        over = float(data.xipos[player.base][2]) - 0.001 * ground(
+            1000.0 * float(data.xipos[player.base][0]), 1000.0 * float(data.xipos[player.base][1]))
+        if R[2, 2] < JUDGE["fall_up_z"] or over < JUDGE["fall_height_share"] * home_height:
             fell, fell_at = True, step * player.dt
             poses.append(data.qpos.copy())
             rates.append(data.qvel.copy())
@@ -1270,17 +1503,21 @@ def race(options: argparse.Namespace) -> int:
     trace = cadex_train.write_view(out, player.model_xml, poses, player.dt * keep,
                                    source=f"cadex_goto race {policy_path.name} {course.get('kind', 'gates')} {course['split']}:{course['seed']}",
                                    goto={"sequence": drawn, "frames": frames},
+                                   terrain=None if terrain is None else terrain_drawing(np, terrain),
                                    velocities=rates, efforts=forces, rated_nm=options.rated_nm)
     result = {"schema": GATE_EPISODE_SCHEMA, "policy": str(policy_path), "course": course,
               "witness_error": player.witness_error, "action_filter_alpha": player.filter_alpha,
               "view": str(trace), "model_sha256": hashlib.sha256(player.model_xml).hexdigest(),
               "trained_on": player.trained_on, "trained_gates": trained.get("gates"),
+              "terrain": None if terrain is None else
+              {key: value for key, value in terrain.items() if key != "heights_mm"},
               **readings,
               "drives": {**reading, **drive_load(reading, model, options.rated_nm)},
               "slip_mps": slips, "slip_worst_mps": max(known) if known else None,
               "slip_mean_mps": round(float(np.mean(known)), 4) if known else None}
     (out.parent / "gates.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
-    print(json.dumps({"view": str(trace), "passed": readings["passed"], "of": readings["of"],
+    print(json.dumps({"view": str(trace), "terrain": options.terrain,
+                      "passed": readings["passed"], "of": readings["of"],
                       "seconds": readings["seconds"], "mean_speed_mps": readings["mean_speed_mps"],
                       "fell": fell, "worst_rms_over_rated": result["drives"]["worst_rms_over_rated"],
                       "worst_peak_over_peak": result["drives"]["worst_peak_over_peak"],
@@ -1341,6 +1578,11 @@ def main(argv: Sequence[str]) -> int:
                                f"{SPRINT['distance_m'][0]:g}–{SPRINT['distance_m'][1]:g} m apart")
         verb.add_argument("--radius", type=float, default=None,
                           help=f"m; default the policy's training radius ({GATES['radius_m']:g} for a course)")
+        if name == "race":
+            verb.add_argument("--terrain", choices=TERRAIN_KINDS, default=None,
+                              help="race over the course's own relief (ADR-961): rough (bumps, rocks, "
+                                   f"tiles to {RACE_TERRAIN['rough_mm']:g} mm), hills (to "
+                                   f"{RACE_TERRAIN['grade_deg'][1]:g}°) or u1 (both); default flat")
     options = parser.parse_args(argv[1:])
     if options.verb == "gates":
         radius = GATES["radius_m"] if options.radius is None else options.radius

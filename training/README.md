@@ -789,6 +789,16 @@ course in place of a gate course: 8 gates (`--gates`), each turned within ±30°
 of the leg before, 2–4 m apart, the same 0.25 m gate, seeded under its own name
 (`cadex_goto.sprint_course`). They judge top speed; the trainer plays none.
 
+**Race terrain (ADR-961).** `race --terrain rough|hills|u1` lays the course's
+own relief on the floor as a heightfield: `rough` is bumps, rocks and tile
+patches to 30 mm, `hills` smooth hills whose steepest grade is a draw in 8–15°,
+`u1` both (`cadex_goto.race_terrain`). The relief is seeded by the terrain kind
+and the course's kind, split and seed, so a held-out course has held-out relief;
+the start stands on a flat clearing 0.5 m round the origin. A fall is the
+base's height over the ground under it. `gates.json` carries the terrain's
+draw, its measured steepest grade and its sha256, and the view its drawing. The
+trainer plays none yet.
+
 `race` judges a racer on stock MuJoCo (here the export's bundle, by channel
 name): it runs to the last gate, a fall, 30 s with no gate, or the course at
 0.25 m/s plus 10 s, and writes `view/` (the gates in the `goto` shape the

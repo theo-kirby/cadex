@@ -380,3 +380,94 @@ def test_the_gallop_guide_pays_the_nearest_stride_sample_in_pose_and_rate(tmp_pa
                               T.arguments(["b", "--out", "x", "--gait-reference", str(path)]),
                               __import__("mujoco"), np)
     assert np.allclose(guide["dq"][:, 0], [0.0, 5.0, 0.0, -5.0]) and guide["joints"] == ["j"]
+
+
+# -- race terrain (ADR-961) ---------------------------------------------------
+
+
+def test_a_race_terrain_is_its_kind_course_split_and_seed() -> None:
+    course = G.gate_course(3, split="heldout")
+    first = G.race_terrain(np, course, "u1")
+    assert G.race_terrain(np, course, "u1")["sha256"] == first["sha256"]
+    others = {G.race_terrain(np, G.gate_course(3, split="train"), "u1")["sha256"],
+              G.race_terrain(np, G.gate_course(4, split="heldout"), "u1")["sha256"],
+              G.race_terrain(np, G.sprint_course(3, split="heldout"), "u1")["sha256"],
+              G.race_terrain(np, course, "hills")["sha256"],
+              G.race_terrain(np, course, "rough")["sha256"]}
+    assert first["sha256"] not in others and len(others) == 5
+    with pytest.raises(SystemExit):
+        G.race_terrain(np, course, "stairs")
+
+
+def test_a_race_terrain_keeps_its_bounds_and_a_flat_start_under_every_gate() -> None:
+    shape = G.RACE_TERRAIN
+    for seed in range(10):
+        course = G.gate_course(seed, split="heldout")
+        rough, hills, both = (G.race_terrain(np, course, kind) for kind in ("rough", "hills", "u1"))
+        for terrain in (rough, hills, both):
+            heights = terrain["heights_mm"]
+            assert heights.shape == (terrain["nrow"], terrain["ncol"])
+            assert heights.min() >= 0.0 and terrain["highest_mm"] == pytest.approx(heights.max())
+            ground = G.terrain_ground(np, terrain)
+            for x, y in [(0.0, 0.0), (300.0, -200.0), (-450.0, 100.0)]:
+                assert ground(x, y) == 0.0  # the start's clearing
+            (x0, x1), (y0, y1) = terrain["x_range_mm"], terrain["y_range_mm"]
+            for gate in course["gates"]:
+                gx, gy = (1000.0 * v for v in gate["xy_m"])
+                assert x0 + 1000.0 * shape["margin_m"] - 1e-6 <= gx <= x1 - 1000.0 * shape["margin_m"] + 1e-6
+                assert y0 + 1000.0 * shape["margin_m"] - 1e-6 <= gy <= y1 - 1000.0 * shape["margin_m"] + 1e-6
+        assert 0.0 < rough["highest_mm"] <= shape["rough_mm"] and rough["hill_grade_deg"] == 0.0
+        low, high = shape["grade_deg"]
+        for terrain in (hills, both):
+            assert terrain["drawn"]["hills"] >= 1
+            assert terrain["hill_grade_deg"] == pytest.approx(terrain["drawn"]["grade_deg"], abs=1e-3)
+            assert low - 1e-3 <= terrain["hill_grade_deg"] <= high + 1e-3
+        assert both["drawn"]["rough_highest_mm"] <= shape["rough_mm"]
+
+
+#: A floor and a ball that collides with it as a paw does.
+FLOOR = """
+<mujoco><worldbody>
+  <geom name="environment/floor" type="plane" size="0 0 0.1" solref="0.004" contype="1" conaffinity="1"/>
+  <body name="ball" pos="0 0 1"><freejoint/>
+    <geom type="sphere" size="0.015" mass="0.1" contype="2" conaffinity="3"/></body>
+</worldbody></mujoco>"""
+
+
+def test_the_terrain_stands_on_the_floor_where_its_ground_says_and_collides_as_the_floor() -> None:
+    import mujoco
+
+    course = G.gate_course(1, split="heldout")
+    terrain = G.race_terrain(np, course, "u1")
+    model = G.terrain_model(mujoco, FLOOR.encode(), terrain)
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    field = model.geom("environment/race_terrain")
+    floor = model.geom("environment/floor")
+    assert int(field.type[0]) == int(mujoco.mjtGeom.mjGEOM_HFIELD)
+    for name in ("contype", "conaffinity", "solref", "friction"):
+        assert np.allclose(getattr(field, name), getattr(floor, name)), name
+    ground = G.terrain_ground(np, terrain)
+    heights, cell = terrain["heights_mm"], terrain["cell_mm"]
+    x0, y0 = terrain["x_range_mm"][0], terrain["y_range_mm"][0]
+    rng = np.random.default_rng(0)
+    geomid = np.zeros(1, dtype=np.int32)
+    for _ in range(50):
+        r, c = int(rng.integers(1, terrain["nrow"] - 1)), int(rng.integers(1, terrain["ncol"] - 1))
+        x, y = x0 + c * cell, y0 + r * cell
+        assert ground(x, y) == pytest.approx(heights[r, c])
+        hit = mujoco.mj_ray(model, data, np.array([x / 1000.0, y / 1000.0, 2.0]), np.array([0.0, 0.0, -1.0]),
+                            None, 1, -1, geomid)
+        assert 2.0 - hit == pytest.approx(heights[r, c] / 1000.0, abs=1e-6)
+    with pytest.raises(SystemExit):
+        G.terrain_model(mujoco, b"<mujoco><worldbody/></mujoco>", terrain)
+
+
+def test_a_terrain_drawing_is_a_heightfield_the_dashboard_reads() -> None:
+    terrain = G.race_terrain(np, G.gate_course(0, split="heldout"), "hills")
+    drawing = G.terrain_drawing(np, terrain)
+    grid = drawing["grid"]
+    assert drawing["kind"] == "heightfield" and grid["rows"] <= 129 and grid["columns"] <= 129
+    assert len(grid["heights_mm"]) == grid["rows"] * grid["columns"]
+    assert max(grid["heights_mm"]) <= terrain["highest_mm"]
+    assert drawing["course"]["sha256"] == terrain["sha256"]

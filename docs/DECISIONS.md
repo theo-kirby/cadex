@@ -48894,3 +48894,64 @@ no fall, 2.75–2.83 m/s (mean 2.79), each race under 0.5 s of CPU.
 
 **Consequences.** A speed claim names sprint seeds beside gate seeds. A
 trainer that should practise sprints would need its own flag; none is added.
+
+## ADR-961 — Race terrain: a gate course over its own seeded relief (2026-10-30)
+
+**Context.** leon VI's l6r1 charter judges U1 (rough ground and hills) on
+held-out gate courses over bumps, rocks and tiles to 30 mm and hills with
+slopes to 15° up and down, with held-out terrain seeds split like
+`gate_course`'s. `race` (ADR-955) raced on the bundle's plane only. The box
+courses of ADR-717/718 are laid along x (or round the start) and drawn into a
+model's terrain slots; a gate course runs every way, behind and to the side, up
+to some 20 m out, and leon VI's export carries a plane and no slots.
+
+**Decision.** `cadex_goto.race_terrain(np, course, kind)` draws a heightfield
+of 25 mm cells over the course's gates and the start, with 3 m of margin, every
+height at or above the plane. Every draw is `random`'s, seeded by
+`cadex-race-terrain:<kind>:<course kind>:<split>:<seed>`, so the relief follows
+the course's split and the `train` split never meets a held-out one; numpy only
+evaluates what was drawn. `RACE_TERRAIN` holds the shape:
+- `rough`: bumps (gaussian, σ 40–120 mm), rocks (square blocks 60–200 mm a
+  side) and tile patches (0.6–1.5 m in 100–250 mm cells, each its own height),
+  0.25, 0.25 and 0.04 per m², each up to a draw of 10–30 mm, the highest kept
+  and clipped to `rough_mm` 30;
+- `hills`: gaussian hills (σ 0.5–1.2 m, 0.05 per m²) among the gates, clear of
+  the start by 2.5 σ, summed and scaled so the steepest grade between grid
+  points is the course's draw in `grade_deg` 8–15°;
+- `u1`: the rough relief laid on the hills.
+
+The start stands on a flat clearing of 0.5 m, from which the relief rises over
+0.5 m; it falls to the plane over 0.5 m at the grid's edge.
+`terrain_model` adds the grid as a heightfield `environment/race_terrain` that
+takes the floor plane's contact bits, friction, solref and solimp, so whatever
+touched the floor touches it; the plane stays beyond it. `terrain_ground` reads
+the ground bilinearly between grid points, and `terrain_drawing` writes it in
+`CadexDynamics.terrain_drawing`'s heightfield form (≤ 129 vertices a side).
+
+`race --terrain rough|hills|u1` races over it: a fall is the base's height
+over the ground under it (and a policy's height scan, if it has one, reads the
+same ground); `gates.json` carries the terrain's draw, measured steepest grade,
+highest point and sha256; the view carries its drawing. Without `--terrain`
+`race` is unchanged. The trainer plays no race terrain yet.
+
+**Evidence.** leon VI's FAST policy (l6r1 ADR-045, `457381c4…`), blind, on its
+export bundle `f6292526…`, held-out seeds 0–9, CPU, each race under 1 s:
+flat 10/10, no fall, 2.00 m/s; `u1` 0/10 (6 falls, 4 stalls, 50/120 gates);
+`rough` 3/10 (7 falls); `hills` 1/10 (6 falls, 3 stalls). Over 10 held-out
+courses the hills stand 183–343 mm high at their 8.3–14.7° steepest.
+
+**Tests.** `training/test_gate_race.py`:
+- a terrain is its kind, course kind, split and seed: the same draw repeats to
+  the digest, and the train split, the next seed, a sprint course and the other
+  kinds each differ; an unknown kind is refused;
+- over 10 held-out courses of each kind: every height ≥ 0, the start's clearing
+  flat, every gate inside the grid by the margin, rough relief ≤ 30 mm, and the
+  hills' measured steepest grade the course's draw within 8–15°;
+- on a compiled model the heightfield takes the floor's contact parameters, a
+  ray down meets it at the grid's height at 50 grid points to 1 µm, and a model
+  with no floor plane is refused;
+- the drawing is a heightfield of ≤ 129 vertices a side the dashboard reads.
+
+**Consequences.** U1's judge exists. Training over race terrain (the trainer's
+own heightfield, MJX's sphere- and capsule-only contact on one, ADR-854) is the
+next step; leon VI's paws are spheres. Films do not yet draw the relief.
