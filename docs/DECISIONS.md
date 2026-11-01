@@ -49664,3 +49664,61 @@ refusal names both routes.
 
 **Consequences.** A sprint can be trained to see a box or step 0.8 m ahead (at
 4 m/s, 0.2 s). The scan stays a simulated elevation map (ADR-967).
+
+## ADR-977 — A sprint strip's obstacles can span it, walled (2026-11-01)
+
+**Context.** Symon's first G2 screen (its ADR-130, `g2`) trained two sprint
+policies warm over ADR-972's b1 strips and judged them on held-out b1 strips.
+Neither held an episode: both steered 1.6–3.1 m off the line and ran beside
+the obstacles. ADR-965's boxes are 0.4–1.0 m across and its steps 1.5–3.0 m,
+centred within 0.15 m of the line, and the strip leaves `margin_m` (3 m) of
+plane either side, past which is the plane itself. A sprint pays progress
+along +x and costs heading and lateral speed, so going round is cheaper than
+going over. The trainer offered no strip on which the only way on is over.
+
+**Decision.**
+- `cadex_goto.race_terrain` takes a shape option `span_wall_mm` on a course of
+  kind `strip` (refused on any other kind, and at or below 0). With it each
+  obstacle's across is the grid's full width over the cosine of its turn off
+  the strip, plus its along-side's slant and a cell, its offset is 0, and the
+  start's clearing is tested against the turned band itself rather than its
+  corner circle. A rim wall `span_wall_mm` high and `span_rim_mm` (default
+  100 mm, whole cells) deep stands along both long sides of the grid and behind
+  the start, so the plane past the grid is reached only by the far end. `drawn`
+  records both.
+- Every other draw is the strip's without the span, from the same seed string
+  and in the same order: an obstacle's kind, place along, along-side, turn and
+  height are its own, leg for leg (an obstacle the clearing test now keeps or
+  drops is the only difference in the list).
+- `cadex_train.py --relief-span WALL_MM` (without `--gates`, on `--race-terrain
+  boxes` or `b1`) passes it to every strip level; the rule and the policy
+  header carry `span_wall_mm`. Level 1 of `graded-rough` is rough relief alone,
+  with no obstacles and no wall. Under `--relief-fields scaled` the walls scale
+  with their level, as every height does.
+- The heightfield touches the paws only (ADR-962), so a wall holds a paw, not
+  the trunk; at 400 mm it stands well above a stepping reach (Symon's fore paw
+  lifts 171.8 mm at its joint limits).
+- Held-out courses, races and fields never take the option; a strip without it
+  is ADR-972's to the digest.
+
+**Evidence.** A CPU warm start from Symon's sp6 n3 on its sprint bundle
+(s19relay), `--race-terrain b1 --relief-levels 4 --relief-fields graded-rough
+--relief-ceiling 4,0.1,0 --relief-span 400`, 64 environments, two iterations:
+exit 0, witness 3.8e-7, the header's four `span_wall_mm` 400
+(`symon-runlab/g2w-smoke`); Symon's held-out strip judge played it on the
+export.
+
+**Tests.** `training/test_sprint_span.py` (8): on `boxes` strips of three
+seeds an 8-connected walk from the start over anything under the lowest box
+never passes the first obstacle nor reaches the grid's edge, and on the same
+strip unspanned it reaches the far end; every spanned obstacle's top stands in
+every row inside the rim, turned or not, and b1's are boxes' with relief under
+them; the spanned strip keeps the strip's draws; the held-out `strip` and
+`straight` b1 draws, a held-out gate course's and two unspanned training
+strips' are unchanged to the digest; a field and a race refuse the option; the
+trainer's rule takes `--relief-span` only on a boxes or b1 strip and walls its
+obstacle levels only.
+
+**Consequences.** A sprint can be trained on a strip where every obstacle has
+to be crossed. The held-out judges are unchanged, so a policy trained this way
+is judged on the same unspanned b1 strips it could still go round.

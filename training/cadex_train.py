@@ -3456,6 +3456,17 @@ def relief_rule(options: argparse.Namespace) -> dict[str, Any]:
             "ceiling": {"start": int(start), "falls": falls, "hold": int(hold)}}
     if not gated:
         rule = {**rule, "half_m": None, "strip_m": length}
+    span = getattr(options, "relief_span", None)
+    if span is not None:
+        # ADR-977: a strip's obstacles span it, walled, so none is gone round.
+        if gated:
+            raise SystemExit("--relief-span spans a sprint strip's obstacles; a gate race "
+                             "(--gates) stands on a field, which has no strip to span")
+        if kind not in ("boxes", "b1"):
+            raise SystemExit("--relief-span spans obstacles; give --race-terrain boxes or b1")
+        if not float(span) > 0.0:
+            raise SystemExit("--relief-span is the strip's rim wall height in mm, above 0")
+        rule = {**rule, "span_wall_mm": float(span)}
     return rule
 
 
@@ -3496,8 +3507,13 @@ def relief_fields(np: Any, rule: dict[str, Any], seed: int) -> list[dict[str, An
     mode = rule.get("fields", RELIEF_FIELDS[0])
     if rule.get("strip_m") is not None:
         # ADR-972: a strip along +x under a sprint, drawn as a field is.
+        # ADR-977: with --relief-span, its obstacles span it within rim walls.
+        span = ({} if rule.get("span_wall_mm") is None
+                else {"span_wall_mm": float(rule["span_wall_mm"])})
+
         def field_terrain(np: Any, kind: str, seed: int, *, half_m: Any = None, **shape: Any):
-            return cadex_goto.strip_terrain(np, kind, seed, length_m=float(rule["strip_m"]), **shape)
+            return cadex_goto.strip_terrain(np, kind, seed, length_m=float(rule["strip_m"]),
+                                            **span, **shape)
     else:
         field_terrain = cadex_goto.field_terrain
     low, high = (float(v) for v in cadex_goto.RACE_TERRAIN["grade_deg"])
@@ -6492,6 +6508,12 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         help="without --gates, --race-terrain lays each level's relief as a train-split strip "
              "from the start along +x under the bundle's own task (a sprint), this long in "
              "metres, margin_m either side (ADR-972; default cadex_goto.STRIP_LENGTH_M)")
+    parser.add_argument(
+        "--relief-span", type=float, default=None, metavar="WALL_MM",
+        help="without --gates, on a boxes or b1 strip: lay every obstacle across the strip's "
+             "full width, margins included, and stand a rim wall WALL_MM high along both "
+             "long sides and behind the start, so the only way along is over each obstacle "
+             "(ADR-977; off by default)")
     parser.add_argument(
         "--gate-ceiling",
         default=",".join(f"{GATE_CEILING[k]:g}" for k in ("start", "step", "max", "promote")),

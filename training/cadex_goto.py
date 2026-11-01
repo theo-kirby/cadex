@@ -687,6 +687,21 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
                 half = 500.0 * boxes_rng.uniform(*(float(v) for v in options["field_leg_m"]))
                 legs.append(((mx - half * math.cos(heading), my - half * math.sin(heading)),
                              (mx + half * math.cos(heading), my + half * math.sin(heading))))
+        # ADR-977: ``span_wall_mm`` on a training strip lays every obstacle
+        # across the grid's full width, margins included, and stands a rim
+        # wall that high along both long sides and behind the start, so the
+        # only way along the strip is over each obstacle. Its draws are the
+        # strip's without it, to the leg; only the across, the offset and
+        # the clearing's test change.
+        span_wall = options.get("span_wall_mm")
+        if span_wall is not None:
+            span_wall = float(span_wall)
+            if course.get("kind") != "strip":
+                raise SystemExit("span_wall_mm spans a training strip's obstacles; a race's or a "
+                                 "field's have no strip to span")
+            if not span_wall > 0.0:
+                raise SystemExit(f"span_wall_mm {span_wall:g} must be above 0")
+        half_width = max(abs(y0), abs(y1))
         for leg, ((ax, ay), (bx, by)) in enumerate(legs):
             draw = lambda key: boxes_rng.uniform(*(float(v) for v in options[key]))  # noqa: E731
             step = boxes_rng.random() < float(options["step_share"])
@@ -700,8 +715,21 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
                 boxes_rng.uniform(-1.0, 1.0) * float(options["obstacle_yaw_deg"]))
             height = draw("box_mm")
             ux, uy = (bx - ax) / length, (by - ay) / length
+            if span_wall is not None:
+                # A band turned ``turn`` off the strip covers every row of
+                # the grid when its across is the width over cos(turn) and
+                # its along's slant; a cell over that keeps the edge rows in.
+                turn = abs(yaw - math.atan2(by - ay, bx - ax))
+                offset = 0.0
+                across = (2.0 * half_width / math.cos(turn) + along * math.tan(turn) + 2.0 * cell)
             cx, cy = ax + at * (bx - ax) - offset * uy, ay + at * (by - ay) + offset * ux
-            if math.hypot(cx, cy) - 0.5 * math.hypot(along, across) < clear + blend:
+            if span_wall is not None:
+                # The start's distance from the band itself, not its corner's circle.
+                ra = abs(-cx * math.cos(yaw) - cy * math.sin(yaw)) - 0.5 * along
+                rc = abs(cx * math.sin(yaw) - cy * math.cos(yaw)) - 0.5 * across
+                if math.hypot(max(ra, 0.0), max(rc, 0.0)) < clear + blend:
+                    continue
+            elif math.hypot(cx, cy) - 0.5 * math.hypot(along, across) < clear + blend:
                 continue
             rows, cols = window(cx, cy, 0.5 * math.hypot(along, across))
             px = gx[cols][None, :] - cx
@@ -713,7 +741,14 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
             obstacles.append({"leg": leg, "kind": name, "centre_mm": [round(cx, 3), round(cy, 3)],
                               "along_mm": round(along, 3), "across_mm": round(across, 3),
                               "yaw_deg": round(math.degrees(yaw), 3), "height_mm": round(height, 3)})
-        heights = np.round(hills + np.where(covered, top, rough), 3)
+        heights = hills + np.where(covered, top, rough)
+        if span_wall is not None:
+            rim = max(1, int(math.ceil(float(options.get("span_rim_mm", 100.0)) / cell)))
+            heights[:rim, :] = np.maximum(heights[:rim, :], span_wall)
+            heights[-rim:, :] = np.maximum(heights[-rim:, :], span_wall)
+            heights[:, :rim] = np.maximum(heights[:, :rim], span_wall)
+            drawn.update(span_wall_mm=round(span_wall, 3), span_rim_mm=round(rim * cell, 3))
+        heights = np.round(heights, 3)
         drawn.update(boxes=sum(o["kind"] == "box" for o in obstacles),
                      steps=sum(o["kind"] == "step" for o in obstacles),
                      box_highest_mm=round(max((o["height_mm"] for o in obstacles), default=0.0), 3),
@@ -777,7 +812,12 @@ def strip_terrain(np: Any, kind: str, seed: int, *, length_m: float = STRIP_LENG
     race's and no field's: a race's course kind is ``gates`` or ``sprint``, a
     field's ``field``, and the held-out straight strip a sprint is judged on
     is ``straight`` on the ``heldout`` split. A ``boxes`` or ``b1`` strip
-    stands an obstacle across each of its legs, laid end to end along it."""
+    stands an obstacle across each of its legs, laid end to end along it;
+    with ``span_wall_mm`` (ADR-977) each obstacle spans the grid's full width,
+    margins included, and a rim wall that high (``span_rim_mm`` deep, default
+    100 mm) stands along both long sides and behind the start, so the only
+    way along the strip is over every obstacle. Without it a strip is
+    ADR-972's to the digest."""
 
     length = float(length_m)
     if not length > 0.0:
