@@ -34,7 +34,7 @@ def test_the_grid_is_its_default_or_its_rows_and_columns_and_needs_a_race() -> N
     with pytest.raises(SystemExit, match="race-scan"):
         T.race_scan_grid("0,300")
     flat = T.arguments(["bundle.json", "--out", "x.cxpolicy", "--race-scan", "default"])
-    with pytest.raises(SystemExit, match="give --gates"):
+    with pytest.raises(SystemExit, match="give --gates or --race-terrain"):
         T.gate_task(walker_task(), flat)
 
 

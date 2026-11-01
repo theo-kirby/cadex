@@ -3229,7 +3229,13 @@ def gate_task(task: dict[str, Any], options: argparse.Namespace) -> dict[str, An
 
     if not getattr(options, "gates", False):
         if getattr(options, "race_scan", None):
-            raise SystemExit("--race-scan reads the ground under a gate race; give --gates")
+            # ADR-976: a sprint over a relief strip (ADR-972) reads the scan too.
+            if not getattr(options, "race_terrain", None):
+                raise SystemExit("--race-scan reads the ground under a gate race or a relief "
+                                 "strip; give --gates or --race-terrain")
+            if task.get("scans"):
+                raise SystemExit("--race-scan: this bundle already carries a height scan (ADR-715)")
+            return {**task, "race_scan": race_scan_grid(options.race_scan)}
         return task
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import cadex_goto
@@ -4160,6 +4166,12 @@ def build_environment(
     race_scan_field = race_scan_grids = None
     if race_scanning:
         race_scan_offsets = jnp.asarray(task["race_scan"]["offsets_mm"], dtype=jnp.float32)
+        if not gating:
+            # ADR-976: a sprint's scan reads the base's free joint as a race's does.
+            free = [j for j in range(host.njnt) if int(host.jnt_type[j]) == 0]
+            if not free:
+                raise SystemExit("--race-scan needs a floating base; this model has no free joint")
+            race = {"qpos": int(host.jnt_qposadr[free[0]]), "dof": int(host.jnt_dofadr[free[0]])}
         if relieving:
             shapes = {(int(f["nrow"]), int(f["ncol"]), float(f["cell_mm"]),
                        tuple(f["x_range_mm"]), tuple(f["y_range_mm"])) for f in relief_drawn}
@@ -6453,7 +6465,7 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         "--race-scan", default=None, metavar="default|AHEAD,..:LEFT,..",
         help="the actor reads the base's height over the ground ahead (ADR-967): a grid of "
              "points ahead and left of the base along its heading in mm, after the gate "
-             "channels, read over the episode's relief field; 'default' is "
+             "channels, read over the episode's relief field (a race's, or a sprint's strip: ADR-976); 'default' is "
              "-200..800 every 200 by -120,0,120. A warm start gains them at zero weight")
     parser.add_argument(
         "--relief-levels", type=int, default=RELIEF_LEVELS,

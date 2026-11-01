@@ -49625,3 +49625,42 @@ weight is not priced by it.
 **Tests.** `training/test_drive_heat.py`: the block built from the contacts and
 the flag's refusals; a foot that never lands is priced by how far it is past the
 limit every step and a foot that lands every fourth step is not.
+
+## ADR-976 — A sprint over a relief strip reads the race scan (2026-10-31)
+
+**Context.** ADR-972 trains a sprint over a train-split relief strip without
+`--gates`, but ADR-967's height scan was refused there ("give --gates"), so a
+sprint policy crosses ADR-966's 20–60 mm boxes and steps blind. Symon's G2
+screen (its ADR-111, `g2`) trains that way; its baseline n3 fell at an obstacle
+on 7 of 10 held-out b1 strips. A blind sprinter meets a box when a paw strikes
+it (ADR-967's context).
+
+**Decision.**
+- `cadex_train.py --race-scan default|AHEAD,..:LEFT,..` is taken without
+  `--gates` when `--race-terrain` lays a strip: the task gains ADR-967's
+  `race_scan` block (the same grid, channels `rscan<i>` last in the actor's and
+  the critic's vectors), and nothing else changes (no gates, the bundle's own
+  goals and terms). Without `--gates` and without `--race-terrain` it is
+  refused; a bundle with its own scan is refused (ADR-715).
+- The scan reads the base's free joint for its position and heading, as a
+  race's does, and each environment's strip level (0 the plane), as ADR-967.
+- A warm start from a blind sprint policy gains the scan's inputs at zero
+  weight (ADR-967's rule, unchanged), so it plays its source until training
+  moves them. The header carries `training.race_scan`; `cadex_goto.Player`
+  plays it over its `ground`, which a judge stands as the strip's
+  (`terrain_ground`).
+
+**Evidence.** A CPU warm start from Symon's sp6 n3 on its sprint bundle
+(s19relay), `--race-terrain b1 --relief-levels 4 --relief-fields graded-rough
+--race-scan default`, 64 environments: "the actor gains 18 height-scan inputs at
+zero weight", "18 new inputs start fresh"; the run trained its two iterations
+(`symon-runlab/sy54-smoke`).
+
+**Tests.** `training/test_sprint_scan.py` (3): a sprint strip's task takes the
+scan last and a warm start gains only it, a scanned bundle refused; the
+sprint's actor reads the scan over its own episode's strip level across fresh
+episodes; the scan reads a b1 strip's obstacle ahead. `test_race_scan.py`'s
+refusal names both routes.
+
+**Consequences.** A sprint can be trained to see a box or step 0.8 m ahead (at
+4 m/s, 0.2 s). The scan stays a simulated elevation map (ADR-967).
