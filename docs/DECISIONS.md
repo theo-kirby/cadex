@@ -49871,3 +49871,23 @@ ADR-161 suite (`test_curriculum_warm_start.py`) is unchanged and passes.
 **Consequences.** A run without `--init-from-task-change` is unchanged. A warm start onto a new gait clip at the same
 cadence no longer has to start cold. A clip at another cadence still does, because the actor's clock would mean
 another phase.
+
+## ADR-983 — A height scan may read a point fixed in its body's frame (2026-11-02)
+
+**Context.** CDXQ-F's cf2 screen 2 (its ADR-201) prices each hind paw's swing height in the reward. A paw's height has
+no channel: the paws appear only as touch sensors, and adding a sensor changes the robot (`robot_xml`), which a warm
+start refuses. A privileged height scan (ADR-715) may join across a warm start (ADR-736's course keys) and reads the
+height over the ground, but at the body's frame origin, and an exported body whose frame carries no offset has its
+origin wherever its parent's is (CDXQ-F's paw: 196 mm from the paw).
+
+**Decision.** A scan row may carry `point_mm`, `[x, y, z]` in the body's frame: the scan is read at
+`xpos + xmat @ point` instead of `xpos`, turned with the body, and the grid's offsets are laid round that point as
+before. The trainer's `height_scan_vector` and the engine's `height_scan_values` both do it. A row without it reads as
+before.
+
+**Tests.** `training/test_scan_point.py` (3): both read MuJoCo's own `geom_xpos` for a geom at the point at three
+poses; trainer and engine agree batched with offsets; a row without the key reads the origin. `test_terrain_pool.py`
+and `test_jump_course.py` pass unchanged.
+
+**Consequences.** A reward or critic can read any point of the robot's height over the ground (a paw, a toe) without
+moving the robot's sensors, so a warm start can gain it.

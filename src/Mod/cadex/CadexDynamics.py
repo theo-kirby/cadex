@@ -13894,14 +13894,22 @@ def height_scan_values(
     x axis is vertical has no heading and reads the grid in the world's.
     ``elevation`` is the course's ``hfield_data``, or ``None`` for the plane
     at z = 0; a box course (ADR-716) reads its own boxes and ignores it.
+    A row's ``point_mm`` (ADR-983) moves the scan from the body's origin to
+    that point of the body's frame, turned with the body: a paw's centre, say,
+    on a body whose frame origin is elsewhere.
     """
 
     terrain = task.get("terrain")
     values: dict[str, float] = {}
     for record in task.get("scans") or ():
         body = int(record["body_id"])
-        x, y, z = (float(value) * float(record["scale"]) for value in xpos[body][:3])
         axes = [float(value) for value in _flat(xmat[body])]
+        origin = [float(value) for value in xpos[body][:3]]
+        if record.get("point_mm") is not None:
+            # ADR-983: a point fixed in the body's frame (mm), turned with it.
+            point = [float(value) / 1000.0 for value in record["point_mm"]]
+            origin = [origin[i] + sum(axes[3 * i + j] * point[j] for j in range(3)) for i in range(3)]
+        x, y, z = (value * float(record["scale"]) for value in origin)
         ahead_x, ahead_y = axes[0], axes[3]
         norm = math.hypot(ahead_x, ahead_y)
         cos, sin = (ahead_x / norm, ahead_y / norm) if norm > 1e-9 else (1.0, 0.0)

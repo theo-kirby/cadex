@@ -1694,16 +1694,24 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
     ``course`` is a re-drawn course's ``(scan, lowest, domes)`` from
     :func:`terrain_pool`, ``(..., S, 6)``, ``(...)`` and ``(..., D, 4)`` with
     the leading axes ``xpos``'s, read in place of the bundle's boxes and
-    domes (ADR-717, ADR-744).
+    domes (ADR-717, ADR-744). A row's ``point_mm`` (ADR-983) reads the scan
+    from that point of the body's frame, turned with the body, in place of
+    the body's origin.
     """
 
     terrain = task.get("terrain")
     parts = []
     for record in task.get("scans") or ():
         body = int(record["body_id"])
-        where = xpos[..., body, :] * float(record["scale"])
         flat = xp.reshape(xmat, xmat.shape[:-2] + (9,)) if xmat.shape[-1] == 3 else xmat
         frame = flat[..., body, :]
+        where = xpos[..., body, :]
+        if record.get("point_mm") is not None:
+            # ADR-983: a point fixed in the body's frame (mm), turned with it.
+            point = [float(value) / 1000.0 for value in record["point_mm"]]
+            where = where + xp.stack([sum(frame[..., 3 * i + j] * point[j] for j in range(3))
+                                      for i in range(3)], axis=-1)
+        where = where * float(record["scale"])
         ahead_x, ahead_y = frame[..., 0], frame[..., 3]
         norm = xp.sqrt(ahead_x * ahead_x + ahead_y * ahead_y)
         turned = norm > 1e-9
