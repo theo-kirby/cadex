@@ -2139,7 +2139,8 @@ def contact_reading(xp: Any, force_n: Any, contact: dict[str, Any]) -> Any:
 
 
 def latched_contact_plan(task: dict[str, Any], names: Sequence[str],
-                         labels: Sequence[str] | None) -> dict[str, Any] | None:
+                         labels: Sequence[str] | None,
+                         flag: str = "--latched-contact") -> dict[str, Any] | None:
     """``--latched-contact LABEL ...`` (ADR-978): which reward terms read a
     contact's ``_down`` flag latched over the control interval, or ``None``.
 
@@ -2154,7 +2155,8 @@ def latched_contact_plan(task: dict[str, Any], names: Sequence[str],
 
     Returns the named terms' indices into ``task["reward"]`` and, per
     contact observation, its sensordata address, scale, threshold and the
-    ``_down`` channel's index in ``names``.
+    ``_down`` channel's index in ``names``. ``flag`` names the option in
+    its refusals: ``--leave-contact`` (ADR-979) plans its terms here too.
     """
 
     if not labels:
@@ -2165,19 +2167,19 @@ def latched_contact_plan(task: dict[str, Any], names: Sequence[str],
         by_label.setdefault(str(term.get("label", "")), index)
     unknown = sorted({str(label) for label in labels} - set(by_label))
     if unknown:
-        raise SystemExit(f"--latched-contact: the task has no reward term labelled {unknown}")
+        raise SystemExit(f"{flag}: the task has no reward term labelled {unknown}")
     contacts = []
     for record in task["observations"]:
         if not record.get("contact"):
             continue
         if int(record["dim"]) != 1:
-            raise SystemExit(f"--latched-contact: contact {record['name']!r} is not one channel")
+            raise SystemExit(f"{flag}: contact {record['name']!r} is not one channel")
         down = [str(c) for c in record["channels"] if str(c).endswith("_down")]
         contacts.append({"adr": int(record["adr"]), "scale": float(record["scale"]),
                          "above": float(record["contact"]["down_above_n"]),
                          "down": names.index(down[0]), "name": down[0]})
     if not contacts:
-        raise SystemExit("--latched-contact: the task has no contact observation")
+        raise SystemExit(f"{flag}: the task has no contact observation")
     downs = {c["name"] for c in contacts}
     chosen = []
     for label in labels:
@@ -2185,7 +2187,7 @@ def latched_contact_plan(task: dict[str, Any], names: Sequence[str],
         read = {node.id for node in ast.walk(ast.parse(str(terms[index]["expression"]), mode="eval"))
                 if isinstance(node, ast.Name)}
         if not read & downs:
-            raise SystemExit(f"--latched-contact: term {label!r} reads no contact _down flag")
+            raise SystemExit(f"{flag}: term {label!r} reads no contact _down flag")
         chosen.append(index)
     return {"terms": sorted(set(chosen)), "contacts": contacts,
             "labels": [str(label) for label in labels]}
@@ -2204,6 +2206,30 @@ def latched_vector(xp: Any, vector: Any, peak_n: Any, plan: dict[str, Any]) -> A
         out[..., index] = flags
         return out
     return vector.at[..., index].set(flags)
+
+
+def leave_vector(xp: Any, vector: Any, left: Any, plan: dict[str, Any]) -> Any:
+    """``vector`` with each contact's ``_down`` channel set to its leave flag
+    (ADR-979): ``left``, 1.0 when the contact was down (normal force above
+    ``down_above_n``) on some solver state of the interval, or the state it
+    started from, and not down on a LATER solver state of it."""
+
+    index = xp.asarray([c["down"] for c in plan["contacts"]])
+    flags = xp.asarray(left).astype(vector.dtype)
+    if not hasattr(vector, "at"):
+        out = vector.copy()
+        out[..., index] = flags
+        return out
+    return vector.at[..., index].set(flags)
+
+
+def leave_step(xp: Any, seen: Any, left: Any, force_n: Any, above: Any) -> tuple[Any, Any]:
+    """One solver state's update of the leave flag (ADR-979): ``(seen, left)``
+    after a state reading ``force_n``. ``seen``: down on some state so far;
+    ``left``: an off state has followed a down one."""
+
+    down = force_n > above
+    return xp.logical_or(seen, down), xp.logical_or(left, xp.logical_and(seen, xp.logical_not(down)))
 
 
 def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
@@ -3999,10 +4025,18 @@ def build_environment(
     ]
     # ADR-978: a PYTHON value; without --latched-contact the graph is as before.
     latch = latched_contact_plan(task, names, getattr(options, "latched_contact", None))
+    # ADR-979: the terms that read each paw's leave over the interval instead.
+    leave = latched_contact_plan(task, names, getattr(options, "leave_contact", None),
+                                 flag="--leave-contact")
+    if latch is not None and leave is not None and set(latch["terms"]) & set(leave["terms"]):
+        raise SystemExit("--leave-contact: a term cannot read both the latched and the leave flag")
     latching = latch is not None
-    if latching:
-        latch_gather = jnp.asarray([c["adr"] for c in latch["contacts"]], dtype=jnp.int32)
-        latch_scale = jnp.asarray([c["scale"] for c in latch["contacts"]], dtype=jnp.float32)
+    leaving = leave is not None
+    scanned_plan = latch if latching else leave
+    if latching or leaving:
+        latch_gather = jnp.asarray([c["adr"] for c in scanned_plan["contacts"]], dtype=jnp.int32)
+        latch_scale = jnp.asarray([c["scale"] for c in scanned_plan["contacts"]], dtype=jnp.float32)
+        latch_above = jnp.asarray([c["above"] for c in scanned_plan["contacts"]], dtype=jnp.float32)
     termination_terms = [
         (rule.get("above"), rule.get("below"),
          compile_expression(str(rule["expression"]), names, table))
@@ -4432,14 +4466,18 @@ def build_environment(
     def named(vector):
         return {name: vector[index] for index, name in enumerate(names)}
 
-    def reward_of(vector, peak=None):
+    def reward_of(vector, peak=None, left=None):
         values = named(vector)
         # ADR-978: the latched terms read the interval's touch, the rest the plain flag.
         latched_values = (named(latched_vector(jnp, vector, peak, latch))
                           if latching and peak is not None else values)
+        # ADR-979: the leave terms read whether the paw left the floor in the interval.
+        leave_values = (named(leave_vector(jnp, vector, left, leave))
+                        if leaving and left is not None else values)
         total = jnp.float32(0.0)
         for index, (weight, code) in enumerate(reward_terms):
-            read = latched_values if latching and index in latch["terms"] else values
+            read = (latched_values if latching and index in latch["terms"] else
+                    leave_values if leaving and index in leave["terms"] else values)
             total = total + weight * eval(code, table, dict(read))
         # ADR-870: with a feet block the floor is applied in ``step``, after
         # the foot terms join the sum, as Playground clips the whole sum; and
@@ -4711,20 +4749,28 @@ def build_environment(
                                               speed_map[2], *drive_heat, solver_dt))
             return d, None
 
-        if latching:
-            # ADR-978: the most normal force each contact read on any solver step.
+        if latching or leaving:
+            # ADR-978: the most normal force each contact read on any solver
+            # step; ADR-979: whether an off state followed a down one, from
+            # the state the interval started from.
             def latched_one(carried, _):
-                d, peak = carried
+                d, peak, was, gone = carried
                 d, _unused = one(d, None)
                 seen = jnp.take(d.sensordata, latch_gather) * latch_scale
-                return (d, jnp.maximum(peak, seen)), None
+                was, gone = leave_step(jnp, was, gone, seen, latch_above)
+                return (d, jnp.maximum(peak, seen), was, gone), None
 
-            (data, peak), _ = jax.lax.scan(
-                latched_one, (data, jnp.full(latch_scale.shape, -jnp.inf, jnp.float32)),
+            start = jnp.take(data.sensordata, latch_gather) * latch_scale
+            (data, peak, _was, left), _ = jax.lax.scan(
+                latched_one, (data, jnp.full(latch_scale.shape, -jnp.inf, jnp.float32),
+                              start > latch_above, jnp.zeros(latch_scale.shape, bool)),
                 None, length=per_action)
+            peak = peak if latching else None
+            left = left if leaving else None
         else:
             data, _ = jax.lax.scan(one, data, None, length=per_action)
             peak = None
+            left = None
         vector = observe(data)
         if goaled:
             if waypointed:
@@ -4750,15 +4796,15 @@ def build_environment(
                 jnp, task, data.xpos, data.xmat, scan_elevation,
                 scanned_course(course) if redrawing else None)])
         if commanding:
-            return (data, vector, reward_of(vector, peak), done_of(vector), clamped,
+            return (data, vector, reward_of(vector, peak, left), done_of(vector), clamped,
                     replaced)
         if carrying:
             # The ISSUED command joins the outputs, because it is the next
             # step's filter state and there is nowhere else to get it: it is
             # not recoverable from `data.ctrl`, which holds it multiplied by
             # the actuator scale.
-            return data, vector, reward_of(vector, peak), done_of(vector), clamped
-        return data, vector, reward_of(vector, peak), done_of(vector)
+            return data, vector, reward_of(vector, peak, left), done_of(vector), clamped
+        return data, vector, reward_of(vector, peak, left), done_of(vector)
 
     # `(previous, first)` are per environment, so they vmap on axis 0 like
     # `surface`. Empty at alpha 1.0, which is what keeps the traced signature
@@ -6220,6 +6266,8 @@ def policy_header(
             "feet_air_limit": list(options.feet_air_limit) if getattr(options, "feet_air_limit", None) else None,
             # ADR-978: not needed to play the policy; what it was paid under.
             "latched_contact": list(options.latched_contact) if getattr(options, "latched_contact", None) else None,
+            # ADR-979: likewise.
+            "leave_contact": list(options.leave_contact) if getattr(options, "leave_contact", None) else None,
             # ADR-700. Not needed to PLAY the policy, but a reward curve is
             # read against it: a floored run's reward/step cannot go below it.
             "reward_floor": resolved_reward_floor(options),
@@ -6682,6 +6730,13 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "latched over the control interval (1 when the paw touched on any solver "
              "step of it) instead of the step's last solver state. Every other term, "
              "the observation and the terminations read the plain flag. Training's")
+    parser.add_argument(
+        "--leave-contact", nargs="+", default=None, metavar="LABEL",
+        help="ADR-979: the reward terms so labelled read every contact's _down flag "
+             "as 1 when the paw LEFT the floor in the control interval: down on a "
+             "solver state of it (or the state it started from) and off on a later "
+             "one. Every other term, the observation and the terminations read the "
+             "plain flag. Training's")
     parser.add_argument(
         "--randomise-drive-torque", type=float, nargs=2, default=None, metavar=("LOW", "HIGH"),
         help="ADR-970: each environment draws one factor uniform(LOW, HIGH), held for the "

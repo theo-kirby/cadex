@@ -49765,3 +49765,36 @@ the two differ; the header carries the key.
 **Consequences.** A short touch the 50 Hz read misses can be priced by the
 term that is meant to price it, without changing what the policy observes or
 what any other term reads.
+
+## ADR-979 — A reward term can read a paw's leave of the floor over the control interval (2026-11-02)
+
+**Context.** CDXQ-F's cf1 screen 9 (its ADR-178) trained policies that land the
+right fore paw on the reference's time, leave the floor and land again 18-56 ms
+later. The plain `_down` flag (ADR-698) is read once a control step, from the
+interval's last solver state, so a leave shorter than the interval costs at most
+one stance step and often nothing; the latched flag (ADR-978) reads any touch and
+cannot see a leave at all. On the export the right fore paw leaves 2.3-2.9 times a
+cycle inside the reference's stance (its tools/stance_leave.py).
+
+**Decision.** `cadex_train.py --leave-contact LABEL ...`: the labelled reward terms
+read every contact's `_down` channel as the LEAVE flag, 1.0 when the contact's
+normal force was above `down_above_n` on some solver state of the interval (or on
+the state the interval started from) and not above it on a LATER solver state of
+the interval. The solver-step scan that carries ADR-978's peak force also carries
+two booleans (`leave_step`); the reward reads them through `leave_vector`. The
+terms are planned by `latched_contact_plan` (now taking the option's name for its
+refusals); a term named by both options is refused. Every other term, the
+observation, the terminations and the feet block read the plain flag. Training's
+only: the bundle and the engine's evaluator are unchanged; the policy header
+records `leave_contact`.
+
+**Tests.** `training/test_leave_contact.py` (5): off by default; refusals name
+the option; the leave step needs a down state before an off one; on a bouncing
+ball under MJX the leave term reads every solver step as `mj_step` does on the CPU,
+beside a latched term and alone; a term cannot read both; the header key.
+
+**Consequences.** A paw that leaves the floor and comes back inside one control
+interval can be priced by a term written as an ordinary stance term
+(`ref_down * paw_down`), without changing what the policy observes. Without the
+option that term reads the plain flag, so a task meant for it must be trained
+with it; the header carries the key.
