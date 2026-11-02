@@ -2779,6 +2779,13 @@ def randomised_models(mujoco: Any, np: Any, xml: bytes, task: dict[str, Any], *,
     """
 
     base = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
+    # ADR-981: a fixed drive peak scale is the model's own, before any draw,
+    # so --randomise-drive-torque scales the scaled peak.
+    if options is not None:
+        scale = resolved_drive_torque_scale(options)
+        if scale != 1.0:
+            base.actuator_forcerange[:] = scaled_drive_range(
+                np, base.actuator_forcerange.copy(), base.actuator_forcelimited, scale)
     entries = list(task.get("randomisation") or ())
     # ADR-970: the run's flag entries after the bundle's, so environment i
     # draws the bundle's factors first, as before, then the flags'.
@@ -2988,6 +2995,28 @@ def enveloped_range(xp: Any, limit: Any, qvel: Any, speed_map: tuple[Any, Any, A
     omega = gear * xp.take(qvel, dof, axis=-1)
     ranged = drive_force_range(xp, limit, omega, no_load)
     return xp.where(enveloped[:, None], ranged, limit)
+
+
+def resolved_drive_torque_scale(options: Any) -> float:
+    """``--drive-torque-scale`` (ADR-981) as a float; 1.0 is the model's own peak."""
+
+    raw = getattr(options, "drive_torque_scale", None)
+    value = 1.0 if raw is None else float(raw)
+    if not math.isfinite(value) or value <= 0.0:
+        raise SystemExit(f"--drive-torque-scale is a factor above 0 (1 is the model's peak), not {value:g}")
+    return value
+
+
+def scaled_drive_range(xp: Any, limit: Any, forcelimited: Any, scale: float) -> Any:
+    """ADR-981: ``limit`` (``actuator_forcerange``, ``(..., A, 2)``) with every
+    force-limited actuator's both ends times ``scale``; the others unchanged.
+    The speed curve (ADR-969) and the heat (ADR-974) then read this as the
+    drive's peak, so the rating is the rated fraction of the scaled peak."""
+
+    if scale == 1.0:
+        return limit
+    on = xp.asarray(forcelimited, dtype=bool)[:, None]
+    return xp.where(on, limit * scale, limit)
 
 
 def resolved_no_load_speed(options: Any) -> float:
@@ -6270,6 +6299,9 @@ def policy_header(
             # ADR-969, its own key for ADR-160's reason: a policy trained
             # under a torque-speed curve has to be PLAYED under it. 0.0 is none.
             "no_load_speed_rad_s": resolved_no_load_speed(options),
+            # ADR-981, its own key for ADR-160's reason: the drives' peak torque
+            # scale the policy was trained under; cadex_goto plays it. 1.0 is none.
+            "drive_torque_scale": resolved_drive_torque_scale(options),
             # ADR-974, its own key for ADR-160's reason: [rated fraction, peak
             # seconds] or null; cadex_goto plays the policy under it.
             "drive_heat": list(resolved_drive_heat(options) or ()) or None,
@@ -6720,6 +6752,14 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "curve and emits the graph a trainer without the flag does. Written "
              "into the .cxpolicy header, so cadex_goto plays the policy under it. "
              "An RS00 is 315 rpm, 33.0 rad/s")
+    parser.add_argument(
+        "--drive-torque-scale", type=float, default=1.0, metavar="FACTOR",
+        help="ADR-981: every force-limited actuator's forcerange times FACTOR for the "
+             "whole run, every environment (the drive's peak torque pushed or cut). "
+             "The --no-load-speed curve falls from the scaled peak, --drive-heat rates "
+             "the scaled peak, and --randomise-drive-torque draws around it. Written "
+             "into the .cxpolicy header, so cadex_goto plays the policy under it. "
+             "1.0 (the default) leaves the model alone")
     parser.add_argument(
         "--drive-heat", nargs=2, type=float, default=None,
         metavar=("RATED_FRACTION", "PEAK_SECONDS"),

@@ -1165,7 +1165,8 @@ class Player:
     gate_channels: list[str] = []
 
     def __init__(self, policy_path: Path, task_path: Path, goals: Sequence[str],
-                 other_model: bool = False, drive_heat: Sequence[float] | None = None) -> None:
+                 other_model: bool = False, drive_heat: Sequence[float] | None = None,
+                 drive_torque_scale: float | None = None) -> None:
         import hashlib
 
         import mujoco
@@ -1190,6 +1191,13 @@ class Player:
         # ADR-969: the drives' torque-speed curve the policy was trained under.
         self.no_load_speed = float((header.get("training") or {}).get("no_load_speed_rad_s", 0.0) or 0.0)
         self._ranges: dict[int, tuple[Any, Any]] = {}
+        # ADR-981: the drives' peak torque scale the policy was trained under,
+        # or the one a judge asks for (``drive_torque_scale``, e.g. 1.0 to judge
+        # a pushed policy on the stock drive). A header without it is 1.0.
+        trained_scale = float((header.get("training") or {}).get("drive_torque_scale", 1.0) or 1.0)
+        self.drive_torque_scale = float(drive_torque_scale) if drive_torque_scale is not None else trained_scale
+        if not math.isfinite(self.drive_torque_scale) or self.drive_torque_scale <= 0.0:
+            raise SystemExit(f"drive torque scale is a factor above 0, not {self.drive_torque_scale:g}")
         # ADR-974: the drives' heat limit the policy was trained under, or the
         # one a judge asks for (``drive_heat``, to judge an older policy under it).
         trained_heat = (header.get("training") or {}).get("drive_heat")
@@ -1312,12 +1320,15 @@ class Player:
         the speed it turns now, by ``cadex_train.drive_force_range``. Without
         one it is ``mj_step``."""
 
-        if self.no_load_speed > 0.0 or self.drive_heat:
+        if self.no_load_speed > 0.0 or self.drive_heat or self.drive_torque_scale != 1.0:
             import cadex_train
 
             if id(model) not in self._ranges:
-                self._ranges[id(model)] = (model.actuator_forcerange.copy(),
-                                           cadex_train.actuator_speed_map(model))
+                # ADR-981: the peak is the model's range times the trained scale.
+                self._ranges[id(model)] = (
+                    cadex_train.scaled_drive_range(self.np, model.actuator_forcerange.copy(),
+                                                   model.actuator_forcelimited, self.drive_torque_scale),
+                    cadex_train.actuator_speed_map(model))
             limit, speed_map = self._ranges[id(model)]
             ranged = (cadex_train.enveloped_range(self.np, limit, data.qvel, speed_map, self.no_load_speed)
                       if self.no_load_speed > 0.0 else limit.copy())

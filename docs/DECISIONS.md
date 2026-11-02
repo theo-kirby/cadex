@@ -49817,3 +49817,30 @@ the range; out-of-bounds values and relief without hills are refused.
 
 **Consequences.** A sprint can be trained on hills only as steep as the bar it is judged on, with a ladder from gentle
 grades; the held-out race terrain is unchanged.
+
+## ADR-981 — A run can push or cut its drives' peak torque by a fixed factor, and the player plays it (2026-11-02)
+
+**Context.** CDXQ-F's cf2 charter lets its drives be pushed to 1.3× the RS00's 14 N·m peak, with the no-load speed and
+heat model also raised, and needs training and every judge to play the same model (its ADR-199). The trainer could scale
+the peak only as a per-environment draw (`--randomise-drive-torque F F`, ADR-970), which is not written into the policy
+header, and `cadex_goto.Player` had no way to play a scaled peak: a judge would have judged a pushed policy on the stock
+drive without saying so.
+
+**Decision.** `cadex_train.py --drive-torque-scale FACTOR` (> 0; 1.0, the default, leaves the model alone):
+`randomised_models` multiplies both ends of every force-limited actuator's `actuator_forcerange` by FACTOR on the base
+model, before any draw, so `--randomise-drive-torque` draws around the scaled peak, the `--no-load-speed` curve (ADR-969)
+falls from it and `--drive-heat` (ADR-974) rates it (rated = fraction × scaled peak). Actuators that are not
+force-limited are unchanged. The header records `training.drive_torque_scale`. `cadex_goto.Player` reads it (a header
+without it is 1.0), takes a `drive_torque_scale` argument that overrides it (a judge plays a pushed policy on the stock
+peak with 1.0), and `Player.step` caches the scaled range as the drive's peak, so the curve and heat it applies every
+solver step start from the scaled peak. New helpers: `resolved_drive_torque_scale`, `scaled_drive_range`.
+
+**Tests.** `training/test_drive_torque_scale.py` (8): the flag defaults to 1.0 and refuses 0, negative and NaN; only
+force-limited actuators are scaled; the host model carries the scaled peak with no draw added, and a drive-torque draw
+scales the scaled peak; the header carries the factor; the player applies 14 N·m at 1.0 and 18.2 N·m at 1.3 to a held
+drive, and under heat 0.45 / 3.0 folds back to 0.45 × 18.2 N·m; the player reads the header and a judge's argument
+overrides it.
+
+**Consequences.** A run without the flag is unchanged, and every existing policy plays as before (its header has no key,
+so 1.0). A pushed policy carries its peak in its header, as it carries its curve and heat, so a judge plays it without
+being told and must ask explicitly to judge it stock.
