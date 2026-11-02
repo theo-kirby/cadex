@@ -3548,6 +3548,15 @@ def relief_rule(options: argparse.Namespace) -> dict[str, Any]:
                          "--race-terrain u1 or b1")
     rule = {"kind": kind, "levels": levels, "half_m": half, "fields": fields,
             "ceiling": {"start": int(start), "falls": falls, "hold": int(hold)}}
+    grade = getattr(options, "relief_grade", None)
+    if grade is not None:
+        # ADR-980: the hills' grade range in place of the race's grade_deg.
+        if kind not in ("hills", "u1", "b1"):
+            raise SystemExit("--relief-grade grades hills; give --race-terrain hills, u1 or b1")
+        g_low, g_high = parse_floats(grade, 2, "--relief-grade")
+        if not 0.0 < g_low <= g_high < 45.0:
+            raise SystemExit("--relief-grade is LOW,HIGH in degrees, 0 < LOW <= HIGH < 45")
+        rule = {**rule, "grade_deg": [g_low, g_high]}
     if not gated:
         rule = {**rule, "half_m": None, "strip_m": length}
     span = getattr(options, "relief_span", None)
@@ -3610,7 +3619,9 @@ def relief_fields(np: Any, rule: dict[str, Any], seed: int) -> list[dict[str, An
                                             **span, **shape)
     else:
         field_terrain = cadex_goto.field_terrain
-    low, high = (float(v) for v in cadex_goto.RACE_TERRAIN["grade_deg"])
+    # ADR-980: --relief-grade replaces the race's grade range for every mode.
+    low, high = (float(v) for v in (rule.get("grade_deg") or cadex_goto.RACE_TERRAIN["grade_deg"]))
+    graded_shape = {} if rule.get("grade_deg") is None else {"grade_deg": (low, high)}
     fields = []
     for k in range(1, levels + 1):
         if mode == "graded-rough" and k == 1:
@@ -3626,7 +3637,8 @@ def relief_fields(np: Any, rule: dict[str, Any], seed: int) -> list[dict[str, An
             fields.append({**field, "level": k, "scale": 1.0,
                            "rough_highest_mm": round(float(field["drawn"].get("rough_highest_mm", 0.0)), 3)})
             continue
-        field = field_terrain(np, rule["kind"], int(seed) * levels + k - 1, half_m=rule["half_m"])
+        field = field_terrain(np, rule["kind"], int(seed) * levels + k - 1, half_m=rule["half_m"],
+                              **graded_shape)
         heights = field["heights_mm"] * (k / levels)
         # The draw's grade and rough relief, scaled with it; ``drawn`` is the
         # unscaled draw's.
@@ -6641,6 +6653,11 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "of the way up the race's range (ADR-963); graded-rough, field 1 rough relief "
              "alone at full height, fields 2..levels graded from (high-low)/(levels-1) above "
              "low to high (ADR-964)")
+    parser.add_argument(
+        "--relief-grade", default=None, metavar="LOW,HIGH",
+        help="the hills' steepest-grade range in degrees that --relief-fields draws or grades "
+             "from, in place of the race's grade_deg (ADR-980; hills, u1 and b1 only; "
+             "default the race's)")
     parser.add_argument(
         "--relief-half", type=float, default=None,
         help="the relief field's half side in metres (default cadex_goto.FIELD_HALF_M)")

@@ -49798,3 +49798,22 @@ interval can be priced by a term written as an ordinary stance term
 (`ref_down * paw_down`), without changing what the policy observes. Without the
 option that term reads the plain flag, so a task meant for it must be trained
 with it; the header carries the key.
+
+## ADR-980 — A relief run can set its hills' grade range (2026-11-02)
+
+**Context.** CDXQ-F's U2 bar is held-out smooth bumps on hills to 10° (its cf1 PREREG §19). The trainer's relief fields
+grade their hills from the race's `grade_deg` (8–15°): `graded` puts field k at 8 + 7k/levels°, `graded-rough` at
+8 + 7(k−1)/(levels−1)°, and `scaled` scales a draw in 8–15°, so a run could not hold its hills under 10° nor start a
+ladder below 8°.
+
+**Decision.** `cadex_train.py --relief-grade LOW,HIGH` (degrees, 0 < LOW ≤ HIGH < 45; `--race-terrain` hills, u1 or b1
+only): `relief_fields` reads LOW and HIGH in place of the race's `grade_deg` in every mode (the graded modes' ladder,
+and the draw `scaled` scales). The rule carries `grade_deg` only when given, so a run without it is drawn as before to the
+digest. The policy header records the option with the rest of the run's flags and each field's drawn grade.
+
+**Tests.** `training/test_relief_grade.py` (9): off by default the rule and the top field are unchanged; `graded-rough`
+at 4 levels and 4,10 grades fields 2–4 at 6/8/10° and equals `strip_terrain` at those grades; `graded` and `scaled` take
+the range; out-of-bounds values and relief without hills are refused.
+
+**Consequences.** A sprint can be trained on hills only as steep as the bar it is judged on, with a ladder from gentle
+grades; the held-out race terrain is unchanged.
