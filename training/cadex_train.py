@@ -2138,6 +2138,74 @@ def contact_reading(xp: Any, force_n: Any, contact: dict[str, Any]) -> Any:
     return xp.concatenate([force_n, down])
 
 
+def latched_contact_plan(task: dict[str, Any], names: Sequence[str],
+                         labels: Sequence[str] | None) -> dict[str, Any] | None:
+    """``--latched-contact LABEL ...`` (ADR-978): which reward terms read a
+    contact's ``_down`` flag latched over the control interval, or ``None``.
+
+    The plain flag (ADR-698) is read once a control step, from the step's
+    last solver state, so a touch shorter than the interval is seen only
+    when it spans that state. A latched flag is 1.0 when the paw's normal
+    force was above ``down_above_n`` on ANY solver step of the interval.
+    Only the named terms read it, in place of every ``_down`` channel their
+    expression names; every other term, the observation, the terminations
+    and the feet block read the plain flag, as before. Training's only: the
+    bundle and the engine's evaluator are unchanged.
+
+    Returns the named terms' indices into ``task["reward"]`` and, per
+    contact observation, its sensordata address, scale, threshold and the
+    ``_down`` channel's index in ``names``.
+    """
+
+    if not labels:
+        return None
+    terms = list(task.get("reward") or ())
+    by_label: dict[str, int] = {}
+    for index, term in enumerate(terms):
+        by_label.setdefault(str(term.get("label", "")), index)
+    unknown = sorted({str(label) for label in labels} - set(by_label))
+    if unknown:
+        raise SystemExit(f"--latched-contact: the task has no reward term labelled {unknown}")
+    contacts = []
+    for record in task["observations"]:
+        if not record.get("contact"):
+            continue
+        if int(record["dim"]) != 1:
+            raise SystemExit(f"--latched-contact: contact {record['name']!r} is not one channel")
+        down = [str(c) for c in record["channels"] if str(c).endswith("_down")]
+        contacts.append({"adr": int(record["adr"]), "scale": float(record["scale"]),
+                         "above": float(record["contact"]["down_above_n"]),
+                         "down": names.index(down[0]), "name": down[0]})
+    if not contacts:
+        raise SystemExit("--latched-contact: the task has no contact observation")
+    downs = {c["name"] for c in contacts}
+    chosen = []
+    for label in labels:
+        index = by_label[str(label)]
+        read = {node.id for node in ast.walk(ast.parse(str(terms[index]["expression"]), mode="eval"))
+                if isinstance(node, ast.Name)}
+        if not read & downs:
+            raise SystemExit(f"--latched-contact: term {label!r} reads no contact _down flag")
+        chosen.append(index)
+    return {"terms": sorted(set(chosen)), "contacts": contacts,
+            "labels": [str(label) for label in labels]}
+
+
+def latched_vector(xp: Any, vector: Any, peak_n: Any, plan: dict[str, Any]) -> Any:
+    """``vector`` with each contact's ``_down`` channel set to its latched
+    flag (ADR-978): 1.0 when ``peak_n``, the most normal force the contact
+    read on any solver step of the interval, is above its ``down_above_n``."""
+
+    above = xp.asarray([c["above"] for c in plan["contacts"]], dtype=peak_n.dtype)
+    flags = (peak_n > above).astype(vector.dtype)
+    index = xp.asarray([c["down"] for c in plan["contacts"]])
+    if not hasattr(vector, "at"):
+        out = vector.copy()
+        out[..., index] = flags
+        return out
+    return vector.at[..., index].set(flags)
+
+
 def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
     """The least variance the normaliser may hold for each channel (ADR-589).
 
@@ -3929,6 +3997,12 @@ def build_environment(
          compile_expression(str(term["expression"]), names, table))
         for term in task["reward"]
     ]
+    # ADR-978: a PYTHON value; without --latched-contact the graph is as before.
+    latch = latched_contact_plan(task, names, getattr(options, "latched_contact", None))
+    latching = latch is not None
+    if latching:
+        latch_gather = jnp.asarray([c["adr"] for c in latch["contacts"]], dtype=jnp.int32)
+        latch_scale = jnp.asarray([c["scale"] for c in latch["contacts"]], dtype=jnp.float32)
     termination_terms = [
         (rule.get("above"), rule.get("below"),
          compile_expression(str(rule["expression"]), names, table))
@@ -4358,11 +4432,15 @@ def build_environment(
     def named(vector):
         return {name: vector[index] for index, name in enumerate(names)}
 
-    def reward_of(vector):
+    def reward_of(vector, peak=None):
         values = named(vector)
+        # ADR-978: the latched terms read the interval's touch, the rest the plain flag.
+        latched_values = (named(latched_vector(jnp, vector, peak, latch))
+                          if latching and peak is not None else values)
         total = jnp.float32(0.0)
-        for weight, code in reward_terms:
-            total = total + weight * eval(code, table, dict(values))
+        for index, (weight, code) in enumerate(reward_terms):
+            read = latched_values if latching and index in latch["terms"] else values
+            total = total + weight * eval(code, table, dict(read))
         # ADR-870: with a feet block the floor is applied in ``step``, after
         # the foot terms join the sum, as Playground clips the whole sum; and
         # so with a gate race's pay or a guide's (ADR-955, ADR-957).
@@ -4633,7 +4711,20 @@ def build_environment(
                                               speed_map[2], *drive_heat, solver_dt))
             return d, None
 
-        data, _ = jax.lax.scan(one, data, None, length=per_action)
+        if latching:
+            # ADR-978: the most normal force each contact read on any solver step.
+            def latched_one(carried, _):
+                d, peak = carried
+                d, _unused = one(d, None)
+                seen = jnp.take(d.sensordata, latch_gather) * latch_scale
+                return (d, jnp.maximum(peak, seen)), None
+
+            (data, peak), _ = jax.lax.scan(
+                latched_one, (data, jnp.full(latch_scale.shape, -jnp.inf, jnp.float32)),
+                None, length=per_action)
+        else:
+            data, _ = jax.lax.scan(one, data, None, length=per_action)
+            peak = None
         vector = observe(data)
         if goaled:
             if waypointed:
@@ -4659,15 +4750,15 @@ def build_environment(
                 jnp, task, data.xpos, data.xmat, scan_elevation,
                 scanned_course(course) if redrawing else None)])
         if commanding:
-            return (data, vector, reward_of(vector), done_of(vector), clamped,
+            return (data, vector, reward_of(vector, peak), done_of(vector), clamped,
                     replaced)
         if carrying:
             # The ISSUED command joins the outputs, because it is the next
             # step's filter state and there is nowhere else to get it: it is
             # not recoverable from `data.ctrl`, which holds it multiplied by
             # the actuator scale.
-            return data, vector, reward_of(vector), done_of(vector), clamped
-        return data, vector, reward_of(vector), done_of(vector)
+            return data, vector, reward_of(vector, peak), done_of(vector), clamped
+        return data, vector, reward_of(vector, peak), done_of(vector)
 
     # `(previous, first)` are per environment, so they vmap on axis 0 like
     # `surface`. Empty at alpha 1.0, which is what keeps the traced signature
@@ -6127,6 +6218,8 @@ def policy_header(
             "heat_start": list(resolved_heat_start(options)),
             # ADR-975: not needed to play the policy; what it was paid under.
             "feet_air_limit": list(options.feet_air_limit) if getattr(options, "feet_air_limit", None) else None,
+            # ADR-978: not needed to play the policy; what it was paid under.
+            "latched_contact": list(options.latched_contact) if getattr(options, "latched_contact", None) else None,
             # ADR-700. Not needed to PLAY the policy, but a reward curve is
             # read against it: a floored run's reward/step cannot go below it.
             "reward_floor": resolved_reward_floor(options),
@@ -6583,6 +6676,12 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "the sum over the feet of how far each one that is up has been up past "
              "SECONDS. The feet are the task's feet block's, else every contact "
              "observation's _down channel. Training's, like ADR-870's feet block")
+    parser.add_argument(
+        "--latched-contact", nargs="+", default=None, metavar="LABEL",
+        help="ADR-978: the reward terms so labelled read every contact's _down flag "
+             "latched over the control interval (1 when the paw touched on any solver "
+             "step of it) instead of the step's last solver state. Every other term, "
+             "the observation and the terminations read the plain flag. Training's")
     parser.add_argument(
         "--randomise-drive-torque", type=float, nargs=2, default=None, metavar=("LOW", "HIGH"),
         help="ADR-970: each environment draws one factor uniform(LOW, HIGH), held for the "

@@ -49722,3 +49722,46 @@ obstacle levels only.
 **Consequences.** A sprint can be trained on a strip where every obstacle has
 to be crossed. The held-out judges are unchanged, so a policy trained this way
 is judged on the same unspanned b1 strips it could still go round.
+
+## ADR-978 — A reward term can read a paw's touch latched over the control interval (2026-11-01)
+
+**Context.** CDXQ-F's cf1 screen 6 (its ADR-172) trained three seeds whose
+cycle holds the reference clock while the left hind paw taps the floor once a
+swing, 12–16 ms, where the reference holds it 50–56 mm up. The project's
+`swing_touch` term prices a paw down in proportion to the reference's lift,
+but it reads the contact's `_down` flag (ADR-698), and `observe` reads that
+once a control step, from the interval's last solver state. Of the taps, the
+share spanning such a read was 0.75–0.82 at checkpoint 300 and 0.46–0.58 at
+the final checkpoints, against 0.60–0.70 for taps at random times: the term
+saw about half of them and training appears to have moved them between reads.
+
+**Decision.**
+- `cadex_train.py --latched-contact LABEL ...`: the reward terms so labelled
+  read every contact observation's `_down` channel as a flag latched over the
+  control interval, 1.0 when the contact's normal force (its sensordata times
+  its scale) was above `down_above_n` on ANY solver step of the interval.
+  The step's scan carries the most force each contact read; the flag is that
+  peak against the threshold, and it is never below the plain flag (the
+  interval's last solver state is one of the states read).
+- Only the named terms read it. Every other reward term, the observation the
+  policy and critic see, the terminations, the feet block and every draw read
+  what they read before; without the flag the traced graph is the one this
+  trainer always emitted (a Python bool, like ADR-699's).
+- A label the task does not carry, or a term whose expression names no
+  contact `_down` channel, is refused, as is a task with no contact
+  observation.
+- Training's only, like ADR-870's feet block and ADR-975's air limit: the
+  bundle, the engine's `evaluate_episode` and the export judge are unchanged.
+  The policy header records `latched_contact` (the labels).
+
+**Tests.** `training/test_latched_contact.py` (5): off by default and a plan
+names the labelled terms only; unknown labels, a term reading no `_down` flag
+and a task without contacts are refused; the latched vector sets the `_down`
+channels only, numpy and jax alike; on a bouncing ball, MJX's step pays the
+labelled term from every solver step and the unlabelled one from the last,
+step for step against CPU MuJoCo over 20 control steps, with intervals where
+the two differ; the header carries the key.
+
+**Consequences.** A short touch the 50 Hz read misses can be priced by the
+term that is meant to price it, without changing what the policy observes or
+what any other term reads.
