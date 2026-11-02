@@ -455,6 +455,10 @@ CURRICULUM_GOAL_KEYS = frozenset({"low", "high", "nominal", "sequence", "bands",
 #: start, so a wider critic input costs nothing.
 CURRICULUM_COURSE_KEYS = frozenset({"model", "terrain", "scans", "observations"})
 
+#: ADR-982: the tracking keys a reference clip carries beside its clock. A
+#: curriculum step may swap them when every other tracking key is unchanged.
+TRACKING_CLIP_KEYS = frozenset({"table", "reset_qpos", "reset_qvel"})
+
 #: The world-body geoms and assets an environment adds (ADR-714, ADR-716):
 #: everything named under ``environment/``.
 ENVIRONMENT_PREFIX = "environment/"
@@ -581,6 +585,28 @@ def check_curriculum_change(
         if clip(parent) == clip(child):
             changed = [key for key in changed if key != "tracking"] + ["tracking.cadence"]
             changed.sort()
+    if "tracking" in changed:
+        # ADR-982: a step onto another reference clip on the same clock. The
+        # actor reads only the clock (``policy_channels``: the stride's phase
+        # from period, samples, turn and start), which must be identical; the
+        # clip's table and its reset states are what the reward and the critic
+        # read, and the critic warms up on them. ``reference`` and
+        # ``reference_schedule`` are the clip's record (no trainer reads them)
+        # and move only beside it.
+        def clock(task: dict[str, Any]) -> dict[str, Any]:
+            return {key: value for key, value in (task.get("tracking") or {}).items()
+                    if key not in TRACKING_CLIP_KEYS}
+
+        if parent.get("tracking") and child.get("tracking") and clock(parent) == clock(child):
+            if int(getattr(options, "critic_warmup", 0) or 0) <= 0:
+                refuse(
+                    "the reference clip moved (tracking's table and reset states): the "
+                    "critic reads its channels and starts on the old clip's returns; "
+                    "give --critic-warmup N."
+                )
+            changed = [key for key in changed
+                       if key not in ("tracking", "reference", "reference_schedule")] + ["tracking.clip"]
+            changed.sort()
     if "goal" in changed:
         # ADR-791: a step that moves only where a goal is drawn from. The
         # actor reads the drawn value itself, through the running normaliser
@@ -600,7 +626,7 @@ def check_curriculum_change(
                        if key not in ("goal", "goal_algorithm")] + ["goal.range"]
             changed.sort()
     disallowed = sorted(set(changed) - CURRICULUM_TASK_KEYS - CURRICULUM_COURSE_KEYS
-                        - {"tracking.cadence", "goal.range"})
+                        - {"tracking.cadence", "tracking.clip", "goal.range"})
     if disallowed:
         refuse(
             f"these keys moved and may not: {disallowed}. A curriculum may "

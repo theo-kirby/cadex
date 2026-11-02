@@ -49844,3 +49844,30 @@ overrides it.
 **Consequences.** A run without the flag is unchanged, and every existing policy plays as before (its header has no key,
 so 1.0). A pushed policy carries its peak in its header, as it carries its curve and heat, so a judge plays it without
 being told and must ask explicitly to judge it stock.
+
+## ADR-982 — A warm start may cross a swap of the reference clip on the same clock (2026-11-02)
+
+**Context.** CDXQ-F's cf2 screen 1 (its ADR-200) warm-starts its counted gallop onto a new reference stride, R5 in place
+of R4: the same period (0.4272 s), the same 64 samples, the same reward, the same model. `check_curriculum_change`
+(ADR-161) refused it, because `reference`, `reference_schedule` and `tracking` are outside the curriculum keys. The
+refusal's reason is that a step may not change what the network reads or emits. Here it does not: the actor reads only
+the tracking clock (`policy_channels`, `ref_sin`/`ref_cos` from period, samples, turn per step and start), and those
+are identical. What moves is the clip's table (what the reward and the critic read) and its reset states (where an
+episode starts). No trainer code reads `reference` or `reference_schedule`; they are the clip's record.
+
+**Decision.** `check_curriculum_change` admits a step where `tracking` moved and every tracking key outside
+`TRACKING_CLIP_KEYS = {table, reset_qpos, reset_qvel}` is unchanged, naming it `tracking.clip`. `reference` and
+`reference_schedule` may move only beside it, and are folded into the name. It also requires `--critic-warmup N > 0`,
+because the critic's tracking channels now carry the new clip and its value starts on the old clip's returns. Any
+change to the clock (period, samples, turn, start, held, channels, policy channels, cadence) is still refused, as is a
+`reference` record that moves without the table.
+
+**Tests.** `training/test_reference_clip_step.py` (11): a new clip on the same clock is admitted and named
+`tracking.clip`; the clip keys are exactly the table and its reset states; the actor reads the clock and not the clip;
+no critic warmup is refused; a moved period, sample count, turn, policy channel list or start is refused; the record
+moving without the clip is refused; another curriculum key rides beside it (`["label", "tracking.clip"]`). The
+ADR-161 suite (`test_curriculum_warm_start.py`) is unchanged and passes.
+
+**Consequences.** A run without `--init-from-task-change` is unchanged. A warm start onto a new gait clip at the same
+cadence no longer has to start cold. A clip at another cadence still does, because the actor's clock would mean
+another phase.
