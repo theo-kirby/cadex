@@ -1192,6 +1192,9 @@ class Player:
         self.no_load_speed = float((header.get("training") or {}).get("no_load_speed_rad_s", 0.0) or 0.0)
         # ADR-985: its corner (0.0, and any header without the key: ADR-969's straight line).
         self.corner_speed = float((header.get("training") or {}).get("drive_corner_speed_rad_s", 0.0) or 0.0)
+        # ADR-986: the maker's chart (None, and any header without the key: the line or the corner).
+        curve = (header.get("training") or {}).get("drive_curve")
+        self.drive_curve = tuple((float(w), float(f)) for w, f in curve) if curve else None
         self._ranges: dict[int, tuple[Any, Any]] = {}
         # ADR-981: the drives' peak torque scale the policy was trained under,
         # or the one a judge asks for (``drive_torque_scale``, e.g. 1.0 to judge
@@ -1333,7 +1336,8 @@ class Player:
                     cadex_train.actuator_speed_map(model))
             limit, speed_map = self._ranges[id(model)]
             ranged = (cadex_train.enveloped_range(self.np, limit, data.qvel, speed_map, self.no_load_speed,
-                                                  getattr(self, "corner_speed", 0.0))
+                                                  getattr(self, "corner_speed", 0.0),
+                                                  getattr(self, "drive_curve", None))
                       if self.no_load_speed > 0.0 else limit.copy())
             if self.drive_heat:
                 # ADR-974: the trainer's heat, by the same arithmetic.

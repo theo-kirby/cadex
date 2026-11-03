@@ -2982,7 +2982,8 @@ def match_engine_actuator_derivative(mujoco: Any, jax: Any, jnp: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-def drive_force_range(xp: Any, limit: Any, omega: Any, no_load: float, corner: float = 0.0) -> Any:
+def drive_force_range(xp: Any, limit: Any, omega: Any, no_load: float, corner: float = 0.0,
+                      curve: Any = None) -> Any:
     """ADR-969: each force-limited drive's torque range at its present speed.
 
     A drive's torque falls in a straight line from its limit at rest to none
@@ -2999,9 +3000,19 @@ def drive_force_range(xp: Any, limit: Any, omega: Any, no_load: float, corner: f
     ``cadex_goto.Player.step``, so a policy is judged under the curve it was
     trained under by the same arithmetic. Past the no-load speed the drive
     gives nothing forward and is not driven backward by this rule.
+
+    ADR-986: with a ``curve`` (``((speed rad/s, fraction of the limit), ...)``,
+    speeds rising and below ``no_load``) the drive's forward share is read off
+    the maker's chart instead: the whole limit at rest, straight between the
+    points, none at ``no_load``. ``corner`` is then unused.
     """
 
-    room = xp.clip((no_load - xp.abs(omega)) / (no_load - corner), 0.0, 1.0)
+    if curve:
+        ws = xp.asarray([0.0] + [float(w) for w, _ in curve] + [float(no_load)])
+        fs = xp.asarray([1.0] + [float(f) for _, f in curve] + [0.0])
+        room = xp.interp(xp.abs(omega), ws, fs, left=1.0, right=0.0)
+    else:
+        room = xp.clip((no_load - xp.abs(omega)) / (no_load - corner), 0.0, 1.0)
     low = xp.where(omega < 0.0, limit[..., 0] * room, limit[..., 0])
     high = xp.where(omega > 0.0, limit[..., 1] * room, limit[..., 1])
     return xp.stack([low, high], axis=-1)
@@ -3026,13 +3037,13 @@ def actuator_speed_map(model: Any) -> tuple[Any, Any, Any]:
 
 
 def enveloped_range(xp: Any, limit: Any, qvel: Any, speed_map: tuple[Any, Any, Any],
-                    no_load: float, corner: float = 0.0) -> Any:
+                    no_load: float, corner: float = 0.0, curve: Any = None) -> Any:
     """``drive_force_range`` on the drives ``actuator_speed_map`` names, read
     from ``qvel``; every other actuator keeps ``limit``."""
 
     dof, gear, enveloped = speed_map
     omega = gear * xp.take(qvel, dof, axis=-1)
-    ranged = drive_force_range(xp, limit, omega, no_load, corner)
+    ranged = drive_force_range(xp, limit, omega, no_load, corner, curve)
     return xp.where(enveloped[:, None], ranged, limit)
 
 
@@ -3070,6 +3081,32 @@ def resolved_drive_corner_speed(options: Any) -> float:
         raise SystemExit(f"--drive-corner-speed is a speed in rad/s above 0 and below --no-load-speed "
                          f"({no_load:g}), not {value:g}")
     return value
+
+
+def resolved_drive_curve(options: Any) -> tuple[tuple[float, float], ...] | None:
+    """``--drive-curve`` (ADR-986) as ``((speed rad/s, fraction), ...)``, or None. ``"W:F,W:F,..."``: speeds rising,
+    above 0 and below ``--no-load-speed``; fractions of the drive's limit in [0, 1], never rising. Not with
+    ``--drive-corner-speed``."""
+
+    raw = getattr(options, "drive_curve", None)
+    if not raw:
+        return None
+    no_load = resolved_no_load_speed(options)
+    try:
+        points = tuple((float(w), float(f)) for w, f in (item.split(":") for item in str(raw).split(",")))
+    except ValueError:
+        raise SystemExit(f"--drive-curve is 'SPEED:FRACTION,...' (rad/s : share of the limit), not {raw!r}")
+    ws = [w for w, _ in points]
+    fs = [f for _, f in points]
+    ok = (no_load > 0.0 and all(math.isfinite(v) for v in ws + fs)
+          and all(0.0 < w < no_load for w in ws) and all(a < b for a, b in zip(ws, ws[1:]))
+          and all(0.0 <= f <= 1.0 for f in fs) and all(a >= b for a, b in zip(fs, fs[1:])))
+    if not ok:
+        raise SystemExit(f"--drive-curve needs --no-load-speed, speeds rising inside (0, {no_load:g}) rad/s and "
+                         f"fractions in [0, 1] never rising; got {raw!r}")
+    if float(getattr(options, "drive_corner_speed", 0.0) or 0.0) != 0.0:
+        raise SystemExit("--drive-curve and --drive-corner-speed are two shapes of one curve; give one")
+    return points
 
 
 def resolved_no_load_speed(options: Any) -> float:
@@ -4101,6 +4138,7 @@ def build_environment(
     # a run without the flag emits the graph it did.
     no_load_speed = resolved_no_load_speed(options)
     corner_speed = resolved_drive_corner_speed(options)   # ADR-985
+    drive_curve = resolved_drive_curve(options)            # ADR-986
     # ADR-974: PYTHON values; without --drive-heat the graph is the one a
     # trainer without the flag emitted.
     drive_heat = resolved_drive_heat(options)
@@ -4870,7 +4908,8 @@ def build_environment(
 
         def one(d, _):
             limit = m.actuator_forcerange
-            ranged = (enveloped_range(jnp, limit, d.qvel, speed_map, no_load_speed, corner_speed)
+            ranged = (enveloped_range(jnp, limit, d.qvel, speed_map, no_load_speed, corner_speed,
+                                      drive_curve)
                       if no_load_speed > 0.0 else limit)   # ADR-969: at the speed it turns now
             if drive_heat is not None:
                 # ADR-974: held under its heat; the heat lives in `userdata`.
@@ -6396,6 +6435,8 @@ def policy_header(
             "no_load_speed_rad_s": resolved_no_load_speed(options),
             # ADR-985: the curve's corner (0.0: ADR-969's straight line); cadex_goto plays it.
             "drive_corner_speed_rad_s": resolved_drive_corner_speed(options),
+            # ADR-986: the maker's chart as [[rad/s, fraction], ...] (None: the line or the corner); cadex_goto plays it.
+            "drive_curve": [list(p) for p in resolved_drive_curve(options) or ()] or None,
             # ADR-981, its own key for ADR-160's reason: the drives' peak torque
             # scale the policy was trained under; cadex_goto plays it. 1.0 is none.
             "drive_torque_scale": resolved_drive_torque_scale(options),
@@ -6857,6 +6898,14 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "forcerange; above it the torque falls in a straight line to none at the no-load speed (a "
              "current-limited motor on its voltage line). 0.0 (the default) is ADR-969's line from rest. Written "
              "into the .cxpolicy header. An RS00 is 16.8 rad/s (its datasheet's 5 N*m at 260 rpm, 315 rpm no-load)")
+    parser.add_argument(
+        "--drive-curve", default=None, metavar="W:F,W:F,...",
+        help="ADR-986: with --no-load-speed, the drive's torque-speed chart: at speed W rad/s every force-limited "
+             "joint drive keeps the fraction F of its forcerange, the whole range at rest, straight between the "
+             "points, none at the no-load speed (braking keeps the whole range). Not with --drive-corner-speed. "
+             "Written into the .cxpolicy header. An RS00 (RobStride's 48 V chart: 14 N*m to 100 rpm, 12 at 150, "
+             "8 at 225, 5 at 270, 0.5 at 315) is --no-load-speed 33.0 --drive-curve "
+             "10.47:1,15.71:0.857,23.56:0.571,28.27:0.357,32.99:0.036")
     parser.add_argument(
         "--drive-torque-scale", type=float, default=1.0, metavar="FACTOR",
         help="ADR-981: every force-limited actuator's forcerange times FACTOR for the "

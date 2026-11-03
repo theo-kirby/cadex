@@ -114,3 +114,48 @@ def test_the_corner_flag_needs_a_no_load_speed_above_it():
         except SystemExit:
             continue
         raise AssertionError(f"corner {bad_corner} with no-load {bad_no_load} accepted")
+
+
+RS00_CHART = "10.47:1,15.71:0.857,23.56:0.571,28.27:0.357,32.99:0.036"
+
+
+def test_a_chart_curve_reads_the_makers_points_and_keeps_braking():
+    """ADR-986: RobStride's RS00 chart: 14 N*m to 100 rpm, 12 at 150, 8 at 225, 5 at 270, none at no-load."""
+    class Options:
+        no_load_speed = 33.0
+        drive_corner_speed = 0.0
+        drive_curve = RS00_CHART
+
+    curve = cadex_train.resolved_drive_curve(Options())
+    rpm = 2 * math.pi / 60
+    omega = np.array([[0.0], [100 * rpm], [150 * rpm], [225 * rpm], [270 * rpm], [33.0], [40.0], [-150 * rpm]])
+    r = cadex_train.drive_force_range(np, LIMIT, omega, 33.0, 0.0, curve)
+    assert r[0, 0].tolist() == [-14.0, 14.0]
+    for row, want in ((1, 14.0), (2, 12.0), (3, 8.0), (4, 5.0)):
+        assert abs(r[row, 0, 1] - want) < 0.02, (row, r[row, 0, 1])
+        assert r[row, 0, 0] == -14.0                       # braking keeps the whole range
+    assert r[5, 0, 1] == 0.0 and r[6, 0, 1] == 0.0
+    assert abs(r[7, 0, 0] + 12.0) < 0.02 and r[7, 0, 1] == 14.0
+    import jax.numpy as jnp
+    jr = np.asarray(cadex_train.drive_force_range(jnp, jnp.asarray(LIMIT), jnp.asarray(omega), 33.0, 0.0, curve))
+    assert np.allclose(jr, r, atol=1e-5)
+    # no curve is the old shapes exactly
+    assert np.array_equal(cadex_train.drive_force_range(np, LIMIT, omega, 33.0, 16.8, None),
+                          cadex_train.drive_force_range(np, LIMIT, omega, 33.0, 16.8))
+
+
+def test_the_curve_flag_refuses_bad_charts():
+    class Options:
+        no_load_speed = 33.0
+        drive_corner_speed = 0.0
+        drive_curve = None
+
+    assert cadex_train.resolved_drive_curve(Options()) is None
+    for bad, no_load, corner in (("10:1,5:0.5", 33.0, 0.0), ("10:0.5,20:0.8", 33.0, 0.0), ("10:1,40:0.5", 33.0, 0.0),
+                                 ("10:1.2", 33.0, 0.0), ("10-1", 33.0, 0.0), ("10:1", 0.0, 0.0), ("10:1", 33.0, 16.8)):
+        Options.drive_curve, Options.no_load_speed, Options.drive_corner_speed = bad, no_load, corner
+        try:
+            cadex_train.resolved_drive_curve(Options())
+        except SystemExit:
+            continue
+        raise AssertionError(f"curve {bad!r} accepted")

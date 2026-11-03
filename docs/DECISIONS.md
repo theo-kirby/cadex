@@ -49946,3 +49946,30 @@ flag's refusals. Training suite: 277 passed. A CPU smoke on CDXQ-F's ADR-215 exp
 **Consequences.** A trainer can give a drive the curve its datasheet implies. For an RS00 that is `--no-load-speed
 33.0 --drive-corner-speed 16.8`. Policies trained before this keep their straight line, so earlier draws and judges
 are unchanged.
+
+## ADR-986 — A drive's torque-speed curve may be its maker's chart (2026-11-03)
+
+**Context.** ADR-985's corner gives a drive its peak up to the corner speed and a straight voltage line from there to
+no-load, drawn through two datasheet figures. RobStride publishes the RS00's own 48 V torque-speed chart (14 N·m to
+100 rpm, 12 at 150, 8 at 225, 5 at 270, 0.5 at 315). The chart droops earlier than the two-point line (12 against
+14 N·m at 150 rpm) and holds longer near top speed (5 against 4.1 N·m at 270 rpm). CDXQ-F's screen judges its motions on
+the chart (CDXQ-F ADR-219); a policy trained on another curve is trained on a drive it will not have.
+
+**Decision.** `--drive-curve W:F,W:F,...` (with `--no-load-speed`): at speed W rad/s every force-limited joint drive
+keeps the fraction F of its range, the whole range at rest, straight between the points, none at the no-load speed.
+Braking keeps the whole range, as before. Speeds must rise inside (0, no-load) and fractions lie in [0, 1], never
+rising; the flag is refused with `--drive-corner-speed`. `drive_force_range` and `enveloped_range` take the curve, in
+jax (`jnp.interp`) and numpy alike. The header carries `drive_curve` (`[[rad/s, fraction], ...]` or null), and
+`cadex_goto.Player` plays it. Without the flag the graph and the header's other keys are unchanged. Under
+`--drive-torque-scale` the fractions apply to the scaled range and the speeds stay as given, as for the corner. For an
+RS00: `--no-load-speed 33.0 --drive-curve 10.47:1,15.71:0.857,23.56:0.571,28.27:0.357,32.99:0.036`.
+
+**Tests.** `training/test_drive_envelope.py` (+2): the RS00 chart gives 14, 12, 8 and 5 N·m at 100, 150, 225 and
+270 rpm within 0.02 N·m, none at and past no-load, the whole range braking; jax matches numpy; no curve is the old
+shapes bit for bit; the flag's refusals (falling speeds, rising fractions, a point past no-load, a fraction above 1, a
+malformed point, no no-load speed, with a corner).
+Training suite: 279 passed. A CPU smoke on CDXQ-F's g1 export (`--no-load-speed 33.0 --drive-curve ... --drive-heat
+0.357 2.0`, 32 envs, 2 iterations): exit 0, header `drive_curve: [[10.47, 1.0], ..., [32.99, 0.036]]`.
+
+**Consequences.** A trainer can give a drive its maker's own curve, the one CDXQ-F's screen judges on. Policies trained
+before this keep their line or corner, so earlier draws and judges are unchanged.
