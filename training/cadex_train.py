@@ -2982,12 +2982,17 @@ def match_engine_actuator_derivative(mujoco: Any, jax: Any, jnp: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-def drive_force_range(xp: Any, limit: Any, omega: Any, no_load: float) -> Any:
+def drive_force_range(xp: Any, limit: Any, omega: Any, no_load: float, corner: float = 0.0) -> Any:
     """ADR-969: each force-limited drive's torque range at its present speed.
 
     A drive's torque falls in a straight line from its limit at rest to none
     at its no-load speed, in the direction it is turning; against its turning
-    (braking) it keeps its whole limit. ``limit`` is ``(A, 2)``, the model's
+    (braking) it keeps its whole limit. ADR-985: with a ``corner`` speed
+    (rad/s, below ``no_load``) the drive keeps its whole limit up to the
+    corner and falls in a straight line from there to none at no-load: a
+    current-limited motor on its bus voltage line (an RS00: 16.8 rad/s, the
+    line through its datasheet's 5 N·m at 260 rpm and 315 rpm no-load).
+    ``corner`` 0 is ADR-969's line. ``limit`` is ``(A, 2)``, the model's
     ``actuator_forcerange``; ``omega`` the actuators' speeds (rad/s), any
     leading axes; the result is ``omega``'s shape with a trailing ``2``.
     ``xp`` is ``jax.numpy`` in the trainer's step and ``numpy`` in
@@ -2996,7 +3001,7 @@ def drive_force_range(xp: Any, limit: Any, omega: Any, no_load: float) -> Any:
     gives nothing forward and is not driven backward by this rule.
     """
 
-    room = xp.clip(1.0 - xp.abs(omega) / no_load, 0.0, 1.0)
+    room = xp.clip((no_load - xp.abs(omega)) / (no_load - corner), 0.0, 1.0)
     low = xp.where(omega < 0.0, limit[..., 0] * room, limit[..., 0])
     high = xp.where(omega > 0.0, limit[..., 1] * room, limit[..., 1])
     return xp.stack([low, high], axis=-1)
@@ -3021,13 +3026,13 @@ def actuator_speed_map(model: Any) -> tuple[Any, Any, Any]:
 
 
 def enveloped_range(xp: Any, limit: Any, qvel: Any, speed_map: tuple[Any, Any, Any],
-                    no_load: float) -> Any:
+                    no_load: float, corner: float = 0.0) -> Any:
     """``drive_force_range`` on the drives ``actuator_speed_map`` names, read
     from ``qvel``; every other actuator keeps ``limit``."""
 
     dof, gear, enveloped = speed_map
     omega = gear * xp.take(qvel, dof, axis=-1)
-    ranged = drive_force_range(xp, limit, omega, no_load)
+    ranged = drive_force_range(xp, limit, omega, no_load, corner)
     return xp.where(enveloped[:, None], ranged, limit)
 
 
@@ -3051,6 +3056,20 @@ def scaled_drive_range(xp: Any, limit: Any, forcelimited: Any, scale: float) -> 
         return limit
     on = xp.asarray(forcelimited, dtype=bool)[:, None]
     return xp.where(on, limit * scale, limit)
+
+
+def resolved_drive_corner_speed(options: Any) -> float:
+    """``--drive-corner-speed`` (ADR-985) as a float; 0.0 is ADR-969's straight line. Needs ``--no-load-speed`` and
+    must lie below it."""
+
+    value = float(getattr(options, "drive_corner_speed", 0.0) or 0.0)
+    if value == 0.0:
+        return 0.0
+    no_load = resolved_no_load_speed(options)
+    if not math.isfinite(value) or value < 0.0 or no_load <= 0.0 or value >= no_load:
+        raise SystemExit(f"--drive-corner-speed is a speed in rad/s above 0 and below --no-load-speed "
+                         f"({no_load:g}), not {value:g}")
+    return value
 
 
 def resolved_no_load_speed(options: Any) -> float:
@@ -4081,6 +4100,7 @@ def build_environment(
     # ADR-969: the drives' torque falls with their speed. A Python float, so
     # a run without the flag emits the graph it did.
     no_load_speed = resolved_no_load_speed(options)
+    corner_speed = resolved_drive_corner_speed(options)   # ADR-985
     # ADR-974: PYTHON values; without --drive-heat the graph is the one a
     # trainer without the flag emitted.
     drive_heat = resolved_drive_heat(options)
@@ -4850,7 +4870,7 @@ def build_environment(
 
         def one(d, _):
             limit = m.actuator_forcerange
-            ranged = (enveloped_range(jnp, limit, d.qvel, speed_map, no_load_speed)
+            ranged = (enveloped_range(jnp, limit, d.qvel, speed_map, no_load_speed, corner_speed)
                       if no_load_speed > 0.0 else limit)   # ADR-969: at the speed it turns now
             if drive_heat is not None:
                 # ADR-974: held under its heat; the heat lives in `userdata`.
@@ -6374,6 +6394,8 @@ def policy_header(
             # ADR-969, its own key for ADR-160's reason: a policy trained
             # under a torque-speed curve has to be PLAYED under it. 0.0 is none.
             "no_load_speed_rad_s": resolved_no_load_speed(options),
+            # ADR-985: the curve's corner (0.0: ADR-969's straight line); cadex_goto plays it.
+            "drive_corner_speed_rad_s": resolved_drive_corner_speed(options),
             # ADR-981, its own key for ADR-160's reason: the drives' peak torque
             # scale the policy was trained under; cadex_goto plays it. 1.0 is none.
             "drive_torque_scale": resolved_drive_torque_scale(options),
@@ -6829,6 +6851,12 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "curve and emits the graph a trainer without the flag does. Written "
              "into the .cxpolicy header, so cadex_goto plays the policy under it. "
              "An RS00 is 315 rpm, 33.0 rad/s")
+    parser.add_argument(
+        "--drive-corner-speed", type=float, default=0.0, metavar="RAD_S",
+        help="ADR-985: with --no-load-speed, the speed up to which every force-limited joint drive keeps its whole "
+             "forcerange; above it the torque falls in a straight line to none at the no-load speed (a "
+             "current-limited motor on its voltage line). 0.0 (the default) is ADR-969's line from rest. Written "
+             "into the .cxpolicy header. An RS00 is 16.8 rad/s (its datasheet's 5 N*m at 260 rpm, 315 rpm no-load)")
     parser.add_argument(
         "--drive-torque-scale", type=float, default=1.0, metavar="FACTOR",
         help="ADR-981: every force-limited actuator's forcerange times FACTOR for the "

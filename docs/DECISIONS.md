@@ -49917,3 +49917,32 @@ warm start (`--critic-warmup 1 --actor-ramp 20`, 32 envs, 3 iterations): exit 0,
 
 **Consequences.** A warm start's first actor iterations step at the rate it was given. Whether that is enough to keep a
 CDXQ-F warm start above its crash is that project's PREREG §28.
+
+## ADR-985 — A drive's torque-speed curve may keep its whole limit to a corner speed (2026-11-03)
+
+**Context.** ADR-969's curve falls in a straight line from the drive's limit at rest to none at its no-load speed. A
+current-limited motor on a fixed bus does not: it gives its current limit (the peak) up to the speed where its back-EMF
+meets the bus voltage, then falls along the voltage line to none at no-load. The RS00's spec tables give 5 N·m rated at
+260 rpm (27.2 rad/s) and 315 rpm (33.0 rad/s) no-load. ADR-969's line gives 2.5 N·m at 27.2 rad/s, half the rated
+torque the maker gives there continuously. The voltage line through those two points (0.866 N·m per rad/s) meets the
+14 N·m peak at 16.8 rad/s. CDXQ-F's cf1 and cf2 trained under ADR-969's line with `--no-load-speed 33.0` (41.25 under
+their pushed model). At gallop joint speeds (20–27 rad/s) their drives were given 3.4–5.5 N·m where the motor has
+7–11 (CDXQ-F ADR-218).
+
+**Decision.** `--drive-corner-speed RAD_S` (with `--no-load-speed`): every force-limited joint drive keeps its whole
+range up to the corner and falls in a straight line from there to none at the no-load speed. Braking keeps the whole
+range, as before. `drive_force_range` and `enveloped_range` take the corner, in jax and numpy alike. The header
+carries `drive_corner_speed_rad_s`, and `cadex_goto.Player` plays it, so a policy is judged under the curve it trained
+under. The default 0.0 is ADR-969's line exactly, and a header without the key plays the line too. A corner at or
+above the no-load speed, below 0, or without a no-load speed is refused. Under `--drive-torque-scale` or
+`--randomise-drive-torque` the corner and no-load speeds stay as given and the torque scales.
+
+**Tests.** `training/test_drive_envelope.py` (+2): the RS00's curve keeps 14 N·m to 16.8 rad/s, passes the datasheet's
+5 N·m at 260 rpm within 0.05 N·m, gives none at 33 rad/s and keeps braking; corner 0 is ADR-969's line bit for bit; the
+flag's refusals. Training suite: 277 passed. A CPU smoke on CDXQ-F's ADR-215 export (`--no-load-speed 33.0
+--drive-corner-speed 16.8 --drive-heat 0.357 2.0`, 32 envs, 2 iterations): exit 0, header
+`drive_corner_speed_rad_s: 16.8`.
+
+**Consequences.** A trainer can give a drive the curve its datasheet implies. For an RS00 that is `--no-load-speed
+33.0 --drive-corner-speed 16.8`. Policies trained before this keep their straight line, so earlier draws and judges
+are unchanged.

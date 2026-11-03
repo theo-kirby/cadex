@@ -83,3 +83,34 @@ def test_the_flag_is_off_by_default_and_refuses_a_negative_speed():
         pass
     else:
         raise AssertionError("a negative no-load speed was accepted")
+
+
+def test_a_corner_keeps_the_whole_range_to_it_then_falls_to_no_load():
+    """ADR-985: an RS00 keeps 14 N*m to 16.8 rad/s and passes its datasheet's 5 N*m at 260 rpm."""
+    omega = np.array([[0.0], [10.0], [16.8], [260 * 2 * math.pi / 60], [33.0], [-20.0]])
+    r = cadex_train.drive_force_range(np, LIMIT, omega, 33.0, 16.8)
+    assert r[0, 0].tolist() == [-14.0, 14.0] and r[1, 0].tolist() == [-14.0, 14.0]
+    assert math.isclose(r[2, 0, 1], 14.0)
+    assert abs(r[3, 0, 1] - 5.0) < 0.05                       # the datasheet's rated point
+    assert r[4, 0].tolist() == [-14.0, 0.0]
+    assert math.isclose(r[5, 0, 0], -14.0 * (33.0 - 20.0) / (33.0 - 16.8)) and r[5, 0, 1] == 14.0
+    # corner 0 is ADR-969's line exactly
+    assert np.array_equal(cadex_train.drive_force_range(np, LIMIT, omega, 33.0, 0.0),
+                          cadex_train.drive_force_range(np, LIMIT, omega, 33.0))
+
+
+def test_the_corner_flag_needs_a_no_load_speed_above_it():
+    class Options:
+        no_load_speed = 33.0
+        drive_corner_speed = 0.0
+
+    assert cadex_train.resolved_drive_corner_speed(Options()) == 0.0
+    Options.drive_corner_speed = 16.8
+    assert cadex_train.resolved_drive_corner_speed(Options()) == 16.8
+    for bad_corner, bad_no_load in ((33.0, 33.0), (-1.0, 33.0), (10.0, 0.0)):
+        Options.drive_corner_speed, Options.no_load_speed = bad_corner, bad_no_load
+        try:
+            cadex_train.resolved_drive_corner_speed(Options())
+        except SystemExit:
+            continue
+        raise AssertionError(f"corner {bad_corner} with no-load {bad_no_load} accepted")
