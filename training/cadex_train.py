@@ -3504,6 +3504,45 @@ def gate_ceiling_next(ceiling: float, progress_mps: float, rule: dict[str, Any])
     return ceiling
 
 
+def actor_schedule(iteration: int, critic_warmup: int, actor_ramp: int) -> tuple[float, float]:
+    """ADR-984: the actor's gradient gate and update scale at ``iteration``.
+
+    Without ``actor_ramp`` (0) it is ADR-740's: the actor's gradient is zeroed
+    for the first ``critic_warmup`` iterations and its update is whole. Adam's
+    step count is shared, so it runs on through the warmup while the actor's
+    moments stay zero; at the first actor update bias correction is ~1 and
+    m/sqrt(v) starts at 2.7 and peaks at 5.6 (b1 0.9, b2 0.999): the first
+    actor iteration moves 3.7 times a settled one's worth.
+
+    With ``actor_ramp`` N >= 1 the actor's gradient flows into Adam's moments
+    from the start, so they are warm when it moves, and its update is scaled
+    by 0 through the warmup, then (k + 1) / N for the k-th actor iteration,
+    then 1. N = 1 warms the moments alone.
+    """
+
+    warmup = max(0, int(critic_warmup))
+    ramp = max(0, int(actor_ramp))
+    if ramp <= 0:
+        return (0.0 if iteration < warmup else 1.0), 1.0
+    if iteration < warmup:
+        return 1.0, 0.0
+    return 1.0, min(1.0, float(iteration - warmup + 1) / float(ramp))
+
+
+def actor_gated_update(optimizer, grads, optimizer_state, params, gate, scale):
+    """One optimiser step with the actor's gradient times ``gate`` and its
+    update times ``scale`` (ADR-740, ADR-984); the critic's is untouched.
+    ``grads``, ``params`` and the updates carry ``policy`` and ``value``."""
+
+    import jax
+    import optax
+
+    grads = grads.replace(policy=jax.tree.map(lambda g: g * gate, grads.policy))
+    updates, optimizer_state = optimizer.update(grads, optimizer_state)
+    updates = updates.replace(policy=jax.tree.map(lambda u: u * scale, updates.policy))
+    return optax.apply_updates(params, updates), optimizer_state
+
+
 def reference_weight_at(iteration: int, weight: float, fade: int) -> float:
     """The gallop guide's weight at ``iteration`` (ADR-957): ``weight`` falling
     in a straight line to 0 at ``fade`` iterations; ``fade`` 0 never fades."""
@@ -5757,10 +5796,11 @@ def train(
         key, loss_key = jax.random.split(key)
         (_, metrics), grads = loss_and_grad(params, normaliser, data, loss_key)
         # ADR-740: while the critic warms up, the actor's gradient is zero, so
-        # Adam leaves it where the warm start put it.
-        grads = grads.replace(policy=jax.tree.map(lambda g: g * train_actor, grads.policy))
-        updates, optimizer_state = optimizer.update(grads, optimizer_state)
-        params = optax.apply_updates(params, updates)
+        # Adam leaves it where the warm start put it. ADR-984: or its gradient
+        # warms Adam's moments and its update is scaled (train_actor is the
+        # pair (gate, scale), see actor_schedule).
+        params, optimizer_state = actor_gated_update(
+            optimizer, grads, optimizer_state, params, train_actor[0], train_actor[1])
         return (optimizer_state, params, key), metrics
 
     def sgd_step(carry, _unused, data, normaliser, train_actor):
@@ -6042,6 +6082,7 @@ def train(
             "params": None, "normaliser": None, "written": -1}
     collapsed = ""
     critic_warmup = int(getattr(options, "critic_warmup", 0) or 0) if source_header is not None else 0
+    actor_ramp = int(getattr(options, "actor_ramp", 0) or 0)
     # ADR-955: the race's speed ceiling, and ADR-957's guide weight, held here
     # and written into the batch's state before each iteration: values, not
     # shapes, so the compiled iteration is reused.
@@ -6054,7 +6095,7 @@ def train(
     if guided and not options.quiet:
         print(f"gait reference  {guided}", flush=True)
     for iteration in range(total_iterations):
-        train_actor = jnp.float32(0.0 if iteration < critic_warmup else 1.0)
+        train_actor = jnp.asarray(actor_schedule(iteration, critic_warmup, actor_ramp), jnp.float32)
         moved = {}
         if race_rule:
             moved["gate_ceiling"] = jnp.full((envs,), ceiling, jnp.float32)
@@ -6372,6 +6413,8 @@ def policy_header(
                 # no goal, and leaving it out there keeps such a policy's
                 # header the one it always was (ADR-462).
                 and (key != "goal_pool" or task.get("goal"))
+                # ADR-984: a run without the ramp keeps the header it had.
+                and (key != "actor_ramp" or value)
                 # ADR-840: only a run on the go-to-point layer names it.
                 and (not key.startswith("goto") or options.goto)
                 # ADR-955, ADR-957: only a race names its gates, and only a
@@ -6896,6 +6939,20 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
             "iterations. The critic starts fresh, and until it values the "
             "carried actor its advantages are noise that PPO follows: "
             "rough-c2's episodes fell from 504 to 62 steps in two iterations."
+        ),
+    )
+    parser.add_argument(
+        "--actor-ramp",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "ADR-984: let the actor's gradient warm Adam's moments through "
+            "--critic-warmup with its update held at zero, then ramp its "
+            "update linearly to whole over N iterations (1: warm moments "
+            "only). Without it (0) the actor's first update after the warmup "
+            "is Adam's with a step count run on and cold moments: 3.7 times "
+            "a settled iteration's step."
         ),
     )
     parser.add_argument(

@@ -49891,3 +49891,29 @@ and `test_jump_course.py` pass unchanged.
 
 **Consequences.** A reward or critic can read any point of the robot's height over the ground (a paw, a toe) without
 moving the robot's sensors, so a warm start can gain it.
+
+## ADR-984 — A warm start may warm the actor's Adam moments through the critic warmup and ramp its update (2026-11-02)
+
+**Context.** ADR-740's `--critic-warmup N` zeroes the actor's gradient for N iterations and says the actor's first real
+step is then unbiased. It is not. Adam's step count is shared by actor and critic, so it runs on through the warmup
+(N x epochs x minibatches; 1,280 at N = 10 with 4 x 32) while the actor's moments stay zero. At the first actor update
+the bias correction is ~1, so m/sqrt(v) = 0.1/sqrt(0.001) = 2.7 times the rate. It then rises to 5.6 as m warms faster
+than v (b1 0.9, b2 0.999), and falls back to 1 only after ~1,000 steps. The first actor iteration moves 3.7 times a
+settled iteration's step (4.3 times after a 30-iteration warmup). CDXQ-F's 21 cf2 warm starts all crash at that
+iteration. σ jumps 0.27–0.32 to 0.46–0.62 within an iteration or two, and episodes fall from 600 to 10–33 steps; 6
+seeds never recover. A longer warmup only runs the count further (CDXQ-F's cf2-s3: 30 iterations, the same crash).
+
+**Decision.** `--actor-ramp N` (loop setting `actor_ramp`). The actor's gradient flows into Adam's moments from the
+first iteration and the actor's *update* is scaled by 0 through `--critic-warmup`, so the actor still does not move but
+its moments are warm when it does. After the warmup the update is scaled by (k + 1)/N for the k-th actor iteration, then
+1. N = 1 warms the moments alone. The default 0 keeps ADR-740 exactly. A header names `actor_ramp` only when it is
+set. `actor_schedule` and `actor_gated_update` carry the rule; `minibatch_step` calls the latter.
+
+**Tests.** `training/test_actor_ramp.py` (5): the schedule; ADR-740's defect reproduced on Adam (first step 2.5–3x, a
+peak > 5x, > 3.5x over the first 128 steps); with the ramp, no actor move through the warmup and every following step
+within 1% of the rate; the scale moves the actor and not the critic; the flag parses. A CPU smoke on CDXQ-F's cf2-r8
+warm start (`--critic-warmup 1 --actor-ramp 20`, 32 envs, 3 iterations): exit 0, header `actor_ramp: 20`, witness
+4.1e-7.
+
+**Consequences.** A warm start's first actor iterations step at the rate it was given. Whether that is enough to keep a
+CDXQ-F warm start above its crash is that project's PREREG §28.
