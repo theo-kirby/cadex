@@ -49426,3 +49426,696 @@ the joint back. `test_http_api.py` pins `poses` as a key of `/api/project`.
   the feet above the mat or through it.
 - Nothing yet reads `poses/` in training. The file names the MJCF joints a
   trainer's reset keyframe or reference uses, so that is the next step.
+
+## ADR-969 — A drive's torque falls with its speed (2026-10-31)
+
+**Context.** Every Cadex servo is a force-limited PD actuator: MuJoCo clamps
+its torque to `forcerange` at any speed. A real drive has a torque-speed
+curve: an RS00 gives its 14 N·m only near rest and nothing at its 315 rpm
+(33.0 rad/s) no-load speed. A task that pays only for speed (Symon's sprint,
+its ADR-068) finds that gap: it can hold peak torque at joint speeds the motor
+cannot reach with any torque, so the top speed it learns is not one the robot
+can make. A reward term would only discourage it; the limit belongs in the
+physics.
+
+**Decision.**
+- `cadex_train.py --no-load-speed RAD_S` (default 0, off): before every
+  solver step each force-limited joint drive's range is
+  `cadex_train.drive_force_range`: in the direction it turns, its limit times
+  `clip(1 − |ω|/ω₀, 0, 1)`; against it (braking), its whole limit. `ω` is
+  `gear · qvel` at the drive's dof (`actuator_speed_map`), read at the start
+  of the solver step, so the model's `actuator_forcerange` is replaced per
+  environment (`enveloped_range`) and MJX clamps to it. ADR-465's derivative
+  rule reads the same replaced range.
+- The value is written into the policy header (`training.no_load_speed_rad_s`
+  and the hyperparameters), as ADR-160's filter is, because a policy trained
+  under the curve has to be played under it.
+- `cadex_goto.Player.step(model, data)` is that solver step in numpy on stock
+  MuJoCo, under the header's curve, by the same functions; the walk and race
+  judges step through it. Without a curve it is `mj_step`.
+- `Player` plays a task that declares no goals (a sprint) with none.
+
+**Not covered.** `cadex evaluate`, the engine's own evaluator, and the
+dashboard's playback do not apply the curve: a policy trained under it is
+judged with `cadex_goto` (or a tool built on `Player`). A drive's heating (its
+RMS over rating) is not limited, only measured by the judges.
+
+**Evidence.** Symon's sprint bundle (s17 cut, 13 RS00s, 8192 envs, unroll 20):
+six iterations take 55.0 s with `--no-load-speed 33` and 56.1 s without,
+compile included; the curve's cost does not show. The smoke policy's header
+reads `no_load_speed_rad_s` 33.0, and `cadex_goto.Player` plays it on the
+export by name.
+
+**Tests.** `training/test_drive_envelope.py`: the range at rest, half and full
+no-load speed and past it, in both directions; numpy and JAX agree; only a
+force-limited drive on a joint is enveloped; a MuJoCo drive at its no-load
+speed asked for its whole range forward gives 0 N·m and 14 N·m at rest; the
+flag is off by default and refuses a negative speed. The training suite
+passes (177).
+
+**Consequences.** A speed-only reward is judged against what the motors can
+do. The curve is linear and per-drive-type only through `forcerange`; a
+model mixing drives with different no-load speeds needs a per-actuator value
+before it can use this.
+
+## ADR-970 — A run can randomise its drives' torque and its friction (2026-10-31)
+
+**Context.** Symon's sprint policies (its ADR-068 to ADR-071) are judged under
+harder physics before their speed counts. sp1's two seeds lost 17-20% of their
+speed with every drive's torque 15% lower, and seed 1 fell to 0/10 kept with the
+floor's friction at 0.6; an interim read of sp2 seed 1 (checkpoint 1100) kept
+its speed on 0/10 under the torque cut and 3/10 at friction 0.6. A policy
+trained on one exact drive strength and one friction runs right at both; the
+lever is to train it across them. The bundle's `randomisation` would do it, but
+a bundle is the script's and a randomisation range is a training condition, so
+it belongs with the run's other flags and leaves the task's digest alone.
+
+**Decision.**
+- `cadex_train.py --randomise-drive-torque LOW HIGH` and
+  `--randomise-friction LOW HIGH` (both off by default). Each is one
+  randomisation entry in the bundle's own form (`flag_randomisation`),
+  `uniform(LOW, HIGH)` per environment, held for the run, drawn by the same
+  `random.Random(base_seed + e)` **after** the bundle's entries, so the bundle's
+  draws are unchanged; drive torque before friction.
+  - drive torque scales both ends of every force-limited actuator's
+    `actuator_forcerange`; under `--no-load-speed` (ADR-969) the curve falls
+    from the scaled limit to none at the same no-load speed, as the judge's
+    `torque` condition does.
+  - friction scales column 0 (sliding) of every geom's `geom_friction`. MuJoCo
+    takes the larger of a contact's two geoms, so with every geom at friction 1
+    (Symon's cut and export) the floor contact's friction is the factor. With
+    `--race-terrain` the relief's fields follow the floor's draw (ADR-962).
+- `LOW` must be above 0 and at most `HIGH`; a model with no force-limited drive
+  refuses the torque flag.
+- The header names a flag only when it is given: `training.hyperparameters`
+  gains `randomise_*` and `training.randomisation.flag_entries` lists label,
+  field and bounds. A run without either flag draws, builds, traces and writes
+  the header it did.
+
+**Not covered.** The draw is per environment for the run, not per episode
+(`RANDOMISATION_MODE`); 8192 environments are 8192 mechanisms. Contact
+stiffness is not randomised here.
+
+**Evidence.** A CPU smoke on Symon's sprint bundle (s18relay, 32 environments,
+2 iterations, both flags, `--no-load-speed 33`) builds and trains; the batched
+model carries each environment's drawn `actuator_forcerange` and `geom_friction`.
+
+**Tests.** `training/test_flag_randomisation.py` (12): off by default draws and
+writes nothing; the bundle's own draws are unchanged by the flags; each
+environment scales every force-limited drive by its own draw after the
+bundle's and leaves an unlimited one alone; friction scales the sliding column
+only; bad ranges and a model with no limited drive are refused; the header
+names the flags only when given and is otherwise unchanged; end to end, the
+trainer's step clamps a drive asked past its range to its drawn limit under the
+curve (2.0 N·m nominal, 1.0 at a 0.5 draw).
+
+**Consequences.** A sprint policy can be trained against the drive strength and
+friction its judge cuts, and its speed re-earned there; the speed it reaches is
+the speed of the weakest drive and slipperiest floor it was trained to expect.
+
+## ADR-971 — A run can randomise its contact stiffness, on a finer solver step (2026-10-31)
+
+**Context.** Symon's first straight sprint policy (its ADR-082, trained under
+ADR-970's drive-torque and friction randomisation) keeps its speed under every
+harder condition but one: with every geom's `solref` time constant halved it
+loses a uniform 17% (ratio 0.83 on 10/10 episodes). Its judge's `step` control,
+the solver step halved alone, keeps 0.98, so the loss is the stiffer contact.
+ADR-970 named contact stiffness as not covered. Symon's contacts are 4 ms on a
+2 ms step: already two steps, the shortest time constant MuJoCo honours
+(`refsafe` clamps a shorter one silently, in MJX's `_kbi` as in MuJoCo), so a
+time-constant draw below 1 does nothing on the bundle's own step.
+
+**Decision.**
+- `cadex_train.py --randomise-contact-timeconst LOW HIGH` (off by default): a
+  third flag entry in ADR-970's form, drawn after the drive-torque and friction
+  flags, `uniform(LOW, HIGH)` per environment for the run, scaling column 0 of
+  every geom's `geom_solref` that is a time constant (positive); a negative
+  solref (a direct stiffness) and the damping ratio are left alone. With every
+  geom scaled, the solmix-mixed contact time constant is scaled by the factor;
+  0.5 is the K3 judge's `stiff`.
+- `--solver-step-divisor N` (default 1): the host model's `opt.timestep` is
+  divided by N before `put_model` and the episode's solver steps per action
+  multiplied by N, so the control interval, the horizon and every per-action
+  quantity are unchanged and the physics costs N times as much.
+- A `LOW` that would put the shortest time constant under two solver steps (the
+  model's step over N) is refused, naming the divisor it needs, rather than
+  trained on a clamp that would make the flag a no-op.
+- The header names `randomise_contact_timeconst` (and its `flag_entries` row)
+  and `solver_step_divisor` only when given (divisor != 1). Runs without them
+  draw, build, trace and write the header they did; earlier draws are
+  unchanged because the entry is appended last.
+
+**Evidence.** A CPU smoke on Symon's sprint bundle (s19relay, 32 environments,
+2 iterations, all three flags, `--solver-step-divisor 2`, `--no-load-speed 33`)
+builds and trains. A MuJoCo check (in the tests) shows why the divisor is
+needed: at a 2 ms step a 2 ms floor sinks a resting box exactly as a 4 ms one
+does; at 1 ms it sinks a quarter as far.
+
+**Tests.** `training/test_contact_randomisation.py` (7): off by default; each
+environment scales every time constant by its own draw after the bundle's and
+the other flags' draws, keeping damping ratios and a direct-stiffness geom;
+the bundle's and other flags' draws unchanged; a time constant under two steps
+refused naming the divisor (2 for 0.5, 4 for 0.25 at divisor 2), bad ranges
+and a divisor under 1 refused; refsafe shown clamping without the finer step;
+end to end, one action is 20 ms of simulated time at divisor 1 and 2; the
+header names the flag and divisor only when given and is otherwise unchanged.
+
+**Consequences.** A policy can be trained across the contact stiffness its
+judge cuts. The divisor is global, not per environment, so a run randomising
+stiffness pays for the finer step on every environment.
+
+## ADR-972 — Relief under a sprint: a train-split strip along +x without `--gates` (2026-10-31)
+
+**Context.** Symon's G1 (its ADR-087) trains its blind two-term sprint policy over
+rough and uneven ground, warm from its counted sprint policy, and judges it on a
+held-out straight strip of `race_terrain` on the export (course kind `straight`,
+split `heldout`, origin to (125 m, 0)). The trainer laid relief only under a
+gate race (ADR-962 refused `--race-terrain` without `--gates`), on a square
+field of half side 15 m round the start: a sprint at 5.6 m/s leaves it in under
+3 s of a 20 s episode. A gate race is another task (its own observation and
+pay), so a sprint policy cannot be warm-started there.
+
+**Decision.**
+- `cadex_train.py --race-terrain KIND` without `--gates` lays each relief level
+  as a strip under the bundle's own task: `cadex_goto.strip_terrain(np, kind,
+  seed, length_m=...)`, `race_terrain` over a straight run from the start to
+  (`length_m`, 0) with `margin_m` (3 m) either side and past each end, split
+  `train`, course kind `strip` (seed string
+  `cadex-race-terrain:<kind>:strip:train:<seed>`, which no race, field or
+  held-out straight strip draws). `--relief-strip L` sets its length
+  (default `cadex_goto.STRIP_LENGTH_M`, 125 m: 20 s at up to 6.25 m/s, the
+  held-out strip's length); past it is the plane.
+- Everything else is ADR-962 to ADR-966's: the levels, the field seeds
+  (`seed * levels + k - 1`), the three ways of drawing them
+  (`--relief-fields`), the curriculum (`--relief-ceiling`), the relief model
+  (one heightfield per level, paws only), friction following the floor's draw.
+  A `boxes`/`b1` strip cuts its run into legs laid end to end from the start's
+  clearing, each a draw in `field_leg_m` (2–4 m), one obstacle across each as a
+  race's leg has.
+- `--relief-half` without `--gates` and `--relief-strip` with `--gates` are
+  refused. The rule (and the policy header's `race_terrain`) carries
+  `strip_m` and `half_m: null` for a strip; a gate race's rule is unchanged.
+- The bundle's terminations stand as written; a collapse ending that reads the
+  base's absolute height is permissive on a hill (the base stands higher), as
+  under a gate race on relief. The held-out judge reads it over the ground.
+
+**Evidence.** A CPU MJX smoke on Symon's sprint bundle (s19relay, 64
+environments, 20 control steps after compiling, its run's flags:
+`--no-load-speed 33 --randomise-drive-torque 0.8 1.0 --randomise-friction 0.6 1.0
+--action-filter-alpha 0.715`): flat 188.6 env steps/s; with `--race-terrain u1
+--relief-levels 4 --relief-fields graded-rough --relief-ceiling 4,0.1,0` (every
+level in force) on the 125 m strip 116.1 (0.62 of flat), on a 30 m strip 117.2;
+every environment finite. The strip's length does not set its cost (each level
+is a 241 x 5241 grid, 1.26 M points, under the 15 m field's 1441 x 1441); the
+heightfield collision does. Its four levels: rough alone (29.7 mm), then u1 with
+hills graded 10.3°, 12.7° and 15.0° (highest point 419 mm).
+
+**Tests.** `training/test_sprint_strip.py` (9): a strip is train-split relief
+along +x, its extent the run and its margin, its start clear, deterministic,
+and not a race's, a field's or the held-out straight strip's draw; a b1 strip
+stands an obstacle across the path every 2–4 m within the box heights; a
+field's and a race's draws are unchanged to the digest; the rule without
+`--gates` is a strip and refuses a field's size (and a gate race refuses a
+strip's); the scaled, graded and graded-rough strip levels are the strip's
+draws on the fields' seeds; a sprint environment stands on its strip, a paw
+held up by its episode's level only; a sprint without `--race-terrain` is
+unchanged. `test_race_terrain_training.py`'s refusal of `--race-terrain`
+without `--gates` becomes the strip's rule.
+
+**Consequences.** A sprint policy can be trained, warm, over the relief it is
+judged on, and its training numbers compare with its flat ones. The training
+strip and the held-out strip share a distribution and never a draw.
+
+## ADR-973 — A jump course: one engine box across a straight run, that the whole body collides with (2026-10-31)
+
+**Context.** Symon's run sy2 asks for a jump over a box (J1: at least 80 mm tall,
+at most 150 mm deep, no paw on its top) and onto one (J2: at least 100 mm, on it
+and off the far side), each rung +20 mm, on held-out courses. Race relief
+(ADR-961, ADR-965) is a heightfield whose box faces rise over one 25 mm cell,
+and a trainer lets a heightfield touch the floor's spheres and capsules only
+(ADR-962; MJX refuses a box or mesh on a heightfield, ADR-854): a trunk box
+passes through a relief box. A jump trained there could land its belly on the
+box, or drag it through the face, without the physics saying so. The engine's
+box courses (ADR-716, ADR-852) stand real box geoms that every geom meets, and a
+trainer re-places them per episode (ADR-717); they draw platforms anywhere on the
+extent, with no split, not one across the path.
+
+**Decision.**
+- `cadex_goto.jump_course(kind, split, seed, **shape)`: `kind` `over` or `onto`,
+  `split` `train` or `heldout`, every draw `random`'s on
+  `cadex-jump:<kind>:<split>:<seed>`, a string no relief, race or field draws.
+  One box across a straight run along +x, its near face `near_m` (2–4 m) from
+  the start (never under `JUMP_CLEAR_M`, 1 m), its centre up to `offset_mm`
+  (50 mm) aside, `across_mm` 1.0–1.6 m wide so the way past is over it. `over`:
+  `height_mm` 80, `along_mm` 60–150 (J1's bar); `onto`: `height_mm` 100,
+  `along_mm` 600–1000. `shape` overrides a range (equal ends fix it: a rung).
+- The box is an engine `platform` feature placed by
+  `CadexDynamics.terrain_boxes` (a `block` record with `centre_mm`, `quat`,
+  `half_mm`), so the course is in a bundle pool's form and
+  `cadex_train.terrain_pool` reads it as the engine stands it. The course carries
+  `goals_xy_m` (`over`: 2 m past the far face; `onto`: the top's centre, then
+  past), the box's numbers and a `sha256` of its records.
+- `cadex_goto.jump_model(mujoco, xml, course)`: the bundle's model with each box
+  as a box geom `environment/jump/<i>` taking the floor plane's contact bits and
+  parameters, so paws, legs and trunk meet it, face and top.
+- `cadex_goto.jump_contacts(mujoco, model, data, course)`: every contact on a
+  jump box, its other geom and `top` (within 5 mm of the top) or `face`.
+- No training flag yet; the trainer's pooled-course path (ADR-717) is the route
+  that keeps the body's collision in training.
+
+**Evidence.** On Symon's export s18 (`physics-model.xml`, its collision as
+built), under `jump_model` on held-out `onto` course 0 at 120 mm: the robot
+dropped limp over the box rests with its four paws on its top; laid on its back
+over it, its three trunk boxes (`c_front_frame` ×2, `c_rear_frame`) rest on the
+top; sent at 3 m/s limp into the near face, its fore heels hit the face. Held-out
+`over` courses 0–2: 133.8, 84.9 and 73.6 mm deep, near faces at 3.74, 2.05 and
+3.78 m.
+
+**Tests.** `training/test_jump_course.py` (5): a course is its seed string's,
+deterministic, and no held-out course (10 seeds) is any of 200 train ones; bad
+kinds, splits, keys, ranges and a box nearer than 1 m are refused; an `over` box
+is J1's thin box across the path and an `onto` box carries its goal on top; the
+box is the engine's record and `terrain_pool` stands it where
+`terrain_box_geoms` does; a free box with a trunk's contact bits lands on the
+top (not through it), rests on the plane beside it, and a paw pressed into the
+near face reads `face`; the held-out digests of `over` 0 and `onto` 0 are pinned
+and the race relief's `b1` digest is unchanged. Training suite 210 passed.
+
+**Consequences.** A jump judge can be written against held-out boxes the whole
+body meets, and a training route has a course in the pool's form to carry. Every
+earlier draw and digest is unchanged.
+
+## ADR-974 — A drive is held to its rating by its heat (2026-10-31)
+
+**Context.** ADR-969 bounds a drive by its peak torque and its torque–speed curve.
+Nothing bounds it by its continuous rating: a policy may hold a drive at its peak
+for a whole episode. Symon's counted sprint policy (sy2, sp3 s3) runs its spine
+pitch RS00 at 2.06× its 5 N·m rating RMS over 20 s, which a real RS00 would only
+do until its winding overheats and its firmware cuts its current. The owner wants
+the environment to enforce what a drive can do, so that a policy is free to push
+for its goals without being paid or priced for the ratings.
+
+**Decision.**
+- `--drive-heat RATED_FRACTION PEAK_SECONDS`: each force-limited joint drive
+  carries a heat, an I²t integral, in the MJX data's `userdata`. Every solver
+  step it rises by `(torque² − rated²)·dt` and is kept between none and the
+  budget `(peak² − rated²)·PEAK_SECONDS`, so a drive cools only as fast as it
+  runs under its rating. Its torque ceiling falls in a straight line from its
+  peak at no heat to its rating at the budget, and the range at its speed
+  (ADR-969) is clipped to it: the lower of the two holds. The peak is the
+  drive's `forcerange` as it stands, which under `--randomise-drive-torque` is
+  scaled per environment, and the rating scales with it.
+- `--heat-start LOW HIGH`: an episode starts with each drive's heat uniform in
+  this share of its budget (cold, `0 0`, by default), so a policy does not learn
+  that its drives are always cold.
+- The header's `training` block carries `drive_heat` and `heat_start`, and
+  `cadex_goto.Player` plays a policy under the heat it was trained with, by the
+  same functions (`heat_budget`, `heat_range`, `heated`). A judge may pass
+  `drive_heat=` to judge any policy under one.
+- The policy does not observe its heat; it reads its joints as it did. An
+  observation of each drive's heat (a real drive reports its temperature) is
+  left for when it is needed.
+
+**Evidence.** In MuJoCo, a drive commanded far past its peak gives 14 N·m from
+cold, is under 10 N·m by 2 s and holds at its rating; with the linear foldback
+it approaches the rating with a time constant of about 4 s. A 6-iteration smoke
+run on Symon's s19relay sprint task with `--no-load-speed 33 --drive-heat 0.357
+2.0 --heat-start 0 0.5 --feet-air-limit 0.4 -1.0` trains, and its header carries
+all three. Symon's sp3 s3, trained without it, judged under `0.357 2.0` from
+cold: 3.33 m/s settled against 5.60 without, best 2 s 5.20, no fall on 3/3,
+worst RMS 1.29× rated.
+
+**Tests.** `training/test_drive_heat.py`: the budget, the ceiling from peak to
+rating, heat rising over the rating and falling under it, NumPy and JAX agreeing,
+a drive in MuJoCo folding back to its rating, and the flags' refusals. Without the
+flag the trainer's graph is the one it was.
+
+## ADR-975 — A foot that stays up costs (2026-10-31)
+
+**Context.** Symon's fastest sprint policies (sy2 sp4 f1 and f2, 6.40 and 5.94 m/s)
+bound on two same-side legs, and others ran on three; the charter counts a
+four-legged policy only, so the speed earned on two legs is lost. ADR-870's feet
+block pays at first contact only, so a foot that never lands is never priced by
+it.
+
+**Decision.** A task's feet block may carry `air_limit` (`limit_s`, `weight`):
+every step, `weight × Σ max(0, air_time − limit_s)` over the feet that are up, on
+ADR-870's air timer, so a foot up past the limit costs more each step it stays up
+and a gait that lands every foot within the limit pays nothing.
+`--feet-air-limit SECONDS WEIGHT` (WEIGHT < 0) adds it to the bundle's task at
+training: to the task's feet block, or to a new one reading every contact
+observation's `_down` channel. The header's `training` block names it. It does
+not say which gait; a foot that taps the ground each stride without bearing
+weight is not priced by it.
+
+**Tests.** `training/test_drive_heat.py`: the block built from the contacts and
+the flag's refusals; a foot that never lands is priced by how far it is past the
+limit every step and a foot that lands every fourth step is not.
+
+## ADR-976 — A sprint over a relief strip reads the race scan (2026-10-31)
+
+**Context.** ADR-972 trains a sprint over a train-split relief strip without
+`--gates`, but ADR-967's height scan was refused there ("give --gates"), so a
+sprint policy crosses ADR-966's 20–60 mm boxes and steps blind. Symon's G2
+screen (its ADR-111, `g2`) trains that way; its baseline n3 fell at an obstacle
+on 7 of 10 held-out b1 strips. A blind sprinter meets a box when a paw strikes
+it (ADR-967's context).
+
+**Decision.**
+- `cadex_train.py --race-scan default|AHEAD,..:LEFT,..` is taken without
+  `--gates` when `--race-terrain` lays a strip: the task gains ADR-967's
+  `race_scan` block (the same grid, channels `rscan<i>` last in the actor's and
+  the critic's vectors), and nothing else changes (no gates, the bundle's own
+  goals and terms). Without `--gates` and without `--race-terrain` it is
+  refused; a bundle with its own scan is refused (ADR-715).
+- The scan reads the base's free joint for its position and heading, as a
+  race's does, and each environment's strip level (0 the plane), as ADR-967.
+- A warm start from a blind sprint policy gains the scan's inputs at zero
+  weight (ADR-967's rule, unchanged), so it plays its source until training
+  moves them. The header carries `training.race_scan`; `cadex_goto.Player`
+  plays it over its `ground`, which a judge stands as the strip's
+  (`terrain_ground`).
+
+**Evidence.** A CPU warm start from Symon's sp6 n3 on its sprint bundle
+(s19relay), `--race-terrain b1 --relief-levels 4 --relief-fields graded-rough
+--race-scan default`, 64 environments: "the actor gains 18 height-scan inputs at
+zero weight", "18 new inputs start fresh"; the run trained its two iterations
+(`symon-runlab/sy54-smoke`).
+
+**Tests.** `training/test_sprint_scan.py` (3): a sprint strip's task takes the
+scan last and a warm start gains only it, a scanned bundle refused; the
+sprint's actor reads the scan over its own episode's strip level across fresh
+episodes; the scan reads a b1 strip's obstacle ahead. `test_race_scan.py`'s
+refusal names both routes.
+
+**Consequences.** A sprint can be trained to see a box or step 0.8 m ahead (at
+4 m/s, 0.2 s). The scan stays a simulated elevation map (ADR-967).
+
+## ADR-977 — A sprint strip's obstacles can span it, walled (2026-11-01)
+
+**Context.** Symon's first G2 screen (its ADR-130, `g2`) trained two sprint
+policies warm over ADR-972's b1 strips and judged them on held-out b1 strips.
+Neither held an episode: both steered 1.6–3.1 m off the line and ran beside
+the obstacles. ADR-965's boxes are 0.4–1.0 m across and its steps 1.5–3.0 m,
+centred within 0.15 m of the line, and the strip leaves `margin_m` (3 m) of
+plane either side, past which is the plane itself. A sprint pays progress
+along +x and costs heading and lateral speed, so going round is cheaper than
+going over. The trainer offered no strip on which the only way on is over.
+
+**Decision.**
+- `cadex_goto.race_terrain` takes a shape option `span_wall_mm` on a course of
+  kind `strip` (refused on any other kind, and at or below 0). With it each
+  obstacle's across is the grid's full width over the cosine of its turn off
+  the strip, plus its along-side's slant and a cell, its offset is 0, and the
+  start's clearing is tested against the turned band itself rather than its
+  corner circle. A rim wall `span_wall_mm` high and `span_rim_mm` (default
+  100 mm, whole cells) deep stands along both long sides of the grid and behind
+  the start, so the plane past the grid is reached only by the far end. `drawn`
+  records both.
+- Every other draw is the strip's without the span, from the same seed string
+  and in the same order: an obstacle's kind, place along, along-side, turn and
+  height are its own, leg for leg (an obstacle the clearing test now keeps or
+  drops is the only difference in the list).
+- `cadex_train.py --relief-span WALL_MM` (without `--gates`, on `--race-terrain
+  boxes` or `b1`) passes it to every strip level; the rule and the policy
+  header carry `span_wall_mm`. Level 1 of `graded-rough` is rough relief alone,
+  with no obstacles and no wall. Under `--relief-fields scaled` the walls scale
+  with their level, as every height does.
+- The heightfield touches the paws only (ADR-962), so a wall holds a paw, not
+  the trunk; at 400 mm it stands well above a stepping reach (Symon's fore paw
+  lifts 171.8 mm at its joint limits).
+- Held-out courses, races and fields never take the option; a strip without it
+  is ADR-972's to the digest.
+
+**Evidence.** A CPU warm start from Symon's sp6 n3 on its sprint bundle
+(s19relay), `--race-terrain b1 --relief-levels 4 --relief-fields graded-rough
+--relief-ceiling 4,0.1,0 --relief-span 400`, 64 environments, two iterations:
+exit 0, witness 3.8e-7, the header's four `span_wall_mm` 400
+(`symon-runlab/g2w-smoke`); Symon's held-out strip judge played it on the
+export.
+
+**Tests.** `training/test_sprint_span.py` (8): on `boxes` strips of three
+seeds an 8-connected walk from the start over anything under the lowest box
+never passes the first obstacle nor reaches the grid's edge, and on the same
+strip unspanned it reaches the far end; every spanned obstacle's top stands in
+every row inside the rim, turned or not, and b1's are boxes' with relief under
+them; the spanned strip keeps the strip's draws; the held-out `strip` and
+`straight` b1 draws, a held-out gate course's and two unspanned training
+strips' are unchanged to the digest; a field and a race refuse the option; the
+trainer's rule takes `--relief-span` only on a boxes or b1 strip and walls its
+obstacle levels only.
+
+**Consequences.** A sprint can be trained on a strip where every obstacle has
+to be crossed. The held-out judges are unchanged, so a policy trained this way
+is judged on the same unspanned b1 strips it could still go round.
+
+## ADR-978 — A reward term can read a paw's touch latched over the control interval (2026-11-01)
+
+**Context.** CDXQ-F's cf1 screen 6 (its ADR-172) trained three seeds whose
+cycle holds the reference clock while the left hind paw taps the floor once a
+swing, 12–16 ms, where the reference holds it 50–56 mm up. The project's
+`swing_touch` term prices a paw down in proportion to the reference's lift,
+but it reads the contact's `_down` flag (ADR-698), and `observe` reads that
+once a control step, from the interval's last solver state. Of the taps, the
+share spanning such a read was 0.75–0.82 at checkpoint 300 and 0.46–0.58 at
+the final checkpoints, against 0.60–0.70 for taps at random times: the term
+saw about half of them and training appears to have moved them between reads.
+
+**Decision.**
+- `cadex_train.py --latched-contact LABEL ...`: the reward terms so labelled
+  read every contact observation's `_down` channel as a flag latched over the
+  control interval, 1.0 when the contact's normal force (its sensordata times
+  its scale) was above `down_above_n` on ANY solver step of the interval.
+  The step's scan carries the most force each contact read; the flag is that
+  peak against the threshold, and it is never below the plain flag (the
+  interval's last solver state is one of the states read).
+- Only the named terms read it. Every other reward term, the observation the
+  policy and critic see, the terminations, the feet block and every draw read
+  what they read before; without the flag the traced graph is the one this
+  trainer always emitted (a Python bool, like ADR-699's).
+- A label the task does not carry, or a term whose expression names no
+  contact `_down` channel, is refused, as is a task with no contact
+  observation.
+- Training's only, like ADR-870's feet block and ADR-975's air limit: the
+  bundle, the engine's `evaluate_episode` and the export judge are unchanged.
+  The policy header records `latched_contact` (the labels).
+
+**Tests.** `training/test_latched_contact.py` (5): off by default and a plan
+names the labelled terms only; unknown labels, a term reading no `_down` flag
+and a task without contacts are refused; the latched vector sets the `_down`
+channels only, numpy and jax alike; on a bouncing ball, MJX's step pays the
+labelled term from every solver step and the unlabelled one from the last,
+step for step against CPU MuJoCo over 20 control steps, with intervals where
+the two differ; the header carries the key.
+
+**Consequences.** A short touch the 50 Hz read misses can be priced by the
+term that is meant to price it, without changing what the policy observes or
+what any other term reads.
+
+## ADR-979 — A reward term can read a paw's leave of the floor over the control interval (2026-11-02)
+
+**Context.** CDXQ-F's cf1 screen 9 (its ADR-178) trained policies that land the
+right fore paw on the reference's time, leave the floor and land again 18-56 ms
+later. The plain `_down` flag (ADR-698) is read once a control step, from the
+interval's last solver state, so a leave shorter than the interval costs at most
+one stance step and often nothing; the latched flag (ADR-978) reads any touch and
+cannot see a leave at all. On the export the right fore paw leaves 2.3-2.9 times a
+cycle inside the reference's stance (its tools/stance_leave.py).
+
+**Decision.** `cadex_train.py --leave-contact LABEL ...`: the labelled reward terms
+read every contact's `_down` channel as the LEAVE flag, 1.0 when the contact's
+normal force was above `down_above_n` on some solver state of the interval (or on
+the state the interval started from) and not above it on a LATER solver state of
+the interval. The solver-step scan that carries ADR-978's peak force also carries
+two booleans (`leave_step`); the reward reads them through `leave_vector`. The
+terms are planned by `latched_contact_plan` (now taking the option's name for its
+refusals); a term named by both options is refused. Every other term, the
+observation, the terminations and the feet block read the plain flag. Training's
+only: the bundle and the engine's evaluator are unchanged; the policy header
+records `leave_contact`.
+
+**Tests.** `training/test_leave_contact.py` (5): off by default; refusals name
+the option; the leave step needs a down state before an off one; on a bouncing
+ball under MJX the leave term reads every solver step as `mj_step` does on the CPU,
+beside a latched term and alone; a term cannot read both; the header key.
+
+**Consequences.** A paw that leaves the floor and comes back inside one control
+interval can be priced by a term written as an ordinary stance term
+(`ref_down * paw_down`), without changing what the policy observes. Without the
+option that term reads the plain flag, so a task meant for it must be trained
+with it; the header carries the key.
+
+## ADR-980 — A relief run can set its hills' grade range (2026-11-02)
+
+**Context.** CDXQ-F's U2 bar is held-out smooth bumps on hills to 10° (its cf1 PREREG §19). The trainer's relief fields
+grade their hills from the race's `grade_deg` (8–15°): `graded` puts field k at 8 + 7k/levels°, `graded-rough` at
+8 + 7(k−1)/(levels−1)°, and `scaled` scales a draw in 8–15°, so a run could not hold its hills under 10° nor start a
+ladder below 8°.
+
+**Decision.** `cadex_train.py --relief-grade LOW,HIGH` (degrees, 0 < LOW ≤ HIGH < 45; `--race-terrain` hills, u1 or b1
+only): `relief_fields` reads LOW and HIGH in place of the race's `grade_deg` in every mode (the graded modes' ladder,
+and the draw `scaled` scales). The rule carries `grade_deg` only when given, so a run without it is drawn as before to the
+digest. The policy header records the option with the rest of the run's flags and each field's drawn grade.
+
+**Tests.** `training/test_relief_grade.py` (9): off by default the rule and the top field are unchanged; `graded-rough`
+at 4 levels and 4,10 grades fields 2–4 at 6/8/10° and equals `strip_terrain` at those grades; `graded` and `scaled` take
+the range; out-of-bounds values and relief without hills are refused.
+
+**Consequences.** A sprint can be trained on hills only as steep as the bar it is judged on, with a ladder from gentle
+grades; the held-out race terrain is unchanged.
+
+## ADR-981 — A run can push or cut its drives' peak torque by a fixed factor, and the player plays it (2026-11-02)
+
+**Context.** CDXQ-F's cf2 charter lets its drives be pushed to 1.3× the RS00's 14 N·m peak, with the no-load speed and
+heat model also raised, and needs training and every judge to play the same model (its ADR-199). The trainer could scale
+the peak only as a per-environment draw (`--randomise-drive-torque F F`, ADR-970), which is not written into the policy
+header, and `cadex_goto.Player` had no way to play a scaled peak: a judge would have judged a pushed policy on the stock
+drive without saying so.
+
+**Decision.** `cadex_train.py --drive-torque-scale FACTOR` (> 0; 1.0, the default, leaves the model alone):
+`randomised_models` multiplies both ends of every force-limited actuator's `actuator_forcerange` by FACTOR on the base
+model, before any draw, so `--randomise-drive-torque` draws around the scaled peak, the `--no-load-speed` curve (ADR-969)
+falls from it and `--drive-heat` (ADR-974) rates it (rated = fraction × scaled peak). Actuators that are not
+force-limited are unchanged. The header records `training.drive_torque_scale`. `cadex_goto.Player` reads it (a header
+without it is 1.0), takes a `drive_torque_scale` argument that overrides it (a judge plays a pushed policy on the stock
+peak with 1.0), and `Player.step` caches the scaled range as the drive's peak, so the curve and heat it applies every
+solver step start from the scaled peak. New helpers: `resolved_drive_torque_scale`, `scaled_drive_range`.
+
+**Tests.** `training/test_drive_torque_scale.py` (8): the flag defaults to 1.0 and refuses 0, negative and NaN; only
+force-limited actuators are scaled; the host model carries the scaled peak with no draw added, and a drive-torque draw
+scales the scaled peak; the header carries the factor; the player applies 14 N·m at 1.0 and 18.2 N·m at 1.3 to a held
+drive, and under heat 0.45 / 3.0 folds back to 0.45 × 18.2 N·m; the player reads the header and a judge's argument
+overrides it.
+
+**Consequences.** A run without the flag is unchanged, and every existing policy plays as before (its header has no key,
+so 1.0). A pushed policy carries its peak in its header, as it carries its curve and heat, so a judge plays it without
+being told and must ask explicitly to judge it stock.
+
+## ADR-982 — A warm start may cross a swap of the reference clip on the same clock (2026-11-02)
+
+**Context.** CDXQ-F's cf2 screen 1 (its ADR-200) warm-starts its counted gallop onto a new reference stride, R5 in place
+of R4: the same period (0.4272 s), the same 64 samples, the same reward, the same model. `check_curriculum_change`
+(ADR-161) refused it, because `reference`, `reference_schedule` and `tracking` are outside the curriculum keys. The
+refusal's reason is that a step may not change what the network reads or emits. Here it does not: the actor reads only
+the tracking clock (`policy_channels`, `ref_sin`/`ref_cos` from period, samples, turn per step and start), and those
+are identical. What moves is the clip's table (what the reward and the critic read) and its reset states (where an
+episode starts). No trainer code reads `reference` or `reference_schedule`; they are the clip's record.
+
+**Decision.** `check_curriculum_change` admits a step where `tracking` moved and every tracking key outside
+`TRACKING_CLIP_KEYS = {table, reset_qpos, reset_qvel}` is unchanged, naming it `tracking.clip`. `reference` and
+`reference_schedule` may move only beside it, and are folded into the name. It also requires `--critic-warmup N > 0`,
+because the critic's tracking channels now carry the new clip and its value starts on the old clip's returns. Any
+change to the clock (period, samples, turn, start, held, channels, policy channels, cadence) is still refused, as is a
+`reference` record that moves without the table.
+
+**Tests.** `training/test_reference_clip_step.py` (11): a new clip on the same clock is admitted and named
+`tracking.clip`; the clip keys are exactly the table and its reset states; the actor reads the clock and not the clip;
+no critic warmup is refused; a moved period, sample count, turn, policy channel list or start is refused; the record
+moving without the clip is refused; another curriculum key rides beside it (`["label", "tracking.clip"]`). The
+ADR-161 suite (`test_curriculum_warm_start.py`) is unchanged and passes.
+
+**Consequences.** A run without `--init-from-task-change` is unchanged. A warm start onto a new gait clip at the same
+cadence no longer has to start cold. A clip at another cadence still does, because the actor's clock would mean
+another phase.
+
+## ADR-983 — A height scan may read a point fixed in its body's frame (2026-11-02)
+
+**Context.** CDXQ-F's cf2 screen 2 (its ADR-201) prices each hind paw's swing height in the reward. A paw's height has
+no channel: the paws appear only as touch sensors, and adding a sensor changes the robot (`robot_xml`), which a warm
+start refuses. A privileged height scan (ADR-715) may join across a warm start (ADR-736's course keys) and reads the
+height over the ground, but at the body's frame origin, and an exported body whose frame carries no offset has its
+origin wherever its parent's is (CDXQ-F's paw: 196 mm from the paw).
+
+**Decision.** A scan row may carry `point_mm`, `[x, y, z]` in the body's frame: the scan is read at
+`xpos + xmat @ point` instead of `xpos`, turned with the body, and the grid's offsets are laid round that point as
+before. The trainer's `height_scan_vector` and the engine's `height_scan_values` both do it. A row without it reads as
+before.
+
+**Tests.** `training/test_scan_point.py` (3): both read MuJoCo's own `geom_xpos` for a geom at the point at three
+poses; trainer and engine agree batched with offsets; a row without the key reads the origin. `test_terrain_pool.py`
+and `test_jump_course.py` pass unchanged.
+
+**Consequences.** A reward or critic can read any point of the robot's height over the ground (a paw, a toe) without
+moving the robot's sensors, so a warm start can gain it.
+
+## ADR-984 — A warm start may warm the actor's Adam moments through the critic warmup and ramp its update (2026-11-02)
+
+**Context.** ADR-740's `--critic-warmup N` zeroes the actor's gradient for N iterations and says the actor's first real
+step is then unbiased. It is not. Adam's step count is shared by actor and critic, so it runs on through the warmup
+(N x epochs x minibatches; 1,280 at N = 10 with 4 x 32) while the actor's moments stay zero. At the first actor update
+the bias correction is ~1, so m/sqrt(v) = 0.1/sqrt(0.001) = 2.7 times the rate. It then rises to 5.6 as m warms faster
+than v (b1 0.9, b2 0.999), and falls back to 1 only after ~1,000 steps. The first actor iteration moves 3.7 times a
+settled iteration's step (4.3 times after a 30-iteration warmup). CDXQ-F's 21 cf2 warm starts all crash at that
+iteration. σ jumps 0.27–0.32 to 0.46–0.62 within an iteration or two, and episodes fall from 600 to 10–33 steps; 6
+seeds never recover. A longer warmup only runs the count further (CDXQ-F's cf2-s3: 30 iterations, the same crash).
+
+**Decision.** `--actor-ramp N` (loop setting `actor_ramp`). The actor's gradient flows into Adam's moments from the
+first iteration and the actor's *update* is scaled by 0 through `--critic-warmup`, so the actor still does not move but
+its moments are warm when it does. After the warmup the update is scaled by (k + 1)/N for the k-th actor iteration, then
+1. N = 1 warms the moments alone. The default 0 keeps ADR-740 exactly. A header names `actor_ramp` only when it is
+set. `actor_schedule` and `actor_gated_update` carry the rule; `minibatch_step` calls the latter.
+
+**Tests.** `training/test_actor_ramp.py` (5): the schedule; ADR-740's defect reproduced on Adam (first step 2.5–3x, a
+peak > 5x, > 3.5x over the first 128 steps); with the ramp, no actor move through the warmup and every following step
+within 1% of the rate; the scale moves the actor and not the critic; the flag parses. A CPU smoke on CDXQ-F's cf2-r8
+warm start (`--critic-warmup 1 --actor-ramp 20`, 32 envs, 3 iterations): exit 0, header `actor_ramp: 20`, witness
+4.1e-7.
+
+**Consequences.** A warm start's first actor iterations step at the rate it was given. Whether that is enough to keep a
+CDXQ-F warm start above its crash is that project's PREREG §28.
+
+## ADR-985 — A drive's torque-speed curve may keep its whole limit to a corner speed (2026-11-03)
+
+**Context.** ADR-969's curve falls in a straight line from the drive's limit at rest to none at its no-load speed. A
+current-limited motor on a fixed bus does not: it gives its current limit (the peak) up to the speed where its back-EMF
+meets the bus voltage, then falls along the voltage line to none at no-load. The RS00's spec tables give 5 N·m rated at
+260 rpm (27.2 rad/s) and 315 rpm (33.0 rad/s) no-load. ADR-969's line gives 2.5 N·m at 27.2 rad/s, half the rated
+torque the maker gives there continuously. The voltage line through those two points (0.866 N·m per rad/s) meets the
+14 N·m peak at 16.8 rad/s. CDXQ-F's cf1 and cf2 trained under ADR-969's line with `--no-load-speed 33.0` (41.25 under
+their pushed model). At gallop joint speeds (20–27 rad/s) their drives were given 3.4–5.5 N·m where the motor has
+7–11 (CDXQ-F ADR-218).
+
+**Decision.** `--drive-corner-speed RAD_S` (with `--no-load-speed`): every force-limited joint drive keeps its whole
+range up to the corner and falls in a straight line from there to none at the no-load speed. Braking keeps the whole
+range, as before. `drive_force_range` and `enveloped_range` take the corner, in jax and numpy alike. The header
+carries `drive_corner_speed_rad_s`, and `cadex_goto.Player` plays it, so a policy is judged under the curve it trained
+under. The default 0.0 is ADR-969's line exactly, and a header without the key plays the line too. A corner at or
+above the no-load speed, below 0, or without a no-load speed is refused. Under `--drive-torque-scale` or
+`--randomise-drive-torque` the corner and no-load speeds stay as given and the torque scales.
+
+**Tests.** `training/test_drive_envelope.py` (+2): the RS00's curve keeps 14 N·m to 16.8 rad/s, passes the datasheet's
+5 N·m at 260 rpm within 0.05 N·m, gives none at 33 rad/s and keeps braking; corner 0 is ADR-969's line bit for bit; the
+flag's refusals. Training suite: 277 passed. A CPU smoke on CDXQ-F's ADR-215 export (`--no-load-speed 33.0
+--drive-corner-speed 16.8 --drive-heat 0.357 2.0`, 32 envs, 2 iterations): exit 0, header
+`drive_corner_speed_rad_s: 16.8`.
+
+**Consequences.** A trainer can give a drive the curve its datasheet implies. For an RS00 that is `--no-load-speed
+33.0 --drive-corner-speed 16.8`. Policies trained before this keep their straight line, so earlier draws and judges
+are unchanged.
+
+## ADR-986 — A drive's torque-speed curve may be its maker's chart (2026-11-03)
+
+**Context.** ADR-985's corner gives a drive its peak up to the corner speed and a straight voltage line from there to
+no-load, drawn through two datasheet figures. RobStride publishes the RS00's own 48 V torque-speed chart (14 N·m to
+100 rpm, 12 at 150, 8 at 225, 5 at 270, 0.5 at 315). The chart droops earlier than the two-point line (12 against
+14 N·m at 150 rpm) and holds longer near top speed (5 against 4.1 N·m at 270 rpm). CDXQ-F's screen judges its motions on
+the chart (CDXQ-F ADR-219); a policy trained on another curve is trained on a drive it will not have.
+
+**Decision.** `--drive-curve W:F,W:F,...` (with `--no-load-speed`): at speed W rad/s every force-limited joint drive
+keeps the fraction F of its range, the whole range at rest, straight between the points, none at the no-load speed.
+Braking keeps the whole range, as before. Speeds must rise inside (0, no-load) and fractions lie in [0, 1], never
+rising; the flag is refused with `--drive-corner-speed`. `drive_force_range` and `enveloped_range` take the curve, in
+jax (`jnp.interp`) and numpy alike. The header carries `drive_curve` (`[[rad/s, fraction], ...]` or null), and
+`cadex_goto.Player` plays it. Without the flag the graph and the header's other keys are unchanged. Under
+`--drive-torque-scale` the fractions apply to the scaled range and the speeds stay as given, as for the corner. For an
+RS00: `--no-load-speed 33.0 --drive-curve 10.47:1,15.71:0.857,23.56:0.571,28.27:0.357,32.99:0.036`.
+
+**Tests.** `training/test_drive_envelope.py` (+2): the RS00 chart gives 14, 12, 8 and 5 N·m at 100, 150, 225 and
+270 rpm within 0.02 N·m, none at and past no-load, the whole range braking; jax matches numpy; no curve is the old
+shapes bit for bit; the flag's refusals (falling speeds, rising fractions, a point past no-load, a fraction above 1, a
+malformed point, no no-load speed, with a corner).
+Training suite: 279 passed. A CPU smoke on CDXQ-F's g1 export (`--no-load-speed 33.0 --drive-curve ... --drive-heat
+0.357 2.0`, 32 envs, 2 iterations): exit 0, header `drive_curve: [[10.47, 1.0], ..., [32.99, 0.036]]`.
+
+**Consequences.** A trainer can give a drive its maker's own curve, the one CDXQ-F's screen judges on. Policies trained
+before this keep their line or corner, so earlier draws and judges are unchanged.

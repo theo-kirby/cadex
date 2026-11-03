@@ -660,7 +660,20 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
         obstacles = []
         ends = [(0.0, 0.0)] + [(1000.0 * g["xy_m"][0], 1000.0 * g["xy_m"][1]) for g in course["gates"]]
         legs = list(zip(ends, ends[1:]))
-        if course.get("kind") == "field":
+        if course.get("kind") == "strip":
+            # ADR-972: a training strip runs one long leg along +x, so it is
+            # cut into legs laid end to end from the start's clearing, each a
+            # draw in ``field_leg_m`` long, and one obstacle stands across each
+            # as a race's leg does: about one every 3 m of the run.
+            legs = []
+            ax = clear + blend
+            while True:
+                bx = ax + 1000.0 * boxes_rng.uniform(*(float(v) for v in options["field_leg_m"]))
+                if bx > max(xs):
+                    break
+                legs.append(((ax, 0.0), (bx, 0.0)))
+                ax = bx
+        elif course.get("kind") == "field":
             # ADR-966: a training field has no legs to stand boxes across, so
             # it scatters ``field_obstacles_per_m2`` legs over its gates' square,
             # each a draw in ``field_leg_m`` long at any heading, and stands one
@@ -674,6 +687,21 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
                 half = 500.0 * boxes_rng.uniform(*(float(v) for v in options["field_leg_m"]))
                 legs.append(((mx - half * math.cos(heading), my - half * math.sin(heading)),
                              (mx + half * math.cos(heading), my + half * math.sin(heading))))
+        # ADR-977: ``span_wall_mm`` on a training strip lays every obstacle
+        # across the grid's full width, margins included, and stands a rim
+        # wall that high along both long sides and behind the start, so the
+        # only way along the strip is over each obstacle. Its draws are the
+        # strip's without it, to the leg; only the across, the offset and
+        # the clearing's test change.
+        span_wall = options.get("span_wall_mm")
+        if span_wall is not None:
+            span_wall = float(span_wall)
+            if course.get("kind") != "strip":
+                raise SystemExit("span_wall_mm spans a training strip's obstacles; a race's or a "
+                                 "field's have no strip to span")
+            if not span_wall > 0.0:
+                raise SystemExit(f"span_wall_mm {span_wall:g} must be above 0")
+        half_width = max(abs(y0), abs(y1))
         for leg, ((ax, ay), (bx, by)) in enumerate(legs):
             draw = lambda key: boxes_rng.uniform(*(float(v) for v in options[key]))  # noqa: E731
             step = boxes_rng.random() < float(options["step_share"])
@@ -687,8 +715,21 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
                 boxes_rng.uniform(-1.0, 1.0) * float(options["obstacle_yaw_deg"]))
             height = draw("box_mm")
             ux, uy = (bx - ax) / length, (by - ay) / length
+            if span_wall is not None:
+                # A band turned ``turn`` off the strip covers every row of
+                # the grid when its across is the width over cos(turn) and
+                # its along's slant; a cell over that keeps the edge rows in.
+                turn = abs(yaw - math.atan2(by - ay, bx - ax))
+                offset = 0.0
+                across = (2.0 * half_width / math.cos(turn) + along * math.tan(turn) + 2.0 * cell)
             cx, cy = ax + at * (bx - ax) - offset * uy, ay + at * (by - ay) + offset * ux
-            if math.hypot(cx, cy) - 0.5 * math.hypot(along, across) < clear + blend:
+            if span_wall is not None:
+                # The start's distance from the band itself, not its corner's circle.
+                ra = abs(-cx * math.cos(yaw) - cy * math.sin(yaw)) - 0.5 * along
+                rc = abs(cx * math.sin(yaw) - cy * math.cos(yaw)) - 0.5 * across
+                if math.hypot(max(ra, 0.0), max(rc, 0.0)) < clear + blend:
+                    continue
+            elif math.hypot(cx, cy) - 0.5 * math.hypot(along, across) < clear + blend:
                 continue
             rows, cols = window(cx, cy, 0.5 * math.hypot(along, across))
             px = gx[cols][None, :] - cx
@@ -700,7 +741,14 @@ def race_terrain(np: Any, course: Mapping[str, Any], kind: str, **shape: Any) ->
             obstacles.append({"leg": leg, "kind": name, "centre_mm": [round(cx, 3), round(cy, 3)],
                               "along_mm": round(along, 3), "across_mm": round(across, 3),
                               "yaw_deg": round(math.degrees(yaw), 3), "height_mm": round(height, 3)})
-        heights = np.round(hills + np.where(covered, top, rough), 3)
+        heights = hills + np.where(covered, top, rough)
+        if span_wall is not None:
+            rim = max(1, int(math.ceil(float(options.get("span_rim_mm", 100.0)) / cell)))
+            heights[:rim, :] = np.maximum(heights[:rim, :], span_wall)
+            heights[-rim:, :] = np.maximum(heights[-rim:, :], span_wall)
+            heights[:, :rim] = np.maximum(heights[:, :rim], span_wall)
+            drawn.update(span_wall_mm=round(span_wall, 3), span_rim_mm=round(rim * cell, 3))
+        heights = np.round(heights, 3)
         drawn.update(boxes=sum(o["kind"] == "box" for o in obstacles),
                      steps=sum(o["kind"] == "step" for o in obstacles),
                      box_highest_mm=round(max((o["height_mm"] for o in obstacles), default=0.0), 3),
@@ -744,6 +792,38 @@ def field_terrain(np: Any, kind: str, seed: int, *, half_m: float = FIELD_HALF_M
     corners = [{"xy_m": [sx * half, sy * half]} for sx in (-1.0, 1.0) for sy in (-1.0, 1.0)]
     return race_terrain(np, {"kind": "field", "split": "train", "seed": int(seed),
                              "gates": corners}, kind, **shape)
+
+
+#: The trainer's relief strip under a sprint (ADR-972): how far along +x a
+#: ``--race-terrain`` run without ``--gates`` lays relief, in metres. A 20 s
+#: sprint episode at up to 6.25 m/s runs 125 m, as the held-out straight
+#: strip a sprint is judged on does; past it is the plane.
+STRIP_LENGTH_M = 125.0
+
+
+def strip_terrain(np: Any, kind: str, seed: int, *, length_m: float = STRIP_LENGTH_M,
+                  **shape: Any) -> dict[str, Any]:
+    """A training strip of race terrain (ADR-972): :func:`race_terrain`'s
+    relief over a straight run from the start to ``(length_m, 0)`` (and its
+    margin, ``margin_m`` either side and past each end), on the ``train``
+    split under the course kind ``strip``.
+
+    Its seed string, ``cadex-race-terrain:<kind>:strip:train:<seed>``, is no
+    race's and no field's: a race's course kind is ``gates`` or ``sprint``, a
+    field's ``field``, and the held-out straight strip a sprint is judged on
+    is ``straight`` on the ``heldout`` split. A ``boxes`` or ``b1`` strip
+    stands an obstacle across each of its legs, laid end to end along it;
+    with ``span_wall_mm`` (ADR-977) each obstacle spans the grid's full width,
+    margins included, and a rim wall that high (``span_rim_mm`` deep, default
+    100 mm) stands along both long sides and behind the start, so the only
+    way along the strip is over every obstacle. Without it a strip is
+    ADR-972's to the digest."""
+
+    length = float(length_m)
+    if not length > 0.0:
+        raise SystemExit(f"a strip's length {length:g} m must be above 0")
+    return race_terrain(np, {"kind": "strip", "split": "train", "seed": int(seed),
+                             "gates": [{"xy_m": [length, 0.0]}]}, kind, **shape)
 
 
 def terrain_ground(np: Any, terrain: Mapping[str, Any]) -> Any:
@@ -793,6 +873,151 @@ def terrain_model(mujoco: Any, xml: bytes, terrain: Mapping[str, Any]) -> Any:
                       "solmix", "margin", "gap", "rgba"):
         setattr(geom, attribute, getattr(floor, attribute))
     return spec.compile()
+
+
+#: A jump course (ADR-973): one box across a straight run along +x, built of
+#: the engine's own box records (``CadexDynamics.terrain_boxes``, a
+#: ``platform`` feature), so a model stands it as a box geom that the whole
+#: body collides with, the trunk's boxes too -- unlike race relief, a
+#: heightfield, which a trainer lets touch the paws only (ADR-962, ADR-854).
+#: ``over`` is a thin box to clear (Symon's J1: at least 80 mm tall, at most
+#: 150 mm deep); ``onto`` a deep one to climb, cross on its top and leave
+#: (J2: at least 100 mm). ``height_mm`` is a draw; a rung of +20 mm fixes it.
+#: The box's near face stands ``near_m`` along the run, its centre up to
+#: ``offset_mm`` aside, ``across_mm`` wide so the way past is over it.
+JUMP_KINDS = ("over", "onto")
+JUMP_SPLITS = ("train", "heldout")
+JUMP_SCHEMA = "cadex-jump-course-v1"
+JUMP_COURSE = {
+    "over": {"height_mm": (80.0, 80.0), "along_mm": (60.0, 150.0), "across_mm": (1000.0, 1600.0),
+             "near_m": (2.0, 4.0), "offset_mm": 50.0, "past_m": 2.0},
+    "onto": {"height_mm": (100.0, 100.0), "along_mm": (600.0, 1000.0), "across_mm": (1000.0, 1600.0),
+             "near_m": (2.0, 4.0), "offset_mm": 50.0, "past_m": 2.0},
+}
+#: The run in front of the box is clear for at least this far (m): the start's
+#: clearing and a body length or two to stride out before it.
+JUMP_CLEAR_M = 1.0
+#: How far under its top (mm) a contact on a jump box still counts as on its top.
+JUMP_TOP_TOLERANCE_MM = 5.0
+
+
+def _cadex_dynamics() -> Any:
+    """The engine's terrain module (pure Python, stdlib only), from this checkout."""
+
+    path = str(Path(__file__).resolve().parents[1] / "src" / "Mod" / "cadex")
+    if path not in sys.path:
+        sys.path.insert(0, path)
+    import CadexDynamics
+
+    return CadexDynamics
+
+
+def jump_course(kind: str, split: str, seed: int, **shape: Any) -> dict[str, Any]:
+    """A jump course (ADR-973), the same on every machine.
+
+    Every draw is :mod:`random`'s on the seed string
+    ``cadex-jump:<kind>:<split>:<seed>``, so a ``heldout`` course is never a
+    ``train`` one and a trainer drawing ``train`` never meets a held-out box.
+    ``shape`` overrides :data:`JUMP_COURSE`'s ranges (a pair ``(lo, hi)`` is a
+    uniform draw; equal ends fix it). The box is a ``platform`` feature,
+    ``along_mm`` along +x and ``across_mm`` across, ``height_mm`` tall, its
+    near face ``near_m`` from the start; its placed box is
+    ``CadexDynamics.terrain_boxes``'s ``block`` record (``centre_mm``,
+    ``quat``, ``half_mm``; ADR-852), so ``cadex_train.terrain_pool`` reads
+    the course as one of a bundle's pooled courses. ``goals_xy_m`` are where
+    a run is sent: ``over``, ``past_m`` beyond the far face; ``onto``, the
+    top's centre, then past the far face. ``sha256`` digests the box."""
+
+    import hashlib
+
+    if kind not in JUMP_KINDS:
+        raise SystemExit(f"a jump course's kind {kind!r} is not one of {JUMP_KINDS}")
+    if split not in JUMP_SPLITS:
+        raise SystemExit(f"a jump course's split {split!r} is not one of {JUMP_SPLITS}")
+    unknown = set(shape) - set(JUMP_COURSE[kind])
+    if unknown:
+        raise SystemExit(f"a jump course has no {sorted(unknown)}; it draws {sorted(JUMP_COURSE[kind])}")
+    options = {**JUMP_COURSE[kind], **shape}
+    for key in ("height_mm", "along_mm", "across_mm", "near_m"):
+        low, high = (float(v) for v in options[key])
+        if not 0.0 < low <= high:
+            raise SystemExit(f"a jump course's {key} {low:g}..{high:g} must be above 0, low to high")
+    if float(options["near_m"][0]) < JUMP_CLEAR_M:
+        raise SystemExit(f"a jump box's near face stands at least {JUMP_CLEAR_M:g} m from the start")
+    rng = random.Random(f"cadex-jump:{kind}:{split}:{int(seed)}")
+
+    def draw(key: str) -> float:
+        low, high = (float(v) for v in options[key])
+        return rng.uniform(low, high)
+
+    height, along, across = draw("height_mm"), draw("along_mm"), draw("across_mm")
+    near = 1000.0 * draw("near_m")
+    offset = rng.uniform(-1.0, 1.0) * float(options["offset_mm"])
+    x, far = near + along / 2.0, near + along
+    past = far + 1000.0 * float(options["past_m"])
+    feature = {"kind": "platform", "x_mm": round(x, 3), "y_mm": round(offset, 3),
+               "length_mm": round(along, 3), "width_mm": round(across, 3), "height_mm": round(height, 3)}
+    dynamics = _cadex_dynamics()
+    placed = dynamics.terrain_boxes([feature], [-1000.0, past + 1000.0],
+                                    [-across, across], context="the jump course")
+    goals = ([[round(x / 1000.0, 6), round(offset / 1000.0, 6)]] if kind == "onto" else []) \
+        + [[round(past / 1000.0, 6), 0.0]]
+    box = {"x_mm": feature["x_mm"], "y_mm": feature["y_mm"], "along_mm": feature["length_mm"],
+           "across_mm": feature["width_mm"], "height_mm": feature["height_mm"],
+           "near_mm": round(near, 3), "far_mm": round(far, 3)}
+    digest = hashlib.sha256(json.dumps({"kind": kind, "boxes": placed["boxes"]},
+                                       sort_keys=True).encode("utf-8")).hexdigest()
+    return {"schema": JUMP_SCHEMA, "kind": kind, "split": split, "seed": int(seed),
+            "shape": {key: list(value) if isinstance(value, tuple) else value
+                      for key, value in options.items()},
+            "box": box, "features": [feature], "boxes": placed["boxes"], "domes": placed["domes"],
+            "lowest_mm": placed["lowest_mm"], "highest_mm": placed["highest_mm"],
+            "goals_xy_m": goals, "sha256": digest}
+
+
+def jump_model(mujoco: Any, xml: bytes, course: Mapping[str, Any]) -> Any:
+    """The bundle's model with a jump course's boxes on its floor (ADR-973):
+    one box geom ``environment/jump/<i>`` per placed record, where
+    ``CadexDynamics.terrain_box_geoms`` stands it, taking the floor plane's
+    contact bits and parameters, so whatever touches the floor -- paws, legs
+    and trunk alike -- touches the box, face and top."""
+
+    dynamics = _cadex_dynamics()
+    spec = mujoco.MjSpec.from_string(xml.decode("utf-8"))
+    floor = next((g for g in spec.geoms if g.type == mujoco.mjtGeom.mjGEOM_PLANE), None)
+    if floor is None:
+        raise SystemExit("this model has no floor plane to stand a jump box on")
+    placed = dynamics.terrain_box_geoms(course["boxes"], course["lowest_mm"])
+    for k, (pos, quat, size) in enumerate(zip(placed["pos_m"], placed["quat"], placed["size_m"])):
+        geom = spec.worldbody.add_geom(name=f"environment/jump/{k}", type=mujoco.mjtGeom.mjGEOM_BOX,
+                                       pos=list(pos), quat=list(quat), size=list(size))
+        for attribute in ("contype", "conaffinity", "condim", "priority", "friction", "solref",
+                          "solimp", "solmix", "margin", "gap", "rgba"):
+            setattr(geom, attribute, getattr(floor, attribute))
+    return spec.compile()
+
+
+def jump_contacts(mujoco: Any, model: Any, data: Any, course: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Every contact on a jump box in ``data`` (ADR-973): the other geom's
+    name, and ``top`` when the contact stands within
+    :data:`JUMP_TOP_TOLERANCE_MM` of the box's top, ``face`` otherwise (its
+    near, far or side faces), with the contact's point in mm."""
+
+    names = {mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, f"environment/jump/{k}"): k
+             for k in range(len(course["boxes"]))}
+    out = []
+    for i in range(int(data.ncon)):
+        contact = data.contact[i]
+        g1, g2 = int(contact.geom1), int(contact.geom2)
+        if g1 not in names and g2 not in names:
+            continue
+        box, other = (g1, g2) if g1 in names else (g2, g1)
+        top = float(course["boxes"][names[box]]["top_mm"][0])
+        point = [1000.0 * float(v) for v in contact.pos]
+        out.append({"geom": mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, other) or str(other),
+                    "where": "top" if point[2] >= top - JUMP_TOP_TOLERANCE_MM else "face",
+                    "point_mm": [round(v, 3) for v in point]})
+    return out
 
 
 def terrain_drawing(np: Any, terrain: Mapping[str, Any], most: int = 129) -> dict[str, Any]:
@@ -940,7 +1165,8 @@ class Player:
     gate_channels: list[str] = []
 
     def __init__(self, policy_path: Path, task_path: Path, goals: Sequence[str],
-                 other_model: bool = False) -> None:
+                 other_model: bool = False, drive_heat: Sequence[float] | None = None,
+                 drive_torque_scale: float | None = None) -> None:
         import hashlib
 
         import mujoco
@@ -962,6 +1188,28 @@ class Player:
         if hashlib.sha256(xml).hexdigest() != self.trained_on and not other_model:
             raise SystemExit("the policy was not trained on this bundle's model (--other-model plays it by name)")
         self.filter_alpha = played_filter_alpha(header)
+        # ADR-969: the drives' torque-speed curve the policy was trained under.
+        self.no_load_speed = float((header.get("training") or {}).get("no_load_speed_rad_s", 0.0) or 0.0)
+        # ADR-985: its corner (0.0, and any header without the key: ADR-969's straight line).
+        self.corner_speed = float((header.get("training") or {}).get("drive_corner_speed_rad_s", 0.0) or 0.0)
+        # ADR-986: the maker's chart (None, and any header without the key: the line or the corner).
+        curve = (header.get("training") or {}).get("drive_curve")
+        self.drive_curve = tuple((float(w), float(f)) for w, f in curve) if curve else None
+        self._ranges: dict[int, tuple[Any, Any]] = {}
+        # ADR-981: the drives' peak torque scale the policy was trained under,
+        # or the one a judge asks for (``drive_torque_scale``, e.g. 1.0 to judge
+        # a pushed policy on the stock drive). A header without it is 1.0.
+        trained_scale = float((header.get("training") or {}).get("drive_torque_scale", 1.0) or 1.0)
+        self.drive_torque_scale = float(drive_torque_scale) if drive_torque_scale is not None else trained_scale
+        if not math.isfinite(self.drive_torque_scale) or self.drive_torque_scale <= 0.0:
+            raise SystemExit(f"drive torque scale is a factor above 0, not {self.drive_torque_scale:g}")
+        # ADR-974: the drives' heat limit the policy was trained under, or the
+        # one a judge asks for (``drive_heat``, to judge an older policy under it).
+        trained_heat = (header.get("training") or {}).get("drive_heat")
+        chosen = drive_heat if drive_heat is not None else trained_heat
+        self.drive_heat = tuple(float(v) for v in chosen) if chosen else None
+        self.heat_start = 0.0
+        self.heat = None
         self.filtered_command = cadex_train.filtered_command
         self.task, self.model_xml = task, xml
         self.model = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
@@ -995,7 +1243,10 @@ class Player:
         declared = {str(g["name"]): g for g in task.get("goal") or ()}
         if self.gate_ahead and goals:
             raise SystemExit("a racer reads gates, not speed goals; give it no --goals")
-        if not self.gate_ahead and (len(goals) != 3 or any(name not in declared for name in goals)):
+        # ADR-969: a task with no goals (a sprint) is played with none.
+        if not self.gate_ahead and not declared and goals:
+            raise SystemExit("this task declares no goals; give it no --goals")
+        if not self.gate_ahead and declared and (len(goals) != 3 or any(name not in declared for name in goals)):
             raise SystemExit(f"--goals names the forward, lateral and yaw-rate goals; "
                              f"this task declares {sorted(declared)}")
         self.goals = list(goals)
@@ -1056,10 +1307,53 @@ class Player:
                 x = x / (1.0 + np.exp(-x))
         return np.tanh(x) * self.out_scale + self.out_bias
 
-    def reset(self) -> None:
+    def reset(self, heat_share: float | None = None) -> None:
+        """A fresh episode: the filter at the reset's command and, under a heat
+        limit (ADR-974), every drive at ``heat_share`` (else ``heat_start``) of
+        its budget."""
+
+        self.heat = None
+        if heat_share is not None:
+            self.heat_start = float(heat_share)
         self.issued = self.reset_command.copy()
         self.before = self.reset_command.copy()
         self.first = True
+
+    def step(self, model: Any, data: Any) -> None:
+        """One solver step of ``model``, under the torque-speed curve the policy
+        was trained with (ADR-969): each force-limited joint drive's range at
+        the speed it turns now, by ``cadex_train.drive_force_range``. Without
+        one it is ``mj_step``."""
+
+        if self.no_load_speed > 0.0 or self.drive_heat or self.drive_torque_scale != 1.0:
+            import cadex_train
+
+            if id(model) not in self._ranges:
+                # ADR-981: the peak is the model's range times the trained scale.
+                self._ranges[id(model)] = (
+                    cadex_train.scaled_drive_range(self.np, model.actuator_forcerange.copy(),
+                                                   model.actuator_forcelimited, self.drive_torque_scale),
+                    cadex_train.actuator_speed_map(model))
+            limit, speed_map = self._ranges[id(model)]
+            ranged = (cadex_train.enveloped_range(self.np, limit, data.qvel, speed_map, self.no_load_speed,
+                                                  getattr(self, "corner_speed", 0.0),
+                                                  getattr(self, "drive_curve", None))
+                      if self.no_load_speed > 0.0 else limit.copy())
+            if self.drive_heat:
+                # ADR-974: the trainer's heat, by the same arithmetic.
+                if self.heat is None:
+                    _, _, budget = cadex_train.heat_budget(self.np, limit, *self.drive_heat)
+                    self.heat = self.np.where(speed_map[2], self.heat_start * budget, 0.0)
+                ranged = cadex_train.heat_range(self.np, ranged, limit, self.heat, speed_map[2],
+                                                *self.drive_heat)
+            model.actuator_forcerange[:] = ranged
+            self.mujoco.mj_step(model, data)
+            if self.drive_heat:
+                self.heat = cadex_train.heated(self.np, self.heat, self.np.asarray(data.actuator_force),
+                                               limit, speed_map[2], *self.drive_heat,
+                                               float(model.opt.timestep))
+            return
+        self.mujoco.mj_step(model, data)
 
     def control(self, data: Any, command: Sequence[float], gates: Sequence[float] = ()) -> Any:
         """``data.ctrl`` for this step. ``command`` is the layer's (vx, vy, wz);
@@ -1384,7 +1678,7 @@ def play(options: argparse.Namespace) -> int:
         step += 1
         data.ctrl[:] = player.control(data, [command["vx"][0], command["vy"][0], command["wz"][0]])
         for _ in range(player.substeps):
-            mujoco.mj_step(model, data)
+            player.step(model, data)
             drives.add(data)
         if not np.all(np.isfinite(data.qpos)):
             fell = True
@@ -1605,7 +1899,7 @@ def race(options: argparse.Namespace) -> int:
         step += 1
         data.ctrl[:] = player.control(data, (), view)
         for _ in range(player.substeps):
-            mujoco.mj_step(model, data)
+            player.step(model, data)
             drives.add(data)
         if not np.all(np.isfinite(data.qpos)):
             fell, fell_at = True, step * player.dt

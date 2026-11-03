@@ -82,7 +82,7 @@ def test_a_block_that_cannot_be_paid_is_refused():
     assert feet_terms({}, NAMES) is None
     with pytest.raises(SystemExit, match="lacks"):
         feet_terms(block(contacts=["kfl_down", "khl_down"]), NAMES)
-    with pytest.raises(SystemExit, match="neither"):
+    with pytest.raises(SystemExit, match="pays none of"):
         feet_terms(block(air_time=None), NAMES)
     with pytest.raises(SystemExit, match="one height channel per foot"):
         feet_terms(block(heights=["pfl_z"], swing_height={"weight": -1, "target_m": 0.1}),

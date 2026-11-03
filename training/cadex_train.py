@@ -455,6 +455,10 @@ CURRICULUM_GOAL_KEYS = frozenset({"low", "high", "nominal", "sequence", "bands",
 #: start, so a wider critic input costs nothing.
 CURRICULUM_COURSE_KEYS = frozenset({"model", "terrain", "scans", "observations"})
 
+#: ADR-982: the tracking keys a reference clip carries beside its clock. A
+#: curriculum step may swap them when every other tracking key is unchanged.
+TRACKING_CLIP_KEYS = frozenset({"table", "reset_qpos", "reset_qvel"})
+
 #: The world-body geoms and assets an environment adds (ADR-714, ADR-716):
 #: everything named under ``environment/``.
 ENVIRONMENT_PREFIX = "environment/"
@@ -581,6 +585,28 @@ def check_curriculum_change(
         if clip(parent) == clip(child):
             changed = [key for key in changed if key != "tracking"] + ["tracking.cadence"]
             changed.sort()
+    if "tracking" in changed:
+        # ADR-982: a step onto another reference clip on the same clock. The
+        # actor reads only the clock (``policy_channels``: the stride's phase
+        # from period, samples, turn and start), which must be identical; the
+        # clip's table and its reset states are what the reward and the critic
+        # read, and the critic warms up on them. ``reference`` and
+        # ``reference_schedule`` are the clip's record (no trainer reads them)
+        # and move only beside it.
+        def clock(task: dict[str, Any]) -> dict[str, Any]:
+            return {key: value for key, value in (task.get("tracking") or {}).items()
+                    if key not in TRACKING_CLIP_KEYS}
+
+        if parent.get("tracking") and child.get("tracking") and clock(parent) == clock(child):
+            if int(getattr(options, "critic_warmup", 0) or 0) <= 0:
+                refuse(
+                    "the reference clip moved (tracking's table and reset states): the "
+                    "critic reads its channels and starts on the old clip's returns; "
+                    "give --critic-warmup N."
+                )
+            changed = [key for key in changed
+                       if key not in ("tracking", "reference", "reference_schedule")] + ["tracking.clip"]
+            changed.sort()
     if "goal" in changed:
         # ADR-791: a step that moves only where a goal is drawn from. The
         # actor reads the drawn value itself, through the running normaliser
@@ -600,7 +626,7 @@ def check_curriculum_change(
                        if key not in ("goal", "goal_algorithm")] + ["goal.range"]
             changed.sort()
     disallowed = sorted(set(changed) - CURRICULUM_TASK_KEYS - CURRICULUM_COURSE_KEYS
-                        - {"tracking.cadence", "goal.range"})
+                        - {"tracking.cadence", "tracking.clip", "goal.range"})
     if disallowed:
         refuse(
             f"these keys moved and may not: {disallowed}. A curriculum may "
@@ -1668,16 +1694,24 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
     ``course`` is a re-drawn course's ``(scan, lowest, domes)`` from
     :func:`terrain_pool`, ``(..., S, 6)``, ``(...)`` and ``(..., D, 4)`` with
     the leading axes ``xpos``'s, read in place of the bundle's boxes and
-    domes (ADR-717, ADR-744).
+    domes (ADR-717, ADR-744). A row's ``point_mm`` (ADR-983) reads the scan
+    from that point of the body's frame, turned with the body, in place of
+    the body's origin.
     """
 
     terrain = task.get("terrain")
     parts = []
     for record in task.get("scans") or ():
         body = int(record["body_id"])
-        where = xpos[..., body, :] * float(record["scale"])
         flat = xp.reshape(xmat, xmat.shape[:-2] + (9,)) if xmat.shape[-1] == 3 else xmat
         frame = flat[..., body, :]
+        where = xpos[..., body, :]
+        if record.get("point_mm") is not None:
+            # ADR-983: a point fixed in the body's frame (mm), turned with it.
+            point = [float(value) / 1000.0 for value in record["point_mm"]]
+            where = where + xp.stack([sum(frame[..., 3 * i + j] * point[j] for j in range(3))
+                                      for i in range(3)], axis=-1)
+        where = where * float(record["scale"])
         ahead_x, ahead_y = frame[..., 0], frame[..., 3]
         norm = xp.sqrt(ahead_x * ahead_x + ahead_y * ahead_y)
         turned = norm > 1e-9
@@ -2138,6 +2172,100 @@ def contact_reading(xp: Any, force_n: Any, contact: dict[str, Any]) -> Any:
     return xp.concatenate([force_n, down])
 
 
+def latched_contact_plan(task: dict[str, Any], names: Sequence[str],
+                         labels: Sequence[str] | None,
+                         flag: str = "--latched-contact") -> dict[str, Any] | None:
+    """``--latched-contact LABEL ...`` (ADR-978): which reward terms read a
+    contact's ``_down`` flag latched over the control interval, or ``None``.
+
+    The plain flag (ADR-698) is read once a control step, from the step's
+    last solver state, so a touch shorter than the interval is seen only
+    when it spans that state. A latched flag is 1.0 when the paw's normal
+    force was above ``down_above_n`` on ANY solver step of the interval.
+    Only the named terms read it, in place of every ``_down`` channel their
+    expression names; every other term, the observation, the terminations
+    and the feet block read the plain flag, as before. Training's only: the
+    bundle and the engine's evaluator are unchanged.
+
+    Returns the named terms' indices into ``task["reward"]`` and, per
+    contact observation, its sensordata address, scale, threshold and the
+    ``_down`` channel's index in ``names``. ``flag`` names the option in
+    its refusals: ``--leave-contact`` (ADR-979) plans its terms here too.
+    """
+
+    if not labels:
+        return None
+    terms = list(task.get("reward") or ())
+    by_label: dict[str, int] = {}
+    for index, term in enumerate(terms):
+        by_label.setdefault(str(term.get("label", "")), index)
+    unknown = sorted({str(label) for label in labels} - set(by_label))
+    if unknown:
+        raise SystemExit(f"{flag}: the task has no reward term labelled {unknown}")
+    contacts = []
+    for record in task["observations"]:
+        if not record.get("contact"):
+            continue
+        if int(record["dim"]) != 1:
+            raise SystemExit(f"{flag}: contact {record['name']!r} is not one channel")
+        down = [str(c) for c in record["channels"] if str(c).endswith("_down")]
+        contacts.append({"adr": int(record["adr"]), "scale": float(record["scale"]),
+                         "above": float(record["contact"]["down_above_n"]),
+                         "down": names.index(down[0]), "name": down[0]})
+    if not contacts:
+        raise SystemExit(f"{flag}: the task has no contact observation")
+    downs = {c["name"] for c in contacts}
+    chosen = []
+    for label in labels:
+        index = by_label[str(label)]
+        read = {node.id for node in ast.walk(ast.parse(str(terms[index]["expression"]), mode="eval"))
+                if isinstance(node, ast.Name)}
+        if not read & downs:
+            raise SystemExit(f"{flag}: term {label!r} reads no contact _down flag")
+        chosen.append(index)
+    return {"terms": sorted(set(chosen)), "contacts": contacts,
+            "labels": [str(label) for label in labels]}
+
+
+def latched_vector(xp: Any, vector: Any, peak_n: Any, plan: dict[str, Any]) -> Any:
+    """``vector`` with each contact's ``_down`` channel set to its latched
+    flag (ADR-978): 1.0 when ``peak_n``, the most normal force the contact
+    read on any solver step of the interval, is above its ``down_above_n``."""
+
+    above = xp.asarray([c["above"] for c in plan["contacts"]], dtype=peak_n.dtype)
+    flags = (peak_n > above).astype(vector.dtype)
+    index = xp.asarray([c["down"] for c in plan["contacts"]])
+    if not hasattr(vector, "at"):
+        out = vector.copy()
+        out[..., index] = flags
+        return out
+    return vector.at[..., index].set(flags)
+
+
+def leave_vector(xp: Any, vector: Any, left: Any, plan: dict[str, Any]) -> Any:
+    """``vector`` with each contact's ``_down`` channel set to its leave flag
+    (ADR-979): ``left``, 1.0 when the contact was down (normal force above
+    ``down_above_n``) on some solver state of the interval, or the state it
+    started from, and not down on a LATER solver state of it."""
+
+    index = xp.asarray([c["down"] for c in plan["contacts"]])
+    flags = xp.asarray(left).astype(vector.dtype)
+    if not hasattr(vector, "at"):
+        out = vector.copy()
+        out[..., index] = flags
+        return out
+    return vector.at[..., index].set(flags)
+
+
+def leave_step(xp: Any, seen: Any, left: Any, force_n: Any, above: Any) -> tuple[Any, Any]:
+    """One solver state's update of the leave flag (ADR-979): ``(seen, left)``
+    after a state reading ``force_n``. ``seen``: down on some state so far;
+    ``left``: an off state has followed a down one."""
+
+    down = force_n > above
+    return xp.logical_or(seen, down), xp.logical_or(left, xp.logical_and(seen, xp.logical_not(down)))
+
+
 def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
     """The least variance the normaliser may hold for each channel (ADR-589).
 
@@ -2565,8 +2693,105 @@ def goal_pool(mujoco: Any, xml: bytes, task: dict[str, Any], *,
     return tables
 
 
+#: ADR-970: the run's own randomisation flags, each one draw per environment
+#: held for the run, appended AFTER the bundle's entries so the bundle's draws
+#: are unchanged. Flag attribute, entry label, the model field it scales.
+FLAG_RANDOMISATION = (
+    ("randomise_drive_torque", "drive_torque", "actuator_forcerange"),
+    ("randomise_friction", "friction", "geom_friction"),
+    # ADR-971: contact stiffness, as the time constant of every geom's solref.
+    ("randomise_contact_timeconst", "contact_timeconst", "geom_solref"),
+)
+
+
+def solver_step_divisor(options: Any) -> int:
+    """ADR-971: ``--solver-step-divisor N`` (1 when absent): the solver step is
+    the model's divided by N, and the solver steps per action multiplied by N,
+    so the control interval is unchanged."""
+
+    divisor = int(getattr(options, "solver_step_divisor", 1))
+    if divisor < 1:
+        raise SystemExit(f"--solver-step-divisor N is a whole number >= 1, not {divisor}")
+    return divisor
+
+
+def flag_randomisation(model: Any, options: Any) -> list[dict[str, Any]]:
+    """ADR-970: ``--randomise-drive-torque`` and ``--randomise-friction`` as
+    randomisation entries in the bundle's own form, on ``model``.
+
+    - ``drive_torque LOW HIGH``: one factor per environment scales both ends of
+      every force-limited actuator's ``actuator_forcerange``. Under
+      ``--no-load-speed`` the curve falls from the scaled limit to none at the
+      same no-load speed (ADR-969 reads the batched range).
+    - ``friction LOW HIGH``: one factor per environment scales every geom's
+      sliding friction (column 0 of ``geom_friction``). MuJoCo takes the larger
+      of a contact's two geoms, so with every geom at one friction the floor
+      contact's friction is that friction times the factor.
+
+    - ``contact_timeconst LOW HIGH`` (ADR-971): one factor per environment
+      scales the time constant (column 0) of every geom's ``geom_solref`` that
+      is a time constant (positive; a negative solref is a stiffness). MuJoCo
+      mixes a contact's two solrefs by solmix, so with every geom scaled the
+      contact's time constant is scaled by the factor: 0.5 is the judge's
+      ``stiff``. MuJoCo will not use a time constant under two solver steps
+      (``refsafe``) and would clamp it silently, so a ``LOW`` that would put
+      one under two steps -- of the model's step divided by
+      ``--solver-step-divisor`` -- is refused, naming the divisor it needs.
+
+    No flag given (the default) is an empty list: the run draws, builds
+    and traces as a trainer without them did.
+    """
+
+    entries: list[dict[str, Any]] = []
+    for attribute, label, field in FLAG_RANDOMISATION:
+        bounds = getattr(options, attribute, None)
+        if not bounds:
+            continue
+        low, high = (float(v) for v in bounds)
+        flag = "--" + attribute.replace("_", "-")
+        if not (math.isfinite(low) and math.isfinite(high)) or low <= 0.0 or high < low:
+            raise SystemExit(f"{flag} LOW HIGH is two factors with 0 < LOW <= HIGH, not {low:g} {high:g}")
+        if field == "actuator_forcerange":
+            indices = [2 * a + side for a in range(int(model.nu))
+                       if bool(model.actuator_forcelimited[a]) for side in (0, 1)]
+            if not indices:
+                raise SystemExit(f"{flag}: this model has no force-limited actuator to scale")
+        elif field == "geom_solref":
+            timed = [g for g in range(int(model.ngeom)) if float(model.geom_solref[g, 0]) > 0.0]
+            if not timed:
+                raise SystemExit(f"{flag}: this model has no geom whose solref is a time constant")
+            indices = [2 * g for g in timed]
+            divisor = solver_step_divisor(options)
+            step = float(model.opt.timestep) / divisor
+            shortest = low * min(float(model.geom_solref[g, 0]) for g in timed)
+            if shortest < 2.0 * step - 1e-12:
+                needed = math.ceil(2.0 * float(model.opt.timestep) / shortest - 1e-9)
+                raise SystemExit(
+                    f"{flag} {low:g}: the shortest time constant would be {shortest * 1e3:g} ms, "
+                    f"under two solver steps of {step * 1e3:g} ms, which MuJoCo clamps "
+                    f"(refsafe); give --solver-step-divisor {needed} or more")
+        else:
+            indices = [3 * g for g in range(int(model.ngeom))]
+        entries.append({"label": label, "low": low, "high": high, "mode": "scale", "flag": flag,
+                        "fields": [{"field": field, "index": i} for i in indices]})
+    return entries
+
+
+def flag_randomisation_header(options: Any) -> dict[str, Any]:
+    """ADR-970: ``{"flag_entries": [...]}`` for the policy header's
+    ``randomisation`` block when a flag is given, else ``{}``."""
+
+    rows = [{"label": label, "field": field,
+             "low": float(getattr(options, attribute)[0]),
+             "high": float(getattr(options, attribute)[1])}
+            for attribute, label, field in FLAG_RANDOMISATION
+            if getattr(options, attribute, None)]
+    return {"flag_entries": rows} if rows else {}
+
+
 def randomised_models(mujoco: Any, np: Any, xml: bytes, task: dict[str, Any], *,
-                      base_seed: int, count: int) -> tuple[Any, dict[str, Any]]:
+                      base_seed: int, count: int,
+                      options: Any = None) -> tuple[Any, dict[str, Any]]:
     """Environment 0's host ``MjModel``, and each drawn field for every environment.
 
     The second value maps each field a randomisation entry moves to an array
@@ -2588,7 +2813,18 @@ def randomised_models(mujoco: Any, np: Any, xml: bytes, task: dict[str, Any], *,
     """
 
     base = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
+    # ADR-981: a fixed drive peak scale is the model's own, before any draw,
+    # so --randomise-drive-torque scales the scaled peak.
+    if options is not None:
+        scale = resolved_drive_torque_scale(options)
+        if scale != 1.0:
+            base.actuator_forcerange[:] = scaled_drive_range(
+                np, base.actuator_forcerange.copy(), base.actuator_forcelimited, scale)
     entries = list(task.get("randomisation") or ())
+    # ADR-970: the run's flag entries after the bundle's, so environment i
+    # draws the bundle's factors first, as before, then the flags'.
+    if options is not None:
+        entries += flag_randomisation(base, options)
     if not entries:
         return base, {}
     fields = sorted({str(field["field"]) for entry in entries for field in entry["fields"]})
@@ -2746,6 +2982,212 @@ def match_engine_actuator_derivative(mujoco: Any, jax: Any, jnp: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
+def drive_force_range(xp: Any, limit: Any, omega: Any, no_load: float, corner: float = 0.0,
+                      curve: Any = None) -> Any:
+    """ADR-969: each force-limited drive's torque range at its present speed.
+
+    A drive's torque falls in a straight line from its limit at rest to none
+    at its no-load speed, in the direction it is turning; against its turning
+    (braking) it keeps its whole limit. ADR-985: with a ``corner`` speed
+    (rad/s, below ``no_load``) the drive keeps its whole limit up to the
+    corner and falls in a straight line from there to none at no-load: a
+    current-limited motor on its bus voltage line (an RS00: 16.8 rad/s, the
+    line through its datasheet's 5 N·m at 260 rpm and 315 rpm no-load).
+    ``corner`` 0 is ADR-969's line. ``limit`` is ``(A, 2)``, the model's
+    ``actuator_forcerange``; ``omega`` the actuators' speeds (rad/s), any
+    leading axes; the result is ``omega``'s shape with a trailing ``2``.
+    ``xp`` is ``jax.numpy`` in the trainer's step and ``numpy`` in
+    ``cadex_goto.Player.step``, so a policy is judged under the curve it was
+    trained under by the same arithmetic. Past the no-load speed the drive
+    gives nothing forward and is not driven backward by this rule.
+
+    ADR-986: with a ``curve`` (``((speed rad/s, fraction of the limit), ...)``,
+    speeds rising and below ``no_load``) the drive's forward share is read off
+    the maker's chart instead: the whole limit at rest, straight between the
+    points, none at ``no_load``. ``corner`` is then unused.
+    """
+
+    if curve:
+        ws = xp.asarray([0.0] + [float(w) for w, _ in curve] + [float(no_load)])
+        fs = xp.asarray([1.0] + [float(f) for _, f in curve] + [0.0])
+        room = xp.interp(xp.abs(omega), ws, fs, left=1.0, right=0.0)
+    else:
+        room = xp.clip((no_load - xp.abs(omega)) / (no_load - corner), 0.0, 1.0)
+    low = xp.where(omega < 0.0, limit[..., 0] * room, limit[..., 0])
+    high = xp.where(omega > 0.0, limit[..., 1] * room, limit[..., 1])
+    return xp.stack([low, high], axis=-1)
+
+
+def actuator_speed_map(model: Any) -> tuple[Any, Any, Any]:
+    """ADR-969: for each actuator, its joint's dof, its gear and whether it is
+    force-limited on a joint, from a stock ``MjModel``. A drive's speed is
+    ``gear * qvel[dof]``; an actuator off a joint (none in a Cadex servo
+    model) is left at its range."""
+
+    import numpy as np
+
+    dof, gear, enveloped = [], [], []
+    for a in range(int(model.nu)):
+        joint = int(model.actuator_trnid[a, 0])
+        on_joint = int(model.actuator_trntype[a]) == 0 and joint >= 0
+        dof.append(int(model.jnt_dofadr[joint]) if on_joint else 0)
+        gear.append(float(model.actuator_gear[a, 0]))
+        enveloped.append(bool(on_joint and model.actuator_forcelimited[a]))
+    return np.asarray(dof), np.asarray(gear), np.asarray(enveloped)
+
+
+def enveloped_range(xp: Any, limit: Any, qvel: Any, speed_map: tuple[Any, Any, Any],
+                    no_load: float, corner: float = 0.0, curve: Any = None) -> Any:
+    """``drive_force_range`` on the drives ``actuator_speed_map`` names, read
+    from ``qvel``; every other actuator keeps ``limit``."""
+
+    dof, gear, enveloped = speed_map
+    omega = gear * xp.take(qvel, dof, axis=-1)
+    ranged = drive_force_range(xp, limit, omega, no_load, corner, curve)
+    return xp.where(enveloped[:, None], ranged, limit)
+
+
+def resolved_drive_torque_scale(options: Any) -> float:
+    """``--drive-torque-scale`` (ADR-981) as a float; 1.0 is the model's own peak."""
+
+    raw = getattr(options, "drive_torque_scale", None)
+    value = 1.0 if raw is None else float(raw)
+    if not math.isfinite(value) or value <= 0.0:
+        raise SystemExit(f"--drive-torque-scale is a factor above 0 (1 is the model's peak), not {value:g}")
+    return value
+
+
+def scaled_drive_range(xp: Any, limit: Any, forcelimited: Any, scale: float) -> Any:
+    """ADR-981: ``limit`` (``actuator_forcerange``, ``(..., A, 2)``) with every
+    force-limited actuator's both ends times ``scale``; the others unchanged.
+    The speed curve (ADR-969) and the heat (ADR-974) then read this as the
+    drive's peak, so the rating is the rated fraction of the scaled peak."""
+
+    if scale == 1.0:
+        return limit
+    on = xp.asarray(forcelimited, dtype=bool)[:, None]
+    return xp.where(on, limit * scale, limit)
+
+
+def resolved_drive_corner_speed(options: Any) -> float:
+    """``--drive-corner-speed`` (ADR-985) as a float; 0.0 is ADR-969's straight line. Needs ``--no-load-speed`` and
+    must lie below it."""
+
+    value = float(getattr(options, "drive_corner_speed", 0.0) or 0.0)
+    if value == 0.0:
+        return 0.0
+    no_load = resolved_no_load_speed(options)
+    if not math.isfinite(value) or value < 0.0 or no_load <= 0.0 or value >= no_load:
+        raise SystemExit(f"--drive-corner-speed is a speed in rad/s above 0 and below --no-load-speed "
+                         f"({no_load:g}), not {value:g}")
+    return value
+
+
+def resolved_drive_curve(options: Any) -> tuple[tuple[float, float], ...] | None:
+    """``--drive-curve`` (ADR-986) as ``((speed rad/s, fraction), ...)``, or None. ``"W:F,W:F,..."``: speeds rising,
+    above 0 and below ``--no-load-speed``; fractions of the drive's limit in [0, 1], never rising. Not with
+    ``--drive-corner-speed``."""
+
+    raw = getattr(options, "drive_curve", None)
+    if not raw:
+        return None
+    no_load = resolved_no_load_speed(options)
+    try:
+        points = tuple((float(w), float(f)) for w, f in (item.split(":") for item in str(raw).split(",")))
+    except ValueError:
+        raise SystemExit(f"--drive-curve is 'SPEED:FRACTION,...' (rad/s : share of the limit), not {raw!r}")
+    ws = [w for w, _ in points]
+    fs = [f for _, f in points]
+    ok = (no_load > 0.0 and all(math.isfinite(v) for v in ws + fs)
+          and all(0.0 < w < no_load for w in ws) and all(a < b for a, b in zip(ws, ws[1:]))
+          and all(0.0 <= f <= 1.0 for f in fs) and all(a >= b for a, b in zip(fs, fs[1:])))
+    if not ok:
+        raise SystemExit(f"--drive-curve needs --no-load-speed, speeds rising inside (0, {no_load:g}) rad/s and "
+                         f"fractions in [0, 1] never rising; got {raw!r}")
+    if float(getattr(options, "drive_corner_speed", 0.0) or 0.0) != 0.0:
+        raise SystemExit("--drive-curve and --drive-corner-speed are two shapes of one curve; give one")
+    return points
+
+
+def resolved_no_load_speed(options: Any) -> float:
+    """``--no-load-speed`` (ADR-969) as a float; 0.0 is no curve."""
+
+    value = float(getattr(options, "no_load_speed", 0.0) or 0.0)
+    if not math.isfinite(value) or value < 0.0:
+        raise SystemExit("--no-load-speed is a drive's no-load speed in rad/s, above 0 (0 is off)")
+    return value
+
+
+def heat_budget(xp: Any, limit: Any, rated_fraction: float, peak_seconds: float) -> tuple[Any, Any, Any]:
+    """ADR-974: each drive's peak, rating and heat budget from its torque range.
+
+    ``limit`` is ``(..., A, 2)``, the model's ``actuator_forcerange`` (scaled per
+    environment under ``--randomise-drive-torque``, so a weaker drive is rated
+    lower in proportion). The peak is the larger end; the rating is
+    ``rated_fraction`` of it; the budget is the heat a drive holds before it is
+    held to its rating, ``(peak**2 - rated**2) * peak_seconds``: from cold, at
+    peak, it folds back to its rating after about ``peak_seconds``.
+    """
+
+    peak = xp.maximum(xp.abs(limit[..., 0]), xp.abs(limit[..., 1]))
+    rated = rated_fraction * peak
+    budget = (peak * peak - rated * rated) * peak_seconds
+    return peak, rated, budget
+
+
+def heat_range(xp: Any, ranged: Any, limit: Any, heat: Any, enveloped: Any,
+               rated_fraction: float, peak_seconds: float) -> Any:
+    """ADR-974: a drive's torque range under its heat, as a drive's I^2 t limit.
+
+    The ceiling falls in a straight line from the peak at no heat to the
+    rating at the budget, ``rated + (peak - rated) * (1 - heat / budget)``, and
+    ``ranged`` (the range at this speed, ADR-969, or the model's) is clipped
+    to it either way. Only the drives ``enveloped`` names (force-limited, on a
+    joint) are held; every other actuator keeps ``ranged``.
+    """
+
+    peak, rated, budget = heat_budget(xp, limit, rated_fraction, peak_seconds)
+    left = xp.clip(1.0 - heat / xp.maximum(budget, 1e-12), 0.0, 1.0)
+    cap = rated + (peak - rated) * left
+    held = xp.stack([xp.maximum(ranged[..., 0], -cap), xp.minimum(ranged[..., 1], cap)], axis=-1)
+    return xp.where(enveloped[:, None], held, ranged)
+
+
+def heated(xp: Any, heat: Any, force: Any, limit: Any, enveloped: Any,
+           rated_fraction: float, peak_seconds: float, dt: float) -> Any:
+    """ADR-974: the heat after one solver step at ``force``: it rises by
+    ``(force**2 - rated**2) * dt`` and is kept between none and the budget, so
+    a drive cools only as fast as it runs under its rating."""
+
+    _, rated, budget = heat_budget(xp, limit, rated_fraction, peak_seconds)
+    grown = xp.clip(heat + (force * force - rated * rated) * dt, 0.0, budget)
+    return xp.where(enveloped, grown, 0.0)
+
+
+def resolved_drive_heat(options: Any) -> tuple[float, float] | None:
+    """``--drive-heat RATED_FRACTION PEAK_SECONDS`` (ADR-974), checked, or ``None``."""
+
+    values = getattr(options, "drive_heat", None)
+    if not values:
+        return None
+    fraction, seconds = (float(v) for v in values)
+    if not (math.isfinite(fraction) and math.isfinite(seconds)) or not 0.0 < fraction < 1.0 or seconds <= 0.0:
+        raise SystemExit("--drive-heat RATED_FRACTION PEAK_SECONDS: 0 < RATED_FRACTION < 1 and "
+                         f"PEAK_SECONDS > 0, not {fraction:g} {seconds:g}")
+    return fraction, seconds
+
+
+def resolved_heat_start(options: Any) -> tuple[float, float]:
+    """``--heat-start LOW HIGH`` (ADR-974): an episode starts with each drive's
+    heat drawn uniform in this share of its budget; ``0 0`` (the default) is cold."""
+
+    values = getattr(options, "heat_start", None) or (0.0, 0.0)
+    low, high = (float(v) for v in values)
+    if not 0.0 <= low <= high <= 1.0:
+        raise SystemExit(f"--heat-start LOW HIGH: 0 <= LOW <= HIGH <= 1, not {low:g} {high:g}")
+    return low, high
+
+
 def filtered_command(xp: Any, clamped: Any, previous: Any, first: Any, alpha: float) -> Any:
     """ADR-160's action filter on one clamped command, for the trainer and every player (ADR-953).
 
@@ -2784,6 +3226,40 @@ def resolved_command_slew_deg(options) -> float:
     return value if value > 0.0 else 0.0
 
 
+def with_feet_air_limit(task: dict[str, Any], options: Any) -> dict[str, Any]:
+    """``--feet-air-limit SECONDS WEIGHT`` (ADR-975) as the task's feet block's
+    ``air_limit``, or ``task`` unchanged when the flag is absent.
+
+    The cost is for a foot that stays off the ground: each step it pays
+    ``WEIGHT * sum(max(0, air_time - SECONDS))`` over the feet, so a leg that
+    stops landing costs more every step it stays up and a gait that lands
+    every foot within ``SECONDS`` pays nothing. ``WEIGHT`` is negative (a
+    cost). The feet are the task's own feet block's when it has one, else
+    every contact observation's ``_down`` channel, in the task's order. It
+    is training's, like the rest of the block (ADR-870).
+    """
+
+    values = getattr(options, "feet_air_limit", None)
+    if not values:
+        return task
+    seconds, weight = (float(v) for v in values)
+    if not (math.isfinite(seconds) and math.isfinite(weight)) or seconds <= 0.0 or weight >= 0.0:
+        raise SystemExit("--feet-air-limit SECONDS WEIGHT: SECONDS > 0 and WEIGHT < 0 (a cost), "
+                         f"not {seconds:g} {weight:g}")
+    feet = dict(task.get("feet") or {})
+    if feet.get("air_limit"):
+        raise SystemExit("--feet-air-limit: the task's feet block already has an air_limit")
+    if not feet.get("contacts"):
+        feet["contacts"] = [str(channel) for record in task.get("observations") or ()
+                            if record.get("kind") == "contact"
+                            for channel in record.get("channels") or ()
+                            if str(channel).endswith("_down")]
+        if not feet["contacts"]:
+            raise SystemExit("--feet-air-limit: the task has no contact observation to read the feet from")
+    feet["air_limit"] = {"limit_s": seconds, "weight": weight}
+    return {**task, "feet": feet}
+
+
 def feet_terms(task: dict[str, Any], names: Sequence[str]) -> dict[str, Any] | None:
     """ADR-870: the task's stateful foot terms, checked, or ``None`` for none.
 
@@ -2808,8 +3284,9 @@ def feet_terms(task: dict[str, Any], names: Sequence[str]) -> dict[str, Any] | N
         raise SystemExit(f"the task's feet block names channels the task lacks: {missing}")
     air = feet.get("air_time")
     swing = feet.get("swing_height")
-    if not air and not swing:
-        raise SystemExit("the task's feet block pays neither air_time nor swing_height")
+    limit = feet.get("air_limit")     # ADR-975
+    if not air and not swing and not limit:
+        raise SystemExit("the task's feet block pays none of air_time, swing_height, air_limit")
     if swing and len(heights) != len(contacts):
         raise SystemExit(
             f"swing_height needs one height channel per foot: {len(heights)} for "
@@ -2828,6 +3305,8 @@ def feet_terms(task: dict[str, Any], names: Sequence[str]) -> dict[str, Any] | N
         "air_threshold_s": float(air.get("threshold_s", 0.1)) if air else 0.0,
         "swing_weight": float(swing["weight"]) if swing else 0.0,
         "swing_target_m": float(swing["target_m"]) if swing else 1.0,
+        "limit_weight": float(limit["weight"]) if limit else 0.0,
+        "limit_s": float(limit["limit_s"]) if limit else 0.0,
     }
 
 
@@ -2850,6 +3329,10 @@ def feet_step(xp: Any, terms: dict[str, Any], memory: Sequence[Any], contact: An
     air = air + dt
     peak = xp.maximum(peak, height_m) if terms["swing_weight"] else peak
     pay = terms["air_weight"] * xp.sum((air - terms["air_threshold_s"]) * first, axis=-1)
+    if terms.get("limit_weight"):
+        # ADR-975: every step a foot is up and has been past the limit, by how far past.
+        up = air * (1.0 - contact.astype(air.dtype))
+        pay = pay + terms["limit_weight"] * xp.sum(xp.maximum(up - terms["limit_s"], 0.0), axis=-1)
     if terms["swing_weight"]:
         error = peak / terms["swing_target_m"] - 1.0
         pay = pay + terms["swing_weight"] * xp.sum(error * error * first, axis=-1)
@@ -2959,7 +3442,13 @@ def gate_task(task: dict[str, Any], options: argparse.Namespace) -> dict[str, An
 
     if not getattr(options, "gates", False):
         if getattr(options, "race_scan", None):
-            raise SystemExit("--race-scan reads the ground under a gate race; give --gates")
+            # ADR-976: a sprint over a relief strip (ADR-972) reads the scan too.
+            if not getattr(options, "race_terrain", None):
+                raise SystemExit("--race-scan reads the ground under a gate race or a relief "
+                                 "strip; give --gates or --race-terrain")
+            if task.get("scans"):
+                raise SystemExit("--race-scan: this bundle already carries a height scan (ADR-715)")
+            return {**task, "race_scan": race_scan_grid(options.race_scan)}
         return task
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import cadex_goto
@@ -3071,6 +3560,45 @@ def gate_ceiling_next(ceiling: float, progress_mps: float, rule: dict[str, Any])
     return ceiling
 
 
+def actor_schedule(iteration: int, critic_warmup: int, actor_ramp: int) -> tuple[float, float]:
+    """ADR-984: the actor's gradient gate and update scale at ``iteration``.
+
+    Without ``actor_ramp`` (0) it is ADR-740's: the actor's gradient is zeroed
+    for the first ``critic_warmup`` iterations and its update is whole. Adam's
+    step count is shared, so it runs on through the warmup while the actor's
+    moments stay zero; at the first actor update bias correction is ~1 and
+    m/sqrt(v) starts at 2.7 and peaks at 5.6 (b1 0.9, b2 0.999): the first
+    actor iteration moves 3.7 times a settled one's worth.
+
+    With ``actor_ramp`` N >= 1 the actor's gradient flows into Adam's moments
+    from the start, so they are warm when it moves, and its update is scaled
+    by 0 through the warmup, then (k + 1) / N for the k-th actor iteration,
+    then 1. N = 1 warms the moments alone.
+    """
+
+    warmup = max(0, int(critic_warmup))
+    ramp = max(0, int(actor_ramp))
+    if ramp <= 0:
+        return (0.0 if iteration < warmup else 1.0), 1.0
+    if iteration < warmup:
+        return 1.0, 0.0
+    return 1.0, min(1.0, float(iteration - warmup + 1) / float(ramp))
+
+
+def actor_gated_update(optimizer, grads, optimizer_state, params, gate, scale):
+    """One optimiser step with the actor's gradient times ``gate`` and its
+    update times ``scale`` (ADR-740, ADR-984); the critic's is untouched.
+    ``grads``, ``params`` and the updates carry ``policy`` and ``value``."""
+
+    import jax
+    import optax
+
+    grads = grads.replace(policy=jax.tree.map(lambda g: g * gate, grads.policy))
+    updates, optimizer_state = optimizer.update(grads, optimizer_state)
+    updates = updates.replace(policy=jax.tree.map(lambda u: u * scale, updates.policy))
+    return optax.apply_updates(params, updates), optimizer_state
+
+
 def reference_weight_at(iteration: int, weight: float, fade: int) -> float:
     """The gallop guide's weight at ``iteration`` (ADR-957): ``weight`` falling
     in a straight line to 0 at ``fade`` iterations; ``fade`` 0 never fades."""
@@ -3141,8 +3669,16 @@ def relief_rule(options: argparse.Namespace) -> dict[str, Any]:
 
     if kind not in cadex_goto.TERRAIN_KINDS:
         raise SystemExit(f"--race-terrain {kind!r} is not one of {cadex_goto.TERRAIN_KINDS}")
-    if not getattr(options, "gates", False):
-        raise SystemExit("--race-terrain lays relief under a gate race; give --gates")
+    # ADR-972: without --gates the relief is a strip along +x under the
+    # bundle's own task (a sprint), not a square field round the start.
+    gated = bool(getattr(options, "gates", False))
+    strip = getattr(options, "relief_strip", None)
+    if gated and strip is not None:
+        raise SystemExit("--relief-strip lays relief along a sprint; a gate race (--gates) "
+                         "stands on a square field, sized by --relief-half")
+    if not gated and getattr(options, "relief_half", None) is not None:
+        raise SystemExit("--relief-half sizes a gate race's field; without --gates the relief "
+                         "is a strip along +x, sized by --relief-strip")
     levels = int(getattr(options, "relief_levels", RELIEF_LEVELS))
     if levels < 1:
         raise SystemExit("--relief-levels is how many fields of relief, from 1")
@@ -3154,6 +3690,10 @@ def relief_rule(options: argparse.Namespace) -> dict[str, Any]:
             or hold != int(hold) or hold < 0:
         raise SystemExit(f"--relief-ceiling is START,FALLS,HOLD with START a level in 0..{levels}, "
                          "FALLS in [0, 1] and HOLD a count of iterations from 0")
+    if not gated:
+        length = float(cadex_goto.STRIP_LENGTH_M if strip is None else strip)
+        if not length > 0.0:
+            raise SystemExit("--relief-strip is the strip's length along +x in metres, above 0")
     half = float(cadex_goto.FIELD_HALF_M if getattr(options, "relief_half", None) is None
                  else options.relief_half)
     if not half > 0.0:
@@ -3164,8 +3704,31 @@ def relief_rule(options: argparse.Namespace) -> dict[str, Any]:
     if fields == "graded-rough" and kind not in ("u1", "b1"):
         raise SystemExit("--relief-fields graded-rough lays rough and hilly fields; give "
                          "--race-terrain u1 or b1")
-    return {"kind": kind, "levels": levels, "half_m": half, "fields": fields,
+    rule = {"kind": kind, "levels": levels, "half_m": half, "fields": fields,
             "ceiling": {"start": int(start), "falls": falls, "hold": int(hold)}}
+    grade = getattr(options, "relief_grade", None)
+    if grade is not None:
+        # ADR-980: the hills' grade range in place of the race's grade_deg.
+        if kind not in ("hills", "u1", "b1"):
+            raise SystemExit("--relief-grade grades hills; give --race-terrain hills, u1 or b1")
+        g_low, g_high = parse_floats(grade, 2, "--relief-grade")
+        if not 0.0 < g_low <= g_high < 45.0:
+            raise SystemExit("--relief-grade is LOW,HIGH in degrees, 0 < LOW <= HIGH < 45")
+        rule = {**rule, "grade_deg": [g_low, g_high]}
+    if not gated:
+        rule = {**rule, "half_m": None, "strip_m": length}
+    span = getattr(options, "relief_span", None)
+    if span is not None:
+        # ADR-977: a strip's obstacles span it, walled, so none is gone round.
+        if gated:
+            raise SystemExit("--relief-span spans a sprint strip's obstacles; a gate race "
+                             "(--gates) stands on a field, which has no strip to span")
+        if kind not in ("boxes", "b1"):
+            raise SystemExit("--relief-span spans obstacles; give --race-terrain boxes or b1")
+        if not float(span) > 0.0:
+            raise SystemExit("--relief-span is the strip's rim wall height in mm, above 0")
+        rule = {**rule, "span_wall_mm": float(span)}
+    return rule
 
 
 def relief_top_next(top: int, since: int, falls: float, rule: dict[str, Any]) -> tuple[int, int]:
@@ -3193,32 +3756,47 @@ def relief_fields(np: Any, rule: dict[str, Any], seed: int) -> list[dict[str, An
     above it graded at ``(k - 1) / (levels - 1)`` of the way up. A ``boxes``
     or ``b1`` field (ADR-966) stands ``cadex_goto``'s field obstacles, about
     one every 3 m of a run, scaled with the field's heights in ``scaled``
-    mode. Train split only: no field is a held-out course's relief."""
+    mode. Without ``--gates`` (ADR-972) each field is
+    ``cadex_goto.strip_terrain`` on the same seeds, a strip ``strip_m`` long
+    along +x, drawn the same three ways. Train split only: no field is a
+    held-out course's relief."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import cadex_goto
 
     levels = int(rule["levels"])
     mode = rule.get("fields", RELIEF_FIELDS[0])
-    low, high = (float(v) for v in cadex_goto.RACE_TERRAIN["grade_deg"])
+    if rule.get("strip_m") is not None:
+        # ADR-972: a strip along +x under a sprint, drawn as a field is.
+        # ADR-977: with --relief-span, its obstacles span it within rim walls.
+        span = ({} if rule.get("span_wall_mm") is None
+                else {"span_wall_mm": float(rule["span_wall_mm"])})
+
+        def field_terrain(np: Any, kind: str, seed: int, *, half_m: Any = None, **shape: Any):
+            return cadex_goto.strip_terrain(np, kind, seed, length_m=float(rule["strip_m"]),
+                                            **span, **shape)
+    else:
+        field_terrain = cadex_goto.field_terrain
+    # ADR-980: --relief-grade replaces the race's grade range for every mode.
+    low, high = (float(v) for v in (rule.get("grade_deg") or cadex_goto.RACE_TERRAIN["grade_deg"]))
+    graded_shape = {} if rule.get("grade_deg") is None else {"grade_deg": (low, high)}
     fields = []
     for k in range(1, levels + 1):
         if mode == "graded-rough" and k == 1:
-            field = cadex_goto.field_terrain(np, "rough", int(seed) * levels,
-                                             half_m=rule["half_m"])
+            field = field_terrain(np, "rough", int(seed) * levels, half_m=rule["half_m"])
             fields.append({**field, "level": k, "scale": 1.0,
                            "rough_highest_mm": round(float(field["drawn"].get("rough_highest_mm", 0.0)), 3)})
             continue
         if mode in ("graded", "graded-rough"):
             grade = (low + (high - low) * k / levels if mode == "graded"
                      else low + (high - low) * (k - 1) / (levels - 1))
-            field = cadex_goto.field_terrain(np, rule["kind"], int(seed) * levels + k - 1,
-                                             half_m=rule["half_m"], grade_deg=(grade, grade))
+            field = field_terrain(np, rule["kind"], int(seed) * levels + k - 1,
+                                  half_m=rule["half_m"], grade_deg=(grade, grade))
             fields.append({**field, "level": k, "scale": 1.0,
                            "rough_highest_mm": round(float(field["drawn"].get("rough_highest_mm", 0.0)), 3)})
             continue
-        field = cadex_goto.field_terrain(np, rule["kind"], int(seed) * levels + k - 1,
-                                         half_m=rule["half_m"])
+        field = field_terrain(np, rule["kind"], int(seed) * levels + k - 1, half_m=rule["half_m"],
+                              **graded_shape)
         heights = field["heights_mm"] * (k / levels)
         # The draw's grade and rough relief, scaled with it; ``drawn`` is the
         # unscaled draw's.
@@ -3303,14 +3881,16 @@ def relief_model(mujoco: Any, np: Any, xml: bytes, fields: Sequence[dict[str, An
 
 
 def relief_randomised(mujoco: Any, np: Any, xml: bytes, task: dict[str, Any], fields: Sequence[dict[str, Any]],
-                      *, base_seed: int, count: int) -> tuple[Any, dict[str, Any], dict[str, Any]]:
+                      *, base_seed: int, count: int,
+                      options: Any = None) -> tuple[Any, dict[str, Any], dict[str, Any]]:
     """:func:`randomised_models` on the relief's model (ADR-962): the draws
     are made on the bundle's own model, as without relief, and each drawn
     field gains the relief's rows -- a geom field the floor's drawn row, so a
     field's friction follows the floor's draw, any other the relief model's
     value. Environment 0's draw is applied to the returned host."""
 
-    _host, drawn = randomised_models(mujoco, np, xml, task, base_seed=base_seed, count=count)
+    _host, drawn = randomised_models(mujoco, np, xml, task, base_seed=base_seed, count=count,
+                                     options=options)
     model, placed = relief_model(mujoco, np, xml, fields)
     padded = {}
     for name, values in drawn.items():
@@ -3493,7 +4073,8 @@ def build_environment(
     from brax.envs.base import State
 
     table = globals_for(jnp)
-    task = bundle["task"]
+    # ADR-975: --feet-air-limit joins the task's feet block before anything reads it.
+    task = with_feet_air_limit(bundle["task"], options)
     episode = task["episode"]
     names = channels(task)
     # The actor reads the policy channels only; the critic and the running
@@ -3553,6 +4134,15 @@ def build_environment(
     # graph a trainer without this flag emits.
     command_slew_deg = resolved_command_slew_deg(options)
     slewing = command_slew_deg > 0.0
+    # ADR-969: the drives' torque falls with their speed. A Python float, so
+    # a run without the flag emits the graph it did.
+    no_load_speed = resolved_no_load_speed(options)
+    corner_speed = resolved_drive_corner_speed(options)   # ADR-985
+    drive_curve = resolved_drive_curve(options)            # ADR-986
+    # ADR-974: PYTHON values; without --drive-heat the graph is the one a
+    # trainer without the flag emitted.
+    drive_heat = resolved_drive_heat(options)
+    heat_start = resolved_heat_start(options)
     if slewing:
         # A limit wider than the box can never bind: the whole command range
         # is `high - low`, so any step is at most that. Refusing is better
@@ -3605,6 +4195,20 @@ def build_environment(
          compile_expression(str(term["expression"]), names, table))
         for term in task["reward"]
     ]
+    # ADR-978: a PYTHON value; without --latched-contact the graph is as before.
+    latch = latched_contact_plan(task, names, getattr(options, "latched_contact", None))
+    # ADR-979: the terms that read each paw's leave over the interval instead.
+    leave = latched_contact_plan(task, names, getattr(options, "leave_contact", None),
+                                 flag="--leave-contact")
+    if latch is not None and leave is not None and set(latch["terms"]) & set(leave["terms"]):
+        raise SystemExit("--leave-contact: a term cannot read both the latched and the leave flag")
+    latching = latch is not None
+    leaving = leave is not None
+    scanned_plan = latch if latching else leave
+    if latching or leaving:
+        latch_gather = jnp.asarray([c["adr"] for c in scanned_plan["contacts"]], dtype=jnp.int32)
+        latch_scale = jnp.asarray([c["scale"] for c in scanned_plan["contacts"]], dtype=jnp.float32)
+        latch_above = jnp.asarray([c["above"] for c in scanned_plan["contacts"]], dtype=jnp.float32)
     termination_terms = [
         (rule.get("above"), rule.get("below"),
          compile_expression(str(rule["expression"]), names, table))
@@ -3634,13 +4238,14 @@ def build_environment(
                              "carries a height scan or a terrain pool")
         relief_drawn = relief_fields(np, relief, int(seed))
         host, drawn, relief_placed = relief_randomised(
-            mujoco, np, bundle["model_xml"], task, relief_drawn, base_seed=int(seed), count=envs)
+            mujoco, np, bundle["model_xml"], task, relief_drawn, base_seed=int(seed), count=envs,
+            options=options)
         relief_geoms = jnp.asarray(relief_placed["geoms"], dtype=jnp.int32)
         relief_sink = float(relief_placed["sink_m"])
         relief_levels = int(relief["levels"])
     else:
         host, drawn = randomised_models(mujoco, np, bundle["model_xml"], task,
-                                        base_seed=int(seed), count=envs)
+                                        base_seed=int(seed), count=envs, options=options)
     key_id = mujoco.mj_name2id(host, mujoco.mjtObj.mjOBJ_KEY,
                                str(episode["reset_keyframe"]))
     if key_id < 0:
@@ -3750,6 +4355,13 @@ def build_environment(
         return ((pool_device["scan"][course], pool_device["lowest"][course],
                  pool_device["dome_scan"][course]) if redrawing else None)
 
+    # ADR-971: a finer solver step, the control interval unchanged (the steps
+    # per action are multiplied below). A divisor of 1 leaves the model alone.
+    divisor = solver_step_divisor(options)
+    if divisor != 1:
+        host.opt.timestep = float(host.opt.timestep) / divisor
+    speed_map = tuple(jnp.asarray(v) for v in actuator_speed_map(host))
+    solver_dt = float(host.opt.timestep)
     single = mjx.put_model(host)
     model = single
     if drawn and envs > 1:
@@ -3771,7 +4383,16 @@ def build_environment(
     else:
         model_axes = None
 
-    per_action = int(episode["solver_steps_per_action"])
+    per_action = int(episode["solver_steps_per_action"]) * divisor
+
+    def drawn_heat(key):
+        """ADR-974: each environment's drives' heat at an episode's start,
+        uniform in ``--heat-start``'s share of each one's budget."""
+
+        _, _, budget = heat_budget(jnp, model.actuator_forcerange, *drive_heat)
+        share = jax.random.uniform(key, (envs, int(host.nu)), minval=heat_start[0],
+                                   maxval=heat_start[1])
+        return jnp.where(speed_map[2], share * budget, 0.0).astype(jnp.float32)
     # The episode the *bundle* declares, and the only horizon this file may
     # use. It is read here and enforced in `rollout`'s scan; for two runs it
     # was read here and never used again, and an environment whose policy did
@@ -3841,6 +4462,12 @@ def build_environment(
     race_scan_field = race_scan_grids = None
     if race_scanning:
         race_scan_offsets = jnp.asarray(task["race_scan"]["offsets_mm"], dtype=jnp.float32)
+        if not gating:
+            # ADR-976: a sprint's scan reads the base's free joint as a race's does.
+            free = [j for j in range(host.njnt) if int(host.jnt_type[j]) == 0]
+            if not free:
+                raise SystemExit("--race-scan needs a floating base; this model has no free joint")
+            race = {"qpos": int(host.jnt_qposadr[free[0]]), "dof": int(host.jnt_dofadr[free[0]])}
         if relieving:
             shapes = {(int(f["nrow"]), int(f["ncol"]), float(f["cell_mm"]),
                        tuple(f["x_range_mm"]), tuple(f["y_range_mm"])) for f in relief_drawn}
@@ -4011,11 +4638,19 @@ def build_environment(
     def named(vector):
         return {name: vector[index] for index, name in enumerate(names)}
 
-    def reward_of(vector):
+    def reward_of(vector, peak=None, left=None):
         values = named(vector)
+        # ADR-978: the latched terms read the interval's touch, the rest the plain flag.
+        latched_values = (named(latched_vector(jnp, vector, peak, latch))
+                          if latching and peak is not None else values)
+        # ADR-979: the leave terms read whether the paw left the floor in the interval.
+        leave_values = (named(leave_vector(jnp, vector, left, leave))
+                        if leaving and left is not None else values)
         total = jnp.float32(0.0)
-        for weight, code in reward_terms:
-            total = total + weight * eval(code, table, dict(values))
+        for index, (weight, code) in enumerate(reward_terms):
+            read = (latched_values if latching and index in latch["terms"] else
+                    leave_values if leaving and index in leave["terms"] else values)
+            total = total + weight * eval(code, table, dict(read))
         # ADR-870: with a feet block the floor is applied in ``step``, after
         # the foot terms join the sum, as Playground clips the whole sum; and
         # so with a gate race's pay or a guide's (ADR-955, ADR-957).
@@ -4272,9 +4907,43 @@ def build_environment(
         data = data.replace(ctrl=ctrl)
 
         def one(d, _):
-            return mjx.step(m, d), None
+            limit = m.actuator_forcerange
+            ranged = (enveloped_range(jnp, limit, d.qvel, speed_map, no_load_speed, corner_speed,
+                                      drive_curve)
+                      if no_load_speed > 0.0 else limit)   # ADR-969: at the speed it turns now
+            if drive_heat is not None:
+                # ADR-974: held under its heat; the heat lives in `userdata`.
+                ranged = heat_range(jnp, ranged, limit, d.userdata, speed_map[2], *drive_heat)
+            if ranged is limit:
+                return mjx.step(m, d), None
+            d = mjx.step(m.replace(actuator_forcerange=ranged), d)
+            if drive_heat is not None:
+                d = d.replace(userdata=heated(jnp, d.userdata, d.actuator_force, limit,
+                                              speed_map[2], *drive_heat, solver_dt))
+            return d, None
 
-        data, _ = jax.lax.scan(one, data, None, length=per_action)
+        if latching or leaving:
+            # ADR-978: the most normal force each contact read on any solver
+            # step; ADR-979: whether an off state followed a down one, from
+            # the state the interval started from.
+            def latched_one(carried, _):
+                d, peak, was, gone = carried
+                d, _unused = one(d, None)
+                seen = jnp.take(d.sensordata, latch_gather) * latch_scale
+                was, gone = leave_step(jnp, was, gone, seen, latch_above)
+                return (d, jnp.maximum(peak, seen), was, gone), None
+
+            start = jnp.take(data.sensordata, latch_gather) * latch_scale
+            (data, peak, _was, left), _ = jax.lax.scan(
+                latched_one, (data, jnp.full(latch_scale.shape, -jnp.inf, jnp.float32),
+                              start > latch_above, jnp.zeros(latch_scale.shape, bool)),
+                None, length=per_action)
+            peak = peak if latching else None
+            left = left if leaving else None
+        else:
+            data, _ = jax.lax.scan(one, data, None, length=per_action)
+            peak = None
+            left = None
         vector = observe(data)
         if goaled:
             if waypointed:
@@ -4300,15 +4969,15 @@ def build_environment(
                 jnp, task, data.xpos, data.xmat, scan_elevation,
                 scanned_course(course) if redrawing else None)])
         if commanding:
-            return (data, vector, reward_of(vector), done_of(vector), clamped,
+            return (data, vector, reward_of(vector, peak, left), done_of(vector), clamped,
                     replaced)
         if carrying:
             # The ISSUED command joins the outputs, because it is the next
             # step's filter state and there is nowhere else to get it: it is
             # not recoverable from `data.ctrl`, which holds it multiplied by
             # the actuator scale.
-            return data, vector, reward_of(vector), done_of(vector), clamped
-        return data, vector, reward_of(vector), done_of(vector)
+            return data, vector, reward_of(vector, peak, left), done_of(vector), clamped
+        return data, vector, reward_of(vector, peak, left), done_of(vector)
 
     # `(previous, first)` are per environment, so they vmap on axis 0 like
     # `surface`. Empty at alpha 1.0, which is what keeps the traced signature
@@ -4450,6 +5119,8 @@ def build_environment(
             relief_level = jax.random.randint(jax.random.fold_in(start_key, 962), (envs,),
                                               0, relief["ceiling"]["start"] + 1)
             course_args = (relief_level,)
+        if drive_heat is not None:
+            make = make.replace(userdata=drawn_heat(jax.random.fold_in(start_key, 974)))
         data = batched_forward(model, make.replace(qpos=qpos, qvel=qvel), *course_args)
         steps = jnp.zeros((envs,), dtype=jnp.int32)
         info = {"forces": forces, "starts": starts,
@@ -4654,6 +5325,10 @@ def build_environment(
         def where_done(new, old):
             return jnp.where(done.reshape((-1,) + (1,) * (new.ndim - 1)), new, old)
 
+        if drive_heat is not None:
+            # ADR-974: an episode that ended starts its next at a fresh heat.
+            data = data.replace(userdata=where_done(
+                drawn_heat(jax.random.fold_in(reset_key, 974)), data.userdata))
         reset_data = data.replace(qpos=where_done(fresh_qpos, data.qpos),
                                   qvel=where_done(fresh_qvel, data.qvel),
                                   # A blown environment's warm start is NaN
@@ -5180,10 +5855,11 @@ def train(
         key, loss_key = jax.random.split(key)
         (_, metrics), grads = loss_and_grad(params, normaliser, data, loss_key)
         # ADR-740: while the critic warms up, the actor's gradient is zero, so
-        # Adam leaves it where the warm start put it.
-        grads = grads.replace(policy=jax.tree.map(lambda g: g * train_actor, grads.policy))
-        updates, optimizer_state = optimizer.update(grads, optimizer_state)
-        params = optax.apply_updates(params, updates)
+        # Adam leaves it where the warm start put it. ADR-984: or its gradient
+        # warms Adam's moments and its update is scaled (train_actor is the
+        # pair (gate, scale), see actor_schedule).
+        params, optimizer_state = actor_gated_update(
+            optimizer, grads, optimizer_state, params, train_actor[0], train_actor[1])
         return (optimizer_state, params, key), metrics
 
     def sgd_step(carry, _unused, data, normaliser, train_actor):
@@ -5465,6 +6141,7 @@ def train(
             "params": None, "normaliser": None, "written": -1}
     collapsed = ""
     critic_warmup = int(getattr(options, "critic_warmup", 0) or 0) if source_header is not None else 0
+    actor_ramp = int(getattr(options, "actor_ramp", 0) or 0)
     # ADR-955: the race's speed ceiling, and ADR-957's guide weight, held here
     # and written into the batch's state before each iteration: values, not
     # shapes, so the compiled iteration is reused.
@@ -5477,7 +6154,7 @@ def train(
     if guided and not options.quiet:
         print(f"gait reference  {guided}", flush=True)
     for iteration in range(total_iterations):
-        train_actor = jnp.float32(0.0 if iteration < critic_warmup else 1.0)
+        train_actor = jnp.asarray(actor_schedule(iteration, critic_warmup, actor_ramp), jnp.float32)
         moved = {}
         if race_rule:
             moved["gate_ceiling"] = jnp.full((envs,), ceiling, jnp.float32)
@@ -5753,6 +6430,26 @@ def policy_header(
             # driver that had to be told separately is a driver somebody will
             # forget to tell. 0.0 is no limit.
             "command_slew_deg": resolved_command_slew_deg(options),
+            # ADR-969, its own key for ADR-160's reason: a policy trained
+            # under a torque-speed curve has to be PLAYED under it. 0.0 is none.
+            "no_load_speed_rad_s": resolved_no_load_speed(options),
+            # ADR-985: the curve's corner (0.0: ADR-969's straight line); cadex_goto plays it.
+            "drive_corner_speed_rad_s": resolved_drive_corner_speed(options),
+            # ADR-986: the maker's chart as [[rad/s, fraction], ...] (None: the line or the corner); cadex_goto plays it.
+            "drive_curve": [list(p) for p in resolved_drive_curve(options) or ()] or None,
+            # ADR-981, its own key for ADR-160's reason: the drives' peak torque
+            # scale the policy was trained under; cadex_goto plays it. 1.0 is none.
+            "drive_torque_scale": resolved_drive_torque_scale(options),
+            # ADR-974, its own key for ADR-160's reason: [rated fraction, peak
+            # seconds] or null; cadex_goto plays the policy under it.
+            "drive_heat": list(resolved_drive_heat(options) or ()) or None,
+            "heat_start": list(resolved_heat_start(options)),
+            # ADR-975: not needed to play the policy; what it was paid under.
+            "feet_air_limit": list(options.feet_air_limit) if getattr(options, "feet_air_limit", None) else None,
+            # ADR-978: not needed to play the policy; what it was paid under.
+            "latched_contact": list(options.latched_contact) if getattr(options, "latched_contact", None) else None,
+            # ADR-979: likewise.
+            "leave_contact": list(options.leave_contact) if getattr(options, "leave_contact", None) else None,
             # ADR-700. Not needed to PLAY the policy, but a reward curve is
             # read against it: a floored run's reward/step cannot go below it.
             "reward_floor": resolved_reward_floor(options),
@@ -5779,6 +6476,8 @@ def policy_header(
                 # no goal, and leaving it out there keeps such a policy's
                 # header the one it always was (ADR-462).
                 and (key != "goal_pool" or task.get("goal"))
+                # ADR-984: a run without the ramp keeps the header it had.
+                and (key != "actor_ramp" or value)
                 # ADR-840: only a run on the go-to-point layer names it.
                 and (not key.startswith("goto") or options.goto)
                 # ADR-955, ADR-957: only a race names its gates, and only a
@@ -5787,6 +6486,10 @@ def policy_header(
                 and (not key.startswith("reference")
                      or getattr(options, "gait_reference", None))
                 and (key != "gait_reference" or getattr(options, "gait_reference", None))
+                # ADR-970: only a run that randomises by flag names the flag.
+                and (not key.startswith("randomise_") or getattr(options, key, None))
+                # ADR-971: only a run on a finer solver step names its divisor.
+                and (key != "solver_step_divisor" or solver_step_divisor(options) != 1)
             },
             "init_from": trained.get("init_from"),
             # The iterations this policy actually saw, which for a
@@ -5805,6 +6508,9 @@ def policy_header(
                 "environments": int(options.envs),
                 "entries": [str(entry["label"])
                             for entry in task.get("randomisation") or ()],
+                # ADR-970: the run's flag entries, drawn after the bundle's;
+                # absent when no flag is given, so other headers are unchanged.
+                **flag_randomisation_header(options),
             },
             # The second stream, recorded beside the first because it is a
             # *different* algorithm and a reader has to be able to tell which
@@ -6094,12 +6800,13 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         help="race the gates over relief (ADR-962): --relief-levels train-split fields "
              "of cadex_goto's race terrain round the start, field k scaled to k/levels; "
              "boxes and b1 (ADR-966) scatter boxes and steps over each field; "
+             "without --gates, each field is a strip along +x under a sprint (ADR-972); "
              "the paws (the floor's spheres and capsules) touch it, a box does not")
     parser.add_argument(
         "--race-scan", default=None, metavar="default|AHEAD,..:LEFT,..",
         help="the actor reads the base's height over the ground ahead (ADR-967): a grid of "
              "points ahead and left of the base along its heading in mm, after the gate "
-             "channels, read over the episode's relief field; 'default' is "
+             "channels, read over the episode's relief field (a race's, or a sprint's strip: ADR-976); 'default' is "
              "-200..800 every 200 by -120,0,120. A warm start gains them at zero weight")
     parser.add_argument(
         "--relief-levels", type=int, default=RELIEF_LEVELS,
@@ -6119,8 +6826,24 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "alone at full height, fields 2..levels graded from (high-low)/(levels-1) above "
              "low to high (ADR-964)")
     parser.add_argument(
+        "--relief-grade", default=None, metavar="LOW,HIGH",
+        help="the hills' steepest-grade range in degrees that --relief-fields draws or grades "
+             "from, in place of the race's grade_deg (ADR-980; hills, u1 and b1 only; "
+             "default the race's)")
+    parser.add_argument(
         "--relief-half", type=float, default=None,
         help="the relief field's half side in metres (default cadex_goto.FIELD_HALF_M)")
+    parser.add_argument(
+        "--relief-strip", type=float, default=None,
+        help="without --gates, --race-terrain lays each level's relief as a train-split strip "
+             "from the start along +x under the bundle's own task (a sprint), this long in "
+             "metres, margin_m either side (ADR-972; default cadex_goto.STRIP_LENGTH_M)")
+    parser.add_argument(
+        "--relief-span", type=float, default=None, metavar="WALL_MM",
+        help="without --gates, on a boxes or b1 strip: lay every obstacle across the strip's "
+             "full width, margins included, and stand a rim wall WALL_MM high along both "
+             "long sides and behind the start, so the only way along is over each obstacle "
+             "(ADR-977; off by default)")
     parser.add_argument(
         "--gate-ceiling",
         default=",".join(f"{GATE_CEILING[k]:g}" for k in ("start", "step", "max", "promote")),
@@ -6160,6 +6883,95 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "The resolved value is written into the .cxpolicy header, so an "
              "evaluator plays the policy with the filter it was trained "
              "with instead of being told separately")
+    parser.add_argument(
+        "--no-load-speed", type=float, default=0.0,
+        help="the drives' no-load speed in rad/s (ADR-969): every force-limited "
+             "joint drive's torque falls in a straight line from its forcerange "
+             "at rest to none at this speed, in the direction it turns (braking "
+             "keeps the whole range), every solver step. 0.0 (the default) is no "
+             "curve and emits the graph a trainer without the flag does. Written "
+             "into the .cxpolicy header, so cadex_goto plays the policy under it. "
+             "An RS00 is 315 rpm, 33.0 rad/s")
+    parser.add_argument(
+        "--drive-corner-speed", type=float, default=0.0, metavar="RAD_S",
+        help="ADR-985: with --no-load-speed, the speed up to which every force-limited joint drive keeps its whole "
+             "forcerange; above it the torque falls in a straight line to none at the no-load speed (a "
+             "current-limited motor on its voltage line). 0.0 (the default) is ADR-969's line from rest. Written "
+             "into the .cxpolicy header. An RS00 is 16.8 rad/s (its datasheet's 5 N*m at 260 rpm, 315 rpm no-load)")
+    parser.add_argument(
+        "--drive-curve", default=None, metavar="W:F,W:F,...",
+        help="ADR-986: with --no-load-speed, the drive's torque-speed chart: at speed W rad/s every force-limited "
+             "joint drive keeps the fraction F of its forcerange, the whole range at rest, straight between the "
+             "points, none at the no-load speed (braking keeps the whole range). Not with --drive-corner-speed. "
+             "Written into the .cxpolicy header. An RS00 (RobStride's 48 V chart: 14 N*m to 100 rpm, 12 at 150, "
+             "8 at 225, 5 at 270, 0.5 at 315) is --no-load-speed 33.0 --drive-curve "
+             "10.47:1,15.71:0.857,23.56:0.571,28.27:0.357,32.99:0.036")
+    parser.add_argument(
+        "--drive-torque-scale", type=float, default=1.0, metavar="FACTOR",
+        help="ADR-981: every force-limited actuator's forcerange times FACTOR for the "
+             "whole run, every environment (the drive's peak torque pushed or cut). "
+             "The --no-load-speed curve falls from the scaled peak, --drive-heat rates "
+             "the scaled peak, and --randomise-drive-torque draws around it. Written "
+             "into the .cxpolicy header, so cadex_goto plays the policy under it. "
+             "1.0 (the default) leaves the model alone")
+    parser.add_argument(
+        "--drive-heat", nargs=2, type=float, default=None,
+        metavar=("RATED_FRACTION", "PEAK_SECONDS"),
+        help="hold every force-limited joint drive to its continuous rating (ADR-974): "
+             "a heat per drive rises by (torque^2 - rated^2) every solver step and "
+             "falls only as fast as the drive runs under its rating, and the drive's "
+             "torque ceiling falls in a straight line from its peak (its forcerange) "
+             "at no heat to RATED_FRACTION of it at the budget, (peak^2 - rated^2) * "
+             "PEAK_SECONDS. Composes with --no-load-speed (the lower of the two holds). "
+             "Written into the .cxpolicy header, so cadex_goto plays the policy under "
+             "it. An RS00 is 5/14 = 0.357 rated")
+    parser.add_argument(
+        "--heat-start", nargs=2, type=float, default=None, metavar=("LOW", "HIGH"),
+        help="with --drive-heat, every episode starts with each drive's heat uniform "
+             "in this share of its budget (ADR-974); 0 0, the default, is cold")
+    parser.add_argument(
+        "--feet-air-limit", nargs=2, type=float, default=None, metavar=("SECONDS", "WEIGHT"),
+        help="a cost for a foot that stays up (ADR-975): every step, WEIGHT (< 0) times "
+             "the sum over the feet of how far each one that is up has been up past "
+             "SECONDS. The feet are the task's feet block's, else every contact "
+             "observation's _down channel. Training's, like ADR-870's feet block")
+    parser.add_argument(
+        "--latched-contact", nargs="+", default=None, metavar="LABEL",
+        help="ADR-978: the reward terms so labelled read every contact's _down flag "
+             "latched over the control interval (1 when the paw touched on any solver "
+             "step of it) instead of the step's last solver state. Every other term, "
+             "the observation and the terminations read the plain flag. Training's")
+    parser.add_argument(
+        "--leave-contact", nargs="+", default=None, metavar="LABEL",
+        help="ADR-979: the reward terms so labelled read every contact's _down flag "
+             "as 1 when the paw LEFT the floor in the control interval: down on a "
+             "solver state of it (or the state it started from) and off on a later "
+             "one. Every other term, the observation and the terminations read the "
+             "plain flag. Training's")
+    parser.add_argument(
+        "--randomise-drive-torque", type=float, nargs=2, default=None, metavar=("LOW", "HIGH"),
+        help="ADR-970: each environment draws one factor uniform(LOW, HIGH), held for the "
+             "run, scaling every force-limited actuator's forcerange (the curve of "
+             "--no-load-speed falls from the scaled limit). Drawn after the bundle's own "
+             "randomisation, which is unchanged. Off by default")
+    parser.add_argument(
+        "--randomise-friction", type=float, nargs=2, default=None, metavar=("LOW", "HIGH"),
+        help="ADR-970: each environment draws one factor uniform(LOW, HIGH), held for the "
+             "run, scaling every geom's sliding friction (with every geom at one friction, "
+             "the floor contact's friction is scaled by the factor). Drawn after the "
+             "bundle's own randomisation and --randomise-drive-torque. Off by default")
+    parser.add_argument(
+        "--randomise-contact-timeconst", type=float, nargs=2, default=None, metavar=("LOW", "HIGH"),
+        help="ADR-971: each environment draws one factor uniform(LOW, HIGH), held for the "
+             "run, scaling the solref time constant of every geom that has one (0.5 is "
+             "contact twice as stiff, the K3 judge's 'stiff'). Drawn after the drive-torque "
+             "and friction flags. A LOW that puts a time constant under two solver steps is "
+             "refused (MuJoCo would clamp it); see --solver-step-divisor. Off by default")
+    parser.add_argument(
+        "--solver-step-divisor", type=int, default=1, metavar="N",
+        help="ADR-971: the solver step is the model's divided by N and the solver steps "
+             "per action multiplied by N, so the control interval is unchanged and the "
+             "physics costs N times as much. 1 (the default) leaves the model alone")
     parser.add_argument(
         "--command-slew-deg", type=float, default=0.0,
         help="cap the per-step change of the ISSUED command at this many "
@@ -6204,6 +7016,20 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
             "iterations. The critic starts fresh, and until it values the "
             "carried actor its advantages are noise that PPO follows: "
             "rough-c2's episodes fell from 504 to 62 steps in two iterations."
+        ),
+    )
+    parser.add_argument(
+        "--actor-ramp",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "ADR-984: let the actor's gradient warm Adam's moments through "
+            "--critic-warmup with its update held at zero, then ramp its "
+            "update linearly to whole over N iterations (1: warm moments "
+            "only). Without it (0) the actor's first update after the warmup "
+            "is Adam's with a step count run on and cold moments: 3.7 times "
+            "a settled iteration's step."
         ),
     )
     parser.add_argument(
