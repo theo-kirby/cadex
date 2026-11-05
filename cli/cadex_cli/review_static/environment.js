@@ -3,14 +3,16 @@
 // Greybox environment manager — the single owner of a scene's stage floor plus its scene chrome
 // (background, fog, light intensities). Both views in the repo build one over their `view`: the
 // review dashboard's viewport and the headless video capturer. There is exactly ONE environment —
-// a fogged cyclorama — and ONE palette, the reference's dark one (ADR-331): no walled variant and
-// no light theme, so a clip and the dashboard cannot show different places.
+// a fogged cyclorama — in two palettes: the reference's dark one (ADR-331), which every capture
+// is in, and a light one the dashboard's viewport takes under the light theme (ADR-987).
 //
-// `createEnvironment(view, { labels })` -> { setStage, setSize, setFog, setLighting, dispose }.
+// `createEnvironment(view, { labels, theme })` -> { setStage, setSize, setFog, setLighting,
+// setTheme, palette, dispose }.
 // `labels: false` builds the floor without the baked pitch / "PROTOTYPE" text (the grid still
 // carries the scale) — a clean backdrop for a product shot.
-//   - the palette is applied once at construction: scene.background / fog / ground tint / light
-//     intensities from PALETTE.scene, the floor texture from PALETTE.tile;
+//   - the palette (`theme`, dark by default) is applied at construction: scene.background / fog /
+//     ground tint / light intensities from its `scene`, the floor texture from its `tile`;
+//     setTheme swaps it, repainting the floor once, and `palette()` is the one in use;
 //   - setStage is THE entry point: give it the shot's camera distance and it derives fog, then the
 //     floor size from the fog, then the far plane the camera needs to see all of it — and returns
 //     what it derived, so a caller can report the numbers rather than recompute them;
@@ -68,25 +70,37 @@ function skyGradient(bg, top) {
   return tex;
 }
 
-// The one environment palette (tile texture + scene chrome): the reference's near-black void, whose
-// scene background is also the review page's `--bg` (docs/DASHBOARD.md §4), so the viewport is
-// a window onto the place the videos are captured in rather than a lighter card inside the chrome.
-// The light "prototype map" palette that used to sit beside it was removed under ADR-331, not kept
-// behind a switch.
+// The environment palettes (tile texture + scene chrome). Dark is the reference's near-black void,
+// whose scene background is also the review page's `--bg` (docs/DASHBOARD.md §4), so the viewport
+// is a window onto the place the videos are captured in rather than a lighter card inside the
+// chrome; every capture is in it. Light is the same place in the light theme's greys (ADR-987):
+// its background is that theme's `--bg`, its mat a step under it, its sky paler above the horizon.
 //
 // The `fogNear`/`fogFar` here are only the FIRST-PAINT fallback: they hold from createEnvironment
 // until the first `setStage`, which derives the real fade from the shot's own standoff. They are
 // arena-sized on purpose, so a scene that has not been staged yet still shows something.
-export const PALETTE = {
-  tile: { tileA: "#1c1c1c", tileB: "#232323", line: "#3a3a3a", label: "rgba(150,150,150,0.22)" },
-  scene: {
-    bg: 0x141414, sky: "#070707", fogNear: 40, fogFar: 130,
-    hemiIntensity: 1.6, hemiGround: 0x2a2a2a, sunIntensity: 2.7, fillIntensity: 1.0,
-    roomFillIntensity: 1.2, roomFillGround: 0x9a9a9a,
+export const PALETTES = {
+  dark: {
+    tile: { tileA: "#1c1c1c", tileB: "#232323", line: "#3a3a3a", label: "rgba(150,150,150,0.22)" },
+    scene: {
+      bg: 0x141414, sky: "#070707", fogNear: 40, fogFar: 130,
+      hemiIntensity: 1.6, hemiGround: 0x2a2a2a, sunIntensity: 2.7, fillIntensity: 1.0,
+      roomFillIntensity: 1.2, roomFillGround: 0x9a9a9a,
+    },
+  },
+  light: {
+    tile: { tileA: "#b4b4b4", tileB: "#aaaaaa", line: "#8a8a8a", label: "rgba(70,70,70,0.25)" },
+    scene: {
+      bg: 0xcfcfcf, sky: "#ececec", fogNear: 40, fogFar: 130,
+      hemiIntensity: 1.6, hemiGround: 0x8a8a8a, sunIntensity: 2.7, fillIntensity: 1.0,
+      roomFillIntensity: 1.2, roomFillGround: 0x9a9a9a,
+    },
   },
 };
+export const PALETTE = PALETTES.dark;
 
-export function createEnvironment(view, { labels = true } = {}) {
+export function createEnvironment(view, { labels = true, theme = "dark" } = {}) {
+  let palette = PALETTES[theme] || PALETTE;
   let size = { footprint: 10, floorZ: 0, centre: [0, 0] };
   let staged = 10;                        // the footprint setStage derived; setCentre never shrinks under it
   let fogOverride = null;                 // {near, far} set by setFog; survives restaging
@@ -95,7 +109,7 @@ export function createEnvironment(view, { labels = true } = {}) {
 
   // An extra hemisphere fill so the greybox floor reads even; its intensity and ground colour come
   // from the palette like the view's own lights.
-  const roomFill = new THREE.HemisphereLight(0xffffff, PALETTE.scene.roomFillGround, PALETTE.scene.roomFillIntensity);
+  const roomFill = new THREE.HemisphereLight(0xffffff, palette.scene.roomFillGround, palette.scene.roomFillIntensity);
   view.scene.add(roomFill);
 
   function disposeObj(root) {
@@ -113,13 +127,13 @@ export function createEnvironment(view, { labels = true } = {}) {
     disposeObj(room);
     room = buildStageFloor(view.world, {
       size: size.footprint, floorZ: size.floorZ, centre: size.centre,
-      palette: PALETTE.tile, labels,
+      palette: palette.tile, labels,
     });
     liftFloor();
   }
 
   function applyChrome() {
-    const s = PALETTE.scene;
+    const s = palette.scene;
     view.scene.background?.dispose?.();
     view.scene.background = skyGradient(`#${s.bg.toString(16).padStart(6, "0")}`, s.sky);
     view.scene.fog = new THREE.Fog(
@@ -154,6 +168,15 @@ export function createEnvironment(view, { labels = true } = {}) {
   function setLighting(l) {
     lighting = l || null;
     applyChrome();
+  }
+
+  // Swap the palette (a theme's name); the floor is repainted once, the chrome reapplied.
+  function setTheme(name) {
+    const next = PALETTES[name] || PALETTE;
+    if (next === palette) return;
+    palette = next;
+    applyChrome();
+    rebuildRoom();
   }
 
   function setSize(sz = {}) {
@@ -243,5 +266,5 @@ export function createEnvironment(view, { labels = true } = {}) {
   // orbit, the capturer once per clip); this only has to be right enough that the floor outruns
   // its own fade.
   setStage({ camDist: Math.max(1, view.camera.position.length()) });
-  return { setStage, setCentre, setSize, setFog, setLighting, dispose };
+  return { setStage, setCentre, setSize, setFog, setLighting, setTheme, palette: () => palette, dispose };
 }

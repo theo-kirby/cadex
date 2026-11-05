@@ -3,7 +3,7 @@
 // Common inspection/capture scene. Public poses, bounds and cameras are mm,
 // Z-up, xyzw. One uniform conversion to metres; no component enlargement.
 import * as THREE from './three.module.js';
-import {createEnvironment, PALETTE as STAGE} from './environment.js';
+import {createEnvironment} from './environment.js';
 import {prototypeMaterial, GRID_PITCH} from './floor.js';
 import {parseStl} from './stl.js';
 import {LOOKS, MATCAPS, LIGHTING, OCCLUSION, createLooks, createOcclusion, createOutline, addDetail, detailSwitch} from './shading.js';
@@ -173,10 +173,10 @@ export function boardColours(mm, board, base) {
 // The rooms the solids reflect, and are lit by, are shading.js's lighting setups (ADR-676); the
 // first was ADR-601's procedural studio, which is Studio's room still.
 
-export function create(canvas, {labels=true}={}) {
+export function create(canvas, {labels=true, theme='dark'}={}) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, showPrimitives(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setTrail(){return 0;}, setTrailStyle(){return 'off';}, setTrailColours(){return null;}, showTrail(){return null;}, footfalls(){return [];}, centreAt(){return null;}, followTo(){return null;}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setFov(){return 55;}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, setHeat(){return false;}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, showPrimitives(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setTrail(){return 0;}, setTrailStyle(){return 'off';}, setTrailColours(){return null;}, showTrail(){return null;}, footfalls(){return [];}, centreAt(){return null;}, followTo(){return null;}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setTheme(){return 'dark';}, setFov(){return 55;}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, setHeat(){return false;}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   // Soft shadows (ADR-676): a variance shadow map, blurred, so a shadow's edge widens with its
@@ -190,14 +190,14 @@ export function create(canvas, {labels=true}={}) {
   world.rotation.x = -Math.PI/2; scene.add(world); world.add(model);
   const camera = new THREE.PerspectiveCamera(FOV, 1, .0001, 800);
   // Key, hemisphere and opposite fill; the environment sets their intensities and ground tints
-  // from its one dark palette (ADR-331) when it is built over them.
+  // from its palette (dark, ADR-331, or light, ADR-987) when it is built over them.
   const hemi = new THREE.HemisphereLight(0xffffff, 0x2a2a2a, 1.6);
   const sun = new THREE.DirectionalLight(0xffffff, 2.7);
   sun.castShadow = true; sun.shadow.mapSize.set(2048,2048); sun.shadow.radius = 10; sun.shadow.blurSamples = 16;
   const fill = new THREE.DirectionalLight(0xdfe6ff,1.0); fill.position.set(-12,6,-9);
   scene.add(hemi, sun, sun.target, fill);
   // `labels: false` is the product shot's clean mat (the hero page, ADR-677): the grid without its text.
-  const environment = createEnvironment({scene,world,camera,renderer,lights:{hemi,sun,fill}}, {labels});
+  const environment = createEnvironment({scene,world,camera,renderer,lights:{hemi,sun,fill}}, {labels, theme});
   // The look (ADR-676): a lighting setup or a matcap, occlusion and surface detail.
   const looks=createLooks(renderer), occlusion=createOcclusion(renderer), outline=createOutline(renderer);
   let look='studio', occluded=true, detailed=true, keyDir=LIGHTING.studio.key.dir;
@@ -405,7 +405,7 @@ export function create(canvas, {labels=true}={}) {
     surface=terrain?sampleSurface(terrain):null;
     // One material, and one 2048-texel canvas, for the whole course: the mat's own palette, so
     // where the course lies at the plane it is the mat.
-    if (!terrainMaterial) terrainMaterial=prototypeMaterial({palette:STAGE.tile, labels});
+    if (!terrainMaterial) terrainMaterial=prototypeMaterial({palette:environment.palette().tile, labels});
     if (surface) {
       const {xs,ys,z}=surface, n=xs.length, at=new Float32Array((n-1)*(ys.length-1)*18), uv=new Float32Array(at.length/3*2);
       const tile=2*GRID_PITCH*1000; let o=0;
@@ -1366,6 +1366,21 @@ export function create(canvas, {labels=true}={}) {
   // shoots its product shots longer (ADR-677), so a design keeps its proportions.
   function setFov(degrees) {const d=Number(degrees); if (Number.isFinite(d)&&d>=10&&d<=90) {camera.fov=d; staged=''; draw();} return camera.fov;}
   function setLook(name) {if (LOOKS.includes(name)) {look=name; applyLook();} draw(); return look;}
+  // The environment's palette, by the page's theme (ADR-987): the mat, sky and fog, and a course's
+  // tiles with them. A capture never calls it, so it stays dark.
+  let themed=theme==='light'?'light':'dark';
+  function setTheme(name) {
+    const next=name==='light'?'light':'dark';
+    if (next===themed) return themed;
+    themed=next; environment.setTheme(themed);
+    if (terrainMaterial) {
+      const old=terrainMaterial;
+      terrainMaterial=prototypeMaterial({palette:environment.palette().tile, labels});
+      ground.children.forEach(o=>{o.material=terrainMaterial;});
+      old.map?.dispose(); old.dispose();
+    }
+    draw(); return themed;
+  }
   function setOcclusion(flag) {occluded=!!flag; draw(); return occluded;}
   function setDetail(flag) {detailed=!!flag; detailSwitch.value=detailed?1:0; draw(); return detailed;}
   canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);press=pointers.size===1?[e.clientX,e.clientY]:null;panning=pointers.size===1&&(e.shiftKey||e.button===1);if(pointers.size===2){pinch=span();mid=centre();}e.preventDefault();});
@@ -1395,7 +1410,7 @@ export function create(canvas, {labels=true}={}) {
   applyLook();
   return {available:true,load,install,clear,fit,draw,setPoses,setTrail,setTrailStyle,setTrailColours,showTrail,setTargets,showTargets,frameTargets,targets:()=>({points:targetMarks.length,state:targetState}),footfalls,trail:()=>({style:trailStyle,at:trailAt,stops:trailEnds.length,shown:trail.children[0]?trail.children[0].geometry.drawRange.count:0}),centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,showPrimitives,setTerrain,groundAt,
     setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
-    setLook,look:()=>look,setFov,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
+    setLook,look:()=>look,setTheme,setFov,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
     setHidden,hidden:()=>[...hiddenNames],select,setHeat,heat:()=>heat&&{...heat},selected:()=>selectedNames.slice(),parts,boundsOf,fitTo,
     pick,screenPoint,screenBox,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,outlined:[...meshes.values()].filter(m=>m.userData.outline).length,primitives_shown:primitivesShown,

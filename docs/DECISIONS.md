@@ -50119,3 +50119,24 @@ Training suite: 279 passed. A CPU smoke on CDXQ-F's g1 export (`--no-load-speed 
 
 **Consequences.** A trainer can give a drive its maker's own curve, the one CDXQ-F's screen judges on. Policies trained
 before this keep their line or corner, so earlier draws and judges are unchanged.
+
+## ADR-987 — The light theme takes the 3D viewport with it (2026-11-05)
+
+**Context.** ADR-331 made the review environment dark only, and ADR-534 kept it dark under the light theme, as a
+Blender viewport keeps its colour under a light interface. In use the dark viewport sat as a black slab inside a light
+page; the owner asked for the light mode to include the 3D environment.
+
+**Decision.** `environment.js` carries two palettes, `PALETTES.dark` (the reference's, still exported as `PALETTE`)
+and `PALETTES.light`: background #cfcfcf (the light `--bg`), a paler sky (#ececec) above the horizon, tiles #b4b4b4 /
+#aaaaaa with #8a8a8a lines and darker labels; lights and fog as dark's. `createEnvironment` takes `theme` and returns
+`setTheme`, which reapplies the chrome and repaints the floor once. `review_scene.create` takes `theme` and returns
+`setTheme`, which also swaps a terrain course's tile material. The dashboard builds each viewport in the page's theme
+and calls `setTheme` on every `cadex-theme`. Captures, hero stills and videos never pass a theme, so they stay dark;
+this partly reverses ADR-331 for the dashboard alone.
+
+**Tests.** None added (no contract changes). Verified by running: a dashboard on cadex-quad screenshotted in headless
+Chromium in the dark theme, in the light theme, and switched dark to light with no reload; the light viewport shows the
+light mat, sky and shadows, and the dark one is unchanged.
+
+**Consequences.** Under the light theme the viewport matches the chrome. The trail's white default and the gate
+colour (#f2f2ea) read less well on the light mat; Settings can change the trail's colour.

@@ -1345,7 +1345,7 @@
 
   // A 3D viewport: its own viewer, camera, gizmo, style, lighting, follow and trail, over the one model.
   function addView(ref, tools) {
-    var canvas = ref('viewer'), viewer = window.CadexViewer.create(canvas);
+    var canvas = ref('viewer'), viewer = window.CadexViewer.create(canvas, { theme: window.cadexTheme.theme() });
     var view = { viewer: viewer, canvas: canvas, tools: tools, body: ref('model'), follow: false, style: renderStyle, look: look.name,
                  styleGroup: ref('view3d-style'), lookSelect: ref('view3d-look'), followButton: ref('play-follow'),
                  trail: 'off', trailSelect: ref('view3d-trail'), gizmoOn: true, gizmoToggle: ref('view3d-gizmo-toggle'),
@@ -1494,9 +1494,12 @@
       window.cadexTheme.set(window.cadexTheme.theme() === 'dark' ? 'light' : 'dark');
     });
     document.addEventListener('cadex-theme-choice', renderThemeChoice);
-    // The diagram's paper and ink are the theme's.
-    document.addEventListener('cadex-theme', function () {
-      views().forEach(function (v) { if (v.style === 'wireframe') setViewStyle(v, 'wireframe'); });
+    // The diagram's paper and ink are the theme's, and so is the stage the model stands on (ADR-987).
+    document.addEventListener('cadex-theme', function (event) {
+      views().forEach(function (v) {
+        v.viewer.setTheme(event.detail.theme);
+        if (v.style === 'wireframe') setViewStyle(v, 'wireframe');
+      });
     });
     renderThemeChoice();
     $('layout-reset').addEventListener('click', function () { state.layout.reset(); });
