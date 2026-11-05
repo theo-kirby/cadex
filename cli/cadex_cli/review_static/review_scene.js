@@ -787,7 +787,8 @@ export function create(canvas, {labels=true}={}) {
       g.computeBoundingBox();
       const {m:mat, finish, colour, board}=material(entry,i,g);
       // Its matcap twin (ADR-676) shares the page's one baked sphere; a look swaps between them.
-      const twin=new THREE.MeshMatcapMaterial({color:0xffffff, side:THREE.DoubleSide, vertexColors:!!entry.colours});
+      // One material for every part, so a training body's per-part colours stay off it.
+      const twin=new THREE.MeshMatcapMaterial({color:0xffffff, side:THREE.DoubleSide});
       const m=new THREE.Mesh(g,mat);
       m.userData.materials={parts:mat, matcap:twin};
       m.userData.mmBounds=new THREE.Box3().setFromArray(entry.positions);

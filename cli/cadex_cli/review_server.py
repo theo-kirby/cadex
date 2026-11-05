@@ -1146,6 +1146,42 @@ def _policy_inputs(bundle: Mapping[str, Any] | None, names: Sequence[str]) -> li
     return rows
 
 
+def _digest_matches(path: Path | None, sha256: Any) -> bool:
+    """Whether ``path`` is a plain file inside the read bound whose digest is ``sha256``."""
+
+    try:
+        return (path is not None and path.is_file() and not path.is_symlink()
+                and path.stat().st_size <= MJCF_READ_LIMIT
+                and hashlib.sha256(path.read_bytes()).hexdigest() == sha256)
+    except OSError:
+        return False
+
+
+def _trained_bundle(train: Path, root: Path, sha256: Any) -> Path | None:
+    """The task bundle a trainer run by hand read, when no copy sits beside its
+    policy: the first argument its ``progress.json`` records, taken from the
+    directory its ``--out`` was relative to (``l2/joy/outputs/goto-task.json``
+    with ``--out runs/lfwd1/leon6.cxpolicy``). Only a file inside the project
+    whose digest is the policy's own task digest; else ``None``."""
+
+    run = ((_load_json(train / "progress.json") or {}).get("run") or {})
+    argv = [str(a) for a in run.get("argv") or []] if isinstance(run, Mapping) else []
+    if not argv or argv[0].startswith("-") or "--out" not in argv[:-1]:
+        return None
+    out, bundle = Path(argv[argv.index("--out") + 1]).parent, Path(argv[0])
+    if not bundle.is_absolute():
+        if out.is_absolute() or len(out.parts) > len(train.parts):
+            return None
+        cwd = train.parents[len(out.parts) - 1] if out.parts else train
+        if (cwd / out).resolve() != train.resolve():
+            return None
+        bundle = cwd / bundle
+    bundle = bundle.resolve()
+    if not bundle.is_relative_to(root.resolve()):
+        return None
+    return bundle if _digest_matches(bundle, sha256) else None
+
+
 def policy_view(train: Path, path: Path, run: str, root: Path) -> dict[str, Any]:
     """The network behind a rollout, as the Activations editor runs it (ADR-727).
 
@@ -1163,13 +1199,19 @@ def policy_view(train: Path, path: Path, run: str, root: Path) -> dict[str, Any]
         reply["reason"] = reason
         return reply
     task = header.get("task") if isinstance(header.get("task"), Mapping) else {}
-    bundle_path = train / f"{task.get('label')}-task.json"
-    bundle = _load_json(bundle_path) if task.get("label") and bundle_path.is_file() else None
+    bundle_path: Path | None = train / f"{task.get('label')}-task.json"
+    if not task.get("label") or not bundle_path.is_file():
+        bundle_path = _trained_bundle(train, root, task.get("sha256"))
+    bundle = _load_json(bundle_path) if bundle_path is not None else None
     reference = (bundle or {}).get("reference") if isinstance((bundle or {}).get("reference"), Mapping) else {}
     period = reference.get("period_s") or (reference.get("parameters") or {}).get("period_s")
     model = header.get("model") if isinstance(header.get("model"), Mapping) else {}
     mjcf = train / Path(str(model.get("path") or "")).name if model.get("path") else None
-    actions = [a for a in header.get("actions") or [] if isinstance(a, Mapping)]
+    if mjcf is not None and not mjcf.is_file() and bundle_path is not None:
+        # The model beside the bundle it was read from, when it is the one trained on.
+        beside = bundle_path.parent / mjcf.name
+        mjcf = beside if _digest_matches(beside, model.get("sha256")) else None
+    actions =[a for a in header.get("actions") or [] if isinstance(a, Mapping)]
     reply.update({
         "label": header.get("label"), "network": header.get("network"),
         "normaliser": header.get("normaliser"), "observations": header.get("observations"),
